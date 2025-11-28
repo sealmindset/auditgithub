@@ -1,0 +1,186 @@
+"""
+AI reasoning engine for analyzing stuck scans.
+
+Coordinates AI providers to analyze diagnostic data and generate insights.
+"""
+
+import logging
+import asyncio
+from typing import Dict, Any, Optional, List
+
+from .providers import AIProvider, AIAnalysis
+from .diagnostics import DiagnosticCollector
+
+logger = logging.getLogger(__name__)
+
+
+class ReasoningEngine:
+    """Coordinates AI analysis of stuck scans."""
+    
+    def __init__(
+        self,
+        provider: AIProvider,
+        diagnostic_collector: DiagnosticCollector,
+        max_cost_per_analysis: float = 0.50
+    ):
+        """
+        Initialize the reasoning engine.
+        
+        Args:
+            provider: AI provider to use (OpenAI or Claude)
+            diagnostic_collector: Diagnostic data collector
+            max_cost_per_analysis: Maximum cost per analysis in USD
+        """
+        self.provider = provider
+        self.diagnostic_collector = diagnostic_collector
+        self.max_cost_per_analysis = max_cost_per_analysis
+        self.analysis_history: List[Dict[str, Any]] = []
+    
+    async def analyze_stuck_scan(
+        self,
+        repo_name: str,
+        scanner: str,
+        phase: str,
+        timeout_duration: int,
+        repo_metadata: Optional[Dict[str, Any]] = None,
+        scanner_progress: Optional[Dict[str, Any]] = None
+    ) -> AIAnalysis:
+        """
+        Analyze a stuck scan using AI.
+        
+        Args:
+            repo_name: Name of the repository
+            scanner: Scanner that was running
+            phase: Current phase
+            timeout_duration: Timeout duration in seconds
+            repo_metadata: Optional repository metadata
+            scanner_progress: Optional scanner progress
+            
+        Returns:
+            AIAnalysis with root cause and suggestions
+        """
+        try:
+            # Check cost budget
+            if self.provider.get_total_cost() >= self.max_cost_per_analysis * len(self.analysis_history):
+                logger.warning(
+                    f"AI cost budget exceeded: ${self.provider.get_total_cost():.2f}. "
+                    f"Skipping analysis for {repo_name}"
+                )
+                return self._create_fallback_analysis(
+                    "Cost budget exceeded",
+                    repo_name,
+                    scanner
+                )
+            
+            # Collect diagnostic data
+            logger.info(f"Collecting diagnostic data for {repo_name}...")
+            diagnostic_data = self.diagnostic_collector.collect(
+                repo_name=repo_name,
+                scanner=scanner,
+                phase=phase,
+                timeout_duration=timeout_duration,
+                repo_metadata=repo_metadata,
+                scanner_progress=scanner_progress
+            )
+            
+            # Get historical data for this repo
+            historical_data = [
+                entry for entry in self.analysis_history
+                if entry.get("repo_name") == repo_name
+            ]
+            
+            # Analyze with AI
+            logger.info(f"Analyzing stuck scan with AI provider: {self.provider.__class__.__name__}")
+            analysis = await self.provider.analyze_stuck_scan(
+                diagnostic_data=diagnostic_data,
+                historical_data=historical_data
+            )
+            
+            # Store in history
+            self.analysis_history.append({
+                "repo_name": repo_name,
+                "scanner": scanner,
+                "timestamp": diagnostic_data.get("timestamp"),
+                "analysis": analysis,
+                "diagnostic_data": diagnostic_data
+            })
+            
+            logger.info(
+                f"AI analysis complete for {repo_name}: "
+                f"{len(analysis.remediation_suggestions)} suggestions, "
+                f"confidence={analysis.confidence:.2f}, "
+                f"cost=${analysis.estimated_cost:.4f}"
+            )
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"AI analysis failed for {repo_name}: {e}", exc_info=True)
+            return self._create_fallback_analysis(str(e), repo_name, scanner)
+    
+    async def explain_timeout(
+        self,
+        repo_name: str,
+        scanner: str,
+        timeout_duration: int,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Generate a human-readable explanation of the timeout.
+        
+        Args:
+            repo_name: Repository name
+            scanner: Scanner name
+            timeout_duration: Timeout duration
+            context: Optional context
+            
+        Returns:
+            Human-readable explanation
+        """
+        try:
+            return await self.provider.explain_timeout(
+                repo_name=repo_name,
+                scanner=scanner,
+                timeout_duration=timeout_duration,
+                context=context or {}
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate explanation: {e}")
+            return f"The {scanner} scanner timed out after {timeout_duration} seconds while scanning {repo_name}."
+    
+    def get_analysis_history(self) -> List[Dict[str, Any]]:
+        """Get the history of all analyses."""
+        return self.analysis_history
+    
+    def get_total_cost(self) -> float:
+        """Get total cost of all AI analyses."""
+        return self.provider.get_total_cost()
+    
+    def _create_fallback_analysis(
+        self,
+        error_msg: str,
+        repo_name: str,
+        scanner: str
+    ) -> AIAnalysis:
+        """
+        Create a fallback analysis when AI fails.
+        
+        Args:
+            error_msg: Error message
+            repo_name: Repository name
+            scanner: Scanner name
+            
+        Returns:
+            Fallback AIAnalysis
+        """
+        from .providers.base import AIAnalysis, Severity
+        
+        return AIAnalysis(
+            root_cause=f"AI analysis unavailable: {error_msg}",
+            severity=Severity.MEDIUM,
+            remediation_suggestions=[],
+            confidence=0.0,
+            explanation=f"Unable to perform AI analysis for {repo_name} ({scanner}). Using fallback.",
+            estimated_cost=0.0,
+            tokens_used=0
+        )
