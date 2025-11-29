@@ -1562,13 +1562,10 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
         except Exception as _semgrep_rules_err:
             logging.debug(f"Skipping custom semgrep rules due to error: {_semgrep_rules_err}")
         # Output and execution options
+        # Output and execution options
         cmd += [
             "--json",
-            "--output", output_path,
-            "--error",
-            "--metrics", "off",
-            "--quiet",
-            "--timeout", "600"
+            "--output", output_path
         ]
         
         # Log environment and version info for diagnostics

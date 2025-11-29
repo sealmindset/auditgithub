@@ -61,12 +61,32 @@ class ReasoningEngine:
         """
         try:
             # Check cost budget
-            if self.provider.get_total_cost() >= self.max_cost_per_analysis * len(self.analysis_history):
-                logger.warning(
-                    f"AI cost budget exceeded: ${self.provider.get_total_cost():.2f}. "
+            # Check cost budget
+            # We want to ensure we don't exceed the max cost *per analysis* on average, 
+            # but we also need to allow the first analysis to run!
+            current_cost = self.provider.get_total_cost()
+            
+            # If we haven't done any analysis yet, we should allow it (unless cost is already high from somewhere else)
+            # If we have done analysis, we check if we are over budget
+            if len(self.analysis_history) > 0:
+                average_cost = current_cost / len(self.analysis_history)
+                if average_cost > self.max_cost_per_analysis:
+                     logger.warning(
+                        f"AI average cost per analysis (${average_cost:.2f}) exceeds limit (${self.max_cost_per_analysis:.2f}). "
+                        f"Total cost: ${current_cost:.2f}. Skipping analysis for {repo_name}"
+                    )
+                     return self._create_fallback_analysis(
+                        "Cost budget exceeded",
+                        repo_name,
+                        scanner
+                    )
+            elif current_cost > self.max_cost_per_analysis:
+                 # Even with 0 history, if we somehow have high cost, stop.
+                 logger.warning(
+                    f"AI total cost (${current_cost:.2f}) exceeds limit for single analysis (${self.max_cost_per_analysis:.2f}). "
                     f"Skipping analysis for {repo_name}"
                 )
-                return self._create_fallback_analysis(
+                 return self._create_fallback_analysis(
                     "Cost budget exceeded",
                     repo_name,
                     scanner
