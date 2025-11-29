@@ -1758,6 +1758,7 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
                     f.write("No error details available")
                 f.write("\n```\n")
         
+        logging.info(f"Semgrep scan for {repo_name} finished with return code: {result.returncode}")
         return result
             
     except Exception as e:
@@ -2754,6 +2755,8 @@ def generate_summary_report(repo_name: str, repo_url: str, requirements_path: st
                           repo_full_name: str = "") -> None:
     """Generate a summary report of all scan results."""
     summary_path = os.path.join(report_dir, f"{repo_name}_summary.md")
+    
+    logging.info(f"Generating summary for {repo_name}. Semgrep result: {semgrep_result.returncode if semgrep_result else 'None'}")
     
     def get_scan_status(result):
         if not result:
