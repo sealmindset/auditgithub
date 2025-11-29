@@ -130,6 +130,26 @@ class AIProvider(ABC):
             Dict with 'remediation' (text) and 'diff' (code diff)
         """
         pass
+
+    @abstractmethod
+    async def generate_architecture_overview(
+        self,
+        repo_name: str,
+        file_structure: str,
+        config_files: Dict[str, str]
+    ) -> str:
+        """
+        Generate an architecture overview for the repository.
+        
+        Args:
+            repo_name: Name of the repository
+            file_structure: String representation of file tree
+            config_files: Dict of config filename -> content
+            
+        Returns:
+            Markdown formatted architecture overview
+        """
+        pass
     
     @abstractmethod
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:

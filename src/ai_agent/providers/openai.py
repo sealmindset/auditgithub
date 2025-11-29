@@ -294,6 +294,71 @@ Provide a JSON response with exactly these fields:
         except Exception as e:
             logger.error(f"Failed to generate remediation: {e}")
             return {"remediation": f"AI generation failed: {e}", "diff": ""}
+
+    async def generate_architecture_overview(
+        self,
+        repo_name: str,
+        file_structure: str,
+        config_files: Dict[str, str]
+    ) -> str:
+        """
+        Generate an architecture overview using OpenAI.
+        """
+        try:
+            configs_str = ""
+            for name, content in config_files.items():
+                configs_str += f"\n--- {name} ---\n{content}\n"
+                
+            prompt = f"""You are a Senior Software Architect. Analyze this repository and provide an End-to-End Architecture Overview.
+            
+Repository: {repo_name}
+
+File Structure:
+{file_structure}
+
+Configuration Files:
+{configs_str}
+
+Provide a comprehensive Markdown report covering:
+1. **High-Level Overview**: What does this project do?
+2. **Tech Stack**: Languages, Frameworks, Databases, Tools.
+3. **Architecture**: Monolith/Microservice? Layers? Patterns?
+4. **UI/UX**: Frontend framework, styling, user interaction model (if applicable).
+5. **Storage**: Database schema, file storage, caching (inferred from configs).
+6. **API**: REST/GraphQL? Endpoints structure?
+7. **Fault Tolerance & Error Handling**: Retries, circuit breakers, logging (inferred).
+8. **Unique Features**: What stands out?
+
+Format as clean Markdown. Be concise but technical.
+"""
+            api_params = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "You are a Senior Software Architect."},
+                    {"role": "user", "content": prompt}
+                ]
+            }
+            
+            # Model-specific token handling
+            if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
+                api_params["max_completion_tokens"] = 1500
+            else:
+                api_params["max_tokens"] = 1500
+                api_params["temperature"] = 0.3
+
+            response = await self.client.chat.completions.create(**api_params)
+            content = response.choices[0].message.content
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.total_tokens
+            
+            return content
+
+        except Exception as e:
+            logger.error(f"Failed to generate architecture overview: {e}")
+            return f"Failed to generate architecture overview: {e}"
     
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """

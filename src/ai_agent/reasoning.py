@@ -188,6 +188,29 @@ class ReasoningEngine:
         except Exception as e:
             logger.error(f"Failed to generate remediation: {e}")
             return {"remediation": "AI generation failed.", "diff": ""}
+
+    async def generate_architecture_overview(
+        self,
+        repo_name: str,
+        file_structure: str,
+        config_files: Dict[str, str]
+    ) -> str:
+        """
+        Generate an architecture overview for the repository.
+        """
+        try:
+            # Check if provider has this method (it might not if we haven't added it yet)
+            if not hasattr(self.provider, 'generate_architecture_overview'):
+                return "AI provider does not support architecture analysis."
+                
+            return await self.provider.generate_architecture_overview(
+                repo_name=repo_name,
+                file_structure=file_structure,
+                config_files=config_files
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate architecture overview: {e}")
+            return f"Failed to generate architecture overview: {e}"
     
     def get_analysis_history(self) -> List[Dict[str, Any]]:
         """Get the history of all analyses."""

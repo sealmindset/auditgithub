@@ -1103,6 +1103,12 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             
         # Run cloc for LOC stats
         cloc_result = run_cloc(repo_path, repo_name, repo_report_dir)
+
+        # Generate Architecture Overview (AI)
+        architecture_overview = ""
+        if config.ENABLE_AI and ai_agent:
+            logging.info(f"Generating architecture overview for {repo_name}...")
+            architecture_overview = generate_repo_architecture(repo_path, repo_name, ai_agent)
         
         # Run Semgrep scan for the repository
         semgrep_result = run_semgrep_scan(repo_path, repo_name, repo_report_dir)
@@ -1169,7 +1175,8 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             report_dir=repo_report_dir,
             repo_full_name=repo_full_name,
             detected_languages=detected_languages,
-            cloc_result=cloc_result
+            cloc_result=cloc_result,
+            architecture_overview=architecture_overview
         )
         
         logging.info(f"Completed processing repository: {repo_name}")
@@ -3141,9 +3148,12 @@ def generate_summary_report(repo_name: str, repo_url: str, requirements_path: st
                           gitleaks_result: Optional[subprocess.CompletedProcess],
                           bandit_result: Optional[subprocess.CompletedProcess],
                           trivy_fs_result: Optional[subprocess.CompletedProcess],
+                          repo_local_path: str,
+                          report_dir: str,
                           repo_full_name: str = "",
                           detected_languages: Set[str] = set(),
-                          cloc_result: Optional[Dict[str, Any]] = None) -> None:
+                          cloc_result: Optional[Dict[str, Any]] = None,
+                          architecture_overview: str = "") -> None:
     """Generate a summary report of all scan results."""
     summary_path = os.path.join(report_dir, f"{repo_name}_summary.md")
     
@@ -3181,6 +3191,12 @@ def generate_summary_report(repo_name: str, repo_url: str, requirements_path: st
                 f.write("> [!WARNING]\n> **High Risk**: Significant vulnerabilities detected. Prioritize fixing Critical and High issues.\n\n")
             else:
                 f.write("> [!NOTE]\n> **Good Standing**: Security posture is acceptable, but continue to monitor Low/Medium issues.\n\n")
+
+            # Architecture Overview
+            if architecture_overview:
+                f.write("## 🏗️ Architecture Overview\n\n")
+                f.write(architecture_overview)
+                f.write("\n\n---\n\n")
 
             # Detected Languages
             if detected_languages:
@@ -3822,6 +3838,7 @@ def main():
     if not args.no_ai_agent:
         # Check if AI should be enabled (CLI flag or env variable)
         ai_agent_enabled = args.ai_agent or os.getenv("AI_AGENT_ENABLED", "false").lower() == "true"
+        config.ENABLE_AI = ai_agent_enabled
     
     if ai_agent_enabled and AI_AGENT_AVAILABLE:
         try:
@@ -5166,6 +5183,62 @@ def calculate_risk_metrics(report_dir: str, repo_name: str) -> Dict[str, Any]:
     else: metrics['grade'] = "F"
     
     return metrics
+
+    
+    return metrics
+
+def generate_repo_architecture(repo_path: str, repo_name: str, ai_agent: Any) -> str:
+    """
+    Generate an architecture overview using the AI agent.
+    Collects file structure and config files to send to the AI.
+    """
+    if not ai_agent:
+        return ""
+        
+    try:
+        # 1. Collect File Structure (limit depth and exclude .git)
+        file_structure = ""
+        for root, dirs, files in os.walk(repo_path):
+            if '.git' in root: continue
+            level = root.replace(repo_path, '').count(os.sep)
+            if level > 2: continue # Limit depth
+            indent = ' ' * 4 * (level)
+            file_structure += f"{indent}{os.path.basename(root)}/\n"
+            subindent = ' ' * 4 * (level + 1)
+            for f in files:
+                if f.startswith('.'): continue
+                file_structure += f"{subindent}{f}\n"
+                
+        # 2. Collect Config Files
+        config_files = {}
+        interesting_files = [
+            'Dockerfile', 'docker-compose.yml', 'package.json', 'requirements.txt', 
+            'pom.xml', 'build.gradle', 'go.mod', 'Cargo.toml', 'README.md', 'pyproject.toml'
+        ]
+        
+        for root, _, files in os.walk(repo_path):
+            if '.git' in root: continue
+            for f in files:
+                if f in interesting_files:
+                    path = os.path.join(root, f)
+                    try:
+                        with open(path, 'r') as cf:
+                            # Limit content size
+                            content = cf.read(2000) 
+                            config_files[f"{os.path.basename(root)}/{f}"] = content
+                    except: pass
+                    
+        # 3. Call AI
+        # We need to run async method in sync context
+        return asyncio.run(ai_agent.reasoning_engine.generate_architecture_overview(
+            repo_name=repo_name,
+            file_structure=file_structure,
+            config_files=config_files
+        ))
+        
+    except Exception as e:
+        logging.error(f"Failed to generate architecture: {e}")
+        return ""
 
 if __name__ == "__main__":
     main()
