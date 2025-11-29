@@ -1612,6 +1612,10 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
         logging.debug(f"Running command: {safe_cmd} in directory: {repo_path}")
         
         try:
+            # Double check directory exists before running
+            if not os.path.isdir(repo_path):
+                raise FileNotFoundError(f"Repository directory not found: {repo_path}")
+
             # Run semgrep with timeout
             result = subprocess.run(
                 cmd,
@@ -3211,19 +3215,19 @@ def generate_summary_report(repo_name: str, repo_url: str, requirements_path: st
                     logging.debug(f"Cleanup skipped for requirements file '{requirements_path}': {e}")
     except Exception as e:
         logging.error(f"Error processing {repo_name or repo.get('name', 'unknown')}: {e}", exc_info=True)
-    finally:
-        # Clean up temporary directory if it exists
-        if config.CLONE_DIR and os.path.exists(config.CLONE_DIR):
-            try:
-                shutil.rmtree(config.CLONE_DIR, ignore_errors=True)
-                logging.info(f"Cleaned up temporary directory: {config.CLONE_DIR}")
-            except Exception as e:
-                logging.warning(f"Failed to clean up temporary directory {config.CLONE_DIR}: {e}")
+    # finally:
+    #     # DO NOT clean up config.CLONE_DIR here as it is shared across threads!
+    #     # Cleanup happens in main() or signal_handler()
+    #     pass
 
 def cleanup_temp_dir(temp_dir: str):
     """Clean up the temporary directory with retries on failure."""
     if not temp_dir or not os.path.exists(temp_dir):
         return
+        
+    # Log who is calling cleanup
+    logging.debug(f"Cleanup called for {temp_dir}")
+    # traceback.print_stack()  # Uncomment for debugging
         
     max_retries = 3
     for attempt in range(max_retries):

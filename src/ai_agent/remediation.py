@@ -5,7 +5,7 @@ Implements safe remediation strategies based on AI analysis.
 """
 
 import logging
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Optional
 from enum import Enum
 
 from .providers.base import RemediationSuggestion, RemediationAction

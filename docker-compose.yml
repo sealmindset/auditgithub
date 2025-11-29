@@ -10,6 +10,7 @@ services:
       - GITHUB_ORG=${GITHUB_ORG}
       - GITHUB_API=${GITHUB_API:-https://api.github.com}
     volumes:
+      - .:/app
       - ./vulnerability_reports:/app/vulnerability_reports
       # Cache directories for various tools to speed up subsequent runs
       - dependency-cache:/root/.cache/dependency-check
@@ -24,11 +25,7 @@ services:
     #       memory: 4G
     # Command to run with default arguments
     command: >
-      --org ${GITHUB_ORG}
-      --api-base ${GITHUB_API:-https://api.github.com}
-      --report-dir /app/vulnerability_reports
-      --max-workers 4
-      --loglevel INFO
+      --org ${GITHUB_ORG} --api-base ${GITHUB_API:-https://api.github.com} --report-dir /app/vulnerability_reports --max-workers 4 --loglevel INFO
 
 volumes:
   dependency-cache:
