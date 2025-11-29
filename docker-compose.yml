@@ -9,6 +9,11 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_ORG=${GITHUB_ORG}
       - GITHUB_API=${GITHUB_API:-https://api.github.com}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=auditgh
+      - POSTGRES_PASSWORD=auditgh_secret
+      - POSTGRES_DB=auditgh_kb
     volumes:
       - .:/app
       - ./vulnerability_reports:/app/vulnerability_reports
@@ -26,9 +31,24 @@ services:
     # Command to run with default arguments
     command: >
       --org ${GITHUB_ORG} --api-base ${GITHUB_API:-https://api.github.com} --report-dir /app/vulnerability_reports --max-workers 4 --loglevel INFO
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    container_name: auditgh_db
+    environment:
+      - POSTGRES_USER=auditgh
+      - POSTGRES_PASSWORD=auditgh_secret
+      - POSTGRES_DB=auditgh_kb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
 volumes:
   dependency-cache:
   semgrep-cache:
   npm-cache:
   bundle-cache:
+  postgres-data:

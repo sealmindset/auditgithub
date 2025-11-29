@@ -73,9 +73,10 @@ class OpenAIProvider(AIProvider):
             prompt = self._build_analysis_prompt(diagnostic_data, historical_data)
             
             # Call OpenAI API with function calling for structured output
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Use max_completion_tokens for newer models (GPT-5+), fallback to max_tokens for older models
+            api_params = {
+                "model": self.model,
+                "messages": [
                     {
                         "role": "system",
                         "content": "You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice."
@@ -85,17 +86,40 @@ class OpenAIProvider(AIProvider):
                         "content": prompt
                     }
                 ],
-                response_format={"type": "json_object"},
-                max_tokens=self.max_tokens,
-                temperature=0.3  # Lower temperature for more consistent analysis
-            )
+                "response_format": {"type": "json_object"}
+            }
+            
+            # GPT-5 and newer models use max_completion_tokens and don't support temperature
+            if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
+                api_params["max_completion_tokens"] = self.max_tokens
+                # GPT-5+ doesn't support custom temperature, only default (1)
+            else:
+                api_params["max_tokens"] = self.max_tokens
+                api_params["temperature"] = 0.3  # Lower temperature for more consistent analysis
+            
+            response = await self.client.chat.completions.create(**api_params)
             
             # Extract the response
             content = response.choices[0].message.content
             usage = response.usage
             
+            if not content:
+                logger.error("OpenAI returned empty content")
+                raise ValueError("OpenAI returned empty content")
+            
             # Parse JSON response
-            analysis_data = json.loads(content)
+            try:
+                analysis_data = json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+                logger.debug(f"Raw content: {content}")
+                # Fallback to a basic structure if JSON parsing fails
+                analysis_data = {
+                    "root_cause": "Failed to parse AI response",
+                    "severity": "medium",
+                    "confidence": 0.0,
+                    "remediation_suggestions": []
+                }
             
             # Calculate cost
             cost = self.estimate_cost(usage.prompt_tokens, usage.completion_tokens)
@@ -178,15 +202,22 @@ Context: {json.dumps(context, indent=2)}
 
 Provide a clear, non-technical explanation suitable for developers."""
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            api_params = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": "You are a helpful DevSecOps assistant."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
-                temperature=0.5
-            )
+                "temperature": 0.5
+            }
+            
+            # GPT-5 and newer models use max_completion_tokens
+            if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
+                api_params["max_completion_tokens"] = 200
+            else:
+                api_params["max_tokens"] = 200
+            
+            response = await self.client.chat.completions.create(**api_params)
             
             explanation = response.choices[0].message.content.strip()
             
@@ -203,6 +234,66 @@ Provide a clear, non-technical explanation suitable for developers."""
         except Exception as e:
             logger.error(f"Failed to generate explanation: {e}")
             return f"The {scanner} scanner exceeded the {timeout_duration} second timeout while scanning {repo_name}."
+
+    async def generate_remediation(
+        self,
+        vuln_type: str,
+        description: str,
+        context: str,
+        language: str
+    ) -> Dict[str, str]:
+        """
+        Generate a remediation plan for a specific vulnerability using OpenAI.
+        """
+        try:
+            prompt = f"""You are a security expert. Provide a remediation plan for this vulnerability.
+
+Vulnerability: {vuln_type}
+Description: {description}
+Language: {language}
+
+Context (Code or Dependency):
+```
+{context}
+```
+
+Provide a JSON response with exactly these fields:
+1. "remediation": A detailed explanation of how to fix the issue (in Markdown).
+2. "diff": A unified diff showing the code changes (if applicable). If no code change is possible (e.g. config change), return an empty string.
+"""
+            api_params = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "You are a security expert providing remediation plans."},
+                    {"role": "user", "content": prompt}
+                ],
+                "response_format": {"type": "json_object"}
+            }
+
+            # Model-specific token handling
+            if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
+                api_params["max_completion_tokens"] = 1000
+            else:
+                api_params["max_tokens"] = 1000
+                api_params["temperature"] = 0.2
+
+            response = await self.client.chat.completions.create(**api_params)
+            content = response.choices[0].message.content
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.total_tokens
+
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                logger.error("Failed to parse AI remediation response")
+                return {"remediation": content, "diff": ""}
+
+        except Exception as e:
+            logger.error(f"Failed to generate remediation: {e}")
+            return {"remediation": f"AI generation failed: {e}", "diff": ""}
     
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """

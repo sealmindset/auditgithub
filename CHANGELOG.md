@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Intelligent Progress Monitoring System** - Adaptive timeout system that monitors subprocess progress
+  - Replaces fixed 30-minute timeout with 5-minute initial timeout
+  - Monitors CPU usage, file I/O, and output in real-time
+  - Automatically extends timeout if scan is making progress
+  - Only times out after 3 minutes of no progress detected
+  - Integrated with Semgrep and Dependency-Check scanners
+  - Progress metrics included in AI analysis for better diagnostics
+  - New CLI arguments: `--progress-check-interval`, `--max-idle-time`, `--min-cpu-threshold`
+  - Requires `psutil>=5.9.0` (already in requirements.txt)
+- **OpenAI GPT-5 Support** - Updated AI provider to support GPT-5 models
+  - Uses `max_completion_tokens` parameter for GPT-5 compatibility
+  - Backward compatible with GPT-4 models
 - **Self-Annealing Scanner with DOE (Design of Experiments) Recovery:**
   - Per-repository timeout (default: 30 minutes, configurable via `--repo-timeout`)
   - Automatic recovery from stuck scans: generates partial reports and continues to next repository

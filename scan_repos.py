@@ -24,7 +24,7 @@ import traceback
 import atexit
 import requests
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Any, DefaultDict
+from typing import Dict, List, Optional, Tuple, Union, Any, DefaultDict, Set
 from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -43,6 +43,19 @@ try:
 except ImportError as e:
     AI_AGENT_AVAILABLE = False
     logging.debug(f"AI agent not available: {e}")
+
+# Progress monitoring (optional - requires psutil)
+try:
+    from src.progress_monitor import ProgressMonitor
+    from src.progress_helpers import register_process, unregister_process, get_process_info
+    from src.progress_wrapper import run_with_progress_monitoring
+    from src.repo_intel import analyze_repo  # Import Repo Intelligence
+    from src.knowledge_base import KnowledgeBase # Import Knowledge Base
+    import psutil
+    PROGRESS_MONITOR_AVAILABLE = True
+except ImportError as e:
+    PROGRESS_MONITOR_AVAILABLE = False
+    logging.debug(f"Progress monitoring not available: {e}")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -79,6 +92,13 @@ class Config:
         self.SEMGREP_TAINT_CONFIG: Optional[str] = None
         # Optional policy file for gating
         self.POLICY_PATH: Optional[str] = None
+        
+        # AI Agent Configuration
+        self.ENABLE_AI = os.getenv("ENABLE_AI", "false").lower() == "true"
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+        self.AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
+        self.AI_MODEL = os.getenv("AI_MODEL", "gpt-4-turbo-preview")
         
         # Set up headers if token is available
         if self.GITHUB_TOKEN:
@@ -562,6 +582,68 @@ def log_stuck_repo(repo_name: str, duration: float, phase: str, details: str = "
     except Exception as e:
         logging.warning(f"Failed to write to stuck_repos.log: {e}")
 
+def detect_languages(repo_path: str) -> Set[str]:
+    """
+    Detect programming languages used in the repository.
+    Returns a set of normalized language names (e.g., 'python', 'javascript', 'go', 'java').
+    """
+    languages = set()
+    
+    # Extensions mapping
+    ext_map = {
+        '.py': 'python',
+        '.js': 'javascript',
+        '.jsx': 'javascript',
+        '.ts': 'javascript', # Treat TS as JS for CodeQL purposes usually
+        '.tsx': 'javascript',
+        '.go': 'go',
+        '.java': 'java',
+        '.rb': 'ruby',
+        '.php': 'php',
+        '.cs': 'csharp',
+        '.cpp': 'cpp',
+        '.c': 'cpp',
+        '.h': 'cpp',
+    }
+    
+    # Walk the directory
+    for root, _, files in os.walk(repo_path):
+        if '.git' in root: continue
+        
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in ext_map:
+                languages.add(ext_map[ext])
+                
+    return languages
+
+def detect_iac(repo_path: str) -> bool:
+    """
+    Detect if the repository contains Infrastructure as Code (IaC).
+    Checks for Terraform, CloudFormation, Kubernetes, Dockerfiles, etc.
+    """
+    iac_extensions = {'.tf', '.tfvars', '.yaml', '.yml', '.json'} # YAML/JSON for K8s/CFN
+    iac_filenames = {'Dockerfile', 'docker-compose.yml', 'docker-compose.yaml'}
+    
+    for root, _, files in os.walk(repo_path):
+        if '.git' in root: continue
+        
+        for file in files:
+            if file in iac_filenames:
+                return True
+            
+            ext = os.path.splitext(file)[1].lower()
+            if ext == '.tf':
+                return True
+            
+            # For YAML/JSON, we might want to be smarter, but for now, 
+            # if we see them, we assume potential IaC/Config.
+            # Checkov is fast enough that false positives here are okay.
+            if ext in {'.yaml', '.yml'} and ('k8s' in root or 'kubernetes' in root or 'chart' in root):
+                return True
+                
+    return False
+
 def generate_partial_report(repo_name: str, repo_url: str, report_dir: str, completed_scans: List[str], error_msg: str, ai_analysis=None) -> None:
     """
     Generate a partial report for a repository that timed out or failed.
@@ -617,19 +699,31 @@ def generate_partial_report(repo_name: str, repo_url: str, report_dir: str, comp
             f.write("This repository scan did not complete successfully. ")
             f.write("The scan was terminated due to timeout or error. ")
             f.write("Partial results may be available in this directory.\n")
-        
         logging.info(f"Generated partial report for {repo_name} at {summary_path}")
     except Exception as e:
         logging.error(f"Failed to generate partial report for {repo_name}: {e}")
 
-def process_repo_with_timeout(repo: Dict[str, Any], report_dir: str, timeout_minutes: int = 30) -> Dict[str, Any]:
+def process_repo_with_timeout(
+    repo: Dict[str, Any],
+    report_dir: str,
+    timeout_minutes: int = 5,
+    progress_check_interval: int = 30,
+    max_idle_time: int = 180,
+    min_cpu_threshold: float = 5.0
+) -> Dict[str, Any]:
     """
-    Wrapper around process_repo that enforces a timeout and handles self-annealing recovery.
+    Wrapper around process_repo with intelligent progress monitoring.
+    
+    Instead of a hard timeout, monitors scan progress and only times out
+    if no progress is detected for max_idle_time seconds.
     
     Args:
         repo: Repository information from GitHub API
         report_dir: Directory to save reports
-        timeout_minutes: Maximum time to spend on this repository
+        timeout_minutes: Initial timeout in minutes (extends if making progress)
+        progress_check_interval: Seconds between progress checks
+        max_idle_time: Seconds of no progress before timeout
+        min_cpu_threshold: Minimum CPU % to consider active
         
     Returns:
         Dict with status information about the scan
@@ -643,29 +737,93 @@ def process_repo_with_timeout(repo: Dict[str, Any], report_dir: str, timeout_min
         logging.info(f"Skipping {repo_name} due to shutdown request")
         return {'repo': repo_name, 'status': 'skipped', 'reason': 'shutdown'}
     
-    logging.info(f"Starting scan of {repo_name} (timeout: {timeout_minutes} minutes)")
+    logging.info(
+        f"Starting scan of {repo_name} "
+        f"(initial timeout: {timeout_minutes}m, progress monitoring enabled)"
+    )
     
     # Create a future for the process_repo function
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(process_repo, repo, report_dir)
         
+        # Progress monitoring loop
+        initial_timeout = timeout_minutes * 60
+        last_progress_check = start_time
+        progress_extensions = 0
+        
         try:
-            # Wait for completion with timeout
-            timeout_seconds = timeout_minutes * 60
-            future.result(timeout=timeout_seconds)
+            while True:
+                elapsed = time.time() - start_time
+                
+                # Check if future completed
+                try:
+                    result = future.result(timeout=progress_check_interval)
+                    # Scan completed successfully
+                    duration = time.time() - start_time
+                    logging.info(f"Completed scan of {repo_name} in {duration/60:.2f} minutes")
+                    return {'repo': repo_name, 'status': 'success', 'duration': duration}
+                except concurrent.futures.TimeoutError:
+                    # Future still running, check progress
+                    pass
+                
+                # Check if we've exceeded initial timeout
+                if elapsed > initial_timeout:
+                    # Check for progress (if progress monitoring available)
+                    if PROGRESS_MONITOR_AVAILABLE:
+                        process_info = get_process_info(repo_name)
+                        if process_info and "progress_monitor" in process_info:
+                            monitor = process_info["progress_monitor"]
+                            metrics = monitor.check_progress()
+                            
+                            if metrics.is_progressing:
+                                # Scan is making progress, extend timeout
+                                progress_extensions += 1
+                                logging.info(
+                                    f"✓ Progress detected for {repo_name}: {metrics.progress_reason} "
+                                    f"(CPU={metrics.cpu_percent:.1f}%, Output={metrics.total_output_lines} lines) "
+                                    f"- extending timeout (extension #{progress_extensions})"
+                                )
+                                # Extend by another timeout period
+                                initial_timeout = elapsed + (timeout_minutes * 60)
+                                continue
+                            elif monitor.is_stuck():
+                                # No progress for max_idle_time - trigger timeout
+                                idle_time = monitor.get_idle_time()
+                                logging.warning(
+                                    f"⚠️  TIMEOUT: {repo_name} - no progress for {idle_time:.0f}s "
+                                    f"(threshold: {max_idle_time}s)"
+                                )
+                                raise concurrent.futures.TimeoutError(
+                                    f"No progress detected for {idle_time:.0f}s"
+                                )
+                    else:
+                        # Progress monitoring not available, use simple timeout
+                        logging.warning(
+                            f"⚠️  TIMEOUT: {repo_name} exceeded {timeout_minutes} minute limit "
+                            f"(progress monitoring unavailable)"
+                        )
+                        raise concurrent.futures.TimeoutError(
+                            f"Exceeded {timeout_minutes} minute timeout"
+                        )
+                
+                last_progress_check = time.time()
             
-            duration = time.time() - start_time
-            logging.info(f"Completed scan of {repo_name} in {duration/60:.2f} minutes")
-            return {'repo': repo_name, 'status': 'success', 'duration': duration}
-            
-        except concurrent.futures.TimeoutError:
+        except concurrent.futures.TimeoutError as timeout_err:
             # Repository scan timed out - this is the self-annealing part
             duration = time.time() - start_time
-            error_msg = f"Repository scan exceeded timeout of {timeout_minutes} minutes"
+            error_msg = str(timeout_err) if str(timeout_err) else f"Repository scan exceeded timeout of {timeout_minutes} minutes"
             
             logging.warning(f"⚠️  TIMEOUT: {repo_name} exceeded {timeout_minutes} minute limit")
             logging.warning(f"   Duration: {duration/60:.2f} minutes")
+            logging.warning(f"   Progress extensions: {progress_extensions}")
             logging.warning(f"   Applying self-annealing recovery: skipping to next repository")
+            
+            # Collect progress metrics for AI analysis
+            progress_summary = None
+            if PROGRESS_MONITOR_AVAILABLE:
+                process_info = get_process_info(repo_name)
+                if process_info and "progress_monitor" in process_info:
+                    progress_summary = process_info["progress_monitor"].get_summary()
             
             # AI-Enhanced Analysis (if enabled)
             ai_analysis = None
@@ -681,14 +839,14 @@ def process_repo_with_timeout(repo: Dict[str, Any], report_dir: str, timeout_min
                         "loc": 0
                     }
                     
-                    # Run AI analysis asynchronously
+                    # Run AI analysis asynchronously with progress data
                     ai_analysis = asyncio.run(reasoning_engine.analyze_stuck_scan(
                         repo_name=repo_name,
                         scanner="unknown",  # Could track which scanner was running
                         phase="scanning",
                         timeout_duration=int(duration),
                         repo_metadata=repo_metadata,
-                        scanner_progress=None
+                        scanner_progress=progress_summary  # Include progress metrics
                     ))
                     
                     # Log AI insights
@@ -748,7 +906,7 @@ def process_repo_with_timeout(repo: Dict[str, Any], report_dir: str, timeout_min
                 repo_name=repo_name,
                 duration=duration,
                 phase="scanning",
-                details=f"Exceeded {timeout_minutes} minute timeout"
+                details=f"Exceeded {timeout_minutes} minute timeout (extensions: {progress_extensions})"
             )
             
             # Generate partial report (with AI insights if available)
@@ -770,7 +928,9 @@ def process_repo_with_timeout(repo: Dict[str, Any], report_dir: str, timeout_min
                 'status': 'timeout',
                 'duration': duration,
                 'timeout_limit': timeout_minutes,
-                'ai_analysis': ai_analysis is not None
+                'progress_extensions': progress_extensions,
+                'ai_analysis': ai_analysis is not None,
+                'progress_summary': progress_summary
             }
             
         except Exception as e:
@@ -899,8 +1059,11 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
         bandit_result = None
         trivy_fs_result = None
         
-        # Run npm audit for Node.js projects
+        # Run npm audit for Node.js projects (supports npm, yarn, pnpm)
         npm_audit_result = run_npm_audit(repo_path, repo_name, repo_report_dir)
+        
+        # Run Retire.js for client-side libraries
+        retire_js_result = run_retire_js(repo_path, repo_name, repo_report_dir)
         
         # Run govulncheck for Go projects
         govulncheck_result = run_govulncheck(repo_path, repo_name, repo_report_dir)
@@ -910,6 +1073,36 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
         
         # Run OWASP Dependency-Check for Java projects
         dependency_check_result = run_dependency_check(repo_path, repo_name, repo_report_dir)
+        
+        # Detect languages and IaC
+        detected_languages = detect_languages(repo_path)
+        has_iac = detect_iac(repo_path)
+        logging.info(f"Detected languages for {repo_name}: {detected_languages}")
+        logging.info(f"Detected IaC for {repo_name}: {has_iac}")
+
+        # Run CodeQL (Semantic Analysis) - Only if supported languages found
+        codeql_supported = {'python', 'javascript', 'go', 'java', 'cpp', 'csharp', 'ruby'}
+        if any(lang in codeql_supported for lang in detected_languages):
+            codeql_result = run_codeql(repo_path, repo_name, repo_report_dir)
+        else:
+            logging.info(f"Skipping CodeQL for {repo_name} (no supported languages found)")
+            codeql_result = None
+        
+        # Run TruffleHog (Verified Secrets)
+        trufflehog_result = run_trufflehog(repo_path, repo_name, repo_report_dir)
+        
+        # Run Nuclei (Vulnerability Scanning)
+        nuclei_result = run_nuclei(repo_path, repo_name, repo_report_dir)
+        
+        # Run OSSGadget (Malware/Backdoor)
+        ossgadget_result = run_ossgadget(repo_path, repo_name, repo_report_dir)
+        
+        # Run Repo Intelligence (OSINT)
+        if PROGRESS_MONITOR_AVAILABLE:
+            repo_intel_result = analyze_repo(repo_path, repo_name, repo_report_dir)
+            
+        # Run cloc for LOC stats
+        cloc_result = run_cloc(repo_path, repo_name, repo_report_dir)
         
         # Run Semgrep scan for the repository
         semgrep_result = run_semgrep_scan(repo_path, repo_name, repo_report_dir)
@@ -931,16 +1124,29 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             grype_image_result = run_grype(config.DOCKER_IMAGE, repo_name, repo_report_dir, target_type="image", vex_files=config.VEX_FILES)
 
         # Run Checkov for Terraform if applicable
-        checkov_result = run_checkov(repo_path, repo_name, repo_report_dir)
-
-        # Secrets scanning with Gitleaks
-        gitleaks_result = run_gitleaks(repo_path, repo_name, repo_report_dir)
-
-        # Bandit for Python projects (if any .py files)
-        bandit_result = run_bandit(repo_path, repo_name, repo_report_dir)
-
-        # Trivy filesystem scan (optional if installed)
+        if has_iac:
+            checkov_result = run_checkov(repo_path, repo_name, repo_report_dir)
+        else:
+            logging.info(f"Skipping Checkov for {repo_name} (no IaC detected)")
+            checkov_result = None
+                # Trivy filesystem scan (optional if installed)
         trivy_fs_result = run_trivy_fs(repo_path, repo_name, repo_report_dir)
+
+        # Generate AI Remediation Plans (using Knowledge Base)
+        if PROGRESS_MONITOR_AVAILABLE and config.ENABLE_AI:
+            # We need to pass the global 'kb' object.
+            # Since process_repo runs in a thread/process, we might need to re-init KB or pass it.
+            # For now, let's assume we can instantiate it or use a global if it's thread-safe.
+            # Actually, process_repo is called by ThreadPoolExecutor in main.
+            # But 'kb' is local to main. We need to pass it to process_repo.
+            # For simplicity, let's re-instantiate KB inside process_repo if needed, or pass it.
+            # Let's try to instantiate it here if it's lightweight.
+            try:
+                from .kb import KnowledgeBase # Import locally to avoid circular dependencies or global state issues
+                local_kb = KnowledgeBase()
+                generate_ai_remediations(repo_name, repo_report_dir, local_kb)
+            except Exception as e:
+                logging.warning(f"Could not generate AI remediations: {e}")
 
         # Generate summary report
         generate_summary_report(
@@ -961,7 +1167,9 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             trivy_fs_result=trivy_fs_result,
             repo_local_path=repo_path,
             report_dir=repo_report_dir,
-            repo_full_name=repo_full_name
+            repo_full_name=repo_full_name,
+            detected_languages=detected_languages,
+            cloc_result=cloc_result
         )
         
         logging.info(f"Completed processing repository: {repo_name}")
@@ -1013,7 +1221,17 @@ def run_safety_scan(requirements_path, repo_name, report_dir):
     
     try:
         logging.debug(f"Running command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="safety",
+                cwd=None,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
         
         # If we get no output but the command succeeded, it might mean no vulnerabilities
         if not result.stdout.strip() and result.returncode == 0:
@@ -1096,7 +1314,17 @@ def run_pip_audit_scan(requirements_path, repo_name, report_dir):
     try:
         # First try with markdown output
         cmd = base_cmd + ["--output", "markdown"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="pip-audit",
+                cwd=None,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
         
         # If markdown output fails, try with JSON and convert
         if result.returncode != 0 or not result.stdout.strip():
@@ -1169,12 +1397,22 @@ def run_npm_audit(repo_path, repo_name, report_dir):
         
     try:
         cmd = ["npm", "audit", "--json"]
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            capture_output=True,
-            text=True
-        )
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="npm",
+                cwd=repo_path,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(
+                cmd,
+                cwd=repo_path,
+                capture_output=True,
+                text=True
+            )
         
         with open(output_path, "w") as f:
             f.write(result.stdout)
@@ -1382,14 +1620,16 @@ def run_dependency_check(repo_path, repo_name, report_dir):
                "--scan", repo_path,
                "--out", output_dir,
                "--format", "JSON",
-               "--disableYarnAudit",
-               "--disableNodeAudit",
+               "--format", "JSON",
+               # Enable all analyzers for deep scanning
+               "--enableExperimental",
                ]
         # Add excludes
         for pattern in excludes:
             cmd += ["--exclude", pattern]
         # Prefer not to fail the whole scan due to minor issues
-        cmd += ["--disableAssembly"]
+        # Enable Assembly analyzer
+        # cmd += ["--disableAssembly"]
         
         # Ensure a cache/data directory for NVD to avoid repeated downloads
         env = os.environ.copy()
@@ -1399,7 +1639,61 @@ def run_dependency_check(repo_path, repo_name, report_dir):
         
         logging.debug(f"Running Dependency-Check: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60*20)
+        # Run with progress monitoring
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env
+        )
+        
+        # Register process for progress monitoring (if available)
+        progress_monitor = None
+        if PROGRESS_MONITOR_AVAILABLE:
+            try:
+                ps_process = psutil.Process(process.pid)
+                progress_monitor = ProgressMonitor(
+                    process=ps_process,
+                    scanner_name="dependency-check",
+                    min_cpu_threshold=1.0,
+                    check_interval=30,
+                    max_idle_time=180
+                )
+                register_process(repo_name, {
+                    "pid": process.pid,
+                    "progress_monitor": progress_monitor,
+                    "scanner": "dependency-check"
+                })
+                logging.debug(f"Registered Dependency-Check process {process.pid} for progress monitoring")
+            except Exception as monitor_err:
+                logging.debug(f"Could not register progress monitor: {monitor_err}")
+        
+        try:
+            # Read output with timeout (1 hour adaptive)
+            stdout, stderr = process.communicate(timeout=3600)
+            
+            # Feed output to progress monitor
+            if progress_monitor:
+                for line in (stdout + stderr).splitlines():
+                    progress_monitor.add_output(line)
+            
+            # Create CompletedProcess object
+            result = subprocess.CompletedProcess(
+                args=cmd,
+                returncode=process.returncode,
+                stdout=stdout if stdout else "",
+                stderr=stderr if stderr else ""
+            )
+            
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            raise
+        finally:
+            # Unregister process
+            if PROGRESS_MONITOR_AVAILABLE:
+                unregister_process(repo_name)
         
         # Convert to markdown if the report was generated
         if os.path.exists(output_path):
@@ -1542,10 +1836,18 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
             "--config", "p/security-audit",
             "--config", "p/ci",
             "--config", "p/owasp-top-ten",
+            "--config", "p/security-audit",
+            "--config", "p/ci",
+            "--config", "p/owasp-top-ten",
             "--config", "p/secrets",
+            "--config", "p/command-injection",
+            "--config", "p/sql-injection",
+            "--config", "p/xss",
+            "--config", "p/jwt",
+            "--config", "p/docker",
+            "--config", "p/golang",
+            "--config", "p/python",
             "--metrics", "off",  # Disable metrics to avoid network calls
-            "--quiet",  # Reduce output noise
-            "--error",  # Exit 1 if findings are found
             "--timeout", "300",  # 5 minute timeout per file
             "--timeout-threshold", "3",  # Max number of timeouts before failing
             "--max-memory", "6000",  # 6GB memory limit
@@ -1613,14 +1915,69 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
             if not os.path.isdir(repo_path):
                 raise FileNotFoundError(f"Repository directory not found: {repo_path}")
 
-            # Run semgrep with timeout
-            result = subprocess.run(
+            # Run semgrep with progress monitoring
+            process = subprocess.Popen(
                 cmd,
                 cwd=repo_path,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                env=env,
-                timeout=600  # 10 minute timeout for the entire scan
+                env=env
+            )
+            
+            # Register process for progress monitoring (if available)
+            progress_monitor = None
+            if PROGRESS_MONITOR_AVAILABLE:
+                try:
+                    ps_process = psutil.Process(process.pid)
+                    progress_monitor = ProgressMonitor(
+                        process=ps_process,
+                        scanner_name="semgrep",
+                        min_cpu_threshold=1.0,
+                        check_interval=30,
+                        max_idle_time=180
+                    )
+                    register_process(repo_name, {
+                        "pid": process.pid,
+                        "progress_monitor": progress_monitor,
+                        "scanner": "semgrep"
+                    })
+                    logging.debug(f"Registered Semgrep process {process.pid} for progress monitoring")
+                except Exception as monitor_err:
+                    logging.debug(f"Could not register progress monitor: {monitor_err}")
+            
+            # Collect output while monitoring progress
+            stdout_lines = []
+            stderr_lines = []
+            
+            try:
+                # Read output with timeout
+                stdout, stderr = process.communicate(timeout=3600)  # 1 hour timeout (adaptive)
+                stdout_lines = stdout.splitlines() if stdout else []
+                stderr_lines = stderr.splitlines() if stderr else []
+                
+                # Feed output to progress monitor
+                if progress_monitor:
+                    for line in stdout_lines + stderr_lines:
+                        progress_monitor.add_output(line)
+                
+                returncode = process.returncode
+                
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise
+            finally:
+                # Unregister process
+                if PROGRESS_MONITOR_AVAILABLE:
+                    unregister_process(repo_name)
+            
+            # Create CompletedProcess object
+            result = subprocess.CompletedProcess(
+                args=cmd,
+                returncode=returncode,
+                stdout=stdout if stdout else "",
+                stderr=stderr if stderr else ""
             )
             
             # Log stderr if there was any output
@@ -1651,15 +2008,47 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
                 stderr=error_msg
             )
         
-        # Handle output file
-        try:
-            if not os.path.exists(output_path):
-                if result.returncode == 0:
-                    # If scan succeeded but no output file, create an empty one
+        # Handle output file - Semgrep sometimes writes to stdout/stderr instead of the file
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            # Try to parse JSON from stdout or stderr
+            json_source = None
+            if result.stdout and result.stdout.strip():
+                json_source = result.stdout
+                source_name = "stdout"
+            elif result.stderr and result.stderr.strip():
+                json_source = result.stderr
+                source_name = "stderr"
+            
+            if json_source:
+                try:
+                    # Semgrep may output JSON to stdout or stderr
+                    output_json = json.loads(json_source)
+                    with open(output_path, 'w') as f:
+                        json.dump(output_json, f, indent=2)
+                    logging.info(f"Parsed Semgrep JSON from {source_name} for {repo_name}")
+                except json.JSONDecodeError as json_err:
+                    logging.debug(f"Failed to parse JSON from {source_name}: {json_err}")
+                    # Not JSON, create fallback based on return code
+                    if result.returncode in (0, 1, 2):
+                        # Successful scan but no JSON output
+                        with open(output_path, 'w') as f:
+                            json.dump({"results": []}, f)
+                    else:
+                        # Error case
+                        with open(output_path, 'w') as f:
+                            json.dump({
+                                "errors": [{
+                                    "code": result.returncode,
+                                    "message": result.stderr or result.stdout or "Unknown error during semgrep scan"
+                                }],
+                                "results": []
+                            }, f)
+            else:
+                # No stdout, create fallback
+                if result.returncode in (0, 1, 2):
                     with open(output_path, 'w') as f:
                         json.dump({"results": []}, f)
                 else:
-                    # If scan failed, create a minimal error result
                     with open(output_path, 'w') as f:
                         json.dump({
                             "errors": [{
@@ -1668,13 +2057,13 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
                             }],
                             "results": []
                         }, f)
-            
-            # Ensure output file is valid JSON
-            if os.path.getsize(output_path) > 0:
-                with open(output_path, 'r') as f:
-                    json.load(f)  # Will raise JSONDecodeError if invalid
-        except (json.JSONDecodeError, Exception) as e:
-            logging.error(f"Invalid JSON in output file: {str(e)}")
+        
+        # Ensure output file is valid JSON
+        try:
+            with open(output_path, 'r') as f:
+                json.load(f)  # Will raise JSONDecodeError if invalid
+        except json.JSONDecodeError as e:
+            logging.error(f"Invalid JSON in Semgrep output file: {str(e)}")
             # Create a valid error result
             with open(output_path, 'w') as f:
                 json.dump({
@@ -1686,12 +2075,14 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
                 }, f)
         
         # Generate markdown report
+        # Semgrep exit codes: 0=no findings, 1=findings, 2=blocking findings
+        # All three are successful scans, not errors
         with open(md_output, 'w') as f:
             f.write(f"# Semgrep Scan Results\n\n")
             f.write(f"**Repository:** {repo_name}\n")
             f.write(f"**Scan Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             
-            if result.returncode in (0, 1):
+            if result.returncode in (0, 1, 2):
                 if os.path.exists(output_path):
                     try:
                         with open(output_path, 'r') as json_file:
@@ -2750,9 +3141,9 @@ def generate_summary_report(repo_name: str, repo_url: str, requirements_path: st
                           gitleaks_result: Optional[subprocess.CompletedProcess],
                           bandit_result: Optional[subprocess.CompletedProcess],
                           trivy_fs_result: Optional[subprocess.CompletedProcess],
-                          repo_local_path: str,
-                          report_dir: str,
-                          repo_full_name: str = "") -> None:
+                          repo_full_name: str = "",
+                          detected_languages: Set[str] = set(),
+                          cloc_result: Optional[Dict[str, Any]] = None) -> None:
     """Generate a summary report of all scan results."""
     summary_path = os.path.join(report_dir, f"{repo_name}_summary.md")
     
@@ -2771,7 +3162,51 @@ def generate_summary_report(repo_name: str, repo_url: str, requirements_path: st
         with open(summary_path, 'w') as f:
             f.write(f"# Security Scan Summary\n\n")
             f.write(f"**Repository:** [{repo_name}]({repo_url})\n")
-            f.write(f"**Scan Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(f"**Scan Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            
+            # Executive Summary (Scorecard)
+            metrics = calculate_risk_metrics(report_dir, repo_name)
+            score_color = "🟢" if metrics['grade'] in ['A', 'B'] else "🟡" if metrics['grade'] == 'C' else "🔴"
+            
+            f.write(f"\n## Executive Summary\n")
+            f.write(f"### Security Grade: {score_color} {metrics['grade']} ({metrics['score']}/100)\n\n")
+            
+            f.write("| Critical | High | Medium | Low | Secrets |\n")
+            f.write("|----------|------|--------|-----|---------|\n")
+            f.write(f"| {metrics['critical']} | {metrics['high']} | {metrics['medium']} | {metrics['low']} | {metrics['secrets']} |\n\n")
+            
+            if metrics['score'] < 60:
+                f.write("> [!CAUTION]\n> **Critical Risk**: This repository has a failing security grade. Immediate remediation is required.\n\n")
+            elif metrics['score'] < 80:
+                f.write("> [!WARNING]\n> **High Risk**: Significant vulnerabilities detected. Prioritize fixing Critical and High issues.\n\n")
+            else:
+                f.write("> [!NOTE]\n> **Good Standing**: Security posture is acceptable, but continue to monitor Low/Medium issues.\n\n")
+
+            # Detected Languages
+            if detected_languages:
+                langs = ", ".join(sorted(detected_languages))
+                f.write(f"**Detected Languages:** {langs}\n")
+            else:
+                f.write(f"**Detected Languages:** None detected\n")
+            f.write("\n")
+            
+            # Code Statistics (cloc)
+            if cloc_result:
+                f.write("## Code Statistics\n\n")
+                f.write("| Language | Files | Blank | Comment | Code |\n")
+                f.write("|----------|-------|-------|---------|------|\n")
+                
+                # Sort by code lines descending
+                sorted_langs = sorted(cloc_result.items(), key=lambda x: x[1].get('code', 0), reverse=True)
+                
+                for lang, stats in sorted_langs:
+                    if lang == 'SUM': continue # Skip summary row for now, or put it at bottom
+                    f.write(f"| {lang} | {stats.get('nFiles', 0)} | {stats.get('blank', 0)} | {stats.get('comment', 0)} | {stats.get('code', 0)} |\n")
+                
+                if 'SUM' in cloc_result:
+                    stats = cloc_result['SUM']
+                    f.write(f"| **TOTAL** | **{stats.get('nFiles', 0)}** | **{stats.get('blank', 0)}** | **{stats.get('comment', 0)}** | **{stats.get('code', 0)}** |\n")
+                f.write("\n")
             
             # Scan Summary Table
             f.write("## Scan Summary\n\n")
@@ -3320,8 +3755,8 @@ def main():
                       help="Include archived repositories")
     parser.add_argument("--max-workers", type=int, default=4,
                       help="Max concurrent workers (default: 4)")
-    parser.add_argument("--repo-timeout", type=int, default=30,
-                      help="Timeout in minutes per repository (default: 30). Set to 0 for no timeout.")
+    parser.add_argument("--repo-timeout", type=int, default=5,
+                      help="Initial timeout in minutes per repository (default: 5). Progress monitoring allows scans to continue if actively working.")
     parser.add_argument("--scanner-timeout", type=int, default=10,
                       help="Timeout in minutes per individual scanner (default: 10)")
     parser.add_argument("--continue-on-timeout", action="store_true", default=True,
@@ -3336,6 +3771,14 @@ def main():
                       help="Allow AI to automatically apply safe fixes")
     parser.add_argument("--no-ai-agent", action="store_true",
                       help="Disable AI agent entirely (overrides env settings)")
+    
+    # Progress monitoring arguments
+    parser.add_argument("--progress-check-interval", type=int, default=30,
+                      help="Seconds between progress checks (default: 30)")
+    parser.add_argument("--max-idle-time", type=int, default=180,
+                      help="Seconds of no progress before timeout (default: 180)")
+    parser.add_argument("--min-cpu-threshold", type=float, default=5.0,
+                      help="Minimum CPU %% to consider scan active (default: 5.0)")
     
     parser.add_argument("--loglevel", type=str, default="INFO",
                       choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -3458,6 +3901,28 @@ def main():
         logging.warning("AI agent requested but dependencies not available. Install with: pip install openai anthropic psutil")
         ai_agent_enabled = False
 
+    # Initialize AI Agent if enabled
+    global ai_agent
+    if config.ENABLE_AI:
+        try:
+            from src.ai_agent.agent import AIAgent
+            ai_agent = AIAgent(
+                openai_api_key=config.OPENAI_API_KEY,
+                anthropic_api_key=config.ANTHROPIC_API_KEY,
+                provider=config.AI_PROVIDER,
+                model=config.AI_MODEL
+            )
+            logging.info(f"AI Agent initialized with provider: {config.AI_PROVIDER}")
+        except Exception as e:
+            logging.error(f"Failed to initialize AI Agent: {e}")
+            ai_agent = None
+            
+    # Initialize Knowledge Base
+    kb = None
+    try:
+        kb = KnowledgeBase()
+    except Exception as e:
+        logging.warning(f"Failed to initialize Knowledge Base: {e}")
     
     if not config.GITHUB_TOKEN:
         logging.error("GitHub token is required. Set GITHUB_TOKEN environment variable or use --token")
@@ -3656,9 +4121,19 @@ def run_syft(target: str, repo_name: str, report_dir: str, target_type: str = "r
         return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="syft not installed")
     try:
         # Build syft command
-        cmd = [syft_bin, target, f"-o", sbom_format]
+        cmd = [syft_bin, target, f"-o", sbom_format, "--scope", "all-layers"]
         logging.debug(f"Running Syft: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=report_dir)
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="syft",
+                cwd=report_dir,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=report_dir)
         # Write JSON output
         with open(output_json, 'w') as f:
             f.write(result.stdout or "")
@@ -3701,12 +4176,22 @@ def run_grype(target: str, repo_name: str, report_dir: str, target_type: str = "
             f.write("Grype is not installed. Install via: brew install grype or see https://github.com/anchore/grype\n")
         return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="grype not installed")
     try:
-        cmd = [grype_bin, target, "-o", "json"]
+        cmd = [grype_bin, target, "-o", "json", "--scope", "all-layers"]
         # Append VEX documents if provided
         for vf in (vex_files or []):
             cmd += ["--vex", vf]
         logging.debug(f"Running Grype: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=report_dir)
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="grype",
+                cwd=report_dir,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=report_dir)
         # Write JSON output
         with open(output_json, 'w') as f:
             f.write(result.stdout or "")
@@ -3760,7 +4245,17 @@ def run_checkov(repo_path: str, repo_name: str, report_dir: str) -> Optional[sub
     try:
         cmd = [checkov_bin, '-d', repo_path, '-o', 'json']
         logging.debug(f"Running Checkov: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="checkov",
+                cwd=None,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
         # Write JSON
         with open(output_json, 'w') as f:
             f.write(result.stdout or "")
@@ -3826,7 +4321,17 @@ def run_gitleaks(repo_path: str, repo_name: str, report_dir: str) -> Optional[su
         ]
         
         # Execute the command
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="gitleaks",
+                cwd=None,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
         
         # Create a detailed markdown report
         with open(output_md, 'w') as f:
@@ -3916,8 +4421,19 @@ def run_bandit(repo_path: str, repo_name: str, report_dir: str) -> Optional[subp
             f.write("Bandit is not installed. Install via: pip install bandit or brew install bandit\n")
         return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="bandit not installed")
     try:
-        cmd = [bandit_bin, "-r", repo_path, "-f", "json", "-q"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Aggressive mode, all severity, all confidence
+        cmd = [bandit_bin, "-r", repo_path, "-f", "json", "-q", "-a", "-ll", "-ii"]
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="bandit",
+                cwd=None,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
         with open(output_json, 'w') as f:
             f.write(result.stdout or "")
         # MD summary
@@ -3962,9 +4478,20 @@ def run_trivy_fs(repo_path: str, repo_name: str, report_dir: str) -> Optional[su
             f.write("Trivy is not installed. Install via: brew install trivy or see https://aquasecurity.github.io/trivy/\n")
         return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="trivy not installed")
     try:
-        # Run with vulnerability and config checks; quiet + JSON
-        cmd = [trivy_bin, "fs", "-q", "-f", "json", repo_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Run with vulnerability, config, secret, and license checks; quiet + JSON
+        cmd = [trivy_bin, "fs", "-q", "-f", "json", "--scanners", "vuln,config,secret,license", repo_path]
+        
+        # Use progress monitoring if available
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="trivy",
+                cwd=None,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
         with open(output_json, 'w') as f:
             f.write(result.stdout or "")
         # MD summary
@@ -3989,6 +4516,656 @@ def run_trivy_fs(repo_path: str, repo_name: str, report_dir: str) -> Optional[su
         with open(output_md, 'w') as f:
             f.write(f"Error running Trivy fs: {e}\n")
         return subprocess.CompletedProcess(args=['trivy','fs',repo_path], returncode=1, stdout="", stderr=str(e))
+
+def run_codeql(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
+    """
+    Run GitHub CodeQL semantic analysis.
+    
+    Supports: Python, JavaScript/TypeScript, Go, Java.
+    """
+    os.makedirs(report_dir, exist_ok=True)
+    codeql_bin = shutil.which('codeql')
+    output_sarif = os.path.join(report_dir, f"{repo_name}_codeql.sarif")
+    output_md = os.path.join(report_dir, f"{repo_name}_codeql.md")
+    
+    if not codeql_bin:
+        with open(output_md, 'w') as f:
+            f.write("CodeQL is not installed. Please rebuild the Docker image with CodeQL support.\n")
+        return None
+        
+    # Detect language
+    languages = []
+    if any(f.endswith('.py') for r, _, fs in os.walk(repo_path) for f in fs):
+        languages.append('python')
+    if any(f.endswith(('.js', '.ts', '.jsx', '.tsx')) for r, _, fs in os.walk(repo_path) for f in fs):
+        languages.append('javascript')
+    if any(f.endswith('.go') for r, _, fs in os.walk(repo_path) for f in fs):
+        languages.append('go')
+    if any(f.endswith(('.java', '.jar')) for r, _, fs in os.walk(repo_path) for f in fs):
+        languages.append('java')
+        
+    if not languages:
+        return None
+        
+    try:
+        logging.info(f"Running CodeQL for {repo_name} (languages: {', '.join(languages)})...")
+        db_path = os.path.join(config.CLONE_DIR, f"{repo_name}_codeql_db")
+        
+        # 1. Create Database
+        # For interpreted languages (python, js), build is automatic.
+        # For compiled (go, java), we rely on autobuild or simple build commands.
+        create_cmd = [
+            codeql_bin, "database", "create",
+            db_path,
+            f"--source-root={repo_path}",
+            f"--language={','.join(languages)}",
+            "--overwrite"
+        ]
+        
+        logging.debug(f"Creating CodeQL database: {' '.join(create_cmd)}")
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            run_with_progress_monitoring(
+                cmd=create_cmd,
+                repo_name=repo_name,
+                scanner_name="codeql-create",
+                cwd=repo_path,
+                timeout=1800  # 30 mins for DB creation
+            )
+        else:
+            subprocess.run(create_cmd, capture_output=True, text=True, check=True)
+            
+        # 2. Analyze Database
+        analyze_cmd = [
+            codeql_bin, "database", "analyze",
+            db_path,
+            "--format=sarif-latest",
+            f"--output={output_sarif}",
+            "--download"  # Download queries if needed
+        ]
+        
+        # Add query packs
+        for lang in languages:
+            analyze_cmd.append(f"codeql/{lang}-queries")
+            
+        logging.debug(f"Analyzing CodeQL database: {' '.join(analyze_cmd)}")
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=analyze_cmd,
+                repo_name=repo_name,
+                scanner_name="codeql-analyze",
+                cwd=repo_path,
+                timeout=3600  # 1 hour for analysis
+            )
+        else:
+            result = subprocess.run(analyze_cmd, capture_output=True, text=True)
+            
+        # 3. Generate Markdown Summary
+        with open(output_md, 'w') as f:
+            f.write(f"# CodeQL Security Analysis\n\n")
+            f.write(f"**Languages:** {', '.join(languages)}\n")
+            f.write(f"**Status:** {'Success' if result.returncode == 0 else 'Failed'}\n\n")
+            
+            if os.path.exists(output_sarif):
+                try:
+                    with open(output_sarif, 'r') as sf:
+                        sarif = json.load(sf)
+                    
+                    runs = sarif.get('runs', [])
+                    results_count = sum(len(run.get('results', [])) for run in runs)
+                    
+                    f.write(f"## Summary\n\n")
+                    f.write(f"- **Total Findings:** {results_count}\n\n")
+                    
+                    if results_count > 0:
+                        f.write("## Findings\n\n")
+                        for run in runs:
+                            for res in run.get('results', []):
+                                rule_id = res.get('ruleId', 'Unknown')
+                                msg = res.get('message', {}).get('text', 'No description')
+                                loc = res.get('locations', [{}])[0].get('physicalLocation', {}).get('artifactLocation', {}).get('uri', 'unknown')
+                                line = res.get('locations', [{}])[0].get('physicalLocation', {}).get('region', {}).get('startLine', '?')
+                                
+                                f.write(f"### {rule_id}\n")
+                                f.write(f"- **Location:** `{loc}:{line}`\n")
+                                f.write(f"- **Message:** {msg}\n\n")
+                except Exception as e:
+                    f.write(f"Error parsing SARIF: {e}\n")
+            else:
+                f.write("No SARIF output generated.\n")
+                
+        return result
+        
+    except Exception as e:
+        logging.error(f"CodeQL failed: {e}")
+        with open(output_md, 'w') as f:
+            f.write(f"# CodeQL Failed\n\nError: {e}\n")
+        return None
+
+def generate_ai_remediations(repo_name: str, report_dir: str, kb: Optional[KnowledgeBase]):
+    """
+    Generate AI remediation plans for findings.
+    Currently supports Semgrep findings.
+    """
+    if not kb or not kb.enabled or not ai_agent:
+        return
+
+    semgrep_json = os.path.join(report_dir, f"{repo_name}_semgrep.json")
+    if not os.path.exists(semgrep_json):
+        return
+
+    try:
+        with open(semgrep_json, 'r') as f:
+            data = json.load(f)
+            
+        findings = data.get('results', [])
+        if not findings:
+            return
+            
+        remediation_report = os.path.join(report_dir, f"{repo_name}_remediation_plan.md")
+        
+        with open(remediation_report, 'w') as f:
+            f.write(f"# AI Remediation Plan for {repo_name}\n\n")
+            
+            # Limit to top 5 findings to save costs for now
+            for finding in findings[:5]:
+                check_id = finding.get('check_id')
+                path = finding.get('path')
+                start_line = finding.get('start', {}).get('line')
+                extra = finding.get('extra', {})
+                message = extra.get('message', '')
+                lines = extra.get('lines', '')
+                
+                f.write(f"## Finding: {check_id}\n")
+                f.write(f"- **File:** `{path}:{start_line}`\n")
+                f.write(f"- **Message:** {message}\n\n")
+                
+                # Check Knowledge Base
+                cached = kb.get_remediation(check_id, lines)
+                
+                if cached:
+                    f.write("### Remediation (Cached)\n")
+                    f.write(cached['remediation'])
+                    f.write("\n\n")
+                    if cached['diff']:
+                        f.write("### Suggested Fix\n")
+                        f.write("```diff\n")
+                        f.write(cached['diff'])
+                        f.write("\n```\n\n")
+                else:
+                    # Ask AI
+                    logging.info(f"Asking AI for remediation of {check_id} in {repo_name}...")
+                    # We need to run async method in sync context
+                    # Creating a new loop or using asyncio.run if not in loop
+                    try:
+                        # This is a bit hacky for a sync script, but works for now
+                        result = asyncio.run(ai_agent.reasoning_engine.generate_remediation(
+                            vuln_type=check_id,
+                            description=message,
+                            context=lines,
+                            language="unknown" # Could infer from extension
+                        ))
+                        
+                        kb.store_remediation(
+                            vuln_id=check_id,
+                            vuln_type=check_id,
+                            context=lines,
+                            remediation=result.get('remediation', ''),
+                            diff=result.get('diff', '')
+                        )
+                        
+                        f.write("### Remediation (AI Generated)\n")
+                        f.write(result.get('remediation', ''))
+                        f.write("\n\n")
+                        if result.get('diff'):
+                            f.write("### Suggested Fix\n")
+                            f.write("```diff\n")
+                            f.write(result.get('diff'))
+                            f.write("\n```\n\n")
+                            
+                    except Exception as e:
+                        logging.error(f"AI generation failed: {e}")
+                        f.write(f"Failed to generate remediation: {e}\n\n")
+                        
+    except Exception as e:
+        logging.error(f"Error generating remediation plan: {e}")
+
+def run_retire_js(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
+    """Run Retire.js to find vulnerable client-side libraries."""
+    os.makedirs(report_dir, exist_ok=True)
+    retire_bin = shutil.which('retire')
+    output_json = os.path.join(report_dir, f"{repo_name}_retire.json")
+    output_md = os.path.join(report_dir, f"{repo_name}_retire.md")
+    
+    if not retire_bin:
+        with open(output_md, 'w') as f:
+            f.write("Retire.js is not installed.\n")
+        return None
+        
+    try:
+        # Run retire.js
+        cmd = [retire_bin, "--path", repo_path, "--outputformat", "json", "--outputpath", output_json]
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="retirejs",
+                cwd=report_dir,
+                timeout=1800
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+        # Generate Markdown
+        with open(output_md, 'w') as f:
+            f.write(f"# Retire.js Vulnerability Scan\n\n")
+            
+            if os.path.exists(output_json):
+                try:
+                    with open(output_json, 'r') as jf:
+                        data = json.load(jf)
+                        
+                    # Retire.js JSON structure: list of file objects
+                    findings_count = 0
+                    for file_obj in data:
+                        findings_count += len(file_obj.get('results', []))
+                        
+                    f.write(f"**Total Findings:** {findings_count}\n\n")
+                    
+                    for file_obj in data:
+                        filename = file_obj.get('file', 'unknown')
+                        results = file_obj.get('results', [])
+                        if results:
+                            f.write(f"### File: `{filename}`\n")
+                            for res in results:
+                                component = res.get('component', 'unknown')
+                                version = res.get('version', 'unknown')
+                                vulns = res.get('vulnerabilities', [])
+                                f.write(f"- **Component:** {component} @ {version}\n")
+                                for v in vulns:
+                                    info = v.get('info', [])
+                                    severity = v.get('severity', 'unknown')
+                                    f.write(f"  - **{severity}**: {' '.join(info)}\n")
+                            f.write("\n")
+                except Exception as e:
+                    f.write(f"Error parsing Retire.js output: {e}\n")
+            else:
+                f.write("No findings or output file missing.\n")
+                
+        return result
+    except Exception as e:
+        logging.error(f"Retire.js failed: {e}")
+        return None
+
+def run_npm_audit(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
+    """
+    Run npm audit, yarn audit, or pnpm audit depending on lockfiles.
+    """
+    os.makedirs(report_dir, exist_ok=True)
+    
+    # Detect package manager
+    has_package_lock = os.path.exists(os.path.join(repo_path, 'package-lock.json'))
+    has_yarn_lock = os.path.exists(os.path.join(repo_path, 'yarn.lock'))
+    has_pnpm_lock = os.path.exists(os.path.join(repo_path, 'pnpm-lock.yaml'))
+    
+    tool = "npm"
+    cmd = []
+    
+    if has_pnpm_lock and shutil.which('pnpm'):
+        tool = "pnpm"
+        cmd = ["pnpm", "audit", "--json"]
+    elif has_yarn_lock and shutil.which('yarn'):
+        tool = "yarn"
+        cmd = ["yarn", "audit", "--json"]
+    elif has_package_lock or os.path.exists(os.path.join(repo_path, 'package.json')):
+        tool = "npm"
+        # npm audit --json
+        cmd = ["npm", "audit", "--json", "--audit-level=high"]
+    else:
+        logging.info(f"No JS lockfiles found for {repo_name}, skipping audit.")
+        return None
+
+    output_json = os.path.join(report_dir, f"{repo_name}_{tool}_audit.json")
+    output_md = os.path.join(report_dir, f"{repo_name}_{tool}_audit.md")
+    
+    try:
+        logging.info(f"Running {tool} audit for {repo_name}...")
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name=f"{tool}-audit",
+                cwd=repo_path,
+                timeout=1800
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_path)
+            
+        # Write JSON
+        with open(output_json, 'w') as f:
+            f.write(result.stdout)
+            
+        # Generate Markdown Summary
+        with open(output_md, 'w') as f:
+            f.write(f"# {tool.capitalize()} Audit Report\n\n")
+            f.write(f"**Tool:** {tool}\n")
+            
+            try:
+                # Parsing logic differs slightly by tool, but generally JSON
+                data = json.loads(result.stdout)
+                
+                if tool == "npm":
+                    metadata = data.get('metadata', {}).get('vulnerabilities', {})
+                    f.write("## Summary\n")
+                    for sev, count in metadata.items():
+                        f.write(f"- **{sev.capitalize()}**: {count}\n")
+                        
+                elif tool == "yarn":
+                    # Yarn audit --json outputs one JSON object per line
+                    # The last line usually contains summary
+                    summary = {}
+                    for line in result.stdout.splitlines():
+                        if not line.strip(): continue
+                        obj = json.loads(line)
+                        if obj.get('type') == 'auditSummary':
+                            summary = obj.get('data', {}).get('vulnerabilities', {})
+                    
+                    f.write("## Summary\n")
+                    for sev, count in summary.items():
+                        f.write(f"- **{sev.capitalize()}**: {count}\n")
+                        
+                elif tool == "pnpm":
+                    # pnpm audit --json structure
+                    advisories = data.get('advisories', {})
+                    f.write(f"## Summary\n")
+                    f.write(f"- **Total Advisories:** {len(advisories)}\n")
+
+            except Exception as e:
+                f.write(f"\nError parsing output: {e}\n")
+                f.write("See JSON file for details.\n")
+                
+        return result
+        
+    except Exception as e:
+        logging.error(f"{tool} audit failed: {e}")
+        return None
+def run_trufflehog(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
+    """Run TruffleHog for verified secret scanning."""
+    os.makedirs(report_dir, exist_ok=True)
+    th_bin = shutil.which('trufflehog')
+    output_json = os.path.join(report_dir, f"{repo_name}_trufflehog.json")
+    output_md = os.path.join(report_dir, f"{repo_name}_trufflehog.md")
+    
+    if not th_bin:
+        with open(output_md, 'w') as f:
+            f.write("TruffleHog is not installed.\n")
+        return None
+        
+    try:
+        # Scan filesystem, output JSON
+        cmd = [th_bin, "filesystem", repo_path, "--json", "--fail"]
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="trufflehog",
+                cwd=report_dir,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+        # Parse JSON output (TruffleHog outputs one JSON object per line)
+        findings = []
+        for line in result.stdout.splitlines():
+            try:
+                if line.strip():
+                    findings.append(json.loads(line))
+            except:
+                pass
+                
+        # Write findings to JSON file
+        with open(output_json, 'w') as f:
+            json.dump(findings, f, indent=2)
+            
+        # Generate Markdown
+        with open(output_md, 'w') as f:
+            f.write(f"# TruffleHog Verified Secrets\n\n")
+            f.write(f"**Total Findings:** {len(findings)}\n\n")
+            
+            if findings:
+                for finding in findings:
+                    detector = finding.get('DetectorName', 'Unknown')
+                    verified = finding.get('Verified', False)
+                    raw = finding.get('Raw', 'REDACTED')
+                    f.write(f"### {detector} {'(VERIFIED)' if verified else ''}\n")
+                    f.write(f"- **Verified:** {verified}\n")
+                    f.write(f"- **Secret:** `{raw[:10]}...`\n")
+                    if 'SourceMetadata' in finding:
+                        meta = finding['SourceMetadata']
+                        if 'Data' in meta and 'Filesystem' in meta['Data']:
+                            fs = meta['Data']['Filesystem']
+                            f.write(f"- **File:** `{fs.get('file', 'unknown')}`\n")
+                    f.write("\n")
+            else:
+                f.write("No secrets found.\n")
+                
+        return result
+    except Exception as e:
+        logging.error(f"TruffleHog failed: {e}")
+        return None
+
+def run_nuclei(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
+    """Run Nuclei for vulnerability scanning."""
+    os.makedirs(report_dir, exist_ok=True)
+    nuclei_bin = shutil.which('nuclei')
+    output_json = os.path.join(report_dir, f"{repo_name}_nuclei.json")
+    output_md = os.path.join(report_dir, f"{repo_name}_nuclei.md")
+    
+    if not nuclei_bin:
+        with open(output_md, 'w') as f:
+            f.write("Nuclei is not installed.\n")
+        return None
+        
+    try:
+        # Run nuclei on the file target
+        cmd = [nuclei_bin, "-target", repo_path, "-json-export", output_json]
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="nuclei",
+                cwd=report_dir,
+                timeout=3600
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+        # Generate Markdown
+        with open(output_md, 'w') as f:
+            f.write(f"# Nuclei Vulnerability Scan\n\n")
+            
+            if os.path.exists(output_json):
+                try:
+                    with open(output_json, 'r') as jf:
+                        # Nuclei JSON export is a list of objects or line-delimited?
+                        # Usually line-delimited or array depending on version.
+                        # Let's try reading as array first, then lines.
+                        content = jf.read()
+                        try:
+                            data = json.loads(content)
+                        except:
+                            data = [json.loads(line) for line in content.splitlines() if line.strip()]
+                            
+                    f.write(f"**Total Findings:** {len(data)}\n\n")
+                    for finding in data:
+                        name = finding.get('info', {}).get('name', 'Unknown')
+                        sev = finding.get('info', {}).get('severity', 'unknown').upper()
+                        f.write(f"### {name} ({sev})\n")
+                        f.write(f"- **Template:** {finding.get('template-id')}\n")
+                        f.write(f"- **Matcher:** {finding.get('matcher-name')}\n\n")
+                except Exception as e:
+                    f.write(f"Error parsing Nuclei output: {e}\n")
+            else:
+                f.write("No findings or output file missing.\n")
+                
+        return result
+    except Exception as e:
+        logging.error(f"Nuclei failed: {e}")
+        return None
+
+def run_ossgadget(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
+    """Run OSSGadget for malware/backdoor detection."""
+    os.makedirs(report_dir, exist_ok=True)
+    # OSSGadget is a dotnet tool
+    output_md = os.path.join(report_dir, f"{repo_name}_ossgadget.md")
+    
+    try:
+        # Check if dotnet is available
+        if not shutil.which('dotnet'):
+            with open(output_md, 'w') as f:
+                f.write("OSSGadget (.NET) is not installed.\n")
+            return None
+            
+        # Find oss-characteristic binary
+        oss_bin = shutil.which('oss-characteristic')
+        if not oss_bin:
+            # Fallback to default install location
+            possible_path = "/root/.dotnet/tools/oss-characteristic"
+            if os.path.exists(possible_path):
+                oss_bin = possible_path
+        
+        if not oss_bin:
+            logging.warning("oss-characteristic binary not found in PATH or default location")
+            with open(output_md, 'w') as f:
+                f.write("OSSGadget binary (oss-characteristic) not found.\n")
+            return None
+
+        # Run oss-characteristic (detects suspicious patterns)
+        cmd = [oss_bin, "-d", repo_path]
+        
+        if PROGRESS_MONITOR_AVAILABLE:
+            result = run_with_progress_monitoring(
+                cmd=cmd,
+                repo_name=repo_name,
+                scanner_name="ossgadget",
+                cwd=report_dir,
+                timeout=1800
+            )
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+        with open(output_md, 'w') as f:
+            f.write(f"# OSSGadget Malware Scan\n\n")
+            f.write("## Output\n")
+            f.write("```\n")
+            f.write(result.stdout)
+            f.write("\n```\n")
+            
+        return result
+    except Exception as e:
+        logging.error(f"OSSGadget failed: {e}")
+        return None
+
+def run_cloc(repo_path: str, repo_name: str, report_dir: str) -> Optional[Dict[str, Any]]:
+    """Run cloc to count lines of code per language."""
+    os.makedirs(report_dir, exist_ok=True)
+    cloc_bin = shutil.which('cloc')
+    output_json = os.path.join(report_dir, f"{repo_name}_cloc.json")
+    
+    if not cloc_bin:
+        return None
+        
+    try:
+        # Run cloc with JSON output
+        cmd = [cloc_bin, repo_path, "--json", "--out", output_json]
+        subprocess.run(cmd, capture_output=True, check=False)
+        
+        if os.path.exists(output_json):
+            with open(output_json, 'r') as f:
+                data = json.load(f)
+                # Remove 'header' key if present
+                if 'header' in data:
+                    del data['header']
+                return data
+    except Exception as e:
+        logging.error(f"cloc failed: {e}")
+        
+    return None
+
+def calculate_risk_metrics(report_dir: str, repo_name: str) -> Dict[str, Any]:
+    """
+    Aggregates findings from all scanners to calculate a Security Score.
+    Returns a dict with counts, score, grade, and critical issues.
+    """
+    metrics = {
+        "critical": 0, "high": 0, "medium": 0, "low": 0, "secrets": 0,
+        "score": 100, "grade": "A", "summary": []
+    }
+    
+    # Helper to map severity strings to standard levels
+    def map_severity(sev: str) -> str:
+        s = sev.lower()
+        if s in ['critical', 'fatal']: return 'critical'
+        if s in ['high', 'error']: return 'high'
+        if s in ['medium', 'warning', 'moderate']: return 'medium'
+        return 'low'
+
+    # 1. Semgrep
+    try:
+        with open(os.path.join(report_dir, f"{repo_name}_semgrep.json")) as f:
+            data = json.load(f)
+            for r in data.get('results', []):
+                sev = map_severity(r.get('extra', {}).get('severity', 'low'))
+                metrics[sev] += 1
+    except: pass
+
+    # 2. Bandit
+    try:
+        with open(os.path.join(report_dir, f"{repo_name}_bandit.json")) as f:
+            data = json.load(f)
+            for r in data.get('results', []):
+                sev = map_severity(r.get('issue_severity', 'low'))
+                metrics[sev] += 1
+    except: pass
+
+    # 3. Gitleaks (Secrets)
+    try:
+        with open(os.path.join(report_dir, f"{repo_name}_gitleaks.json")) as f:
+            data = json.load(f)
+            metrics['secrets'] += len(data)
+    except: pass
+    
+    # 4. Trivy (Container/FS)
+    try:
+        with open(os.path.join(report_dir, f"{repo_name}_trivy_fs.json")) as f:
+            data = json.load(f)
+            for res in data.get('Results', []):
+                for vuln in res.get('Vulnerabilities', []):
+                    sev = map_severity(vuln.get('Severity', 'low'))
+                    metrics[sev] += 1
+    except: pass
+
+    # Calculate Score
+    # Penalties: Critical=-20, High=-10, Medium=-5, Low=-1, Secret=-20
+    penalty = (metrics['critical'] * 20) + (metrics['high'] * 10) + \
+              (metrics['medium'] * 5) + (metrics['low'] * 1) + (metrics['secrets'] * 20)
+              
+    metrics['score'] = max(0, 100 - penalty)
+    
+    # Assign Grade
+    if metrics['score'] >= 90: metrics['grade'] = "A"
+    elif metrics['score'] >= 80: metrics['grade'] = "B"
+    elif metrics['score'] >= 70: metrics['grade'] = "C"
+    elif metrics['score'] >= 60: metrics['grade'] = "D"
+    else: metrics['grade'] = "F"
+    
+    return metrics
 
 if __name__ == "__main__":
     main()

@@ -67,3 +67,5 @@ Ensure migrations and schema keep UUID and api_id constraints consistent across 
 Handle PostgREST 404s and errors without leaking internal UUIDs
 In every .env file, add the following comment #To generate a hex string of 32 characters for JWT secret, run: # LC_ALL=C tr -dc 'A-Za-z0-9' \\<\/dev\/urandom \\<\/dev\/urandom \| head -c 32; echo
 Unless instructed to do otherwise, by default apply the DataTable.ts as a template to every table.
+Implement DOE self-annealing capabilities where and whenever applicable and as needed.
+Maximize the - tools involving scanners, capabilities so that every detail is gathered, and every flaw is found and reported.

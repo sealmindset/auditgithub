@@ -167,6 +167,27 @@ class ReasoningEngine:
         except Exception as e:
             logger.error(f"Failed to generate explanation: {e}")
             return f"The {scanner} scanner timed out after {timeout_duration} seconds while scanning {repo_name}."
+
+    async def generate_remediation(
+        self,
+        vuln_type: str,
+        description: str,
+        context: str,
+        language: str
+    ) -> Dict[str, str]:
+        """
+        Generate a remediation plan using the AI provider.
+        """
+        try:
+            return await self.provider.generate_remediation(
+                vuln_type=vuln_type,
+                description=description,
+                context=context,
+                language=language
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate remediation: {e}")
+            return {"remediation": "AI generation failed.", "diff": ""}
     
     def get_analysis_history(self) -> List[Dict[str, Any]]:
         """Get the history of all analyses."""

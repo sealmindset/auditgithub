@@ -108,6 +108,28 @@ class AIProvider(ABC):
             Human-readable explanation string
         """
         pass
+
+    @abstractmethod
+    async def generate_remediation(
+        self,
+        vuln_type: str,
+        description: str,
+        context: str,
+        language: str
+    ) -> Dict[str, str]:
+        """
+        Generate a remediation plan for a specific vulnerability.
+        
+        Args:
+            vuln_type: Type of vulnerability (e.g., SQL Injection)
+            description: Description of the finding
+            context: Code snippet or dependency context
+            language: Programming language
+            
+        Returns:
+            Dict with 'remediation' (text) and 'diff' (code diff)
+        """
+        pass
     
     @abstractmethod
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM --platform=linux/amd64 python:3.11-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,7 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     unzip \
     ca-certificates \
+    libpq-dev \
+    cloc \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js tools
+RUN npm install -g retire pnpm yarn
 
 # Install Ruby gems
 RUN gem install bundler-audit
@@ -48,16 +53,23 @@ WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt psycopg2-binary
 
-# Install pipx
-RUN python -m pip install pipx
-ENV PATH="/root/.local/bin:${PATH}"
+# Create virtual environments for Python security tools to avoid dependency conflicts
+RUN python -m venv /opt/venv/semgrep && \
+    /opt/venv/semgrep/bin/pip install --no-cache-dir semgrep && \
+    rm -f /usr/local/bin/semgrep && \
+    ln -s /opt/venv/semgrep/bin/semgrep /usr/local/bin/semgrep
 
-# Install python tools via pipx to avoid dependency conflicts
-RUN pipx install semgrep && \
-    pipx install bandit && \
-    pipx install checkov
+RUN python -m venv /opt/venv/bandit && \
+    /opt/venv/bandit/bin/pip install --no-cache-dir bandit && \
+    rm -f /usr/local/bin/bandit && \
+    ln -s /opt/venv/bandit/bin/bandit /usr/local/bin/bandit
+
+RUN python -m venv /opt/venv/checkov && \
+    /opt/venv/checkov/bin/pip install --no-cache-dir checkov && \
+    rm -f /usr/local/bin/checkov && \
+    ln -s /opt/venv/checkov/bin/checkov /usr/local/bin/checkov
 
 # Install Gitleaks
 RUN curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz -o gitleaks.tar.gz && \
@@ -73,6 +85,36 @@ RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | 
 
 # Install Grype
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+# Install CodeQL CLI
+ENV CODEQL_VERSION=2.15.3
+ENV CODEQL_HOME=/opt/codeql
+RUN mkdir -p ${CODEQL_HOME} && \
+    wget -q https://github.com/github/codeql-cli-binaries/releases/download/v${CODEQL_VERSION}/codeql-linux64.zip -O /tmp/codeql.zip && \
+    unzip -q /tmp/codeql.zip -d ${CODEQL_HOME} && \
+    rm /tmp/codeql.zip && \
+    ln -s ${CODEQL_HOME}/codeql/codeql /usr/local/bin/codeql
+
+# Pre-download CodeQL queries (standard packs)
+RUN codeql pack download codeql/python-queries codeql/javascript-queries codeql/go-queries codeql/java-queries
+
+# Install TruffleHog
+RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+# Install Nuclei
+RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+# Install .NET SDK and OSSGadget
+# Microsoft package signing key
+RUN wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+    dpkg -i packages-microsoft-prod.deb && \
+    rm packages-microsoft-prod.deb && \
+    apt-get update && \
+    apt-get install -y dotnet-sdk-8.0
+
+# Install OSSGadget
+RUN dotnet tool install --global Microsoft.CST.OSSGadget.CLI
+ENV PATH="${PATH}:/root/.dotnet/tools"
 
 # Copy the rest of the application
 COPY . .
