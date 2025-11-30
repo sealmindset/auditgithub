@@ -62,6 +62,7 @@ load_dotenv()
 
 # Global shutdown event for graceful termination
 shutdown_event = threading.Event()
+shutdown_requested = False
 
 # Global tracking for stuck repositories
 stuck_repos_log = []
@@ -3698,47 +3699,26 @@ def cleanup_temp_dir(temp_dir: str):
 
 def signal_handler(sig, frame):
     """Handle interrupt signals gracefully."""
+    global shutdown_requested
+    
+    if shutdown_requested:
+        # Second Ctrl-C - force immediate shutdown
+        print("\n⚠️  Force shutdown requested. Exiting immediately...")
+        sys.exit(130)
+    
+    shutdown_requested = True
     print("\n⚠️  Received interrupt signal (Ctrl-C). Shutting down gracefully...")
-    print("   Cancelling pending scans and cleaning up...")
+    print("   The current repository scan will complete, but no new scans will start.")
+    print("   Press Ctrl-C again to force immediate shutdown.")
     
     # Set the shutdown event to signal all workers to stop
     shutdown_event.set()
-    
-    # Clean up any temporary directories
-    if hasattr(config, 'CLONE_DIR') and config.CLONE_DIR and os.path.exists(config.CLONE_DIR):
-        try:
-            cleanup_temp_dir(config.CLONE_DIR)
-        except Exception as e:
-            logging.warning(f"Error during cleanup: {e}")
-    
-    # Write stuck repos summary if any
-    if stuck_repos_log:
-        try:
-            summary_file = os.path.join(config.REPORT_DIR, "stuck_repos_summary.md")
-            with open(summary_file, 'w') as f:
-                f.write("# Stuck/Timed-Out Repositories Summary\n\n")
-                f.write(f"Total repositories that timed out or got stuck: {len(stuck_repos_log)}\n\n")
-                for stuck in stuck_repos_log:
-                    f.write(f"## {stuck['repo_name']}\n")
-                    f.write(f"- Duration: {stuck['duration_minutes']} minutes\n")
-                    f.write(f"- Phase: {stuck['phase']}\n")
-                    f.write(f"- Details: {stuck['details']}\n")
-                    f.write(f"- Timestamp: {stuck['timestamp']}\n\n")
-            print(f"   Stuck repositories summary written to: {summary_file}")
-        except Exception as e:
-            logging.warning(f"Failed to write stuck repos summary: {e}")
-    
-    print("   Shutdown complete.")
-    sys.exit(1)
 
 def main():
     """Main function to orchestrate the repository scanning process."""
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
-    # Ensure we have a clean exit on Python interpreter exit
-    atexit.register(signal_handler, None, None)
     
     # Early console signal that the script started
     try:
@@ -4041,17 +4021,31 @@ def main():
                     
                     futures[future] = repo.get('name', 'unknown')
                 
+                # Track completed and cancelled repos
+                completed_repos = []
+                cancelled_repos = []
+                
                 # Process completed futures
                 for future in as_completed(futures):
                     repo_name = futures[future]
                     
                     # Check if shutdown was requested
                     if shutdown_event.is_set():
-                        logging.info("Shutdown requested, cancelling remaining scans")
+                        logging.info("Shutdown event detected, completing current scan and cancelling remaining...")
                         # Cancel all pending futures
                         for f in futures:
                             if not f.done():
+                                cancelled_repo_name = futures[f]
+                                cancelled_repos.append(cancelled_repo_name)
                                 f.cancel()
+                        
+                        # Mark the current one as completed since we're letting it finish
+                        try:
+                            result = future.result(timeout=1)
+                            completed_repos.append(repo_name)
+                        except:
+                            cancelled_repos.append(repo_name)
+                        
                         break
                     
                     try:
@@ -4062,6 +4056,7 @@ def main():
                             
                             if status == 'success':
                                 scan_results['success'] += 1
+                                completed_repos.append(repo_name)
                             elif status == 'timeout':
                                 scan_results['timeout'] += 1
                                 logging.warning(f"Repository {repo_name} timed out after {result.get('timeout_limit')} minutes")
@@ -4074,6 +4069,7 @@ def main():
                             # No timeout - just wait for completion
                             future.result()
                             scan_results['success'] += 1
+                            completed_repos.append(repo_name)
                             
                     except Exception as e:
                         scan_results['error'] += 1
@@ -4105,13 +4101,39 @@ def main():
                 except Exception as e:
                     logging.warning(f"Failed to write stuck repos summary: {e}")
         
-        logging.info("Scan completed successfully!")
-        # Ensure a final console line for users
-        print(f"[auditgh] Scan completed. Reports saved to: {os.path.abspath(config.REPORT_DIR)}")
+        # Report on shutdown status if applicable
+        if shutdown_event.is_set() and shutdown_requested:
+            print("\n⚠️  Scan interrupted by user.")
+            if 'cancelled_repos' in locals() and cancelled_repos:
+                print(f"   ✅ Completed: {len(completed_repos) if 'completed_repos' in locals() else 0} repositories")
+                print(f"   ❌ Cancelled: {len(cancelled_repos)} repositories")
+                print(f"\n   The following repositories were not scanned:")
+                for repo_name in cancelled_repos:
+                    print(f"      - {repo_name}")
+                
+                # Write cancelled repos to a file for reference
+                try:
+                    cancelled_file = os.path.join(config.REPORT_DIR, "cancelled_repos.txt")
+                    with open(cancelled_file, 'w') as f:
+                        f.write("# Cancelled Repositories\n\n")
+                        f.write(f"Scan interrupted at: {datetime.datetime.now().isoformat()}\n\n")
+                        f.write(f"Total cancelled: {len(cancelled_repos)}\n\n")
+                        for repo_name in cancelled_repos:
+                            f.write(f"- {repo_name}\n")
+                    print(f"\n   Cancelled repositories list saved to: {cancelled_file}")
+                except Exception as e:
+                    logging.warning(f"Failed to write cancelled repos file: {e}")
+            
+            print("\n✅ Graceful shutdown complete.")
+        else:
+            logging.info("Scan completed successfully!")
+            # Ensure a final console line for users
+            print(f"[auditgh] Scan completed. Reports saved to: {os.path.abspath(config.REPORT_DIR)}")
+            print("\n✅ All repositories successfully scanned. Shutting down.")
         
     except KeyboardInterrupt:
         logging.info("\nScan interrupted by user")
-        sys.exit(1)
+        sys.exit(130)  # Standard exit code for SIGINT
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         sys.exit(1)
