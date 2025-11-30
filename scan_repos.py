@@ -1216,6 +1216,31 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             except Exception as e:
                 logging.warning(f"Failed to clean up repository directory {repo_path}: {e}")
 
+# 6. Generate Report
+    # -------------------------------------------------------------------------
+    # Generate consolidated report
+    generate_report(safe_repo_name, repo_url, repo_report_dir, completed_scans)
+    
+    # 7. Ingest Results into Database
+    # -------------------------------------------------------------------------
+    try:
+        logging.info(f"Ingesting results for {safe_repo_name}...")
+        ingest_script = os.path.join(os.path.dirname(__file__), "execution", "ingest_results.py")
+        cmd = [ingest_script, safe_repo_name, repo_report_dir]
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logging.info(f"Results ingestion completed for {safe_repo_name}")
+    except Exception as e:
+        logging.error(f"Failed to ingest results for {safe_repo_name}: {e}")
+    
+    # 8. Cleanup
+    # -------------------------------------------------------------------------
+    if not config.KEEP_CLONES:
+        try:
+            shutil.rmtree(repo_path, ignore_errors=True)
+            logging.info(f"Cleaned up {repo_path}")
+        except Exception as e:
+            logging.warning(f"Failed to cleanup {repo_path}: {e}")directory {repo_path}: {e}")
+
 def run_safety_scan(requirements_path, repo_name, report_dir):
     """Run safety scan on requirements file and return the output."""
     output_path = os.path.join(report_dir, f"{repo_name}_safety.txt")

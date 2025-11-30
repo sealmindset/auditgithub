@@ -1,0 +1,51 @@
+name: Validate Security Fix
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  validate-fix:
+    # Run if it's a PR or if a comment starts with /validate-fix
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/validate-fix'))
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger Validation Scan
+        env:
+          API_URL: ${{ secrets.AUDITGH_API_URL }}
+          API_TOKEN: ${{ secrets.AUDITGH_API_TOKEN }}
+          REPO_NAME: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          echo "Triggering validation scan for $REPO_NAME (PR #$PR_NUMBER)"
+          
+          # In a real scenario, we would parse the comment to get specific finding IDs
+          # For now, we trigger a 'validation' scan type
+          
+          curl -X POST "$API_URL/scans/" \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "repo_name": "'"$REPO_NAME"'",
+              "scan_type": "validation",
+              "finding_ids": []
+            }'
+            
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Security validation scan triggered! Results will be posted shortly.'
+            })

@@ -53,7 +53,8 @@ class KnowledgeBase:
             with self.conn.cursor() as cur:
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS remediations (
-                        id SERIAL PRIMARY KEY,
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        api_id BIGSERIAL UNIQUE,
                         vuln_id VARCHAR(255),
                         vuln_type VARCHAR(255),
                         context_hash VARCHAR(64),
