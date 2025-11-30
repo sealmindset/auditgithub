@@ -340,14 +340,23 @@ Format as clean Markdown. Be concise but technical.
             }
             
             # Model-specific token handling
+            # o1, o3, and gpt-5 models use max_completion_tokens
             if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
-                api_params["max_completion_tokens"] = 1500
+                api_params["max_completion_tokens"] = 5000
             else:
-                api_params["max_tokens"] = 1500
+                # GPT-4, etc use max_tokens
+                api_params["max_tokens"] = 4000
                 api_params["temperature"] = 0.3
+
+            logger.info(f"Calling OpenAI with params: model={api_params['model']}, max_tokens={api_params.get('max_tokens')}, max_completion_tokens={api_params.get('max_completion_tokens')}")
+
 
             response = await self.client.chat.completions.create(**api_params)
             content = response.choices[0].message.content
+            
+            logger.info(f"OpenAI Response Content Length: {len(content) if content else 0}")
+            if not content:
+                logger.warning(f"OpenAI returned empty content. Finish reason: {response.choices[0].finish_reason}")
             
             # Track cost
             cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)

@@ -98,7 +98,7 @@ class Config:
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
         self.AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
-        self.AI_MODEL = os.getenv("AI_MODEL", "gpt-4-turbo-preview")
+        self.AI_MODEL = os.getenv("AI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o"
         
         # Set up headers if token is available
         if self.GITHUB_TOKEN:
@@ -1109,6 +1109,9 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
         if config.ENABLE_AI and ai_agent:
             logging.info(f"Generating architecture overview for {repo_name}...")
             architecture_overview = generate_repo_architecture(repo_path, repo_name, ai_agent)
+            logging.info(f"Architecture overview generated. Length: {len(architecture_overview)}")
+        else:
+            logging.info("AI Agent disabled or not initialized. Skipping architecture overview.")
         
         # Run Semgrep scan for the repository
         semgrep_result = run_semgrep_scan(repo_path, repo_name, repo_report_dir)
