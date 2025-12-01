@@ -9,6 +9,7 @@ vulnerability_reports/
 vulnerability_reports_test/
 
 vulnerability_reports/
+vulnerability_reports_test/
 
 # Python
 __pycache__/
