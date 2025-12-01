@@ -23,7 +23,7 @@ class AIAgent:
         openai_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
         provider: str = "openai",
-        model: str = "gpt-4-turbo-preview"
+        model: str = "gpt-4o"
     ):
         """
         Initialize the AI Agent.
@@ -70,3 +70,11 @@ class AIAgent:
     async def generate_remediation(self, *args, **kwargs):
         """Delegate to reasoning engine."""
         return await self.reasoning_engine.generate_remediation(*args, **kwargs)
+
+    async def triage_finding(self, *args, **kwargs):
+        """Delegate to reasoning engine."""
+        return await self.reasoning_engine.triage_finding(*args, **kwargs)
+
+    async def generate_architecture_overview(self, *args, **kwargs):
+        """Delegate to reasoning engine."""
+        return await self.reasoning_engine.generate_architecture_overview(*args, **kwargs)

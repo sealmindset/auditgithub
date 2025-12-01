@@ -132,6 +132,28 @@ class AIProvider(ABC):
         pass
 
     @abstractmethod
+    async def triage_finding(
+        self,
+        title: str,
+        description: str,
+        severity: str,
+        scanner: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze and triage a finding.
+        
+        Args:
+            title: Finding title
+            description: Finding description
+            severity: Reported severity
+            scanner: Scanner name
+            
+        Returns:
+            Dict with priority, confidence, reasoning, etc.
+        """
+        pass
+
+    @abstractmethod
     async def generate_architecture_overview(
         self,
         repo_name: str,

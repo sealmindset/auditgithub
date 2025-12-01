@@ -101,6 +101,9 @@ class Config:
         self.AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
         self.AI_MODEL = os.getenv("AI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o"
         
+        # Cleanup configuration
+        self.KEEP_CLONES = os.getenv("KEEP_CLONES", "false").lower() == "true"
+        
         # Set up headers if token is available
         if self.GITHUB_TOKEN:
             self.HEADERS = {
@@ -707,7 +710,7 @@ def generate_partial_report(repo_name: str, repo_url: str, report_dir: str, comp
 def process_repo_with_timeout(
     repo: Dict[str, Any],
     report_dir: str,
-    timeout_minutes: int = 5,
+    timeout_minutes: int = 30,
     progress_check_interval: int = 30,
     max_idle_time: int = 180,
     min_cpu_threshold: float = 5.0
@@ -851,12 +854,10 @@ def process_repo_with_timeout(
                     ))
                     
                     # Log AI insights
-                    logging.info(f"🤖 AI Analysis Results:")
-                    logging.info(f"   Root Cause: {ai_analysis.root_cause}")
-                    logging.info(f"   Severity: {ai_analysis.severity.value}")
-                    logging.info(f"   Confidence: {ai_analysis.confidence:.0%}")
                     logging.info(f"   Suggestions: {len(ai_analysis.remediation_suggestions)}")
                     logging.info(f"   Cost: ${ai_analysis.estimated_cost:.4f}")
+                    
+
                     
                     # Apply remediation if enabled
                     if remediation_engine and ai_analysis.remediation_suggestions:
@@ -920,6 +921,16 @@ def process_repo_with_timeout(
                 error_msg=error_msg,
                 ai_analysis=ai_analysis  # Pass AI analysis to report generator
             )
+            
+            # Attempt to ingest partial results
+            try:
+                logging.info(f"Attempting to ingest partial results for {repo_name}...")
+                ingest_script = os.path.join(os.path.dirname(__file__), "execution", "ingest_results.py")
+                cmd = [sys.executable, ingest_script, repo_name, repo_report_dir]
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                logging.info(f"Partial results ingestion completed for {repo_name}")
+            except Exception as e:
+                logging.error(f"Failed to ingest partial results for {repo_name}: {e}")
             
             # Cancel the future (won't stop it immediately but marks it as cancelled)
             future.cancel()
@@ -1152,7 +1163,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             # For simplicity, let's re-instantiate KB inside process_repo if needed, or pass it.
             # Let's try to instantiate it here if it's lightweight.
             try:
-                from .kb import KnowledgeBase # Import locally to avoid circular dependencies or global state issues
+                from src.knowledge_base import KnowledgeBase
                 local_kb = KnowledgeBase()
                 generate_ai_remediations(repo_name, repo_report_dir, local_kb)
             except Exception as e:
@@ -1216,17 +1227,14 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             except Exception as e:
                 logging.warning(f"Failed to clean up repository directory {repo_path}: {e}")
 
-# 6. Generate Report
-    # -------------------------------------------------------------------------
-    # Generate consolidated report
-    generate_report(safe_repo_name, repo_url, repo_report_dir, completed_scans)
+
     
     # 7. Ingest Results into Database
     # -------------------------------------------------------------------------
     try:
         logging.info(f"Ingesting results for {safe_repo_name}...")
-        ingest_script = os.path.join(os.path.dirname(__file__), "execution", "ingest_results.py")
-        cmd = [ingest_script, safe_repo_name, repo_report_dir]
+        ingest_script = os.path.join(os.path.dirname(__file__), "ingest_scans.py")
+        cmd = [sys.executable, ingest_script, "--repo-name", safe_repo_name, "--repo-dir", repo_report_dir]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         logging.info(f"Results ingestion completed for {safe_repo_name}")
     except Exception as e:
@@ -1239,7 +1247,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             shutil.rmtree(repo_path, ignore_errors=True)
             logging.info(f"Cleaned up {repo_path}")
         except Exception as e:
-            logging.warning(f"Failed to cleanup {repo_path}: {e}")directory {repo_path}: {e}")
+            logging.warning(f"Failed to cleanup {repo_path}: {e}")
 
 def run_safety_scan(requirements_path, repo_name, report_dir):
     """Run safety scan on requirements file and return the output."""
@@ -1787,7 +1795,15 @@ def write_code_snippet(f, finding):
     if not ('lines' in extra and extra['lines']):
         return
     
-    lang = extra['lines'][0].get('language', '')
+    try:
+        if 'lines' in extra and extra['lines']:
+            first_line = extra['lines'][0]
+            if isinstance(first_line, dict):
+                lang = first_line.get('language', '')
+            else:
+                lang = '' # Handle case where lines might not be a dict
+    except Exception:
+        lang = ''
     content = extra['lines'][0].get('content', '')
     start = int(finding.get('start', {}).get('line', 1)) - 1
     code_lines = [f"{i + start + 1}: {line}" for i, line in enumerate(content.split('\n'))]
@@ -3809,8 +3825,23 @@ def main():
                       help="Set the logging level (default: INFO)")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                       help="Increase verbosity (can be used multiple times)")
+    parser.add_argument("--no-scan", action="store_true",
+                      help="Skip the actual scanning process (useful for testing infrastructure)")
     
     args = parser.parse_args()
+
+    # Check for SKIP_SCAN environment variable
+    if args.no_scan or os.getenv("SKIP_SCAN", "false").lower() == "true":
+        print("[auditgh] SKIP_SCAN is set. Skipping repository scan.")
+        print("[auditgh] The container will remain active (sleeping) to allow exec.")
+        # Sleep indefinitely to keep container running if needed, or just exit.
+        # User asked to "not have the entire rescan", usually implying they want the stack up.
+        # If I exit, the container stops. If they want to exec into it, it needs to run.
+        # Let's sleep.
+        import time
+        while True:
+            time.sleep(3600)
+
     
     # Set log level from command line or use default
     if args.verbose > 0:
@@ -5090,31 +5121,37 @@ def run_ossgadget(repo_path: str, repo_name: str, report_dir: str) -> Optional[s
     """Run OSSGadget for malware/backdoor detection."""
     os.makedirs(report_dir, exist_ok=True)
     # OSSGadget is a dotnet tool
-    output_md = os.path.join(report_dir, f"{repo_name}_ossgadget.md")
+    output_sarif = os.path.join(report_dir, f"{repo_name}_ossgadget.sarif")
     
     try:
         # Check if dotnet is available
         if not shutil.which('dotnet'):
-            with open(output_md, 'w') as f:
+            with open(os.path.join(report_dir, f"{repo_name}_ossgadget.md"), 'w') as f:
                 f.write("OSSGadget (.NET) is not installed.\n")
             return None
             
-        # Find oss-characteristic binary
-        oss_bin = shutil.which('oss-characteristic')
+        # Find ossgadget binary
+        oss_bin = shutil.which('ossgadget')
         if not oss_bin:
             # Fallback to default install location
-            possible_path = "/root/.dotnet/tools/oss-characteristic"
+            possible_path = os.path.expanduser("~/.dotnet/tools/ossgadget")
             if os.path.exists(possible_path):
                 oss_bin = possible_path
         
         if not oss_bin:
-            logging.warning("oss-characteristic binary not found in PATH or default location")
-            with open(output_md, 'w') as f:
-                f.write("OSSGadget binary (oss-characteristic) not found.\n")
+            logging.warning("ossgadget binary not found in PATH or default location")
+            with open(os.path.join(report_dir, f"{repo_name}_ossgadget.md"), 'w') as f:
+                f.write("OSSGadget binary not found.\n")
             return None
 
-        # Run oss-characteristic (detects suspicious patterns)
-        cmd = [oss_bin, "-d", repo_path]
+        # Run ossgadget detect-backdoor
+        # Note: ossgadget requires DOTNET_ROOT to be set if not in standard location
+        # We assume the environment is set up correctly or we set it here if needed
+        env = os.environ.copy()
+        if "DOTNET_ROOT" not in env and os.path.exists("/opt/homebrew/opt/dotnet@8/libexec"):
+             env["DOTNET_ROOT"] = "/opt/homebrew/opt/dotnet@8/libexec"
+
+        cmd = [oss_bin, "detect-backdoor", "-d", repo_path, "-f", "sarifv2", "-o", output_sarif]
         
         if PROGRESS_MONITOR_AVAILABLE:
             result = run_with_progress_monitoring(
@@ -5122,17 +5159,11 @@ def run_ossgadget(repo_path: str, repo_name: str, report_dir: str) -> Optional[s
                 repo_name=repo_name,
                 scanner_name="ossgadget",
                 cwd=report_dir,
-                timeout=1800
+                timeout=1800,
+                env=env
             )
         else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-        with open(output_md, 'w') as f:
-            f.write(f"# OSSGadget Malware Scan\n\n")
-            f.write("## Output\n")
-            f.write("```\n")
-            f.write(result.stdout)
-            f.write("\n```\n")
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             
         return result
     except Exception as e:

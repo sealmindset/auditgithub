@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, JSON, Numeric
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, JSON, Numeric, Sequence
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func, text
@@ -8,7 +8,7 @@ class Repository(Base):
     __tablename__ = "repositories"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(Integer, unique=True, server_default=text("nextval('repositories_api_id_seq')"))
+    api_id = Column(Integer, Sequence('repositories_api_id_seq'), unique=True)
     name = Column(String, unique=True, nullable=False)
     full_name = Column(String)
     url = Column(Text)
@@ -19,6 +19,11 @@ class Repository(Base):
     owner_id = Column(String)
     business_criticality = Column(String)
     last_scanned_at = Column(DateTime)
+    
+    # Architecture
+    architecture_report = Column(Text)
+    architecture_diagram = Column(Text) # XML string for Draw.io
+    
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -29,7 +34,7 @@ class ScanRun(Base):
     __tablename__ = "scan_runs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(Integer, unique=True, server_default=text("nextval('scan_runs_api_id_seq')"))
+    api_id = Column(Integer, Sequence('scan_runs_api_id_seq'), unique=True)
     repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id"))
     scan_type = Column(String)
     status = Column(String)
@@ -53,7 +58,7 @@ class Finding(Base):
     __tablename__ = "findings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(Integer, unique=True, server_default=text("nextval('findings_api_id_seq')"))
+    api_id = Column(Integer, Sequence('findings_api_id_seq'), unique=True)
     finding_uuid = Column(UUID(as_uuid=True), unique=True, server_default=text("gen_random_uuid()"))
     repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id"))
     scan_run_id = Column(UUID(as_uuid=True), ForeignKey("scan_runs.id"))
@@ -104,7 +109,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(Integer, unique=True, server_default=text("nextval('users_api_id_seq')"))
+    api_id = Column(Integer, Sequence('users_api_id_seq'), unique=True)
     username = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=False)
     full_name = Column(String)
@@ -121,14 +126,14 @@ class FindingHistory(Base):
     __tablename__ = "finding_history"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(Integer, unique=True, server_default=text("nextval('finding_history_api_id_seq')"))
+    api_id = Column(Integer, Sequence('finding_history_api_id_seq'), unique=True)
     finding_id = Column(UUID(as_uuid=True), ForeignKey("findings.id"))
     changed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     change_type = Column(String)
     old_value = Column(Text)
     new_value = Column(Text)
     comment = Column(Text)
-    metadata = Column(JSONB)
+    change_metadata = Column(JSONB)
     created_at = Column(DateTime, server_default=func.now())
 
     finding = relationship("Finding", back_populates="history")
@@ -137,7 +142,7 @@ class FindingComment(Base):
     __tablename__ = "finding_comments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(Integer, unique=True, server_default=text("nextval('finding_comments_api_id_seq')"))
+    api_id = Column(Integer, Sequence('finding_comments_api_id_seq'), unique=True)
     finding_id = Column(UUID(as_uuid=True), ForeignKey("findings.id"))
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     comment_text = Column(Text, nullable=False)
@@ -146,3 +151,13 @@ class FindingComment(Base):
     updated_at = Column(DateTime, server_default=func.now())
 
     finding = relationship("Finding", back_populates="comments")
+
+class SystemConfig(Base):
+    __tablename__ = "system_config"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    key = Column(String, unique=True, nullable=False)
+    value = Column(Text)
+    description = Column(Text)
+    is_encrypted = Column(Boolean, default=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

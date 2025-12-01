@@ -25,3 +25,12 @@ pip-audit
 # - bundle-audit (gem install bundler-audit)
 # - OWASP Dependency-Check (https://owasp.org/www-project-dependency-check/)
 
+
+# API Dependencies
+fastapi>=0.100.0
+uvicorn>=0.23.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+diagrams>=0.23.0

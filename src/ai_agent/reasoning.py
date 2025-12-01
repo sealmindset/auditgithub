@@ -211,6 +211,32 @@ class ReasoningEngine:
         except Exception as e:
             logger.error(f"Failed to generate architecture overview: {e}")
             return f"Failed to generate architecture overview: {e}"
+
+    async def triage_finding(
+        self,
+        title: str,
+        description: str,
+        severity: str,
+        scanner: str
+    ) -> Dict[str, Any]:
+        """
+        Triage a finding using the AI provider.
+        """
+        try:
+            return await self.provider.triage_finding(
+                title=title,
+                description=description,
+                severity=severity,
+                scanner=scanner
+            )
+        except Exception as e:
+            logger.error(f"Failed to triage finding: {e}")
+            return {
+                "priority": severity,
+                "confidence": 0.0,
+                "reasoning": f"AI triage failed: {e}",
+                "false_positive_probability": 0.0
+            }
     
     def get_analysis_history(self) -> List[Dict[str, Any]]:
         """Get the history of all analyses."""

@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     JIRA_USERNAME: str = ""
     JIRA_API_TOKEN: str = ""
     JIRA_PROJECT_KEY: str = "SEC"
+
+    # GitHub
+    GITHUB_TOKEN: str = ""
     
     # Security
     SECRET_KEY: str = "your-secret-key-here"
@@ -24,9 +27,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     AI_PROVIDER: str = "openai"
-    AI_MODEL: str = "gpt-4-turbo-preview"
+    AI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

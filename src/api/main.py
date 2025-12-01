@@ -15,13 +15,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
-from .routers import repositories, jira, ai, scans, analytics
+from .database import engine
+from . import models
+
+# Create database tables
+models.Base.metadata.create_all(bind=engine)
+
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings
 
 app.include_router(repositories.router)
 app.include_router(jira.router)
 app.include_router(ai.router)
 app.include_router(scans.router)
 app.include_router(analytics.router)
+app.include_router(findings.router)
+app.include_router(projects.router)
+app.include_router(settings.router)
 
 # CORS Configuration
 app.add_middleware(

@@ -32,24 +32,19 @@ const data = {
             items: [
                 {
                     title: "Dashboard",
-                    url: "/dashboard",
+                    url: "/",
                     icon: LayoutDashboard,
                     isActive: true,
                 },
                 {
                     title: "Findings",
-                    url: "/dashboard/findings",
+                    url: "/findings",
                     icon: AlertTriangle,
                 },
                 {
                     title: "Repositories",
-                    url: "/dashboard/repositories",
+                    url: "/repositories",
                     icon: GitBranch,
-                },
-                {
-                    title: "Reports",
-                    url: "/dashboard/reports",
-                    icon: FileText,
                 },
             ],
         },
@@ -58,13 +53,8 @@ const data = {
             url: "#",
             items: [
                 {
-                    title: "Team",
-                    url: "/dashboard/team",
-                    icon: Users,
-                },
-                {
                     title: "Configuration",
-                    url: "/dashboard/settings",
+                    url: "/settings",
                     icon: Settings,
                 },
             ],

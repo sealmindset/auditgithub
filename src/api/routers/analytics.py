@@ -73,3 +73,20 @@ async def get_finding_trends(days: int = 7, db: Session = Depends(get_db)):
         })
         
     return list(reversed(trends))
+
+@router.get("/recent-findings")
+async def get_recent_findings(limit: int = 5, db: Session = Depends(get_db)):
+    """Get recent critical/high findings."""
+    findings = db.query(models.Finding).join(models.Repository).filter(
+        models.Finding.status == 'open',
+        models.Finding.severity.in_(['critical', 'high'])
+    ).order_by(models.Finding.created_at.desc()).limit(limit).all()
+    
+    return [{
+        "id": str(f.finding_uuid),
+        "title": f.title,
+        "severity": f.severity.capitalize(),
+        "repo": f.repository.name,
+        "status": f.status.capitalize(),
+        "date": f.created_at.strftime("%Y-%m-%d")
+    } for f in findings]

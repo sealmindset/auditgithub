@@ -74,13 +74,230 @@ async def triage_finding(request: TriageRequest):
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
         
-    # This would delegate to a new method in AIAgent/ReasoningEngine
-    # For now, we'll implement a basic version or placeholder
-    # TODO: Implement full triage logic in ReasoningEngine
+    try:
+        result = await ai_agent.triage_finding(
+            title=request.title,
+            description=request.description,
+            severity=request.severity,
+            scanner=request.scanner
+        )
+        return TriageResponse(
+            priority=result.get("priority", "Medium"),
+            confidence=result.get("confidence", 0.0),
+            reasoning=result.get("reasoning", "Analysis failed"),
+            false_positive_probability=result.get("false_positive_probability", 0.0)
+        )
+    except Exception as e:
+        logger.error(f"Error triaging finding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+from ..database import get_db
+from .. import models
+from sqlalchemy.orm import Session
+from ..utils.repo_context import get_repo_context, clone_repo_to_temp, cleanup_repo
+import uuid
+
+import re
+
+import subprocess
+import base64
+import os
+import tempfile
+
+class ArchitectureRequest(BaseModel):
+    project_id: str
+
+class ArchitectureUpdateRequest(BaseModel):
+    report: str
+    diagram: Optional[str] = None
+
+class ArchitectureResponse(BaseModel):
+    report: str
+    diagram: Optional[str] = None # Python code
+    image: Optional[str] = None # Base64 PNG
+
+@router.get("/architecture/{project_id}", response_model=ArchitectureResponse)
+async def get_architecture(project_id: str, db: Session = Depends(get_db)):
+    """Get saved architecture overview for a project."""
+    try:
+        p_uuid = uuid.UUID(project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == project_id).first()
+        
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
     
-    return TriageResponse(
-        priority="High",
-        confidence=0.85,
-        reasoning="AI Analysis not fully implemented yet.",
-        false_positive_probability=0.1
+    # If we have code but no image (e.g. from old data or failed run), we could try to regen,
+    # but for GET let's just return what we have.
+    # Actually, we don't store the image in DB, so we need to generate it or store it.
+    # Storing base64 in DB might be heavy.
+    # Let's regenerate on the fly if missing? No, that's slow.
+    # Let's assume we store the code, and maybe we should store the image too?
+    # The user asked to "save their edits", implying code edits.
+    # If we don't save the image, we have to run the code every time we view? That's slow and risky.
+    # Let's add an `architecture_image` column to the DB?
+    # Or just return the code and let the frontend trigger a generation if needed?
+    # The requirement says "The Python script will then take that specs to create the diagram."
+    # Let's stick to generating it on save/generate and returning it.
+    # For now, if we don't have the image stored, we might return null and let the UI ask for regen?
+    # Or better: let's execute the code if we have it.
+    
+    image_b64 = None
+    if project.architecture_diagram:
+        try:
+            image_b64 = execute_diagram_code(project.architecture_diagram)
+        except Exception as e:
+            logger.error(f"Failed to generate image from saved code: {e}")
+
+    return ArchitectureResponse(
+        report=project.architecture_report or "",
+        diagram=project.architecture_diagram,
+        image=image_b64
     )
+
+@router.put("/architecture/{project_id}", response_model=ArchitectureResponse)
+async def update_architecture(project_id: str, request: ArchitectureUpdateRequest, db: Session = Depends(get_db)):
+    """Update architecture overview (e.g. after user edits)."""
+    try:
+        p_uuid = uuid.UUID(project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == project_id).first()
+        
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    project.architecture_report = request.report
+    image_b64 = None
+    
+    if request.diagram is not None:
+        project.architecture_diagram = request.diagram
+        # Execute code to verify and generate image
+        try:
+            image_b64 = execute_diagram_code(request.diagram)
+        except Exception as e:
+            # If code fails, we still save it but maybe warn?
+            # For now, just log and return no image
+            logger.error(f"Failed to execute updated diagram code: {e}")
+            # raise HTTPException(status_code=400, detail=f"Failed to generate diagram: {str(e)}")
+        
+    db.commit()
+    
+    return ArchitectureResponse(
+        report=project.architecture_report,
+        diagram=project.architecture_diagram,
+        image=image_b64
+    )
+
+def execute_diagram_code(code: str) -> str:
+    """Execute Python code to generate diagram and return base64 image."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Write code to file
+        script_path = os.path.join(tmpdir, "diagram_script.py")
+        
+        # Ensure the code saves to the right filename
+        # We look for `filename="architecture_diagram"` or similar and enforce output path
+        # Or we just run it and look for the .png file.
+        # The prompt instructs `filename="architecture_diagram"`.
+        # So we expect `architecture_diagram.png` in the CWD.
+        
+        with open(script_path, "w") as f:
+            f.write(code)
+            
+        # Run script
+        try:
+            subprocess.check_output(
+                ["python3", script_path],
+                cwd=tmpdir,
+                stderr=subprocess.STDOUT,
+                timeout=30
+            )
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Script execution failed: {e.output.decode()}")
+            
+        # Find PNG
+        png_path = os.path.join(tmpdir, "architecture_diagram.png")
+        if not os.path.exists(png_path):
+             # Try finding any png
+            files = [f for f in os.listdir(tmpdir) if f.endswith('.png')]
+            if files:
+                png_path = os.path.join(tmpdir, files[0])
+            else:
+                raise Exception("No PNG image generated by the script")
+            
+        with open(png_path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+
+@router.post("/architecture", response_model=ArchitectureResponse)
+async def generate_architecture(request: ArchitectureRequest, db: Session = Depends(get_db)):
+    """Generate an architecture overview for a project."""
+    if not ai_agent:
+        raise HTTPException(status_code=503, detail="AI Agent not initialized")
+        
+    # Get project
+    try:
+        p_uuid = uuid.UUID(request.project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == request.project_id).first()
+        
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    if not project.url:
+        raise HTTPException(status_code=400, detail="Project repository URL is missing")
+        
+    repo_path = None
+    try:
+        # Clone repo to temp
+        # Use GITHUB_TOKEN from settings if available
+        token = settings.GITHUB_TOKEN
+        repo_path = clone_repo_to_temp(project.url, token)
+        
+        # Get context
+        structure, configs = get_repo_context(repo_path)
+        
+        # Generate overview
+        full_response = await ai_agent.generate_architecture_overview(
+            repo_name=project.name,
+            file_structure=structure,
+            config_files=configs
+        )
+        
+        # Parse Python code from response
+        diagram_code = None
+        report = full_response
+        image_b64 = None
+        
+        code_match = re.search(r"```python\n(.*?)```", full_response, re.DOTALL)
+        if code_match:
+            diagram_code = code_match.group(1).strip()
+            # Remove the code block from the report
+            report = full_response.replace(code_match.group(0), "").strip()
+            
+            # Generate image
+            try:
+                image_b64 = execute_diagram_code(diagram_code)
+            except Exception as e:
+                logger.error(f"Failed to generate initial diagram: {e}")
+                # We still save the code so user can fix it
+            
+        # Save to DB
+        project.architecture_report = report
+        project.architecture_diagram = diagram_code
+        db.commit()
+        
+        return ArchitectureResponse(
+            report=report,
+            diagram=diagram_code,
+            image=image_b64
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating architecture: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Cleanup
+        if repo_path:
+            cleanup_repo(repo_path)

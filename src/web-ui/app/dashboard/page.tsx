@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+import Link from "next/link"
 import {
     Bar,
     BarChart,
@@ -24,68 +26,47 @@ import {
 } from "recharts"
 import { ArrowUpRight, ShieldAlert, ShieldCheck, Shield, Activity } from "lucide-react"
 
-// Mock Data
-const severityData = [
-    { name: "Critical", count: 12, fill: "#ef4444" },
-    { name: "High", count: 25, fill: "#f97316" },
-    { name: "Medium", count: 45, fill: "#eab308" },
-    { name: "Low", count: 80, fill: "#3b82f6" },
-]
-
-const trendData = [
-    { date: "Mon", findings: 145 },
-    { date: "Tue", findings: 152 },
-    { date: "Wed", findings: 148 },
-    { date: "Thu", findings: 162 },
-    { date: "Fri", findings: 158 },
-    { date: "Sat", findings: 155 },
-    { date: "Sun", findings: 162 },
-]
-
-const recentFindings = [
-    {
-        id: "VULN-2024-001",
-        title: "SQL Injection in Login Handler",
-        severity: "Critical",
-        repo: "auth-service",
-        status: "Open",
-        date: "2024-11-29",
-    },
-    {
-        id: "VULN-2024-002",
-        title: "Outdated Dependency: lodash",
-        severity: "High",
-        repo: "frontend-app",
-        status: "In Progress",
-        date: "2024-11-29",
-    },
-    {
-        id: "VULN-2024-003",
-        title: "Hardcoded AWS Credentials",
-        severity: "Critical",
-        repo: "data-pipeline",
-        status: "Assigned",
-        date: "2024-11-28",
-    },
-    {
-        id: "VULN-2024-004",
-        title: "Missing CSRF Token",
-        severity: "Medium",
-        repo: "user-dashboard",
-        status: "Open",
-        date: "2024-11-28",
-    },
-    {
-        id: "VULN-2024-005",
-        title: "Insecure Direct Object Reference",
-        severity: "High",
-        repo: "api-gateway",
-        status: "Resolved",
-        date: "2024-11-27",
-    },
-]
+const API_BASE = "http://localhost:8000"
 
 export default function DashboardPage() {
+    const [summary, setSummary] = useState({
+        total_open_findings: 0,
+        critical_open_findings: 0,
+        repositories_scanned: 0,
+        mttr_days: 0
+    })
+    const [severityData, setSeverityData] = useState([])
+    const [trendData, setTrendData] = useState([])
+    const [recentFindings, setRecentFindings] = useState([])
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [summaryRes, severityRes, trendRes, recentRes] = await Promise.all([
+                    fetch(`${API_BASE}/analytics/summary`),
+                    fetch(`${API_BASE}/analytics/severity-distribution`),
+                    fetch(`${API_BASE}/analytics/trends`),
+                    fetch(`${API_BASE}/analytics/recent-findings`)
+                ])
+
+                if (summaryRes.ok) setSummary(await summaryRes.json())
+                if (severityRes.ok) setSeverityData(await severityRes.json())
+                if (trendRes.ok) setTrendData(await trendRes.json())
+                if (recentRes.ok) setRecentFindings(await recentRes.json())
+            } catch (error) {
+                console.error("Failed to fetch dashboard data:", error)
+            } finally {
+                setLoading(false)
+            }
+        }
+
+        fetchData()
+        // Refresh every 30 seconds
+        const interval = setInterval(fetchData, 30000)
+        return () => clearInterval(interval)
+    }, [])
+
     return (
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -95,9 +76,9 @@ export default function DashboardPage() {
                         <ShieldAlert className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">162</div>
+                        <div className="text-2xl font-bold">{summary.total_open_findings}</div>
                         <p className="text-xs text-muted-foreground">
-                            +12% from last week
+                            Open vulnerabilities
                         </p>
                     </CardContent>
                 </Card>
@@ -107,9 +88,9 @@ export default function DashboardPage() {
                         <Activity className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-red-500">12</div>
+                        <div className="text-2xl font-bold text-red-500">{summary.critical_open_findings}</div>
                         <p className="text-xs text-muted-foreground">
-                            +2 since yesterday
+                            Requires immediate attention
                         </p>
                     </CardContent>
                 </Card>
@@ -119,9 +100,9 @@ export default function DashboardPage() {
                         <Shield className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">24</div>
+                        <div className="text-2xl font-bold">{summary.repositories_scanned}</div>
                         <p className="text-xs text-muted-foreground">
-                            100% coverage
+                            Active repositories
                         </p>
                     </CardContent>
                 </Card>
@@ -131,9 +112,9 @@ export default function DashboardPage() {
                         <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">4.2 Days</div>
+                        <div className="text-2xl font-bold">{summary.mttr_days} Days</div>
                         <p className="text-xs text-muted-foreground">
-                            -1.5 days from last month
+                            Average resolution time
                         </p>
                     </CardContent>
                 </Card>
@@ -194,7 +175,7 @@ export default function DashboardPage() {
                                     axisLine={false}
                                 />
                                 <Tooltip />
-                                <Bar dataKey="count" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -227,31 +208,47 @@ export default function DashboardPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {recentFindings.map((finding) => (
-                                <TableRow key={finding.id}>
-                                    <TableCell className="font-medium">{finding.id}</TableCell>
-                                    <TableCell>{finding.title}</TableCell>
-                                    <TableCell>
-                                        <Badge
-                                            variant={
-                                                finding.severity === "Critical"
-                                                    ? "destructive"
-                                                    : finding.severity === "High"
-                                                        ? "default" // Orange isn't default, but we can style it later
-                                                        : "secondary"
-                                            }
-                                            className={
-                                                finding.severity === "High" ? "bg-orange-500 hover:bg-orange-600" : ""
-                                            }
-                                        >
-                                            {finding.severity}
-                                        </Badge>
+                            {recentFindings.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                                        No critical findings found.
                                     </TableCell>
-                                    <TableCell>{finding.repo}</TableCell>
-                                    <TableCell>{finding.status}</TableCell>
-                                    <TableCell className="text-right">{finding.date}</TableCell>
                                 </TableRow>
-                            ))}
+                            ) : (
+                                recentFindings.map((finding: any) => (
+                                    <TableRow key={finding.id}>
+                                        <TableCell className="font-medium">
+                                            <Link href={`/findings/${finding.id}`} className="text-blue-600 hover:underline">
+                                                {finding.id.substring(0, 8)}...
+                                            </Link>
+                                        </TableCell>
+                                        <TableCell>{finding.title}</TableCell>
+                                        <TableCell>
+                                            <Badge
+                                                variant={
+                                                    finding.severity === "Critical"
+                                                        ? "destructive"
+                                                        : finding.severity === "High"
+                                                            ? "default"
+                                                            : "secondary"
+                                                }
+                                                className={
+                                                    finding.severity === "High" ? "bg-orange-500 hover:bg-orange-600" : ""
+                                                }
+                                            >
+                                                {finding.severity}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Link href={`/projects/${finding.repo}`} className="text-blue-600 hover:underline">
+                                                {finding.repo}
+                                            </Link>
+                                        </TableCell>
+                                        <TableCell>{finding.status}</TableCell>
+                                        <TableCell className="text-right">{finding.date}</TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>

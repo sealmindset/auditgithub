@@ -33,6 +33,8 @@ class OpenAIProvider(AIProvider):
         "gpt-4-turbo": {"input": 0.01, "output": 0.03},
         "gpt-4": {"input": 0.03, "output": 0.06},
         "gpt-4-turbo-preview": {"input": 0.01, "output": 0.03},
+        "gpt-4o": {"input": 0.005, "output": 0.015},
+        "gpt-5": {"input": 0.01, "output": 0.03}, # Placeholder
     }
     
     def __init__(self, api_key: str, model: str = "gpt-4-turbo", max_tokens: int = 2000):
@@ -109,7 +111,8 @@ class OpenAIProvider(AIProvider):
             
             # Parse JSON response
             try:
-                analysis_data = json.loads(content)
+                cleaned_content = self._clean_json_response(content)
+                analysis_data = json.loads(cleaned_content)
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse OpenAI response as JSON: {e}")
                 logger.debug(f"Raw content: {content}")
@@ -173,6 +176,96 @@ class OpenAIProvider(AIProvider):
                 tokens_used=0
             )
     
+    def _clean_json_response(self, content: str) -> str:
+        """Clean JSON response from Markdown formatting."""
+        content = content.strip()
+        if content.startswith("```"):
+            # Remove opening ```json or ```
+            content = content.split("\n", 1)[1]
+            # Remove closing ```
+            if content.endswith("```"):
+                content = content.rsplit("```", 1)[0]
+        return content.strip()
+
+    async def triage_finding(
+        self,
+        title: str,
+        description: str,
+        severity: str,
+        scanner: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze and triage a finding using OpenAI.
+        """
+        try:
+            prompt = f"""You are a security analyst. Triage this security finding.
+
+Title: {title}
+Description: {description}
+Reported Severity: {severity}
+Scanner: {scanner}
+
+Analyze the finding and provide a JSON response with:
+1. "priority": Recommended priority (Critical, High, Medium, Low, Info).
+2. "confidence": Confidence score (0.0 - 1.0).
+3. "reasoning": Explanation for the priority rating.
+4. "false_positive_probability": Estimated probability this is a false positive (0.0 - 1.0).
+"""
+            is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
+
+            if is_reasoning_model:
+                # Reasoning models (o1/gpt-5) often don't support 'system' role or 'response_format'
+                # Merge system prompt into user prompt
+                full_prompt = f"System: You are a security analyst.\n\nUser: {prompt}"
+                messages = [{"role": "user", "content": full_prompt}]
+                
+                api_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_completion_tokens": 500
+                }
+            else:
+                # Standard GPT-4 models
+                api_params = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "You are a security analyst."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "max_tokens": 500,
+                    "temperature": 0.3
+                }
+
+            response = await self.client.chat.completions.create(**api_params)
+            content = response.choices[0].message.content
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.total_tokens
+
+            try:
+                cleaned_content = self._clean_json_response(content)
+                return json.loads(cleaned_content)
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse AI triage response. Content: {repr(content)}")
+                return {
+                    "priority": severity,
+                    "confidence": 0.0,
+                    "reasoning": "Failed to parse AI response",
+                    "false_positive_probability": 0.0
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to triage finding: {e}")
+            return {
+                "priority": severity,
+                "confidence": 0.0,
+                "reasoning": f"AI triage failed: {e}",
+                "false_positive_probability": 0.0
+            }
+
     async def explain_timeout(
         self,
         repo_name: str,
@@ -261,21 +354,31 @@ Provide a JSON response with exactly these fields:
 1. "remediation": A detailed explanation of how to fix the issue (in Markdown).
 2. "diff": A unified diff showing the code changes (if applicable). If no code change is possible (e.g. config change), return an empty string.
 """
-            api_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": "You are a security expert providing remediation plans."},
-                    {"role": "user", "content": prompt}
-                ],
-                "response_format": {"type": "json_object"}
-            }
+            is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
 
-            # Model-specific token handling
-            if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
-                api_params["max_completion_tokens"] = 1000
+            if is_reasoning_model:
+                # Reasoning models (o1/gpt-5) often don't support 'system' role or 'response_format'
+                # Merge system prompt into user prompt
+                full_prompt = f"System: You are a security expert providing remediation plans.\n\nUser: {prompt}"
+                messages = [{"role": "user", "content": full_prompt}]
+                
+                api_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_completion_tokens": 1000
+                }
             else:
-                api_params["max_tokens"] = 1000
-                api_params["temperature"] = 0.2
+                # Standard GPT-4 models
+                api_params = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "You are a security expert providing remediation plans."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "max_tokens": 1000,
+                    "temperature": 0.2
+                }
 
             response = await self.client.chat.completions.create(**api_params)
             content = response.choices[0].message.content
@@ -286,9 +389,10 @@ Provide a JSON response with exactly these fields:
             self._total_tokens += response.usage.total_tokens
 
             try:
-                return json.loads(content)
+                cleaned_content = self._clean_json_response(content)
+                return json.loads(cleaned_content)
             except json.JSONDecodeError:
-                logger.error("Failed to parse AI remediation response")
+                logger.error(f"Failed to parse AI remediation response. Content: {repr(content)}")
                 return {"remediation": content, "diff": ""}
 
         except Exception as e:
@@ -329,27 +433,42 @@ Provide a comprehensive Markdown report covering:
 7. **Fault Tolerance & Error Handling**: Retries, circuit breakers, logging (inferred).
 8. **Unique Features**: What stands out?
 
+**IMPORTANT**:
+Include a **Python script** using the `diagrams` library to visualize the architecture.
+- Provide the Python code inside a code block labeled `python`.
+- Import from `diagrams` and `diagrams.aws`, `diagrams.azure`, `diagrams.gcp`, `diagrams.onprem`, etc. as appropriate.
+- **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False` and `filename="architecture_diagram"`.
+- Example: `with Diagram("Architecture", show=False, filename="architecture_diagram"):`
+- Ensure the code is valid and self-contained.
+- Use generic nodes if specific cloud providers are not obvious.
+
 Format as clean Markdown. Be concise but technical.
 """
-            api_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": "You are a Senior Software Architect."},
-                    {"role": "user", "content": prompt}
-                ]
-            }
-            
-            # Model-specific token handling
-            # o1, o3, and gpt-5 models use max_completion_tokens
-            if "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
-                api_params["max_completion_tokens"] = 5000
+            is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
+
+            if is_reasoning_model:
+                # Reasoning models (o1/gpt-5) often don't support 'system' role
+                full_prompt = f"System: You are a Senior Software Architect.\n\nUser: {prompt}"
+                messages = [{"role": "user", "content": full_prompt}]
+                
+                api_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_completion_tokens": 10000
+                }
             else:
-                # GPT-4, etc use max_tokens
-                api_params["max_tokens"] = 4000
-                api_params["temperature"] = 0.3
+                # Standard GPT-4 models
+                api_params = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "You are a Senior Software Architect."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 4000,
+                    "temperature": 0.3
+                }
 
-            logger.info(f"Calling OpenAI with params: model={api_params['model']}, max_tokens={api_params.get('max_tokens')}, max_completion_tokens={api_params.get('max_completion_tokens')}")
-
+            logger.info(f"Calling OpenAI with params: model={api_params['model']}")
 
             response = await self.client.chat.completions.create(**api_params)
             content = response.choices[0].message.content
