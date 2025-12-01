@@ -5,6 +5,7 @@
 
 GEMINI.md
 global_rules.md
+vulnerability_reports/
 
 # Python
 __pycache__/
