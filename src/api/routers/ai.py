@@ -111,6 +111,72 @@ class ArchitectureUpdateRequest(BaseModel):
     report: str
     diagram: Optional[str] = None
 
+class PromptRequest(BaseModel):
+    project_id: str
+    prompt: Optional[str] = None
+
+@router.post("/architecture/prompt")
+async def get_architecture_prompt(
+    request: ArchitectureRequest,
+    db: Session = Depends(get_db),
+    settings: settings = Depends(lambda: settings)
+):
+    """Get the constructed architecture prompt for a project."""
+    try:
+        p_uuid = uuid.UUID(request.project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == request.project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not project.url:
+        raise HTTPException(status_code=400, detail="Project repository URL is missing")
+
+    # Clone repo to temp dir to analyze structure
+    try:
+        # clone_repo_to_temp creates a new temp dir and returns the path
+        temp_dir = clone_repo_to_temp(project.url, settings.GITHUB_TOKEN)
+        
+        try:
+            # Analyze structure
+            from ..utils.repo_context import get_repo_structure, get_config_files
+            file_structure = get_repo_structure(temp_dir)
+            config_files = get_config_files(temp_dir)
+            
+            # Build prompt
+            from ...ai_agent.providers.openai import OpenAIProvider
+            provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
+            prompt = provider.build_architecture_prompt(project.name, file_structure, config_files)
+            
+            return {"prompt": prompt}
+        finally:
+            cleanup_repo(temp_dir)
+            
+    except Exception as e:
+        logger.error(f"Error building prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/architecture/validate")
+async def validate_architecture_prompt(
+    request: PromptRequest,
+    settings: settings = Depends(lambda: settings)
+):
+    """Execute a custom architecture prompt."""
+    if not request.prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    try:
+        from ...ai_agent.providers.openai import OpenAIProvider
+        provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
+        response = await provider.execute_prompt(request.prompt)
+        return {"response": response}
+        
+    except Exception as e:
+        logger.error(f"Error validating prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 class ArchitectureResponse(BaseModel):
     report: str
     diagram: Optional[str] = None # Python code
@@ -174,13 +240,31 @@ async def update_architecture(project_id: str, request: ArchitectureUpdateReques
     if request.diagram is not None:
         project.architecture_diagram = request.diagram
         # Execute code to verify and generate image
+        # Execute code to verify and generate image
         try:
             image_b64 = execute_diagram_code(request.diagram)
         except Exception as e:
-            # If code fails, we still save it but maybe warn?
-            # For now, just log and return no image
-            logger.error(f"Failed to execute updated diagram code: {e}")
-            # raise HTTPException(status_code=400, detail=f"Failed to generate diagram: {str(e)}")
+            logger.warning(f"Updated diagram generation failed: {e}. Attempting auto-fix...")
+            try:
+                # Auto-fix
+                from ...ai_agent.providers.openai import OpenAIProvider
+                provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
+                
+                fixed_code = await provider.fix_and_enhance_diagram_code(request.diagram, str(e))
+                
+                # Clean up code block if present
+                code_match_fix = re.search(r"```python\n(.*?)```", fixed_code, re.DOTALL)
+                if code_match_fix:
+                    fixed_code = code_match_fix.group(1).strip()
+                else:
+                    fixed_code = fixed_code.replace("```python", "").replace("```", "").strip()
+                    
+                project.architecture_diagram = fixed_code
+                image_b64 = execute_diagram_code(fixed_code)
+                logger.info("Auto-fix successful")
+            except Exception as fix_error:
+                logger.error(f"Auto-fix failed: {fix_error}")
+                # raise HTTPException(status_code=400, detail=f"Failed to generate diagram: {str(e)}")
         
     db.commit()
     
@@ -277,11 +361,31 @@ async def generate_architecture(request: ArchitectureRequest, db: Session = Depe
             report = full_response.replace(code_match.group(0), "").strip()
             
             # Generate image
+            # Generate image
             try:
                 image_b64 = execute_diagram_code(diagram_code)
             except Exception as e:
-                logger.error(f"Failed to generate initial diagram: {e}")
-                # We still save the code so user can fix it
+                logger.warning(f"Initial diagram generation failed: {e}. Attempting auto-fix...")
+                try:
+                    # Auto-fix
+                    from ...ai_agent.providers.openai import OpenAIProvider
+                    provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
+                    
+                    fixed_code = await provider.fix_and_enhance_diagram_code(diagram_code, str(e))
+                    
+                    # Clean up code block if present
+                    code_match_fix = re.search(r"```python\n(.*?)```", fixed_code, re.DOTALL)
+                    if code_match_fix:
+                        fixed_code = code_match_fix.group(1).strip()
+                    else:
+                        fixed_code = fixed_code.replace("```python", "").replace("```", "").strip()
+                        
+                    diagram_code = fixed_code
+                    image_b64 = execute_diagram_code(diagram_code)
+                    logger.info("Auto-fix successful")
+                except Exception as fix_error:
+                    logger.error(f"Auto-fix failed: {fix_error}")
+                    # We still save the code so user can fix it
             
         # Save to DB
         project.architecture_report = report

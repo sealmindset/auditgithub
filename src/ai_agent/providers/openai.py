@@ -399,21 +399,18 @@ Provide a JSON response with exactly these fields:
             logger.error(f"Failed to generate remediation: {e}")
             return {"remediation": f"AI generation failed: {e}", "diff": ""}
 
-    async def generate_architecture_overview(
+    def build_architecture_prompt(
         self,
         repo_name: str,
         file_structure: str,
         config_files: Dict[str, str]
     ) -> str:
-        """
-        Generate an architecture overview using OpenAI.
-        """
-        try:
-            configs_str = ""
-            for name, content in config_files.items():
-                configs_str += f"\n--- {name} ---\n{content}\n"
-                
-            prompt = f"""You are a Senior Software Architect. Analyze this repository and provide an End-to-End Architecture Overview.
+        """Build the architecture analysis prompt."""
+        configs_str = ""
+        for name, content in config_files.items():
+            configs_str += f"\n--- {name} ---\n{content}\n"
+            
+        return f"""You are a Senior Software Architect. Analyze this repository and provide an End-to-End Architecture Overview.
             
 Repository: {repo_name}
 
@@ -450,6 +447,27 @@ Include a **Python script** using the `diagrams` library to visualize the archit
 
 Format as clean Markdown. Be concise but technical.
 """
+
+    async def generate_architecture_overview(
+        self,
+        repo_name: str,
+        file_structure: str,
+        config_files: Dict[str, str]
+    ) -> str:
+        """
+        Generate an architecture overview using OpenAI.
+        """
+        try:
+            prompt = self.build_architecture_prompt(repo_name, file_structure, config_files)
+            return await self.execute_prompt(prompt)
+
+        except Exception as e:
+            logger.error(f"Failed to generate architecture overview: {e}")
+            return f"Failed to generate architecture overview: {e}"
+
+    async def execute_prompt(self, prompt: str) -> str:
+        """Execute a raw prompt against the AI model."""
+        try:
             is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
 
             if is_reasoning_model:
@@ -489,10 +507,45 @@ Format as clean Markdown. Be concise but technical.
             self._total_tokens += response.usage.total_tokens
             
             return content
-
+            
         except Exception as e:
-            logger.error(f"Failed to generate architecture overview: {e}")
-            return f"Failed to generate architecture overview: {e}"
+            logger.error(f"Failed to execute prompt: {e}")
+            raise e
+
+    async def fix_and_enhance_diagram_code(self, code: str, error: str) -> str:
+        """
+        Fix broken diagram code and enhance it.
+        """
+        prompt = f"""You are a Python expert specializing in the `diagrams` library.
+The following code failed to execute:
+
+```python
+{code}
+```
+
+Error:
+{error}
+
+**Task**:
+1. **Fix the error**: Correct imports, syntax, or logic errors.
+   - Note: `Internet` is in `diagrams.onprem.network`.
+   - Note: Azure AI services are often in `diagrams.azure.analytics` or `diagrams.azure.ml`.
+2. **Enhance and Beautify**:
+   - Improve the layout and grouping.
+   - Use `Cluster` to group related components logically (e.g., "VPC", "Subnet", "Security Layer").
+   - Add more descriptive labels.
+   - Ensure the diagram is visually appealing and professional.
+3. **Substitute Missing Components**:
+   - If a specific node class is missing or causing import errors, substitute it with a generic one or a suitable alternative from the same provider.
+   - Add a comment explaining the substitution.
+
+**Output**:
+Return ONLY the corrected and enhanced Python code.
+- The code MUST be self-contained (include all imports).
+- The code MUST generate a diagram with `filename="architecture_diagram"` and `show=False`.
+- Do not wrap in markdown code blocks if possible, or I will strip them.
+"""
+        return await self.execute_prompt(prompt)
     
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """

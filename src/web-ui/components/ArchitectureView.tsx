@@ -3,12 +3,13 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, RefreshCw, Save, Edit, X, ImagePlus } from "lucide-react"
+import { Loader2, RefreshCw, Save, Edit, X, ImagePlus, FileEdit } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
+import { PromptEditorDialog } from "@/components/PromptEditorDialog"
 
 interface ArchitectureViewProps {
     projectId: string
@@ -22,6 +23,7 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [editMode, setEditMode] = useState(false)
+    const [promptEditorOpen, setPromptEditorOpen] = useState(false)
     const { toast } = useToast()
 
     // Fetch saved architecture on mount
@@ -107,6 +109,14 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setPromptEditorOpen(true)}
+                        title="Prompt Edit"
+                    >
+                        <FileEdit className="h-4 w-4" />
+                    </Button>
                     {editMode ? (
                         <>
                             <Button variant="outline" onClick={() => setEditMode(false)}>
@@ -252,6 +262,12 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
                     <span className="ml-2 text-muted-foreground">Analyzing repository structure...</span>
                 </div>
             )}
+
+            <PromptEditorDialog
+                projectId={projectId}
+                isOpen={promptEditorOpen}
+                onOpenChange={setPromptEditorOpen}
+            />
         </div>
     )
 }
