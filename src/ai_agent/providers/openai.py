@@ -440,6 +440,11 @@ Include a **Python script** using the `diagrams` library to visualize the archit
 - **NOTE**: `Internet` is located in `diagrams.onprem.network`. Use `from diagrams.onprem.network import Internet`.
 - **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False` and `filename="architecture_diagram"`.
 - Example: `with Diagram("Architecture", show=False, filename="architecture_diagram"):`
+- **VALIDATION**:
+    - If you are unsure about a specific component or connection, use a generic node.
+    - **CRITICAL**: Add a comment in the Python code explaining any gaps, missing information, or assumptions.
+    - Example: `# GAP: Database type unknown, assuming generic SQL`
+    - Example: `# GAP: Auth provider not found in code, assuming internal`
 - Ensure the code is valid and self-contained.
 - Use generic nodes if specific cloud providers are not obvious.
 
