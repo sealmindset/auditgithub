@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, RefreshCw, Save, Edit, X } from "lucide-react"
+import { Loader2, RefreshCw, Save, Edit, X, ImagePlus } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Textarea } from "@/components/ui/textarea"
@@ -137,13 +137,27 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
             )}
 
             <Tabs defaultValue="diagram" className="w-full">
-                <TabsList>
-                    <TabsTrigger value="diagram">Diagram</TabsTrigger>
-                    <TabsTrigger value="code">Python Code</TabsTrigger>
-                    <TabsTrigger value="report">Report</TabsTrigger>
-                </TabsList>
+                <div className="flex items-center justify-between mb-4">
+                    <TabsList>
+                        <TabsTrigger value="diagram">Diagram</TabsTrigger>
+                        <TabsTrigger value="code">Python Code</TabsTrigger>
+                        <TabsTrigger value="report">Report</TabsTrigger>
+                    </TabsList>
+                    {diagramCode && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={saveChanges}
+                            disabled={saving}
+                            title="Create Diagram"
+                        >
+                            <ImagePlus className="mr-2 h-4 w-4" />
+                            Create Diagram
+                        </Button>
+                    )}
+                </div>
 
-                <TabsContent value="diagram" className="mt-4">
+                <TabsContent value="diagram" className="mt-0">
                     <Card>
                         <CardHeader>
                             <CardTitle>Architecture Diagram</CardTitle>
@@ -157,8 +171,16 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
                                     className="max-w-full h-auto"
                                 />
                             ) : (
-                                <div className="text-muted-foreground italic p-8">
-                                    {diagramCode ? "Diagram image not generated. Try editing/saving the code." : "No diagram generated yet."}
+                                <div className="text-muted-foreground italic p-8 text-center">
+                                    {diagramCode ? (
+                                        <div className="space-y-2">
+                                            <p className="text-red-500 font-semibold">Diagram generation failed.</p>
+                                            <p>Check the Python Code tab for errors (e.g., incorrect imports).</p>
+                                            <p className="text-xs text-slate-500">Common fix: Change <code>from diagrams.generic.network import Internet</code> to <code>from diagrams.onprem.network import Internet</code></p>
+                                        </div>
+                                    ) : (
+                                        "No diagram generated yet."
+                                    )}
                                 </div>
                             )}
                         </CardContent>

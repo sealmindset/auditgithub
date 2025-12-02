@@ -437,6 +437,7 @@ Provide a comprehensive Markdown report covering:
 Include a **Python script** using the `diagrams` library to visualize the architecture.
 - Provide the Python code inside a code block labeled `python`.
 - Import from `diagrams` and `diagrams.aws`, `diagrams.azure`, `diagrams.gcp`, `diagrams.onprem`, etc. as appropriate.
+- **NOTE**: `Internet` is located in `diagrams.onprem.network`. Use `from diagrams.onprem.network import Internet`.
 - **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False` and `filename="architecture_diagram"`.
 - Example: `with Diagram("Architecture", show=False, filename="architecture_diagram"):`
 - Ensure the code is valid and self-contained.
