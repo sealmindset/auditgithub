@@ -403,13 +403,65 @@ Provide a JSON response with exactly these fields:
         self,
         repo_name: str,
         file_structure: str,
-        config_files: Dict[str, str]
+        config_files: Dict[str, str],
+        diagrams_index: Optional[Dict[str, str]] = None
     ) -> str:
         """Build the architecture analysis prompt."""
         configs_str = ""
         for name, content in config_files.items():
             configs_str += f"\n--- {name} ---\n{content}\n"
             
+        index_str = ""
+        if diagrams_index:
+            # We can't include the whole index (too large), but we can mention it's available
+            # Or better, we can provide a condensed list of common nodes or just instruct the AI
+            # that we have an index and it should try to use specific names.
+            # Actually, for the initial prompt, the AI doesn't know what it needs yet.
+            # So we just give it general instructions.
+            # BUT, if we want it to use specific icons, we could provide a list of ALL available node names (just names).
+            # That might be a few thousand tokens.
+            # Let's try providing a hint.
+            pass
+
+        # Cloud Provider Detection & Icon Preference
+        provider_preference = ""
+        is_azure = "azure" in repo_name.lower() or "azure" in file_structure.lower() or "azure" in configs_str.lower()
+        is_aws = "aws" in repo_name.lower() or "aws" in file_structure.lower() or "aws" in configs_str.lower()
+        is_gcp = "gcp" in repo_name.lower() or "google" in repo_name.lower() or "gcp" in configs_str.lower()
+
+        if is_azure:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: AZURE**
+This repository appears to be an Azure project. You **MUST** prioritize using icons from `diagrams.azure.*`.
+**Preferred Azure Mappings**:
+- Network Security Group (NSG) -> `from diagrams.azure.network import NetworkSecurityGroupsClassic`
+- Virtual Network (VNet) -> `from diagrams.azure.network import VirtualNetworks`
+- Subnet -> `from diagrams.azure.network import Subnets`
+- Private DNS Zone -> `from diagrams.azure.network import DNSPrivateZones`
+- Key Vault -> `from diagrams.azure.security import KeyVaults`
+- Managed Identity -> `from diagrams.azure.identity import ManagedIdentities`
+- Azure OpenAI -> `from diagrams.azure.ml import AzureOpenAI`
+- App Service -> `from diagrams.azure.web import AppServices`
+- Function App -> `from diagrams.azure.compute import FunctionApps`
+"""
+        elif is_aws:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: AWS**
+This repository appears to be an AWS project. You **MUST** prioritize using icons from `diagrams.aws.*`.
+"""
+        elif is_gcp:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: GCP**
+This repository appears to be a Google Cloud project. You **MUST** prioritize using icons from `diagrams.gcp.*`.
+"""
+        else:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: GENERIC/HYBRID**
+No specific cloud provider detected.
+- Use **generic icons** where possible (e.g. `diagrams.onprem.*`, `diagrams.programming.*`).
+- Use the most appropriate technology-specific icon if a generic one is not available (e.g. `diagrams.onprem.database.PostgreSQL` for Postgres).
+"""
+
         return f"""You are a Senior Software Architect. Analyze this repository and provide an End-to-End Architecture Overview.
             
 Repository: {repo_name}
@@ -437,6 +489,7 @@ Include a **Python script** using the `diagrams` library to visualize the archit
 - **NOTE**: `Internet` is located in `diagrams.onprem.network`. Use `from diagrams.onprem.network import Internet`.
 - **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False` and `filename="architecture_diagram"`.
 - Example: `with Diagram("Architecture", show=False, filename="architecture_diagram"):`
+{provider_preference}
 - **VALIDATION**:
     - If you are unsure about a specific component or connection, use a generic node.
     - **CRITICAL**: Add a comment in the Python code explaining any gaps, missing information, or assumptions.
@@ -512,10 +565,75 @@ Format as clean Markdown. Be concise but technical.
             logger.error(f"Failed to execute prompt: {e}")
             raise e
 
-    async def fix_and_enhance_diagram_code(self, code: str, error: str) -> str:
+    async def fix_and_enhance_diagram_code(
+        self, 
+        code: str, 
+        error: str,
+        diagrams_index: Optional[Dict[str, str]] = None
+    ) -> str:
         """
         Fix broken diagram code and enhance it.
         """
+        index_context = ""
+        if diagrams_index:
+            # We can provide a look-up context.
+            # Since we don't know which nodes are needed, we can't provide specific paths easily without analyzing the code.
+            # But we can tell the AI that we have an index and it can "ask" or we can just dump the keys?
+            # Dumping keys (node names) might be helpful.
+            # There are ~1000 nodes. That's a lot of tokens.
+            # Let's try to extract potential node names from the code and look them up.
+            import re
+            potential_nodes = set(re.findall(r'\b([A-Z][a-zA-Z0-9]*)\b', code))
+            found_nodes = {}
+            for node in potential_nodes:
+                if node in diagrams_index:
+                    found_nodes[node] = diagrams_index[node]
+            
+            if found_nodes:
+                index_context = "\n**Available Node Imports (Found in Index):**\n"
+                for node, path in found_nodes.items():
+                    index_context += f"- {node}: `from {path.rsplit('.', 1)[0]} import {node}`\n"
+            
+            # Also add a general instruction
+            index_context += "\n**Note**: You can use any node from the `diagrams` library. If you need a specific icon (e.g. NetworkSecurityGroup), ensure you import it correctly.\n"
+
+        # Cloud Provider Preference
+        provider_preference = ""
+        is_azure = "azure" in code.lower() or "azure" in error.lower()
+        is_aws = "aws" in code.lower() or "aws" in error.lower() or "amazon" in code.lower()
+        is_gcp = "gcp" in code.lower() or "google" in code.lower()
+
+        if is_azure:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: AZURE**
+You **MUST** prioritize using icons from `diagrams.azure.*`.
+**Preferred Azure Mappings**:
+- Network Security Group (NSG) -> `from diagrams.azure.network import NetworkSecurityGroupsClassic`
+- Virtual Network (VNet) -> `from diagrams.azure.network import VirtualNetworks`
+- Subnet -> `from diagrams.azure.network import Subnets`
+- Private DNS Zone -> `from diagrams.azure.network import DNSPrivateZones`
+- Key Vault -> `from diagrams.azure.security import KeyVaults`
+- Managed Identity -> `from diagrams.azure.identity import ManagedIdentities`
+- Azure OpenAI -> `from diagrams.azure.ml import AzureOpenAI`
+"""
+        elif is_aws:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: AWS**
+You **MUST** prioritize using icons from `diagrams.aws.*`.
+"""
+        elif is_gcp:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: GCP**
+You **MUST** prioritize using icons from `diagrams.gcp.*`.
+"""
+        else:
+            provider_preference = """
+**CLOUD PROVIDER PREFERENCE: GENERIC/HYBRID**
+No specific cloud provider detected.
+- Use **generic icons** where possible (e.g. `diagrams.onprem.*`, `diagrams.programming.*`).
+- Use the most appropriate technology-specific icon if a generic one is not available (e.g. `diagrams.onprem.database.PostgreSQL` for Postgres).
+"""
+
         prompt = f"""You are a Python expert specializing in the `diagrams` library.
 The following code failed to execute:
 
@@ -526,10 +644,13 @@ The following code failed to execute:
 Error:
 {error}
 
+{index_context}
+{provider_preference}
+
 **Task**:
 1. **Fix the error**: Correct imports, syntax, or logic errors.
+   - Use the provided **Available Node Imports** to fix `ImportError`.
    - Note: `Internet` is in `diagrams.onprem.network`.
-   - Note: Azure AI services are often in `diagrams.azure.analytics` or `diagrams.azure.ml`.
 2. **Enhance and Beautify**:
    - Improve the layout and grouping.
    - Use `Cluster` to group related components logically (e.g., "VPC", "Subnet", "Security Layer").

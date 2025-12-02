@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, RefreshCw, Save, Edit, X, ImagePlus, FileEdit } from "lucide-react"
+import { Loader2, RefreshCw, Save, Edit, X, ImagePlus, FileEdit, Wand2 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Textarea } from "@/components/ui/textarea"
@@ -153,18 +153,49 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
                         <TabsTrigger value="code">Python Code</TabsTrigger>
                         <TabsTrigger value="report">Report</TabsTrigger>
                     </TabsList>
-                    {diagramCode && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={saveChanges}
-                            disabled={saving}
-                            title="Create Diagram"
-                        >
-                            <ImagePlus className="mr-2 h-4 w-4" />
-                            Create Diagram
-                        </Button>
-                    )}
+                    <div className="flex gap-2">
+                        {diagramCode && (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={async () => {
+                                        setLoading(true)
+                                        try {
+                                            const res = await fetch(`http://localhost:8000/ai/architecture/refine`, {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ project_id: projectId, code: diagramCode })
+                                            })
+                                            if (!res.ok) throw new Error("Failed to refine diagram")
+                                            const data = await res.json()
+                                            setDiagramCode(data.code)
+                                            toast({ title: "Diagram Refined", description: "Icons updated based on detected cloud provider." })
+                                        } catch (e) {
+                                            toast({ title: "Error", description: "Failed to refine diagram", variant: "destructive" })
+                                        } finally {
+                                            setLoading(false)
+                                        }
+                                    }}
+                                    disabled={loading || saving}
+                                    title="Refine Icons"
+                                >
+                                    <Wand2 className="mr-2 h-4 w-4" />
+                                    Refine Icons
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={saveChanges}
+                                    disabled={saving}
+                                    title="Create Diagram"
+                                >
+                                    <ImagePlus className="mr-2 h-4 w-4" />
+                                    Create Diagram
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <TabsContent value="diagram" className="mt-0">
@@ -234,7 +265,7 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
                                     className="min-h-[600px] font-mono"
                                 />
                             ) : (
-                                <div className="prose dark:prose-invert max-w-none">
+                                <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:underline prose-pre:bg-slate-900 prose-pre:text-slate-50">
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                         {report}
                                     </ReactMarkdown>

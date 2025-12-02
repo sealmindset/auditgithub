@@ -25,6 +25,14 @@ except Exception as e:
     logger.warning(f"Failed to initialize AI Agent: {e}")
     ai_agent = None
 
+# Initialize Diagrams Index
+from ..utils.diagrams_indexer import get_diagrams_index
+diagrams_index = {}
+try:
+    diagrams_index = get_diagrams_index()
+except Exception as e:
+    logger.warning(f"Failed to initialize diagrams index: {e}")
+
 class RemediationRequest(BaseModel):
     vuln_type: str
     description: str
@@ -148,7 +156,7 @@ async def get_architecture_prompt(
             # Build prompt
             from ...ai_agent.providers.openai import OpenAIProvider
             provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
-            prompt = provider.build_architecture_prompt(project.name, file_structure, config_files)
+            prompt = provider.build_architecture_prompt(project.name, file_structure, config_files, diagrams_index)
             
             return {"prompt": prompt}
         finally:
@@ -175,6 +183,41 @@ async def validate_architecture_prompt(
         
     except Exception as e:
         logger.error(f"Error validating prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class RefineRequest(BaseModel):
+    project_id: str
+    code: str
+
+@router.post("/architecture/refine")
+async def refine_architecture_diagram(
+    request: RefineRequest,
+    settings: settings = Depends(lambda: settings)
+):
+    """Refine diagram code to use correct cloud provider icons."""
+    if not request.code:
+        raise HTTPException(status_code=400, detail="Code is required")
+
+    try:
+        from ...ai_agent.providers.openai import OpenAIProvider
+        provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
+        
+        # We pass a specific "error" message that acts as the instruction
+        instruction = "Refine this code to use the correct cloud provider icons based on the detected technology. Enforce the Cloud Provider Preference strictly."
+        
+        refined_code = await provider.fix_and_enhance_diagram_code(request.code, instruction, diagrams_index)
+        
+        # Clean up code block if present
+        code_match = re.search(r"```python\n(.*?)```", refined_code, re.DOTALL)
+        if code_match:
+            refined_code = code_match.group(1).strip()
+        else:
+            refined_code = refined_code.replace("```python", "").replace("```", "").strip()
+            
+        return {"code": refined_code}
+        
+    except Exception as e:
+        logger.error(f"Error refining diagram: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class ArchitectureResponse(BaseModel):
@@ -250,7 +293,7 @@ async def update_architecture(project_id: str, request: ArchitectureUpdateReques
                 from ...ai_agent.providers.openai import OpenAIProvider
                 provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
                 
-                fixed_code = await provider.fix_and_enhance_diagram_code(request.diagram, str(e))
+                fixed_code = await provider.fix_and_enhance_diagram_code(request.diagram, str(e), diagrams_index)
                 
                 # Clean up code block if present
                 code_match_fix = re.search(r"```python\n(.*?)```", fixed_code, re.DOTALL)
@@ -371,7 +414,7 @@ async def generate_architecture(request: ArchitectureRequest, db: Session = Depe
                     from ...ai_agent.providers.openai import OpenAIProvider
                     provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
                     
-                    fixed_code = await provider.fix_and_enhance_diagram_code(diagram_code, str(e))
+                    fixed_code = await provider.fix_and_enhance_diagram_code(diagram_code, str(e), diagrams_index)
                     
                     # Clean up code block if present
                     code_match_fix = re.search(r"```python\n(.*?)```", fixed_code, re.DOTALL)
