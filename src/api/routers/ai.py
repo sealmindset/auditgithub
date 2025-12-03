@@ -192,6 +192,7 @@ class RefineRequest(BaseModel):
 @router.post("/architecture/refine")
 async def refine_architecture_diagram(
     request: RefineRequest,
+    db: Session = Depends(get_db),
     settings: settings = Depends(lambda: settings)
 ):
     """Refine diagram code to use correct cloud provider icons."""
@@ -199,13 +200,25 @@ async def refine_architecture_diagram(
         raise HTTPException(status_code=400, detail="Code is required")
 
     try:
+        # Fetch the project to get the architecture report
+        project = db.query(Project).filter(Project.id == request.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+            
+        report_context = project.architecture_report or ""
+
         from ...ai_agent.providers.openai import OpenAIProvider
         provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.AI_MODEL)
         
         # We pass a specific "error" message that acts as the instruction
-        instruction = "Refine this code to use the correct cloud provider icons based on the detected technology. Enforce the Cloud Provider Preference strictly."
+        instruction = "Refine this code to use the correct cloud provider icons based on the detected technology in the Architecture Report. Enforce the Cloud Provider Preference strictly."
         
-        refined_code = await provider.fix_and_enhance_diagram_code(request.code, instruction, diagrams_index)
+        refined_code = await provider.fix_and_enhance_diagram_code(
+            request.code, 
+            instruction, 
+            diagrams_index,
+            report_context=report_context
+        )
         
         # Clean up code block if present
         code_match = re.search(r"```python\n(.*?)```", refined_code, re.DOTALL)

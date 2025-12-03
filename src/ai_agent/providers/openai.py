@@ -423,43 +423,26 @@ Provide a JSON response with exactly these fields:
             # Let's try providing a hint.
             pass
 
-        # Cloud Provider Detection & Icon Preference
-        provider_preference = ""
-        is_azure = "azure" in repo_name.lower() or "azure" in file_structure.lower() or "azure" in configs_str.lower()
-        is_aws = "aws" in repo_name.lower() or "aws" in file_structure.lower() or "aws" in configs_str.lower()
-        is_gcp = "gcp" in repo_name.lower() or "google" in repo_name.lower() or "gcp" in configs_str.lower()
-
-        if is_azure:
-            provider_preference = """
-**CLOUD PROVIDER PREFERENCE: AZURE**
-This repository appears to be an Azure project. You **MUST** prioritize using icons from `diagrams.azure.*`.
-**Preferred Azure Mappings**:
-- Network Security Group (NSG) -> `from diagrams.azure.network import NetworkSecurityGroupsClassic`
-- Virtual Network (VNet) -> `from diagrams.azure.network import VirtualNetworks`
-- Subnet -> `from diagrams.azure.network import Subnets`
-- Private DNS Zone -> `from diagrams.azure.network import DNSPrivateZones`
-- Key Vault -> `from diagrams.azure.security import KeyVaults`
-- Managed Identity -> `from diagrams.azure.identity import ManagedIdentities`
-- Azure OpenAI -> `from diagrams.azure.ml import AzureOpenAI`
-- App Service -> `from diagrams.azure.web import AppServices`
-- Function App -> `from diagrams.azure.compute import FunctionApps`
-"""
-        elif is_aws:
-            provider_preference = """
-**CLOUD PROVIDER PREFERENCE: AWS**
-This repository appears to be an AWS project. You **MUST** prioritize using icons from `diagrams.aws.*`.
-"""
-        elif is_gcp:
-            provider_preference = """
-**CLOUD PROVIDER PREFERENCE: GCP**
-This repository appears to be a Google Cloud project. You **MUST** prioritize using icons from `diagrams.gcp.*`.
-"""
-        else:
-            provider_preference = """
-**CLOUD PROVIDER PREFERENCE: GENERIC/HYBRID**
-No specific cloud provider detected.
-- Use **generic icons** where possible (e.g. `diagrams.onprem.*`, `diagrams.programming.*`).
-- Use the most appropriate technology-specific icon if a generic one is not available (e.g. `diagrams.onprem.database.PostgreSQL` for Postgres).
+        # Cloud Provider Preference - Delegate to AI
+        provider_preference = """
+**CLOUD PROVIDER & ICON INSTRUCTIONS**:
+1. **Identify the Cloud Provider**: Based on the file structure, config files, and code analysis, determine if this is an **Azure**, **AWS**, or **GCP** project.
+2. **Select the Correct Icons**: You **MUST** use the icons specific to the identified provider.
+   - **Azure**: Use `diagrams.azure.*`.
+     - NSG -> `diagrams.azure.network.NetworkSecurityGroupsClassic`
+     - VNet -> `diagrams.azure.network.VirtualNetworks`
+     - Subnet -> `diagrams.azure.network.Subnets`
+     - Private DNS -> `diagrams.azure.network.DNSPrivateZones`
+     - Key Vault -> `diagrams.azure.security.KeyVaults`
+     - Managed Identity -> `diagrams.azure.identity.ManagedIdentities`
+     - Azure OpenAI -> `diagrams.azure.ml.AzureOpenAI`
+     - App Service -> `diagrams.azure.web.AppServices`
+     - Function App -> `diagrams.azure.compute.FunctionApps`
+   - **AWS**: Use `diagrams.aws.*`.
+   - **GCP**: Use `diagrams.gcp.*`.
+3. **Fallback**: If NO specific cloud provider is detected (Generic/Hybrid):
+   - Use **generic icons** only if the component is not identifiable.
+   - Use the most appropriate technology-specific icons first (e.g. `diagrams.onprem.database.PostgreSQL`).
 """
 
         return f"""You are a Senior Software Architect. Analyze this repository and provide an End-to-End Architecture Overview.
@@ -487,8 +470,11 @@ Include a **Python script** using the `diagrams` library to visualize the archit
 - Provide the Python code inside a code block labeled `python`.
 - Import from `diagrams` and `diagrams.aws`, `diagrams.azure`, `diagrams.gcp`, `diagrams.onprem`, etc. as appropriate.
 - **NOTE**: `Internet` is located in `diagrams.onprem.network`. Use `from diagrams.onprem.network import Internet`.
-- **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False` and `filename="architecture_diagram"`.
-- Example: `with Diagram("Architecture", show=False, filename="architecture_diagram"):`
+- **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False`, `filename="architecture_diagram"`, and **graph_attr** for a clean layout.
+- **LAYOUT INSTRUCTIONS**:
+    - Use `graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.0"}}` to ensure the diagram is spaced out and not cluttered.
+    - Group related components into `Cluster`s (e.g., "VPC", "Database Layer", "Services").
+- Example: `with Diagram("Architecture", show=False, filename="architecture_diagram", graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.0"}}):`
 {provider_preference}
 - **VALIDATION**:
     - If you are unsure about a specific component or connection, use a generic node.
@@ -569,7 +555,8 @@ Format as clean Markdown. Be concise but technical.
         self, 
         code: str, 
         error: str,
-        diagrams_index: Optional[Dict[str, str]] = None
+        diagrams_index: Optional[Dict[str, str]] = None,
+        report_context: Optional[str] = None
     ) -> str:
         """
         Fix broken diagram code and enhance it.
@@ -599,13 +586,18 @@ Format as clean Markdown. Be concise but technical.
 
         # Cloud Provider Preference
         provider_preference = ""
-        is_azure = "azure" in code.lower() or "azure" in error.lower()
-        is_aws = "aws" in code.lower() or "aws" in error.lower() or "amazon" in code.lower()
-        is_gcp = "gcp" in code.lower() or "google" in code.lower()
+        
+        # Use report context if available to determine provider
+        context_to_check = (report_context or "") + code + error
+        
+        is_azure = "azure" in context_to_check.lower()
+        is_aws = "aws" in context_to_check.lower() or "amazon" in context_to_check.lower()
+        is_gcp = "gcp" in context_to_check.lower() or "google" in context_to_check.lower()
 
         if is_azure:
             provider_preference = """
 **CLOUD PROVIDER PREFERENCE: AZURE**
+Based on the Architecture Report/Code, this is an **Azure** project.
 You **MUST** prioritize using icons from `diagrams.azure.*`.
 **Preferred Azure Mappings**:
 - Network Security Group (NSG) -> `from diagrams.azure.network import NetworkSecurityGroupsClassic`
@@ -619,19 +611,21 @@ You **MUST** prioritize using icons from `diagrams.azure.*`.
         elif is_aws:
             provider_preference = """
 **CLOUD PROVIDER PREFERENCE: AWS**
+Based on the Architecture Report/Code, this is an **AWS** project.
 You **MUST** prioritize using icons from `diagrams.aws.*`.
 """
         elif is_gcp:
             provider_preference = """
 **CLOUD PROVIDER PREFERENCE: GCP**
+Based on the Architecture Report/Code, this is an **GCP** project.
 You **MUST** prioritize using icons from `diagrams.gcp.*`.
 """
         else:
             provider_preference = """
-**CLOUD PROVIDER PREFERENCE: GENERIC/HYBRID**
-No specific cloud provider detected.
-- Use **generic icons** where possible (e.g. `diagrams.onprem.*`, `diagrams.programming.*`).
-- Use the most appropriate technology-specific icon if a generic one is not available (e.g. `diagrams.onprem.database.PostgreSQL` for Postgres).
+**CLOUD PROVIDER PREFERENCE: CLOUD PROVIDER CENTRIC**
+When No specific cloud provider is detected.
+- Use **generic icons** only when if the cloud provider or the resource or components are not identifiable
+- Use the most appropriate technology-specific icons first, or all other attempts have been exhasuted then use generic icons
 """
 
         prompt = f"""You are a Python expert specializing in the `diagrams` library.
@@ -652,6 +646,7 @@ Error:
    - Use the provided **Available Node Imports** to fix `ImportError`.
    - Note: `Internet` is in `diagrams.onprem.network`.
 2. **Enhance and Beautify**:
+   - **LAYOUT**: Use `graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.0"}}` in the `Diagram` constructor to ensure the diagram is spaced out and clean.
    - Improve the layout and grouping.
    - Use `Cluster` to group related components logically (e.g., "VPC", "Subnet", "Security Layer").
    - Add more descriptive labels.
