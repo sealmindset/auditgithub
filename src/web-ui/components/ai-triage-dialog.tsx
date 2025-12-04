@@ -32,7 +32,8 @@ export function AiTriageDialog({ finding }: AiTriageDialogProps) {
                     title: finding.title,
                     description: finding.description,
                     severity: finding.severity,
-                    scanner: finding.scanner_name || "unknown"
+                    scanner: finding.scanner_name || "unknown",
+                    finding_id: finding.id
                 })
             })
             if (res.ok) {

@@ -329,6 +329,77 @@ def ingest_ossgadget(db: Session, repo: models.Repository, scan_run: models.Scan
 
     return count
 
+def ingest_contributors(db: Session, repo: models.Repository, report_path: Path):
+    """Ingest contributor data from Repo Intel JSON."""
+    intel_path = report_path.parent / f"{repo.name}_intel.json"
+    if not intel_path.exists():
+        return 0
+
+    try:
+        with open(intel_path, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        return 0
+
+    contributors_data = data.get('contributors', {}).get('top_contributors', [])
+    count = 0
+    
+    # Clear existing contributors for this repo to avoid duplicates/stale data
+    db.query(models.Contributor).filter(models.Contributor.repository_id == repo.id).delete()
+    
+    for c in contributors_data:
+        contributor = models.Contributor(
+            repository_id=repo.id,
+            name=c.get('name', 'Unknown'),
+            email=c.get('email', ''),
+            commits=c.get('commits', 0),
+            last_commit_at=datetime.fromisoformat(c.get('last_commit_at')) if c.get('last_commit_at') else None,
+            languages=c.get('languages', []),
+            risk_score=0 # Placeholder
+        )
+        db.add(contributor)
+        count += 1
+        
+    return count
+
+def ingest_languages(db: Session, repo: models.Repository, report_path: Path):
+    """Ingest language stats from Repo Intel JSON."""
+    intel_path = report_path.parent / f"{repo.name}_intel.json"
+    if not intel_path.exists():
+        logger.warning(f"Intel report not found at {intel_path}")
+        return 0
+
+    try:
+        with open(intel_path, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to decode JSON from {intel_path}")
+        return 0
+
+    languages_data = data.get('languages', {})
+    logger.info(f"Found {len(languages_data)} languages for {repo.name}")
+    count = 0
+    
+    # Clear existing language stats for this repo
+    db.query(models.LanguageStat).filter(models.LanguageStat.repository_id == repo.id).delete()
+    
+    for lang_name, stats in languages_data.items():
+        if not isinstance(stats, dict):
+            continue
+            
+        lang_stat = models.LanguageStat(
+            repository_id=repo.id,
+            name=lang_name,
+            files=stats.get('nFiles', 0),
+            lines=stats.get('code', 0), # Using code lines as primary 'lines'
+            blanks=stats.get('blank', 0),
+            comments=stats.get('comment', 0)
+        )
+        db.add(lang_stat)
+        count += 1
+        
+    return count
+
 def ingest_single_repo(repo_name: str, repo_dir: str):
     """Ingest findings for a single repository."""
     project_dir = Path(repo_dir)
@@ -400,6 +471,12 @@ def ingest_single_repo(repo_name: str, repo_dir: str):
         # OSSGadget (SARIF)
         ossgadget_report = project_dir / f"{repo_name}_ossgadget.sarif"
         findings_count += ingest_ossgadget(db, repo, scan_run, ossgadget_report)
+        
+        # Contributors
+        ingest_contributors(db, repo, project_dir / "dummy")
+        
+        # Languages
+        ingest_languages(db, repo, project_dir / "dummy")
         
         # Update ScanRun stats
         scan_run.findings_count = findings_count
@@ -492,6 +569,12 @@ def ingest_reports(report_dir: str = "vulnerability_reports"):
             # OSSGadget (SARIF)
             ossgadget_report = project_dir / f"{repo_name}_ossgadget.sarif"
             findings_count += ingest_ossgadget(db, repo, scan_run, ossgadget_report)
+            
+            # Contributors
+            ingest_contributors(db, repo, project_dir / "dummy")
+            
+            # Languages
+            ingest_languages(db, repo, project_dir / "dummy")
             
             # Update ScanRun stats
             scan_run.findings_count = findings_count

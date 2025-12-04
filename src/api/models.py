@@ -104,6 +104,22 @@ class Finding(Base):
     assignee = relationship("User", back_populates="assigned_findings")
     history = relationship("FindingHistory", back_populates="finding")
     comments = relationship("FindingComment", back_populates="finding")
+    remediations = relationship("Remediation", back_populates="finding")
+
+class Remediation(Base):
+    __tablename__ = "remediations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('remediations_api_id_seq'), unique=True)
+    finding_id = Column(UUID(as_uuid=True), ForeignKey("findings.id"))
+    
+    remediation_text = Column(Text)
+    diff = Column(Text)
+    confidence = Column(Numeric(3, 2))
+    
+    created_at = Column(DateTime, server_default=func.now())
+    
+    finding = relationship("Finding", back_populates="remediations")
 
 class User(Base):
     __tablename__ = "users"
@@ -161,3 +177,54 @@ class SystemConfig(Base):
     description = Column(Text)
     is_encrypted = Column(Boolean, default=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class ArchitectureVersion(Base):
+    __tablename__ = "architecture_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id"))
+    version_number = Column(Integer, nullable=False)
+    report_content = Column(Text)
+    diagram_code = Column(Text)
+    description = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    repository = relationship("Repository", back_populates="architecture_versions")
+    creator = relationship("User")
+
+class Contributor(Base):
+    __tablename__ = "contributors"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id"))
+    name = Column(String, nullable=False)
+    email = Column(String)
+    commits = Column(Integer, default=0)
+    last_commit_at = Column(DateTime)
+    languages = Column(JSONB)  # Store inferred languages as JSON array
+    risk_score = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    repository = relationship("Repository", back_populates="contributors")
+
+class LanguageStat(Base):
+    __tablename__ = "language_stats"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id"))
+    name = Column(String, nullable=False)
+    files = Column(Integer, default=0)
+    lines = Column(Integer, default=0) # Code lines
+    blanks = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    repository = relationship("Repository", back_populates="languages")
+
+# Update Repository relationship
+Repository.architecture_versions = relationship("ArchitectureVersion", back_populates="repository", order_by="desc(ArchitectureVersion.version_number)")
+Repository.contributors = relationship("Contributor", back_populates="repository", cascade="all, delete-orphan")
+Repository.languages = relationship("LanguageStat", back_populates="repository", cascade="all, delete-orphan")

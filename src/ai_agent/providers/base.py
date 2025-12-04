@@ -172,6 +172,31 @@ class AIProvider(ABC):
             Markdown formatted architecture overview
         """
         pass
+
+    @abstractmethod
+    async def generate_architecture_report(
+        self,
+        repo_name: str,
+        file_structure: str,
+        config_files: Dict[str, str]
+    ) -> str:
+        """
+        Generate a text-based architecture report.
+        """
+        pass
+
+    @abstractmethod
+    async def generate_diagram_code(
+        self,
+        repo_name: str,
+        report_content: str,
+        diagrams_index: Optional[Dict[str, str]] = None
+    ) -> str:
+        """
+        Generate Python code for the architecture diagram based on the report.
+        """
+        pass
+
     
     @abstractmethod
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:

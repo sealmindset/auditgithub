@@ -4,15 +4,19 @@ import { useEffect, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Loader2, LayoutGrid, List } from "lucide-react"
 import Link from "next/link"
 import { AiTriageDialog } from "@/components/ai-triage-dialog"
+import { ProjectScorecard } from "@/components/project-scorecard"
+import { DataTableColumnHeader } from "@/components/data-table-column-header"
 
 const API_BASE = "http://localhost:8000"
 
 export default function FindingsPage() {
     const [findings, setFindings] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+    const [viewMode, setViewMode] = useState<"table" | "scorecard">("table")
 
     useEffect(() => {
         const fetchFindings = async () => {
@@ -35,7 +39,9 @@ export default function FindingsPage() {
     const columns: ColumnDef<any>[] = [
         {
             accessorKey: "severity",
-            header: "Severity",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Severity" />
+            ),
             cell: ({ row }) => {
                 const severity = row.getValue("severity") as string
                 return (
@@ -49,11 +55,16 @@ export default function FindingsPage() {
                         {severity}
                     </Badge>
                 )
-            }
+            },
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "title",
-            header: "Title",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Title" />
+            ),
             cell: ({ row }) => (
                 <Link href={`/findings/${row.original.id}`} className="font-medium text-blue-600 hover:underline">
                     {row.getValue("title")}
@@ -62,14 +73,21 @@ export default function FindingsPage() {
         },
         {
             accessorKey: "repo_name",
-            header: "Repository",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Repository" />
+            ),
             cell: ({ row }) => (
                 <span className="font-medium">{row.getValue("repo_name")}</span>
-            )
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "file_path",
-            header: "File",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="File" />
+            ),
             cell: ({ row }) => (
                 <span className="font-mono text-xs">{row.getValue("file_path")}</span>
             )
@@ -90,13 +108,40 @@ export default function FindingsPage() {
 
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">All Findings</h1>
-                <p className="text-muted-foreground">
-                    Global view of security issues across all repositories.
-                </p>
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">All Findings</h1>
+                    <p className="text-muted-foreground">
+                        Global view of security issues across all repositories.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border p-1 bg-muted">
+                    <Button
+                        variant={viewMode === "scorecard" ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => setViewMode("scorecard")}
+                        className="h-8 px-2 lg:px-3"
+                    >
+                        <LayoutGrid className="h-4 w-4 lg:mr-2" />
+                        <span className="hidden lg:inline">Scorecard</span>
+                    </Button>
+                    <Button
+                        variant={viewMode === "table" ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => setViewMode("table")}
+                        className="h-8 px-2 lg:px-3"
+                    >
+                        <List className="h-4 w-4 lg:mr-2" />
+                        <span className="hidden lg:inline">Table</span>
+                    </Button>
+                </div>
             </div>
-            <DataTable columns={columns} data={findings} searchKey="title" />
+
+            {viewMode === "table" ? (
+                <DataTable columns={columns} data={findings} searchKey="title" />
+            ) : (
+                <ProjectScorecard />
+            )}
         </div>
     )
 }

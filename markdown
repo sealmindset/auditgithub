@@ -1,4 +1,3 @@
-Name     Version ID                  Fix Versions
--------- ------- ------------------- ------------
-requests 2.32.2  GHSA-9hjg-9r4m-mvj7 2.32.4
-urllib3  1.26.19 GHSA-pq67-6m6q-mj2v 2.5.0
+Name Version ID                  Fix Versions
+---- ------- ------------------- ------------
+mcp  1.16.0  GHSA-9h52-p55h-vw2f 1.23.0

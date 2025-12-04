@@ -12,6 +12,16 @@ router = APIRouter(
     tags=["findings"]
 )
 
+class RemediationModel(BaseModel):
+    id: str
+    remediation_text: str
+    diff: Optional[str]
+    confidence: Optional[float]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
 class FindingResponse(BaseModel):
     id: str
     title: str
@@ -24,6 +34,7 @@ class FindingResponse(BaseModel):
     code_snippet: Optional[str]
     created_at: datetime
     repo_name: str
+    remediations: List[RemediationModel] = []
 
     class Config:
         orm_mode = True
@@ -58,7 +69,14 @@ def get_findings(
         line_start=f.line_start,
         code_snippet=f.code_snippet,
         created_at=f.created_at,
-        repo_name=f.repository.name if f.repository else "Unknown"
+        repo_name=f.repository.name if f.repository else "Unknown",
+        remediations=[RemediationModel(
+            id=str(r.id),
+            remediation_text=r.remediation_text,
+            diff=r.diff,
+            confidence=float(r.confidence) if r.confidence else None,
+            created_at=r.created_at
+        ) for r in f.remediations]
     ) for f in findings]
 
 @router.get("/{finding_id}", response_model=FindingResponse)
@@ -89,5 +107,12 @@ def get_finding(finding_id: str, db: Session = Depends(get_db)):
         line_start=finding.line_start,
         code_snippet=finding.code_snippet,
         created_at=finding.created_at,
-        repo_name=finding.repository.name if finding.repository else "Unknown"
+        repo_name=finding.repository.name if finding.repository else "Unknown",
+        remediations=[RemediationModel(
+            id=str(r.id),
+            remediation_text=r.remediation_text,
+            diff=r.diff,
+            confidence=float(r.confidence) if r.confidence else None,
+            created_at=r.created_at
+        ) for r in finding.remediations]
     )

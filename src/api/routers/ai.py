@@ -1,9 +1,18 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
 import logging
-from ..config import settings
+import json
+import os
+import uuid
+import shutil
+from typing import Dict, Any, Optional, List
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from ..database import get_db
+from .. import models
 from ...ai_agent.agent import AIAgent
+from ..utils.repo_context import clone_repo_to_temp as clone_repo, cleanup_repo
+from ..config import settings # Keep settings as it's used later
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +21,39 @@ router = APIRouter(
     tags=["ai"]
 )
 
+@router.get("/config")
+async def get_ai_config():
+    """Get current AI configuration."""
+    return {
+        "provider": settings.AI_PROVIDER,
+        "model": settings.AI_MODEL,
+        "openai_model": settings.OPENAI_MODEL,
+        "anthropic_model": settings.ANTHROPIC_MODEL
+    }
+
 # Initialize AI Agent
 # In a real app, this might be a dependency to allow for mocking/lazy loading
 try:
+    # Determine model and url based on provider
+    provider = settings.AI_PROVIDER
+    model = settings.AI_MODEL
+    ollama_url = settings.OLLAMA_BASE_URL
+    
+    if provider == "openai" and settings.OPENAI_MODEL:
+        model = settings.OPENAI_MODEL
+    elif provider == "claude" and settings.ANTHROPIC_MODEL:
+        model = settings.ANTHROPIC_MODEL
+    elif provider == "docker":
+        ollama_url = settings.DOCKER_BASE_URL
+        
     ai_agent = AIAgent(
         openai_api_key=settings.OPENAI_API_KEY,
         anthropic_api_key=settings.ANTHROPIC_API_KEY,
-        provider=settings.AI_PROVIDER,
-        model=settings.AI_MODEL
+        provider=provider,
+        model=model,
+        ollama_base_url=ollama_url,
+        azure_foundry_endpoint=settings.AZURE_AI_FOUNDRY_ENDPOINT,
+        azure_foundry_api_key=settings.AZURE_AI_FOUNDRY_API_KEY
     )
 except Exception as e:
     logger.warning(f"Failed to initialize AI Agent: {e}")
@@ -38,13 +72,18 @@ class RemediationRequest(BaseModel):
     description: str
     context: str
     language: str
+    finding_id: Optional[str] = None
 
 class RemediationResponse(BaseModel):
     remediation: str
     diff: str
+    remediation_id: Optional[str] = None
 
 @router.post("/remediate", response_model=RemediationResponse)
-async def generate_remediation(request: RemediationRequest):
+async def generate_remediation(
+    request: RemediationRequest,
+    db: Session = Depends(get_db)
+):
     """Generate remediation for a vulnerability."""
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
@@ -56,9 +95,40 @@ async def generate_remediation(request: RemediationRequest):
             context=request.context,
             language=request.language
         )
+        
+        remediation_text = result.get("remediation", "")
+        diff_text = result.get("diff", "")
+        remediation_id = None
+
+        # Persist if finding_id is provided
+        if request.finding_id:
+            try:
+                # Verify finding exists
+                finding = db.query(Finding).filter(Finding.id == request.finding_id).first()
+                if finding:
+                    new_remediation = Remediation(
+                        finding_id=request.finding_id,
+                        remediation_text=remediation_text,
+                        diff=diff_text,
+                        confidence=0.85 # Placeholder/Default confidence from AI
+                    )
+                    db.add(new_remediation)
+                    
+                    # Update the "latest" cache on the finding for backward compatibility
+                    finding.ai_remediation_text = remediation_text
+                    finding.ai_remediation_diff = diff_text
+                    
+                    db.commit()
+                    db.refresh(new_remediation)
+                    remediation_id = str(new_remediation.id)
+            except Exception as db_err:
+                logger.error(f"Failed to persist remediation: {db_err}")
+                # Don't fail the request if persistence fails, just log it
+        
         return RemediationResponse(
-            remediation=result.get("remediation", ""),
-            diff=result.get("diff", "")
+            remediation=remediation_text,
+            diff=diff_text,
+            remediation_id=remediation_id
         )
     except Exception as e:
         logger.error(f"Error generating remediation: {e}")
@@ -69,6 +139,7 @@ class TriageRequest(BaseModel):
     description: str
     severity: str
     scanner: str
+    finding_id: Optional[str] = None
 
 class TriageResponse(BaseModel):
     priority: str
@@ -77,7 +148,10 @@ class TriageResponse(BaseModel):
     false_positive_probability: float
 
 @router.post("/triage", response_model=TriageResponse)
-async def triage_finding(request: TriageRequest):
+async def triage_finding(
+    request: TriageRequest,
+    db: Session = Depends(get_db)
+):
     """Analyze and triage a finding."""
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
@@ -89,15 +163,69 @@ async def triage_finding(request: TriageRequest):
             severity=request.severity,
             scanner=request.scanner
         )
+        
+        reasoning = result.get("reasoning", "Analysis failed")
+        
+        # Append to finding description if finding_id is provided
+        if request.finding_id:
+            try:
+                # Try to find by finding_uuid first (as that's what the API exposes as 'id')
+                # But handle potential UUID format errors if string is passed
+                import uuid
+                try:
+                    f_uuid = uuid.UUID(request.finding_id)
+                    finding = db.query(Finding).filter(Finding.finding_uuid == f_uuid).first()
+                    if not finding:
+                        # Fallback to primary key
+                        finding = db.query(Finding).filter(Finding.id == f_uuid).first()
+                except ValueError:
+                    finding = None
+                    logger.warning(f"Invalid UUID format for finding_id: {request.finding_id}")
+
+                if finding:
+                    # Check if reasoning is already appended to avoid duplication
+                    ai_header = "### 🤖 AI Security Analysis"
+                    if ai_header not in (finding.description or ""):
+                        # Format the reasoning nicely
+                        formatted_reasoning = (
+                            f"\n\n{ai_header}\n"
+                            f"**Priority:** {result.get('priority', 'Medium')}\n"
+                            f"**Confidence:** {result.get('confidence', 0.0) * 100:.0f}%\n\n"
+                            f"{reasoning}\n"
+                        )
+                        finding.description = f"{finding.description or ''}{formatted_reasoning}"
+                        db.commit()
+                        logger.info(f"Appended AI analysis to finding {request.finding_id}")
+                else:
+                    logger.warning(f"Finding not found for ID: {request.finding_id}")
+            except Exception as db_err:
+                logger.error(f"Failed to update finding description: {db_err}")
+
         return TriageResponse(
             priority=result.get("priority", "Medium"),
             confidence=result.get("confidence", 0.0),
-            reasoning=result.get("reasoning", "Analysis failed"),
+            reasoning=reasoning,
             false_positive_probability=result.get("false_positive_probability", 0.0)
         )
     except Exception as e:
         logger.error(f"Error triaging finding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/remediate/{remediation_id}")
+def delete_remediation(remediation_id: str, db: Session = Depends(get_db)):
+    """Delete a remediation suggestion."""
+    try:
+        uuid_obj = uuid.UUID(remediation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+        
+    remediation = db.query(Remediation).filter(Remediation.id == uuid_obj).first()
+    if not remediation:
+        raise HTTPException(status_code=404, detail="Remediation not found")
+        
+    db.delete(remediation)
+    db.commit()
+    return {"status": "success", "message": "Remediation deleted"}
 
 from ..database import get_db
 from .. import models
@@ -458,6 +586,137 @@ async def generate_architecture(request: ArchitectureRequest, db: Session = Depe
         logger.error(f"Error generating architecture: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Cleanup
         if repo_path:
             cleanup_repo(repo_path)
+
+class VersionCreateRequest(BaseModel):
+    description: Optional[str] = None
+
+class VersionResponse(BaseModel):
+    id: str
+    version_number: int
+    created_at: str
+    description: Optional[str] = None
+    
+class VersionDetailResponse(VersionResponse):
+    report: str
+    diagram: Optional[str] = None
+
+@router.post("/architecture/{project_id}/versions", response_model=VersionResponse)
+async def create_architecture_version(
+    project_id: str, 
+    request: VersionCreateRequest, 
+    db: Session = Depends(get_db)
+):
+    """Save current architecture state as a new version."""
+    try:
+        p_uuid = uuid.UUID(project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == project_id).first()
+        
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    if not project.architecture_report:
+        raise HTTPException(status_code=400, detail="No architecture report to save")
+        
+    # Get next version number
+    last_version = db.query(func.max(models.ArchitectureVersion.version_number))\
+        .filter(models.ArchitectureVersion.repository_id == project.id)\
+        .scalar() or 0
+        
+    new_version = models.ArchitectureVersion(
+        repository_id=project.id,
+        version_number=last_version + 1,
+        report_content=project.architecture_report,
+        diagram_code=project.architecture_diagram,
+        description=request.description
+    )
+    
+    db.add(new_version)
+    db.commit()
+    db.refresh(new_version)
+    
+    return VersionResponse(
+        id=str(new_version.id),
+        version_number=new_version.version_number,
+        created_at=new_version.created_at.isoformat(),
+        description=new_version.description
+    )
+
+@router.get("/architecture/{project_id}/versions", response_model=List[VersionResponse])
+async def list_architecture_versions(project_id: str, db: Session = Depends(get_db)):
+    """List all architecture versions for a project."""
+    try:
+        p_uuid = uuid.UUID(project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == project_id).first()
+        
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    versions = db.query(models.ArchitectureVersion)\
+        .filter(models.ArchitectureVersion.repository_id == project.id)\
+        .order_by(models.ArchitectureVersion.version_number.desc())\
+        .all()
+        
+    return [
+        VersionResponse(
+            id=str(v.id),
+            version_number=v.version_number,
+            created_at=v.created_at.isoformat(),
+            description=v.description
+        ) for v in versions
+    ]
+
+@router.get("/architecture/{project_id}/versions/{version_id}", response_model=VersionDetailResponse)
+async def get_architecture_version(project_id: str, version_id: str, db: Session = Depends(get_db)):
+    """Get details of a specific architecture version."""
+    try:
+        v_uuid = uuid.UUID(version_id)
+        version = db.query(models.ArchitectureVersion).filter(models.ArchitectureVersion.id == v_uuid).first()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid version ID")
+        
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+        
+    return VersionDetailResponse(
+        id=str(version.id),
+        version_number=version.version_number,
+        created_at=version.created_at.isoformat(),
+        description=version.description,
+        report=version.report_content,
+        diagram=version.diagram_code
+    )
+
+@router.post("/architecture/{project_id}/restore/{version_id}")
+async def restore_architecture_version(project_id: str, version_id: str, db: Session = Depends(get_db)):
+    """Restore a previous architecture version."""
+    try:
+        p_uuid = uuid.UUID(project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == project_id).first()
+        
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    try:
+        v_uuid = uuid.UUID(version_id)
+        version = db.query(models.ArchitectureVersion).filter(models.ArchitectureVersion.id == v_uuid).first()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid version ID")
+        
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+        
+    # Overwrite current state
+    project.architecture_report = version.report_content
+    project.architecture_diagram = version.diagram_code
+    
+    db.commit()
+    
+    return {"status": "success", "message": f"Restored version {version.version_number}"}

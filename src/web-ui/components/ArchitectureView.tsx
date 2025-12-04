@@ -3,13 +3,15 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, RefreshCw, Save, Edit, X, ImagePlus, FileEdit, Wand2 } from "lucide-react"
+import { Loader2, RefreshCw, Save, Edit, X, ImagePlus, FileEdit, Wand2, History } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { PromptEditorDialog } from "@/components/PromptEditorDialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 
 interface ArchitectureViewProps {
     projectId: string
@@ -25,6 +27,28 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
     const [editMode, setEditMode] = useState(false)
     const [promptEditorOpen, setPromptEditorOpen] = useState(false)
     const { toast } = useToast()
+
+    const [providerName, setProviderName] = useState<string>("")
+
+    // Fetch AI config on mount
+    useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                const res = await fetch("http://localhost:8000/ai/config")
+                if (res.ok) {
+                    const data = await res.json()
+                    // Format provider name nicely (e.g. "anthropic_foundry" -> "Anthropic Foundry")
+                    const name = data.provider.split('_').map((word: string) =>
+                        word.charAt(0).toUpperCase() + word.slice(1)
+                    ).join(' ')
+                    setProviderName(name)
+                }
+            } catch (e) {
+                console.error("Failed to fetch AI config", e)
+            }
+        }
+        fetchConfig()
+    }, [])
 
     // Fetch saved architecture on mount
     useEffect(() => {
@@ -99,6 +123,69 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
         }
     }
 
+    const [versions, setVersions] = useState<any[]>([])
+    const [versionDialogOpen, setVersionDialogOpen] = useState(false)
+    const [newVersionDesc, setNewVersionDesc] = useState("")
+
+    // Fetch versions
+    const fetchVersions = async () => {
+        try {
+            const res = await fetch(`http://localhost:8000/ai/architecture/${projectId}/versions`)
+            if (res.ok) {
+                setVersions(await res.json())
+            }
+        } catch (e) {
+            console.error("Failed to fetch versions", e)
+        }
+    }
+
+    useEffect(() => {
+        fetchVersions()
+    }, [projectId])
+
+    const saveVersion = async () => {
+        try {
+            const res = await fetch(`http://localhost:8000/ai/architecture/${projectId}/versions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description: newVersionDesc })
+            })
+
+            if (!res.ok) throw new Error("Failed to save version")
+
+            toast({ title: "Version Saved", description: "Architecture version saved successfully." })
+            setVersionDialogOpen(false)
+            setNewVersionDesc("")
+            fetchVersions()
+        } catch (e) {
+            toast({ title: "Error", description: "Failed to save version", variant: "destructive" })
+        }
+    }
+
+    const restoreVersion = async (versionId: string) => {
+        if (!confirm("Are you sure? This will overwrite current changes.")) return
+
+        try {
+            const res = await fetch(`http://localhost:8000/ai/architecture/${projectId}/restore/${versionId}`, {
+                method: "POST"
+            })
+
+            if (!res.ok) throw new Error("Failed to restore version")
+
+            toast({ title: "Restored", description: "Architecture restored to previous version." })
+            // Refresh current view
+            const archRes = await fetch(`http://localhost:8000/ai/architecture/${projectId}`)
+            if (archRes.ok) {
+                const data = await archRes.json()
+                setReport(data.report)
+                setDiagramCode(data.diagram)
+                setDiagramImage(data.image)
+            }
+        } catch (e) {
+            toast({ title: "Error", description: "Failed to restore version", variant: "destructive" })
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -109,6 +196,46 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    <Dialog open={versionDialogOpen} onOpenChange={setVersionDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline">
+                                <History className="mr-2 h-4 w-4" /> History
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle>Version History</DialogTitle>
+                                <DialogDescription>
+                                    Save current state or restore previous versions.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="flex gap-2">
+                                    <Input
+                                        placeholder="Version description..."
+                                        value={newVersionDesc}
+                                        onChange={(e) => setNewVersionDesc(e.target.value)}
+                                    />
+                                    <Button onClick={saveVersion}>Save New</Button>
+                                </div>
+                                <div className="max-h-[300px] overflow-y-auto space-y-2">
+                                    {versions.map((v) => (
+                                        <div key={v.id} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50 dark:hover:bg-slate-900">
+                                            <div>
+                                                <div className="font-medium">v{v.version_number}</div>
+                                                <div className="text-xs text-muted-foreground">{new Date(v.created_at).toLocaleString()}</div>
+                                                {v.description && <div className="text-sm">{v.description}</div>}
+                                            </div>
+                                            <Button variant="ghost" size="sm" onClick={() => restoreVersion(v.id)}>
+                                                Restore
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
                     <Button
                         variant="outline"
                         size="icon"
@@ -290,7 +417,7 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
             {loading && (
                 <div className="flex h-64 items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-muted-foreground">Analyzing repository structure...</span>
+                    <span className="ml-2 text-muted-foreground">{providerName || "AI"}: Analyzing repository structure...</span>
                 </div>
             )}
 
@@ -302,3 +429,4 @@ export function ArchitectureView({ projectId }: ArchitectureViewProps) {
         </div>
     )
 }
+

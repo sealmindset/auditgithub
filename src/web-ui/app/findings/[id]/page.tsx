@@ -132,6 +132,7 @@ export default function FindingDetailsPage() {
                         description={finding.description || ""}
                         context={finding.code_snippet || ""}
                         language="python" // TODO: Detect language dynamically
+                        existingRemediations={finding.remediations}
                     />
                 </div>
             </div>

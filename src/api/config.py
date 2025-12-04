@@ -24,10 +24,21 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # AI
+    # AI
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o"
+    
     ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-3-sonnet-20240229"
+    
     AI_PROVIDER: str = "openai"
-    AI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    AI_MODEL: str = "gpt-4o" # Fallback/Generic
+    
+    OLLAMA_BASE_URL: str = "http://ollama:11434"
+    DOCKER_BASE_URL: str = "http://host.docker.internal:11434"
+    
+    AZURE_AI_FOUNDRY_ENDPOINT: str = ""
+    AZURE_AI_FOUNDRY_API_KEY: str = ""
 
     class Config:
         env_file = ".env"

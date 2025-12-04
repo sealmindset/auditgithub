@@ -12,6 +12,8 @@ import { ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { AiTriageDialog } from "@/components/ai-triage-dialog"
 import { ArchitectureView } from "@/components/ArchitectureView"
+import { ContributorsView } from "@/components/ContributorsView"
+import { LanguagesView } from "@/components/LanguagesView"
 
 const API_BASE = "http://localhost:8000"
 
@@ -161,8 +163,10 @@ export default function ProjectPage() {
                     <TabsTrigger value="sast">SAST ({sast.length})</TabsTrigger>
                     <TabsTrigger value="infrastructure">Infrastructure ({terraform.length})</TabsTrigger>
                     <TabsTrigger value="dependencies">Dependencies ({oss.length})</TabsTrigger>
-                    <TabsTrigger value="cicd">CI/CD ({scanRuns.length})</TabsTrigger>
+                    <TabsTrigger value="cicd">CI/CD</TabsTrigger>
                     <TabsTrigger value="architecture">Architecture</TabsTrigger>
+                    <TabsTrigger value="contributors">Contributors</TabsTrigger>
+                    <TabsTrigger value="languages">Languages</TabsTrigger>
                 </TabsList>
                 <TabsContent value="overview" className="space-y-4">
                     <ProjectOverview
@@ -188,8 +192,16 @@ export default function ProjectPage() {
                 <TabsContent value="cicd">
                     <DataTable columns={runColumns} data={scanRuns} searchKey="status" />
                 </TabsContent>
-                <TabsContent value="architecture">
-                    <ArchitectureView projectId={id} />
+                <TabsContent value="architecture" className="mt-6">
+                    <ArchitectureView projectId={params.id as string} />
+                </TabsContent>
+
+                <TabsContent value="contributors" className="mt-6">
+                    <ContributorsView projectId={params.id as string} />
+                </TabsContent>
+
+                <TabsContent value="languages" className="mt-6">
+                    <LanguagesView projectId={params.id as string} />
                 </TabsContent>
             </Tabs>
         </div>

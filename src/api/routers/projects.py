@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..database import get_db
 from .. import models
+from .. import models
 import uuid
+from pydantic import BaseModel
+from datetime import datetime
+import os
 
 router = APIRouter(
     prefix="/projects",
@@ -127,6 +131,114 @@ async def get_project_sast(project_id: str, db: Session = Depends(get_db)):
         "description": f.description,
         "created_at": f.created_at
     } for f in findings]
+
+class ContributorResponse(BaseModel):
+    id: str
+    name: str
+    email: Optional[str]
+    commits: int
+    last_commit_at: Optional[datetime]
+    languages: List[str]
+    risk_score: int
+
+    class Config:
+        orm_mode = True
+
+@router.get("/{project_id}/contributors", response_model=List[ContributorResponse])
+def get_project_contributors(project_id: str, db: Session = Depends(get_db)):
+    """Get contributors for a project."""
+    # Try to parse UUID
+    try:
+        uuid_obj = uuid.UUID(project_id)
+    except ValueError:
+        # If not UUID, try to find by name (assuming project_id might be name in some contexts, 
+        # but for now let's stick to UUID or handle 404)
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+
+    repo = db.query(models.Repository).filter(models.Repository.id == uuid_obj).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return [ContributorResponse(
+        id=str(c.id),
+        name=c.name,
+        email=c.email,
+        commits=c.commits,
+        last_commit_at=c.last_commit_at,
+        languages=c.languages if c.languages else [],
+        risk_score=c.risk_score
+    ) for c in repo.contributors]
+
+class LanguageStatResponse(BaseModel):
+    name: str
+    files: int
+    lines: int
+    blanks: int
+    comments: int
+    findings: Dict[str, int] # severity -> count
+
+    class Config:
+        orm_mode = True
+
+@router.get("/{project_id}/languages", response_model=List[LanguageStatResponse])
+def get_project_languages(project_id: str, db: Session = Depends(get_db)):
+    """Get language stats and findings for a project."""
+    try:
+        uuid_obj = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+
+    repo = db.query(models.Repository).filter(models.Repository.id == uuid_obj).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Get all findings for this repo
+    findings = db.query(models.Finding).filter(
+        models.Finding.repository_id == repo.id,
+        models.Finding.status == 'open'
+    ).all()
+
+    # Map extensions to languages (simplified map for now)
+    # In a real app, we might use a library or DB table for this
+    ext_map = {
+        '.py': 'Python', '.js': 'JavaScript', '.ts': 'TypeScript', '.tsx': 'TypeScript',
+        '.jsx': 'JavaScript', '.go': 'Go', '.java': 'Java', '.c': 'C', '.cpp': 'C++',
+        '.rb': 'Ruby', '.php': 'PHP', '.rs': 'Rust', '.html': 'HTML', '.css': 'CSS',
+        '.sh': 'Shell', '.yml': 'YAML', '.yaml': 'YAML', '.json': 'JSON', '.md': 'Markdown',
+        '.sql': 'SQL', '.dockerfile': 'Docker', '.tf': 'HCL'
+    }
+
+    # Aggregate findings by language
+    findings_by_lang = {} # lang -> {severity -> count}
+    
+    for f in findings:
+        ext = os.path.splitext(f.file_path)[1].lower() if f.file_path else ""
+        lang = ext_map.get(ext, "Other")
+        
+        if lang not in findings_by_lang:
+            findings_by_lang[lang] = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            
+        severity = f.severity.lower()
+        if severity in findings_by_lang[lang]:
+            findings_by_lang[lang][severity] += 1
+
+    # Combine with stored language stats
+    results = []
+    for stat in repo.languages:
+        f_stats = findings_by_lang.get(stat.name, {"critical": 0, "high": 0, "medium": 0, "low": 0})
+        results.append(LanguageStatResponse(
+            name=stat.name,
+            files=stat.files,
+            lines=stat.lines,
+            blanks=stat.blanks,
+            comments=stat.comments,
+            findings=f_stats
+        ))
+        
+    # Sort by lines of code desc
+    results.sort(key=lambda x: x.lines, reverse=True)
+    
+    return results
 
 @router.get("/{project_id}/terraform")
 async def get_project_terraform(project_id: str, db: Session = Depends(get_db)):

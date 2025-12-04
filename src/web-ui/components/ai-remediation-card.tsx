@@ -6,12 +6,19 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, CheckCircle2, AlertTriangle } from "lucide-react"
 
+interface Remediation {
+    id?: string
+    remediation: string
+    diff: string
+}
+
 interface AiRemediationCardProps {
     findingId: string
     vulnType: string
     description: string
     context: string
     language: string
+    existingRemediations?: any[]
 }
 
 export function AiRemediationCard({
@@ -19,10 +26,22 @@ export function AiRemediationCard({
     vulnType,
     description,
     context,
-    language
+    language,
+    existingRemediations = []
 }: AiRemediationCardProps) {
     const [loading, setLoading] = useState(false)
-    const [remediation, setRemediation] = useState<{ remediation: string; diff: string } | null>(null)
+    const [remediation, setRemediation] = useState<Remediation | null>(() => {
+        if (existingRemediations && existingRemediations.length > 0) {
+            // Use the most recent remediation
+            const latest = existingRemediations[0]
+            return {
+                id: latest.id,
+                remediation: latest.remediation_text,
+                diff: latest.diff
+            }
+        }
+        return null
+    })
     const [error, setError] = useState<string | null>(null)
 
     const handleGenerate = async () => {
@@ -36,16 +55,43 @@ export function AiRemediationCard({
                     vuln_type: vulnType,
                     description: description,
                     context: context,
-                    language: language
+                    language: language,
+                    finding_id: findingId
                 })
             })
 
             if (!response.ok) throw new Error("Failed to generate remediation")
 
             const data = await response.json()
-            setRemediation(data)
+            setRemediation({
+                id: data.remediation_id,
+                remediation: data.remediation,
+                diff: data.diff
+            })
         } catch (err) {
             setError("Failed to generate AI remediation. Please try again.")
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleDiscard = async () => {
+        if (!remediation?.id) {
+            setRemediation(null)
+            return
+        }
+
+        try {
+            setLoading(true)
+            const response = await fetch(`http://localhost:8000/ai/remediate/${remediation.id}`, {
+                method: "DELETE"
+            })
+
+            if (!response.ok) throw new Error("Failed to discard remediation")
+
+            setRemediation(null)
+        } catch (err) {
+            setError("Failed to discard remediation")
         } finally {
             setLoading(false)
         }
@@ -83,7 +129,7 @@ export function AiRemediationCard({
                 {loading && (
                     <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                         <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                        <p className="mt-2 text-sm">Analyzing code and generating fix...</p>
+                        <p className="mt-2 text-sm">Processing...</p>
                     </div>
                 )}
 
@@ -94,11 +140,11 @@ export function AiRemediationCard({
                     </div>
                 )}
 
-                {remediation && (
+                {remediation && !loading && (
                     <div className="space-y-4">
                         <div className="rounded-md bg-white p-4 text-sm shadow-sm dark:bg-gray-900">
                             <h4 className="mb-2 font-semibold">Suggested Fix:</h4>
-                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
                                 {remediation.remediation}
                             </div>
                         </div>
@@ -113,7 +159,7 @@ export function AiRemediationCard({
                         )}
 
                         <div className="flex gap-2">
-                            <Button className="flex-1" variant="outline" onClick={() => setRemediation(null)}>
+                            <Button className="flex-1" variant="outline" onClick={handleDiscard}>
                                 Discard
                             </Button>
                             <Button className="flex-1 bg-green-600 hover:bg-green-700">

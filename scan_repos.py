@@ -1804,7 +1804,10 @@ def write_code_snippet(f, finding):
                 lang = '' # Handle case where lines might not be a dict
     except Exception:
         lang = ''
-    content = extra['lines'][0].get('content', '')
+    if isinstance(extra['lines'][0], dict):
+        content = extra['lines'][0].get('content', '')
+    else:
+        content = ''
     start = int(finding.get('start', {}).get('line', 1)) - 1
     code_lines = [f"{i + start + 1}: {line}" for i, line in enumerate(content.split('\n'))]
     f.write(f"```{lang}\n")
@@ -5003,8 +5006,16 @@ def run_trufflehog(repo_path: str, repo_name: str, report_dir: str) -> Optional[
         return None
         
     try:
+        # Create exclusion file to ignore .git and other non-repo files
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as exclude_file:
+            # Regex to exclude .git directory and its contents
+            # We use a broad regex to catch .git at root or in subdirs
+            exclude_file.write(r".*\.git/.*" + "\n")
+            exclude_file.write(r".*\.git$" + "\n")
+            exclude_file_path = exclude_file.name
+
         # Scan filesystem, output JSON
-        cmd = [th_bin, "filesystem", repo_path, "--json", "--fail"]
+        cmd = [th_bin, "filesystem", repo_path, "--json", "--fail", "--exclude-paths", exclude_file_path]
         
         if PROGRESS_MONITOR_AVAILABLE:
             result = run_with_progress_monitoring(
@@ -5016,6 +5027,13 @@ def run_trufflehog(repo_path: str, repo_name: str, report_dir: str) -> Optional[
             )
         else:
             result = subprocess.run(cmd, capture_output=True, text=True)
+            
+        # Clean up exclusion file
+        try:
+            os.remove(exclude_file_path)
+        except OSError:
+            pass
+
             
         # Parse JSON output (TruffleHog outputs one JSON object per line)
         findings = []

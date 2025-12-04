@@ -16,7 +16,7 @@ services:
       - POSTGRES_USER=auditgh
       - POSTGRES_PASSWORD=auditgh_secret
       - POSTGRES_DB=auditgh_kb
-      - SKIP_SCAN=${SKIP_SCAN}
+      - SKIP_SCAN=${SKIP_SCAN:-false}
     volumes:
       - .:/app
       - ./vulnerability_reports:/app/vulnerability_reports
@@ -54,6 +54,13 @@ services:
       - GITHUB_ORG=${GITHUB_ORG}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL}
+      - AI_PROVIDER=${AI_PROVIDER}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      - DOCKER_BASE_URL=${DOCKER_BASE_URL}
+      - AZURE_AI_FOUNDRY_ENDPOINT=${AZURE_AI_FOUNDRY_ENDPOINT}
+      - AZURE_AI_FOUNDRY_API_KEY=${AZURE_AI_FOUNDRY_API_KEY}
     depends_on:
       - db
     volumes:
