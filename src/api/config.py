@@ -23,16 +23,15 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # AI
-    # AI
+    # AI Configuration - Values come from .env file
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = ""  # Set in .env (e.g., gpt-5.1, gpt-4.1, gpt-3.5-turbo)
     
     ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL: str = "claude-3-sonnet-20240229"
+    ANTHROPIC_MODEL: str = ""  # Set in .env (e.g., claude-sonnet-4-20250514)
     
-    AI_PROVIDER: str = "openai"
-    AI_MODEL: str = "gpt-4o" # Fallback/Generic
+    AI_PROVIDER: str = "openai"  # openai, claude, anthropic_foundry, ollama, docker
+    AI_MODEL: str = ""  # Fallback - typically use provider-specific model
     
     OLLAMA_BASE_URL: str = "http://ollama:11434"
     DOCKER_BASE_URL: str = "http://host.docker.internal:11434"

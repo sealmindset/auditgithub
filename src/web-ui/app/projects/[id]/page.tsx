@@ -20,6 +20,7 @@ const API_BASE = "http://localhost:8000"
 
 export default function ProjectPage() {
     const params = useParams()
+    const router = useRouter()
     const id = params.id as string
     const [project, setProject] = useState<any>(null)
     const [secrets, setSecrets] = useState<any[]>([])
@@ -142,8 +143,6 @@ export default function ProjectPage() {
             header: "Duration (s)",
         }
     ]
-
-    const router = useRouter()
 
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">

@@ -22,13 +22,16 @@ export function AskAIDialog({ findingId, trigger }: AskAIDialogProps) {
     const handleAnalyze = async () => {
         setIsLoading(true)
         try {
-            const response = await fetch("/api/ai/analyze-finding", {
+            const response = await fetch("http://localhost:8000/ai/analyze-finding", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ finding_id: findingId, prompt: prompt || undefined }),
             })
 
-            if (!response.ok) throw new Error("Analysis failed")
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null)
+                throw new Error(errorData?.detail || "Analysis failed")
+            }
 
             const data = await response.json()
             setAnalysis(data.analysis)

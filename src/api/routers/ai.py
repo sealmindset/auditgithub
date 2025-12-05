@@ -41,7 +41,8 @@ try:
     
     if provider == "openai" and settings.OPENAI_MODEL:
         model = settings.OPENAI_MODEL
-    elif provider == "claude" and settings.ANTHROPIC_MODEL:
+    elif provider in ["claude", "anthropic_foundry"] and settings.ANTHROPIC_MODEL:
+        # Both claude and anthropic_foundry use ANTHROPIC_MODEL
         model = settings.ANTHROPIC_MODEL
     elif provider == "docker":
         ollama_url = settings.DOCKER_BASE_URL
@@ -397,6 +398,107 @@ async def analyze_zero_day(
     except Exception as e:
         logger.error(f"Error in zero-day analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/zero-day/prompt")
+async def get_zero_day_prompt():
+    """
+    Get the current zero-day analysis planning prompt template.
+    """
+    # Return the prompt template used in analyze_zero_day
+    prompt_template = """You are a Senior Security Analyst Agent analyzing Zero Day vulnerabilities.
+
+User Query: "{query}"
+{scope_str}
+
+Available Search Tools:
+1. search_dependencies(package_name, version_spec) - Search SBOM/Dependencies for libraries/packages
+2. search_findings(query, severity_filter) - Search security findings (CVE, CWE, vulnerabilities)
+3. search_languages(language) - Find repositories using specific programming language
+4. search_technology(keyword) - Find repos by language or description match
+
+NORMALIZATION RULES (90% Confidence Fuzzy Matching):
+- "react.js" or "React" or "ReactJS" → "react"
+- "next.js" or "Next.JS" or "NextJS" → "next"
+- "log4j" → "log4j-core" or "log4j"
+- "python" → "python" or "py"
+- Extract CVE IDs (CVE-YYYY-NNNNN format)
+- Extract CWE IDs (CWE-NNN format)
+
+SEARCH STRATEGY:
+- For package/library vulnerabilities → Use search_dependencies and/or search_findings
+- For CVE/CWE queries → Use search_findings
+- For technology/language queries → Use search_languages and/or search_technology
+- For comprehensive searches → Use multiple tools
+
+Generate a search plan as JSON. Format:
+{{
+    "thought": "Explain your reasoning and which sources to search",
+    "tools": [
+        {{"name": "search_dependencies", "args": {{"package_name": "react"}}}},
+        {{"name": "search_findings", "args": {{"query": "CVE-2024-12345", "severity_filter": "Critical"}}}},
+        {{"name": "search_languages", "args": {{"language": "python"}}}}
+    ]
+}}
+
+IMPORTANT: Return ONLY the JSON object, no markdown formatting."""
+    
+    return {"prompt": prompt_template}
+
+class ValidateZDAPromptRequest(BaseModel):
+    prompt: str
+    test_query: Optional[str] = "Find all repositories using React"
+
+@router.post("/zero-day/prompt/validate")
+async def validate_zero_day_prompt(
+    request: ValidateZDAPromptRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate a zero-day analysis prompt by testing it with a sample query.
+    """
+    if not ai_agent:
+        raise HTTPException(status_code=503, detail="AI Agent not initialized")
+    
+    try:
+        # Use the test query to validate the prompt
+        test_query = request.test_query
+        scope_str = "Scope: All sources"
+        
+        # Replace placeholders in the prompt
+        formatted_prompt = request.prompt.replace("{query}", test_query).replace("{scope_str}", scope_str)
+        
+        # Try to get a plan from the AI
+        if hasattr(ai_agent.reasoning_engine.provider, "execute_prompt"):
+            result = await ai_agent.reasoning_engine.provider.execute_prompt(formatted_prompt)
+            
+            # Try to parse as JSON to validate format
+            import json
+            clean_json = result.strip()
+            if clean_json.startswith("```json"):
+                clean_json = clean_json.replace("```json", "").replace("```", "")
+            elif clean_json.startswith("```"):
+                clean_json = clean_json.replace("```", "")
+            
+            plan = json.loads(clean_json)
+            
+            return {
+                "success": True,
+                "response": f"✅ Prompt validated successfully!\n\n**Test Query:** {test_query}\n\n**AI Plan:**\n```json\n{json.dumps(plan, indent=2)}\n```\n\n**Thought:** {plan.get('thought', 'N/A')}\n\n**Tools to Execute:** {len(plan.get('tools', []))}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="AI Provider does not support prompt execution")
+            
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "response": f"❌ **Invalid JSON Response**\n\nThe AI did not return valid JSON. This prompt may need adjustment.\n\n**Error:** {str(e)}\n\n**AI Response:**\n```\n{result[:500]}\n```"
+        }
+    except Exception as e:
+        logger.error(f"Error validating ZDA prompt: {e}")
+        return {
+            "success": False,
+            "response": f"❌ **Validation Error**\n\n{str(e)}"
+        }
 
 from ..database import get_db
 from .. import models

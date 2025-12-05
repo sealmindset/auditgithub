@@ -13,9 +13,17 @@ interface PromptEditorDialogProps {
     projectId: string
     isOpen: boolean
     onOpenChange: (open: boolean) => void
+    promptEndpoint?: string  // Optional custom endpoint for fetching prompt
+    validateEndpoint?: string  // Optional custom endpoint for validation
 }
 
-export function PromptEditorDialog({ projectId, isOpen, onOpenChange }: PromptEditorDialogProps) {
+export function PromptEditorDialog({
+    projectId,
+    isOpen,
+    onOpenChange,
+    promptEndpoint = "/ai/architecture/prompt",
+    validateEndpoint = "/ai/architecture/validate"
+}: PromptEditorDialogProps) {
     const [prompt, setPrompt] = useState<string>("")
     const [response, setResponse] = useState<string>("")
     const [loadingPrompt, setLoadingPrompt] = useState(false)
@@ -32,10 +40,16 @@ export function PromptEditorDialog({ projectId, isOpen, onOpenChange }: PromptEd
     const fetchPrompt = async () => {
         setLoadingPrompt(true)
         try {
-            const res = await fetch(`http://localhost:8000/ai/architecture/prompt`, {
-                method: "POST",
+            const url = promptEndpoint.includes("{projectId}")
+                ? `http://localhost:8000${promptEndpoint.replace("{projectId}", projectId)}`
+                : `http://localhost:8000${promptEndpoint}`
+
+            const res = await fetch(url, {
+                method: promptEndpoint.includes("architecture/prompt") ? "POST" : "GET",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ project_id: projectId })
+                ...(promptEndpoint.includes("architecture/prompt") && {
+                    body: JSON.stringify({ project_id: projectId })
+                })
             })
             if (res.ok) {
                 const data = await res.json()
@@ -55,16 +69,32 @@ export function PromptEditorDialog({ projectId, isOpen, onOpenChange }: PromptEd
         setValidating(true)
         setResponse("")
         try {
-            const res = await fetch(`http://localhost:8000/ai/architecture/validate`, {
+            const url = `http://localhost:8000${validateEndpoint}`
+            const res = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ project_id: projectId, prompt: prompt })
+                body: JSON.stringify({
+                    project_id: projectId,
+                    prompt: prompt,
+                    test_query: "Find all repositories using React" // Default test query
+                })
             })
 
             if (res.ok) {
                 const data = await res.json()
-                setResponse(data.response)
-                toast({ title: "Success", description: "Prompt executed successfully" })
+                if (data.success !== undefined) {
+                    // For zero-day endpoint which returns {success, response}
+                    setResponse(data.response)
+                    if (data.success) {
+                        toast({ title: "Success", description: "Prompt executed successfully" })
+                    } else {
+                        toast({ title: "Warning", description: "Prompt validation had issues", variant: "destructive" })
+                    }
+                } else {
+                    // For architecture endpoint which returns {response}
+                    setResponse(data.response)
+                    toast({ title: "Success", description: "Prompt executed successfully" })
+                }
             } else {
                 const err = await res.json()
                 setResponse(`Error: ${err.detail || "Validation failed"}`)

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
-import { Send, Loader2, ShieldAlert, CheckCircle2, Search, ChevronRight, Trash2, Clock } from "lucide-react"
+import { Send, Loader2, ShieldAlert, CheckCircle2, Search, ChevronRight, Trash2, Clock, FileEdit } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { PromptEditorDialog } from "@/components/PromptEditorDialog"
 import ReactMarkdown from "react-markdown"
 
 interface RepositoryResult {
@@ -42,6 +43,7 @@ export function ZeroDayView() {
     const [result, setResult] = useState<AnalysisResult | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [queryHistory, setQueryHistory] = useState<QueryHistory[]>([])
+    const [promptEditorOpen, setPromptEditorOpen] = useState(false)
 
     // Scope selection state
     const [selectedScopes, setSelectedScopes] = useState<string[]>(["all"])
@@ -158,10 +160,22 @@ export function ZeroDayView() {
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Zero Day & Vulnerability Analysis</CardTitle>
-                    <CardDescription>
-                        Ask our AI agent to identify repositories susceptible to specific zero-day vulnerabilities or security conditions.
-                    </CardDescription>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Zero Day & Vulnerability Analysis</CardTitle>
+                            <CardDescription>
+                                Ask our AI agent to identify repositories susceptible to specific zero-day vulnerabilities or security conditions.
+                            </CardDescription>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setPromptEditorOpen(true)}
+                            title="Edit AI Prompt"
+                        >
+                            <FileEdit className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex gap-4">
@@ -342,6 +356,14 @@ export function ZeroDayView() {
                     )}
                 </div>
             )}
+
+            <PromptEditorDialog
+                projectId="zero-day-analysis"
+                isOpen={promptEditorOpen}
+                onOpenChange={setPromptEditorOpen}
+                promptEndpoint="/ai/zero-day/prompt"
+                validateEndpoint="/ai/zero-day/prompt/validate"
+            />
         </div>
     )
 }

@@ -25,7 +25,7 @@ class AIAgent:
         openai_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
         provider: str = "openai",
-        model: str = "gpt-4o",
+        model: Optional[str] = None,  # No default - must be provided by config
         ollama_base_url: Optional[str] = None,
         azure_foundry_endpoint: Optional[str] = None,
         azure_foundry_api_key: Optional[str] = None
@@ -35,13 +35,16 @@ class AIAgent:
         
         Args:
             openai_api_key: API key for OpenAI
-            anthropic_api_key: API key for Anthropic
+            anthropic_api_key: API key for Anthropic  
             provider: 'openai', 'claude', 'ollama', 'docker', or 'anthropic_foundry'
-            model: Model name to use
+            model: Model name to use (must be provided from config)
             ollama_base_url: Base URL for Ollama
             azure_foundry_endpoint: Endpoint for Azure AI Foundry
             azure_foundry_api_key: API Key for Azure AI Foundry
         """
+        # Ensure model is provided
+        if not model:
+            raise ValueError(f"Model must be specified for provider '{provider}'")
         self.provider_name = provider
         self.model = model
         
