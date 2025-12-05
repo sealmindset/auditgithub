@@ -1988,7 +1988,7 @@ def run_semgrep_scan(repo_path: str, repo_name: str, report_dir: str) -> Optiona
             )
             logging.debug(f"Semgrep version: {ver_result.stdout.strip() or ver_result.stderr.strip()}")
         except Exception as e:
-            logging.warning(f"Could not gather version info: {str(e)}")
+            logging.debug(f"Could not gather semgrep version info: {str(e)} (not critical)")
         # Prepare environment
         env = os.environ.copy()
         env['PYTHONUNBUFFERED'] = '1'  # Ensure output is unbuffered
@@ -4910,29 +4910,45 @@ def run_retire_js(repo_path: str, repo_name: str, report_dir: str) -> Optional[s
                 try:
                     with open(output_json, 'r') as jf:
                         data = json.load(jf)
-                        
-                    # Retire.js JSON structure: list of file objects
-                    findings_count = 0
-                    for file_obj in data:
-                        findings_count += len(file_obj.get('results', []))
-                        
-                    f.write(f"**Total Findings:** {findings_count}\n\n")
                     
-                    for file_obj in data:
-                        filename = file_obj.get('file', 'unknown')
-                        results = file_obj.get('results', [])
-                        if results:
-                            f.write(f"### File: `{filename}`\n")
-                            for res in results:
-                                component = res.get('component', 'unknown')
-                                version = res.get('version', 'unknown')
-                                vulns = res.get('vulnerabilities', [])
-                                f.write(f"- **Component:** {component} @ {version}\n")
-                                for v in vulns:
-                                    info = v.get('info', [])
-                                    severity = v.get('severity', 'unknown')
-                                    f.write(f"  - **{severity}**: {' '.join(info)}\n")
-                            f.write("\n")
+                    # Check if data is a list (normal retire.js output)
+                    if not isinstance(data, list):
+                        # Handle error messages or unexpected format
+                        if isinstance(data, dict) and 'error' in data:
+                            f.write(f"Retire.js error: {data.get('error')}\n")
+                        elif isinstance(data, str):
+                            f.write(f"Retire.js returned string: {data}\n")
+                        else:
+                            f.write(f"Unexpected retire.js output format: {type(data)}\n")
+                    else:
+                        # Retire.js JSON structure: list of file objects
+                        findings_count = 0
+                        for file_obj in data:
+                            if isinstance(file_obj, dict):
+                                findings_count += len(file_obj.get('results', []))
+                            
+                        f.write(f"**Total Findings:** {findings_count}\n\n")
+                        
+                        for file_obj in data:
+                            if not isinstance(file_obj, dict):
+                                continue  # Skip non-dict entries
+                            
+                            filename = file_obj.get('file', 'unknown')
+                            results = file_obj.get('results', [])
+                            if results:
+                                f.write(f"### File: `{filename}`\n")
+                                for res in results:
+                                    component = res.get('component', 'unknown')
+                                    version = res.get('version', 'unknown')
+                                    vulns = res.get('vulnerabilities', [])
+                                    f.write(f"- **Component:** {component} @ {version}\n")
+                                    for v in vulns:
+                                        info = v.get('info', [])
+                                        severity = v.get('severity', 'unknown')
+                                        f.write(f"  - **{severity}**: {' '.join(info)}\n")
+                                f.write("\n")
+                except json.JSONDecodeError as e:
+                    f.write(f"Error decoding Retire.js JSON: {e}\n")
                 except Exception as e:
                     f.write(f"Error parsing Retire.js output: {e}\n")
             else:
