@@ -46,6 +46,11 @@ const data = {
                     url: "/repositories",
                     icon: GitBranch,
                 },
+                {
+                    title: "Zero Day Analysis",
+                    url: "/zero-day",
+                    icon: ShieldCheck,
+                },
             ],
         },
         {

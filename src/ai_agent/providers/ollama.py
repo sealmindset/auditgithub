@@ -177,6 +177,61 @@ Output JSON: {{ "priority": "...", "confidence": 0.0-1.0, "reasoning": "..." }}
         except Exception as e:
             return {"priority": severity, "confidence": 0.0, "reasoning": str(e)}
 
+    async def analyze_finding(
+        self,
+        finding: Dict[str, Any],
+        user_prompt: Optional[str] = None
+    ) -> str:
+        """Analyze finding using Ollama."""
+        finding_context = json.dumps(finding, indent=2)
+        
+        if user_prompt:
+            prompt = f"Finding: {finding_context}\n\nQuestion: {user_prompt}"
+        else:
+            prompt = f"Analyze this finding: {finding_context}"
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a security expert."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Error: {e}"
+
+    async def analyze_component(
+        self,
+        package_name: str,
+        version: str,
+        package_manager: str
+    ) -> Dict[str, Any]:
+        """Analyze component using Ollama."""
+        prompt = f"""Analyze component: {package_name} {version} ({package_manager}).
+Output JSON: {{ "analysis_text": "...", "vulnerability_summary": "...", "severity": "...", "exploitability": "...", "fixed_version": "..." }}
+"""
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a security researcher. Output valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            return {
+                "analysis_text": f"Error: {e}",
+                "vulnerability_summary": "Analysis failed",
+                "severity": "Unknown",
+                "exploitability": "Unknown",
+                "fixed_version": "Unknown"
+            }
+
     async def generate_architecture_overview(
         self,
         repo_name: str,
@@ -196,6 +251,40 @@ Output JSON: {{ "priority": "...", "confidence": 0.0-1.0, "reasoning": "..." }}
 
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         return 0.0
+
+    async def execute_prompt(self, prompt: str) -> str:
+        """Execute a raw prompt using Ollama."""
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Ollama execute_prompt failed: {e}")
+            return f"Error: {e}"
+
+    async def generate_architecture_report(
+        self,
+        repo_name: str,
+        file_structure: str,
+        config_files: Dict[str, str]
+    ) -> str:
+        """
+        Generate a text-based architecture report.
+        """
+        return await self.generate_architecture_overview(repo_name, file_structure, config_files)
+
+    async def generate_diagram_code(
+        self,
+        repo_name: str,
+        report_content: str,
+        diagrams_index: Optional[Dict[str, str]] = None
+    ) -> str:
+        """
+        Generate Python code for the architecture diagram based on the report.
+        """
+        return "# Diagram generation not yet supported for Ollama provider."
 
 
 class DockerAIProvider(OllamaProvider):

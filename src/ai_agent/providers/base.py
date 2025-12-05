@@ -154,6 +154,44 @@ class AIProvider(ABC):
         pass
 
     @abstractmethod
+    async def analyze_finding(
+        self,
+        finding: Dict[str, Any],
+        user_prompt: Optional[str] = None
+    ) -> str:
+        """
+        Analyze a finding and provide detailed insights or answer user questions.
+        
+        Args:
+            finding: Dictionary containing finding details (title, description, code, etc.)
+            user_prompt: Optional specific question from the user
+            
+        Returns:
+            Markdown formatted analysis
+        """
+        pass
+
+    @abstractmethod
+    async def analyze_component(
+        self,
+        package_name: str,
+        version: str,
+        package_manager: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze a software component for vulnerabilities and risks.
+        
+        Args:
+            package_name: Name of the package
+            version: Version of the package
+            package_manager: Package manager (npm, pip, etc.)
+            
+        Returns:
+            Dict with keys: analysis_text, vulnerability_summary, severity, exploitability, fixed_version
+        """
+        pass
+
+    @abstractmethod
     async def generate_architecture_overview(
         self,
         repo_name: str,
@@ -194,6 +232,19 @@ class AIProvider(ABC):
     ) -> str:
         """
         Generate Python code for the architecture diagram based on the report.
+        """
+        pass
+
+    @abstractmethod
+    async def execute_prompt(self, prompt: str) -> str:
+        """
+        Execute a raw text prompt against the AI model.
+        
+        Args:
+            prompt: User prompt
+            
+        Returns:
+            AI response as text
         """
         pass
 

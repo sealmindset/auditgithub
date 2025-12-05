@@ -240,6 +240,121 @@ def get_project_languages(project_id: str, db: Session = Depends(get_db)):
     
     return results
 
+class DependencyResponse(BaseModel):
+    id: str
+    name: str
+    version: str
+    type: str
+    package_manager: str
+    license: str
+    locations: List[str]
+    source: Optional[str]
+    
+    # Enriched fields
+    vulnerability_count: int = 0
+    max_severity: str = "Safe"
+    ai_analysis: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        orm_mode = True
+
+@router.get("/{project_id}/dependencies", response_model=List[DependencyResponse])
+def get_project_dependencies(project_id: str, db: Session = Depends(get_db)):
+    """Get dependencies (SBOM) for a project, enriched with vulnerability data."""
+    try:
+        uuid_obj = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+
+    repo = db.query(models.Repository).filter(models.Repository.id == uuid_obj).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 1. Fetch all dependencies
+    dependencies = repo.dependencies
+    
+    # 2. Fetch all findings for this repo that are related to dependencies
+    # We assume findings with package_name are dependency findings
+    findings = db.query(models.Finding).filter(
+        models.Finding.repository_id == repo.id,
+        models.Finding.package_name.isnot(None)
+    ).all()
+    
+    # Map findings to dependencies (name + version)
+    findings_map = {} # (name, version) -> [findings]
+    for f in findings:
+        key = (f.package_name, f.package_version)
+        if key not in findings_map:
+            findings_map[key] = []
+        findings_map[key].append(f)
+        
+    # 3. Fetch all component analyses
+    # We can't easily filter by list of tuples in SQL without complex query, 
+    # so we might fetch all relevant ones or just fetch individually if list is small.
+    # For now, let's fetch all analyses that match any dependency name in this repo
+    dep_names = [d.name for d in dependencies]
+    analyses = db.query(models.ComponentAnalysis).filter(
+        models.ComponentAnalysis.package_name.in_(dep_names)
+    ).all()
+    
+    analysis_map = {} # (name, version, manager) -> analysis
+    for a in analyses:
+        # Normalize manager if needed, but for now assume exact match
+        key = (a.package_name, a.version, a.package_manager)
+        analysis_map[key] = a
+
+    results = []
+    for d in dependencies:
+        # Find matching findings
+        # Try exact match first
+        related_findings = findings_map.get((d.name, d.version), [])
+        
+        # Calculate max severity
+        severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0, "safe": -1}
+        max_sev = "Safe"
+        max_score = -1
+        
+        for f in related_findings:
+            s = f.severity.lower() if f.severity else "low"
+            score = severity_order.get(s, 0)
+            if score > max_score:
+                max_score = score
+                max_sev = f.severity
+        
+        if not related_findings and max_score == -1:
+             max_sev = "Safe"
+
+        # Find matching analysis
+        # We need to be careful with package_manager names matching
+        # Syft might say 'npm', we store 'npm'.
+        analysis = analysis_map.get((d.name, d.version, d.package_manager))
+        analysis_data = None
+        if analysis:
+            analysis_data = {
+                "vulnerability_summary": analysis.vulnerability_summary,
+                "analysis_text": analysis.analysis_text,
+                "severity": analysis.severity,
+                "exploitability": analysis.exploitability,
+                "fixed_version": analysis.fixed_version,
+                "source": "cache"
+            }
+
+        results.append(DependencyResponse(
+            id=str(d.id),
+            name=d.name,
+            version=d.version or "Unknown",
+            type=d.type or "Unknown",
+            package_manager=d.package_manager or "Unknown",
+            license=d.license or "Unknown",
+            locations=d.locations if d.locations else [],
+            source=d.source,
+            vulnerability_count=len(related_findings),
+            max_severity=max_sev,
+            ai_analysis=analysis_data
+        ))
+        
+    return results
+
 @router.get("/{project_id}/terraform")
 async def get_project_terraform(project_id: str, db: Session = Depends(get_db)):
     """Get Terraform/IaC findings for a project."""

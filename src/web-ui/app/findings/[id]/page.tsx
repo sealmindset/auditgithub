@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AiRemediationCard } from "@/components/ai-remediation-card"
@@ -13,6 +13,7 @@ const API_BASE = "http://localhost:8000"
 
 export default function FindingDetailsPage() {
     const params = useParams()
+    const router = useRouter()
     const id = params.id as string
     const [finding, setFinding] = useState<any>(null)
     const [loading, setLoading] = useState(true)
@@ -47,9 +48,7 @@ export default function FindingDetailsPage() {
         return (
             <div className="flex h-screen flex-col items-center justify-center gap-4">
                 <p className="text-red-500">{error || "Finding not found"}</p>
-                <Link href="/dashboard">
-                    <Button variant="outline">Back to Dashboard</Button>
-                </Link>
+                <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
             </div>
         )
     }
@@ -57,11 +56,9 @@ export default function FindingDetailsPage() {
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">
             <div className="flex items-center gap-4">
-                <Link href="/dashboard">
-                    <Button variant="ghost" size="icon">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                </Link>
+                <Button variant="ghost" size="icon" onClick={() => router.back()}>
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">{finding.title}</h1>
                     <div className="flex items-center gap-2 text-muted-foreground">

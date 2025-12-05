@@ -1042,16 +1042,29 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
         # Run various security scans
         logging.info(f"Running security scans for {repo_name}...")
         
+        # Parse scanners list
+        enabled_scanners = set(s.strip().lower() for s in config.SCANNERS.split(','))
+        run_all = 'all' in enabled_scanners
+
+        def is_scanner_enabled(name):
+            return run_all or name.lower() in enabled_scanners
+
         # Extract requirements for Python projects
         requirements_path, is_temp, source_file = extract_requirements(repo_path)
         if requirements_path:
             logging.info(f"Found requirements file: {source_file} at {requirements_path}")
             
             # Run safety scan
-            safety_result = run_safety_scan(requirements_path, repo_name, repo_report_dir)
+            if is_scanner_enabled('safety'):
+                safety_result = run_safety_scan(requirements_path, repo_name, repo_report_dir)
+            else:
+                safety_result = None
             
             # Run pip-audit scan
-            pip_audit_result = run_pip_audit_scan(requirements_path, repo_name, repo_report_dir)
+            if is_scanner_enabled('pip-audit'):
+                pip_audit_result = run_pip_audit_scan(requirements_path, repo_name, repo_report_dir)
+            else:
+                pip_audit_result = None
             
             # Clean up temporary requirements file if created
             if is_temp and os.path.exists(requirements_path):
@@ -1060,6 +1073,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             logging.info("No Python requirements file found")
             safety_result = None
             pip_audit_result = None
+
         semgrep_result = None
         syft_repo_result = None
         syft_image_result = None
@@ -1070,21 +1084,36 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
         semgrep_taint_result = None
         bandit_result = None
         trivy_fs_result = None
+        npm_audit_result = None
+        retire_js_result = None
+        govulncheck_result = None
+        bundle_audit_result = None
+        dependency_check_result = None
+        codeql_result = None
+        trufflehog_result = None
+        nuclei_result = None
+        ossgadget_result = None
+        cloc_result = None
         
         # Run npm audit for Node.js projects (supports npm, yarn, pnpm)
-        npm_audit_result = run_npm_audit(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('npm-audit'):
+            npm_audit_result = run_npm_audit(repo_path, repo_name, repo_report_dir)
         
         # Run Retire.js for client-side libraries
-        retire_js_result = run_retire_js(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('retirejs'):
+            retire_js_result = run_retire_js(repo_path, repo_name, repo_report_dir)
         
         # Run govulncheck for Go projects
-        govulncheck_result = run_govulncheck(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('govulncheck'):
+            govulncheck_result = run_govulncheck(repo_path, repo_name, repo_report_dir)
         
         # Run bundle audit for Ruby projects
-        bundle_audit_result = run_bundle_audit(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('bundle-audit'):
+            bundle_audit_result = run_bundle_audit(repo_path, repo_name, repo_report_dir)
         
         # Run OWASP Dependency-Check for Java projects
-        dependency_check_result = run_dependency_check(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('dependency-check'):
+            dependency_check_result = run_dependency_check(repo_path, repo_name, repo_report_dir)
         
         # Detect languages and IaC
         detected_languages = detect_languages(repo_path)
@@ -1094,27 +1123,32 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
 
         # Run CodeQL (Semantic Analysis) - Only if supported languages found
         codeql_supported = {'python', 'javascript', 'go', 'java', 'cpp', 'csharp', 'ruby'}
-        if any(lang in codeql_supported for lang in detected_languages):
+        if is_scanner_enabled('codeql') and any(lang in codeql_supported for lang in detected_languages):
             codeql_result = run_codeql(repo_path, repo_name, repo_report_dir)
         else:
-            logging.info(f"Skipping CodeQL for {repo_name} (no supported languages found)")
+            if is_scanner_enabled('codeql'):
+                logging.info(f"Skipping CodeQL for {repo_name} (no supported languages found)")
             codeql_result = None
         
         # Run TruffleHog (Verified Secrets)
-        trufflehog_result = run_trufflehog(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('trufflehog'):
+            trufflehog_result = run_trufflehog(repo_path, repo_name, repo_report_dir)
         
         # Run Nuclei (Vulnerability Scanning)
-        nuclei_result = run_nuclei(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('nuclei'):
+            nuclei_result = run_nuclei(repo_path, repo_name, repo_report_dir)
         
         # Run OSSGadget (Malware/Backdoor)
-        ossgadget_result = run_ossgadget(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('ossgadget'):
+            ossgadget_result = run_ossgadget(repo_path, repo_name, repo_report_dir)
         
         # Run Repo Intelligence (OSINT)
         if PROGRESS_MONITOR_AVAILABLE:
             repo_intel_result = analyze_repo(repo_path, repo_name, repo_report_dir)
             
         # Run cloc for LOC stats
-        cloc_result = run_cloc(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('cloc'):
+            cloc_result = run_cloc(repo_path, repo_name, repo_report_dir)
 
         # Generate Architecture Overview (AI)
         architecture_overview = ""
@@ -1126,32 +1160,38 @@ def process_repo(repo: Dict[str, Any], report_dir: str) -> None:
             logging.info("AI Agent disabled or not initialized. Skipping architecture overview.")
         
         # Run Semgrep scan for the repository
-        semgrep_result = run_semgrep_scan(repo_path, repo_name, repo_report_dir)
-        # Optional Semgrep taint-mode scan
-        if config.SEMGREP_TAINT_CONFIG:
-            semgrep_taint_result = run_semgrep_taint(repo_path, repo_name, repo_report_dir, config.SEMGREP_TAINT_CONFIG)
+        if is_scanner_enabled('semgrep'):
+            semgrep_result = run_semgrep_scan(repo_path, repo_name, repo_report_dir)
+            # Optional Semgrep taint-mode scan
+            if config.SEMGREP_TAINT_CONFIG:
+                semgrep_taint_result = run_semgrep_taint(repo_path, repo_name, repo_report_dir, config.SEMGREP_TAINT_CONFIG)
         
         # Run Syft to generate SBOM for the repo directory
-        syft_repo_result = run_syft(repo_path, repo_name, repo_report_dir, target_type="repo", sbom_format=config.SYFT_FORMAT)
-        
-        # If Docker image provided, also run Syft on the image
-        if config.DOCKER_IMAGE:
-            syft_image_result = run_syft(config.DOCKER_IMAGE, repo_name, repo_report_dir, target_type="image", sbom_format=config.SYFT_FORMAT)
+        if is_scanner_enabled('syft'):
+            syft_repo_result = run_syft(repo_path, repo_name, repo_report_dir, target_type="repo", sbom_format=config.SYFT_FORMAT)
+            
+            # If Docker image provided, also run Syft on the image
+            if config.DOCKER_IMAGE:
+                syft_image_result = run_syft(config.DOCKER_IMAGE, repo_name, repo_report_dir, target_type="image", sbom_format=config.SYFT_FORMAT)
         
         # Run Grype vulnerability scan on the repo directory
-        grype_repo_result = run_grype(repo_path, repo_name, repo_report_dir, target_type="repo", vex_files=config.VEX_FILES)
-        # If Docker image provided, run Grype on the image
-        if config.DOCKER_IMAGE:
-            grype_image_result = run_grype(config.DOCKER_IMAGE, repo_name, repo_report_dir, target_type="image", vex_files=config.VEX_FILES)
+        if is_scanner_enabled('grype'):
+            grype_repo_result = run_grype(repo_path, repo_name, repo_report_dir, target_type="repo", vex_files=config.VEX_FILES)
+            # If Docker image provided, run Grype on the image
+            if config.DOCKER_IMAGE:
+                grype_image_result = run_grype(config.DOCKER_IMAGE, repo_name, repo_report_dir, target_type="image", vex_files=config.VEX_FILES)
 
         # Run Checkov for Terraform if applicable
-        if has_iac:
-            checkov_result = run_checkov(repo_path, repo_name, repo_report_dir)
-        else:
-            logging.info(f"Skipping Checkov for {repo_name} (no IaC detected)")
-            checkov_result = None
-                # Trivy filesystem scan (optional if installed)
-        trivy_fs_result = run_trivy_fs(repo_path, repo_name, repo_report_dir)
+        if is_scanner_enabled('checkov'):
+            if has_iac:
+                checkov_result = run_checkov(repo_path, repo_name, repo_report_dir)
+            else:
+                logging.info(f"Skipping Checkov for {repo_name} (no IaC detected)")
+                checkov_result = None
+        
+        # Trivy filesystem scan (optional if installed)
+        if is_scanner_enabled('trivy'):
+            trivy_fs_result = run_trivy_fs(repo_path, repo_name, repo_report_dir)
 
         # Generate AI Remediation Plans (using Knowledge Base)
         if PROGRESS_MONITOR_AVAILABLE and config.ENABLE_AI:
@@ -3830,6 +3870,8 @@ def main():
                       help="Increase verbosity (can be used multiple times)")
     parser.add_argument("--no-scan", action="store_true",
                       help="Skip the actual scanning process (useful for testing infrastructure)")
+    parser.add_argument("--scanners", type=str, default="all",
+                      help="Comma-separated list of scanners to run (e.g., 'syft,trivy'). Default: 'all'")
     
     args = parser.parse_args()
 
@@ -3862,6 +3904,7 @@ def main():
     config.GITHUB_TOKEN = args.token or os.getenv("GITHUB_TOKEN")
     config.DOCKER_IMAGE = args.docker_image
     config.SYFT_FORMAT = args.syft_format
+    config.SCANNERS = args.scanners
     config.VEX_FILES = [p for p in (args.vex or []) if p]
     config.SEMGREP_TAINT_CONFIG = args.semgrep_taint
     config.POLICY_PATH = args.policy or 'policy.yaml'

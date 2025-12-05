@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, JSON, Numeric, Sequence
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, JSON, Numeric, Sequence, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func, text
@@ -224,7 +224,51 @@ class LanguageStat(Base):
 
     repository = relationship("Repository", back_populates="languages")
 
+class Dependency(Base):
+    __tablename__ = "dependencies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id"))
+    name = Column(String, nullable=False)
+    version = Column(String)
+    type = Column(String) # e.g. npm, pypi, go
+    package_manager = Column(String)
+    license = Column(String)
+    locations = Column(JSONB) # List of file paths
+    source = Column(String) # Developer/Vendor
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    repository = relationship("Repository", back_populates="dependencies")
+
+from sqlalchemy import UniqueConstraint
+
+# ... (imports are at top of file, need to ensure UniqueConstraint is imported or use sqlalchemy.UniqueConstraint if I can't add import easily)
+
+class ComponentAnalysis(Base):
+    __tablename__ = "component_analysis"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    package_name = Column(String, nullable=False)
+    version = Column(String, nullable=False)
+    package_manager = Column(String, nullable=False)
+    
+    analysis_text = Column(Text)
+    vulnerability_summary = Column(Text)
+    severity = Column(String)
+    exploitability = Column(String)
+    fixed_version = Column(String)
+    
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Unique constraint to ensure we don't analyze the same package version multiple times
+    __table_args__ = (
+        UniqueConstraint('package_name', 'version', 'package_manager', name='uq_component_analysis'),
+    )
+
 # Update Repository relationship
 Repository.architecture_versions = relationship("ArchitectureVersion", back_populates="repository", order_by="desc(ArchitectureVersion.version_number)")
 Repository.contributors = relationship("Contributor", back_populates="repository", cascade="all, delete-orphan")
 Repository.languages = relationship("LanguageStat", back_populates="repository", cascade="all, delete-orphan")
+Repository.dependencies = relationship("Dependency", back_populates="repository", cascade="all, delete-orphan")

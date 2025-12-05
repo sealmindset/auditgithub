@@ -296,6 +296,90 @@ Output JSON:
                 "priority": severity,
             }
 
+    async def analyze_finding(
+        self,
+        finding: Dict[str, Any],
+        user_prompt: Optional[str] = None
+    ) -> str:
+        """Analyze finding using Claude."""
+        finding_context = json.dumps(finding, indent=2)
+        system_prompt = "You are a senior security engineer. Analyze the provided security finding."
+        
+        if user_prompt:
+            user_msg = f"Finding Details:\n{finding_context}\n\nUser Question: {user_prompt}"
+        else:
+            user_msg = f"Finding Details:\n{finding_context}\n\nProvide a detailed analysis."
+
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                temperature=0.4,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_msg}]
+            )
+            content = response.content[0].text
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.input_tokens + response.usage.output_tokens
+            
+            return content
+        except Exception as e:
+            logger.error(f"Claude analysis failed: {e}")
+            return f"Error: {e}"
+
+    async def analyze_component(
+        self,
+        package_name: str,
+        version: str,
+        package_manager: str
+    ) -> Dict[str, Any]:
+        """Analyze component using Claude."""
+        prompt = f"""Analyze this component for security risks:
+Component: {package_name}
+Version: {version}
+Package Manager: {package_manager}
+
+Provide a JSON response with:
+1. "analysis_text": Detailed Markdown summary of vulnerabilities and risks.
+2. "vulnerability_summary": Concise 1-sentence summary.
+3. "severity": Overall risk (Critical, High, Medium, Low, Safe).
+4. "exploitability": (High, Moderate, Low, Theoretical).
+5. "fixed_version": Recommended version.
+"""
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                temperature=0.3,
+                system="You are a security researcher. Output valid JSON only.",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            content = response.content[0].text
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.input_tokens + response.usage.output_tokens
+
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
+            return json.loads(content)
+        except Exception as e:
+            logger.error(f"Claude component analysis failed: {e}")
+            return {
+                "analysis_text": f"Analysis failed: {e}",
+                "vulnerability_summary": "Analysis failed.",
+                "severity": "Unknown",
+                "exploitability": "Unknown",
+                "fixed_version": "Unknown"
+            }
+
     async def generate_architecture_report(
         self,
         repo_name: str,
@@ -436,6 +520,21 @@ Return ONLY the Python code block.
         except Exception as e:
             logger.error(f"Failed to generate architecture overview: {e}")
             return f"Failed to generate architecture overview: {e}"
+
+    async def execute_prompt(self, prompt: str) -> str:
+        """Execute a raw prompt using Claude."""
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                temperature=0.3,
+                system="You are an expert AI assistant.",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text
+        except Exception as e:
+            logger.error(f"Claude execute_prompt failed: {e}")
+            return f"Error: {e}"
 
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """

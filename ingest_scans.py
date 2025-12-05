@@ -400,6 +400,95 @@ def ingest_languages(db: Session, repo: models.Repository, report_path: Path):
         
     return count
 
+def ingest_sbom(db: Session, repo: models.Repository, report_path: Path):
+    """Ingest SBOM data from Syft JSON."""
+    syft_path = report_path.parent / f"{repo.name}_syft_repo.json"
+    if not syft_path.exists():
+        # Try image SBOM if repo SBOM doesn't exist
+        syft_path = report_path.parent / f"{repo.name}_syft_image.json"
+        if not syft_path.exists():
+            return 0
+
+    try:
+        with open(syft_path, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to decode JSON from {syft_path}")
+        return 0
+
+    # Check for CycloneDX format (components) or Syft format (artifacts)
+    artifacts = data.get('artifacts', [])
+    is_cyclonedx = False
+    if not artifacts:
+        artifacts = data.get('components', [])
+        is_cyclonedx = True
+        
+    logger.info(f"Found {len(artifacts)} dependencies for {repo.name}")
+    count = 0
+    
+    # Clear existing dependencies for this repo
+    db.query(models.Dependency).filter(models.Dependency.repository_id == repo.id).delete()
+    
+    for art in artifacts:
+        if is_cyclonedx:
+            # CycloneDX mapping
+            name = art.get('name', 'Unknown')
+            version = art.get('version', 'Unknown')
+            type_ = art.get('type', 'Unknown')
+            
+            # Extract package manager from properties or type
+            package_manager = 'Unknown'
+            properties = art.get('properties', [])
+            for prop in properties:
+                if prop.get('name') == 'syft:package:type':
+                    package_manager = prop.get('value')
+                    break
+            
+            # Extract licenses
+            licenses = []
+            for lic in art.get('licenses', []):
+                if 'license' in lic:
+                    licenses.append(lic['license'].get('id') or lic['license'].get('name'))
+                elif 'expression' in lic:
+                    licenses.append(lic['expression'])
+            license_str = ", ".join(filter(None, licenses))
+            
+            # Extract locations (Syft puts them in properties in CycloneDX sometimes, or we might miss them)
+            # Syft CycloneDX output often puts locations in properties like 'syft:location:0:path'
+            locations = []
+            for prop in properties:
+                if prop.get('name', '').startswith('syft:location:'):
+                    locations.append(prop.get('value'))
+            
+            source = art.get('purl') # Use PURL as source if available
+            
+        else:
+            # Syft Native mapping
+            name = art.get('name', 'Unknown')
+            version = art.get('version', 'Unknown')
+            type_ = art.get('type', 'Unknown')
+            package_manager = art.get('foundBy', 'Unknown')
+            license_str = str(art.get('licenses', []))
+            locations = [loc.get('path') for loc in art.get('locations', [])]
+            
+            metadata = art.get('metadata', {})
+            source = metadata.get('author') or metadata.get('maintainer') or metadata.get('homepage')
+        
+        dep = models.Dependency(
+            repository_id=repo.id,
+            name=name,
+            version=version,
+            type=type_,
+            package_manager=package_manager,
+            license=license_str,
+            locations=locations,
+            source=source
+        )
+        db.add(dep)
+        count += 1
+        
+    return count
+
 def ingest_single_repo(repo_name: str, repo_dir: str):
     """Ingest findings for a single repository."""
     project_dir = Path(repo_dir)
@@ -477,6 +566,9 @@ def ingest_single_repo(repo_name: str, repo_dir: str):
         
         # Languages
         ingest_languages(db, repo, project_dir / "dummy")
+
+        # SBOM
+        ingest_sbom(db, repo, project_dir / "dummy")
         
         # Update ScanRun stats
         scan_run.findings_count = findings_count
@@ -575,6 +667,9 @@ def ingest_reports(report_dir: str = "vulnerability_reports"):
             
             # Languages
             ingest_languages(db, repo, project_dir / "dummy")
+
+            # SBOM
+            ingest_sbom(db, repo, project_dir / "dummy")
             
             # Update ScanRun stats
             scan_run.findings_count = findings_count

@@ -266,6 +266,161 @@ Analyze the finding and provide a JSON response with:
                 "false_positive_probability": 0.0
             }
 
+    async def analyze_finding(
+        self,
+        finding: Dict[str, Any],
+        user_prompt: Optional[str] = None
+    ) -> str:
+        """
+        Analyze a finding and answer user questions using OpenAI.
+        """
+        try:
+            # Format finding details for the prompt
+            finding_context = f"""
+Title: {finding.get('title', 'Unknown')}
+Type: {finding.get('finding_type', 'Unknown')}
+Severity: {finding.get('severity', 'Unknown')}
+File: {finding.get('file_path', 'Unknown')}
+Line: {finding.get('line_start', '?')} - {finding.get('line_end', '?')}
+Description: {finding.get('description', 'No description')}
+
+Code Snippet:
+```
+{finding.get('code_snippet', 'No code snippet')}
+```
+"""
+            
+            system_prompt = "You are a senior security engineer. Analyze the provided security finding."
+            
+            if user_prompt:
+                user_msg = f"""Finding Details:
+{finding_context}
+
+User Question: {user_prompt}
+
+Answer the user's question based on the finding details. Be technical, precise, and helpful."""
+            else:
+                user_msg = f"""Finding Details:
+{finding_context}
+
+Provide a detailed analysis of this finding including:
+1. **Explanation**: What is the vulnerability and how does it work?
+2. **Impact**: What is the potential impact if exploited?
+3. **Verification**: How can I verify if this is a true positive?
+4. **Remediation**: Specific steps to fix the issue.
+"""
+
+            is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
+
+            if is_reasoning_model:
+                full_prompt = f"System: {system_prompt}\n\nUser: {user_msg}"
+                messages = [{"role": "user", "content": full_prompt}]
+                api_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_completion_tokens": 2000
+                }
+            else:
+                api_params = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg}
+                    ],
+                    "max_tokens": 2000,
+                    "temperature": 0.4
+                }
+
+            response = await self.client.chat.completions.create(**api_params)
+            content = response.choices[0].message.content
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.total_tokens
+            
+            return content
+
+        except Exception as e:
+            logger.error(f"Failed to analyze finding: {e}")
+            return f"Failed to analyze finding: {e}"
+
+    async def analyze_component(
+        self,
+        package_name: str,
+        version: str,
+        package_manager: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze a software component for vulnerabilities and risks using OpenAI.
+        """
+        try:
+            prompt = f"""You are a software security researcher. Analyze this component for security risks.
+
+Component: {package_name}
+Version: {version}
+Package Manager: {package_manager}
+
+Perform a security assessment and provide a JSON response with:
+1. "analysis_text": A detailed Markdown summary of known vulnerabilities, security posture, and risks associated with this specific version. Mention if it's outdated or end-of-life.
+2. "vulnerability_summary": A concise 1-sentence summary of the most critical issues (e.g., "Contains 2 critical CVEs related to RCE").
+3. "severity": Overall risk severity (Critical, High, Medium, Low, Safe).
+4. "exploitability": Is it susceptible to compromise? (High, Moderate, Low, Theoretical). Mention if PoC code exists.
+5. "fixed_version": The recommended version to upgrade to (e.g., "1.2.3" or "None").
+"""
+            is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
+
+            if is_reasoning_model:
+                full_prompt = f"System: You are a security researcher.\n\nUser: {prompt}"
+                messages = [{"role": "user", "content": full_prompt}]
+                api_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_completion_tokens": 1000
+                }
+            else:
+                api_params = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "You are a security researcher."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "max_tokens": 1000,
+                    "temperature": 0.3
+                }
+
+            response = await self.client.chat.completions.create(**api_params)
+            content = response.choices[0].message.content
+            
+            # Track cost
+            cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+            self._total_cost += cost
+            self._total_tokens += response.usage.total_tokens
+
+            try:
+                cleaned_content = self._clean_json_response(content)
+                return json.loads(cleaned_content)
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse AI component analysis response. Content: {repr(content)}")
+                return {
+                    "analysis_text": content,
+                    "vulnerability_summary": "Failed to parse structured analysis.",
+                    "severity": "Unknown",
+                    "exploitability": "Unknown",
+                    "fixed_version": "Unknown"
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to analyze component: {e}")
+            return {
+                "analysis_text": f"AI analysis failed: {e}",
+                "vulnerability_summary": "Analysis failed.",
+                "severity": "Unknown",
+                "exploitability": "Unknown",
+                "fixed_version": "Unknown"
+            }
+
     async def explain_timeout(
         self,
         repo_name: str,

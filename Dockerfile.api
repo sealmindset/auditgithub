@@ -9,7 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     graphviz \
     python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Syft
+RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
 # Install python dependencies
 COPY requirements.txt .

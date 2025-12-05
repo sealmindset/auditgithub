@@ -64,18 +64,24 @@ services:
     depends_on:
       - db
     volumes:
+      - .:/app
       - ./vulnerability_reports:/app/vulnerability_reports
-      - ./src:/app/src
 
   web-ui:
     build:
       context: .
       dockerfile: Dockerfile.ui
+      target: deps
     container_name: auditgh_ui
     ports:
       - "3000:3000"
     environment:
       - API_BASE=http://api:8000
+    volumes:
+      - ./src/web-ui:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
     depends_on:
       - api
 

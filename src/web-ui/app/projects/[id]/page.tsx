@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProjectOverview } from "@/components/project-overview"
 import { DataTable } from "@/components/data-table"
@@ -14,6 +14,7 @@ import { AiTriageDialog } from "@/components/ai-triage-dialog"
 import { ArchitectureView } from "@/components/ArchitectureView"
 import { ContributorsView } from "@/components/ContributorsView"
 import { LanguagesView } from "@/components/LanguagesView"
+import { SbomView } from "@/components/SbomView"
 
 const API_BASE = "http://localhost:8000"
 
@@ -142,14 +143,14 @@ export default function ProjectPage() {
         }
     ]
 
+    const router = useRouter()
+
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">
             <div className="flex items-center gap-4">
-                <Link href="/dashboard">
-                    <Button variant="ghost" size="icon">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                </Link>
+                <Button variant="ghost" size="icon" onClick={() => router.back()}>
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
                     <p className="text-muted-foreground">{project.description || "No description"}</p>
@@ -167,6 +168,7 @@ export default function ProjectPage() {
                     <TabsTrigger value="architecture">Architecture</TabsTrigger>
                     <TabsTrigger value="contributors">Contributors</TabsTrigger>
                     <TabsTrigger value="languages">Languages</TabsTrigger>
+                    <TabsTrigger value="sbom">SBOM</TabsTrigger>
                 </TabsList>
                 <TabsContent value="overview" className="space-y-4">
                     <ProjectOverview
@@ -202,6 +204,10 @@ export default function ProjectPage() {
 
                 <TabsContent value="languages" className="mt-6">
                     <LanguagesView projectId={params.id as string} />
+                </TabsContent>
+
+                <TabsContent value="sbom" className="mt-6">
+                    <SbomView projectId={params.id as string} />
                 </TabsContent>
             </Tabs>
         </div>

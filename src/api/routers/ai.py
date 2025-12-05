@@ -211,6 +211,130 @@ async def triage_finding(
         logger.error(f"Error triaging finding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class AnalyzeFindingRequest(BaseModel):
+    finding_id: str
+    prompt: Optional[str] = None
+
+@router.post("/analyze-finding")
+async def analyze_finding_endpoint(
+    request: AnalyzeFindingRequest,
+    db: Session = Depends(get_db)
+):
+    """Analyze a specific finding using AI."""
+    if not ai_agent:
+        raise HTTPException(status_code=503, detail="AI Agent not initialized")
+
+    try:
+        # Fetch finding
+        # Try UUID first
+        try:
+            f_uuid = uuid.UUID(request.finding_id)
+            finding = db.query(models.Finding).filter(models.Finding.finding_uuid == f_uuid).first()
+            if not finding:
+                finding = db.query(models.Finding).filter(models.Finding.id == f_uuid).first()
+        except ValueError:
+            # If not UUID, try ID (though ID is usually UUID in this schema)
+            finding = None
+        
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+        # Convert to dict for AI
+        finding_dict = {
+            "title": finding.title,
+            "description": finding.description,
+            "severity": finding.severity,
+            "file_path": finding.file_path,
+            "line_start": finding.line_start,
+            "line_end": finding.line_end,
+            "code_snippet": finding.code_snippet,
+            "finding_type": finding.finding_type,
+            "scanner": finding.scanner_name
+        }
+
+        analysis = await ai_agent.analyze_finding(
+            finding=finding_dict,
+            user_prompt=request.prompt
+        )
+        
+        return {"analysis": analysis}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing finding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AnalyzeComponentRequest(BaseModel):
+    package_name: str
+    version: str
+    package_manager: str
+
+@router.post("/analyze-component")
+async def analyze_component_endpoint(
+    request: AnalyzeComponentRequest,
+    db: Session = Depends(get_db)
+):
+    """Analyze a software component using AI, with caching."""
+    if not ai_agent:
+        raise HTTPException(status_code=503, detail="AI Agent not initialized")
+
+    try:
+        # 1. Check DB for existing analysis
+        existing = db.query(models.ComponentAnalysis).filter(
+            models.ComponentAnalysis.package_name == request.package_name,
+            models.ComponentAnalysis.version == request.version,
+            models.ComponentAnalysis.package_manager == request.package_manager
+        ).first()
+
+        if existing:
+            return {
+                "analysis_text": existing.analysis_text,
+                "vulnerability_summary": existing.vulnerability_summary,
+                "severity": existing.severity,
+                "exploitability": existing.exploitability,
+                "fixed_version": existing.fixed_version,
+                "source": "cache"
+            }
+
+        # 2. Call AI Provider
+        analysis = await ai_agent.provider.analyze_component(
+            package_name=request.package_name,
+            version=request.version,
+            package_manager=request.package_manager
+        )
+
+        # 3. Save to DB
+        new_analysis = models.ComponentAnalysis(
+            package_name=request.package_name,
+            version=request.version,
+            package_manager=request.package_manager,
+            analysis_text=analysis.get("analysis_text", ""),
+            vulnerability_summary=analysis.get("vulnerability_summary", ""),
+            severity=analysis.get("severity", "Unknown"),
+            exploitability=analysis.get("exploitability", "Unknown"),
+            fixed_version=analysis.get("fixed_version", "Unknown")
+        )
+        
+        try:
+            db.add(new_analysis)
+            db.commit()
+            db.refresh(new_analysis)
+        except Exception as db_err:
+            logger.error(f"Failed to cache component analysis: {db_err}")
+            # Continue even if caching fails
+        
+        return {
+            **analysis,
+            "source": "ai"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing component: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/remediate/{remediation_id}")
 def delete_remediation(remediation_id: str, db: Session = Depends(get_db)):
     """Delete a remediation suggestion."""
@@ -219,13 +343,60 @@ def delete_remediation(remediation_id: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid UUID format")
         
-    remediation = db.query(Remediation).filter(Remediation.id == uuid_obj).first()
+    remediation = db.query(models.Remediation).filter(models.Remediation.id == uuid_obj).first()
     if not remediation:
         raise HTTPException(status_code=404, detail="Remediation not found")
         
     db.delete(remediation)
     db.commit()
     return {"status": "success", "message": "Remediation deleted"}
+
+class ZeroDayRequest(BaseModel):
+    query: str
+    scope: Optional[List[str]] = None  # ["dependencies", "findings", "languages", "all"]
+
+class ZeroDayResponse(BaseModel):
+    answer: str
+    affected_repositories: List[Dict[str, Any]]
+    plan: Optional[Dict[str, Any]] = None
+    execution_summary: Optional[List[str]] = None
+
+@router.post("/zero-day", response_model=ZeroDayResponse)
+async def analyze_zero_day(
+    request: ZeroDayRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze a zero-day vulnerability query with optional scope filtering.
+    
+    Args:
+        request.query: Natural language query about vulnerabilities or technologies
+        request.scope: Optional list of data sources to search (dependencies, findings, languages, all)
+    """
+    if not ai_agent:
+        raise HTTPException(status_code=503, detail="AI Agent not initialized")
+
+    try:
+        result = await ai_agent.analyze_zero_day(
+            query=request.query,
+            db_session=db,
+            scope=request.scope
+        )
+        
+        if "error" in result:
+             raise HTTPException(status_code=500, detail=result["error"])
+
+        return ZeroDayResponse(
+            answer=result.get("answer", "Analysis complete."),
+            affected_repositories=result.get("affected_repositories", []),
+            plan=result.get("plan"),
+            execution_summary=result.get("execution_summary")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in zero-day analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 from ..database import get_db
 from .. import models

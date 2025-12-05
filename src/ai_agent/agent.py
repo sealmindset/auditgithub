@@ -101,3 +101,11 @@ class AIAgent:
     async def generate_architecture_overview(self, *args, **kwargs):
         """Delegate to reasoning engine."""
         return await self.reasoning_engine.generate_architecture_overview(*args, **kwargs)
+
+    async def analyze_finding(self, *args, **kwargs):
+        """Delegate to reasoning engine."""
+        return await self.reasoning_engine.analyze_finding(*args, **kwargs)
+
+    async def analyze_zero_day(self, *args, **kwargs):
+        """Delegate to reasoning engine."""
+        return await self.reasoning_engine.analyze_zero_day(*args, **kwargs)

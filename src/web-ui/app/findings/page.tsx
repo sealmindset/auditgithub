@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loader2, LayoutGrid, List } from "lucide-react"
 import Link from "next/link"
-import { AiTriageDialog } from "@/components/ai-triage-dialog"
+import { AskAIDialog } from "@/components/AskAIDialog"
 import { ProjectScorecard } from "@/components/project-scorecard"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 
@@ -94,7 +94,7 @@ export default function FindingsPage() {
         },
         {
             id: "actions",
-            cell: ({ row }) => <AiTriageDialog finding={row.original} />
+            cell: ({ row }) => <AskAIDialog findingId={row.original.id} />
         }
     ]
 

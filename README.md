@@ -47,7 +47,16 @@ A modular and extensible security scanning tool that checks GitHub repositories 
     cd auditgh
     ```
 
-2.  **Configure Environment:**
+2.  **Run Setup Script (macOS):**
+    For a fresh macOS installation, run the setup script to install all dependencies (Homebrew, Docker, Python, etc.) and configure the environment.
+    ```bash
+    chmod +x setup_mac.sh
+    ./setup_mac.sh
+    ```
+    *Follow the on-screen prompts to configure your GitHub token.*
+
+3.  **Manual Configuration (Linux/Windows/Existing Mac):**
+    If not using the setup script:
     Copy `.env.sample` to `.env` and add your GitHub token and organization.
     ```bash
     cp .env.sample .env
@@ -56,7 +65,7 @@ A modular and extensible security scanning tool that checks GitHub repositories 
     # GITHUB_TOKEN=ghp_...
     ```
 
-3.  **Run a Scan (Docker):**
+4.  **Run a Scan (Docker):**
     Use the helper script to run a balanced scan against your configured organization.
     ```bash
     ./run_scan.sh
@@ -72,6 +81,29 @@ docker-compose run --rm auditgh \
   --include-archived \
   --max-workers 4 \
   --loglevel INFO
+```
+
+### Environment Variables
+
+You can pass environment variables to `docker-compose run` to control the behavior of the scanner.
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `SKIP_SCAN` | `false` | Set to `true` to start the container without running the scan automatically. Useful for debugging or manual execution. |
+| `GITHUB_ORG` | (Required) | The GitHub organization to scan. |
+| `GITHUB_TOKEN` | (Required) | Your GitHub Personal Access Token. |
+| `GITHUB_API` | `https://api.github.com` | Base URL for GitHub API (useful for GHE). |
+
+**Example: Start the full stack without scanning**
+Use `up` to start all services (API, UI, Database) in the background.
+```bash
+SKIP_SCAN=true docker-compose up -d
+```
+
+**Example: Run a single container shell**
+Use `run` to start just the scanner container interactively.
+```bash
+docker-compose run --rm -e SKIP_SCAN=true auditgh /bin/bash
 ```
 
 ### Or
