@@ -6,6 +6,7 @@ import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Loader2 } from "lucide-react"
 import Link from "next/link"
+import { DataTableColumnHeader } from "@/components/data-table-column-header"
 
 const API_BASE = "http://localhost:8000"
 
@@ -34,20 +35,32 @@ export default function RepositoriesPage() {
     const columns: ColumnDef<any>[] = [
         {
             accessorKey: "name",
-            header: "Name",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Name" />
+            ),
             cell: ({ row }) => (
                 <Link href={`/projects/${row.original.id}`} className="font-medium text-blue-600 hover:underline">
                     {row.getValue("name")}
                 </Link>
-            )
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "language",
-            header: "Language",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Language" />
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "stats.open_findings",
-            header: "Open Findings",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Open Findings" />
+            ),
             cell: ({ row }) => {
                 const count = row.original.stats.open_findings
                 return (
@@ -59,7 +72,9 @@ export default function RepositoriesPage() {
         },
         {
             accessorKey: "last_scanned_at",
-            header: "Last Scanned",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Last Scanned" />
+            ),
             cell: ({ row }) => {
                 const date = row.getValue("last_scanned_at") as string
                 return date ? new Date(date).toLocaleDateString() : "Never"

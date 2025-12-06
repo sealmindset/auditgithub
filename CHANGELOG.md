@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Incremental and Resumable Scanning**:
+  - Implemented `ScanState` to track repository state (last commit, status).
+  - Scans now skip repositories that haven't changed since the last successful scan.
+  - Added `--force` CLI argument to bypass incremental checks and force a full re-scan.
+  - Resumable scanning: Interrupted scans automatically resume from where they left off (skipping completed repos).
+- **Zero-Day Analysis (ZDA)**:
+  - Added AI-driven zero-day analysis capabilities.
+  - Integrated `ZeroDayView` component for visualizing and analyzing potential zero-day threats.
+- **UI Enhancements**:
+  - Added sorting and filtering to `Repositories`, `Findings`, `Contributors`, `Languages`, and `SBOM` tables.
+  - Improved data table components with `DataTableColumnHeader` for consistent sorting/filtering UX.
+
+### Fixed
+- **Contributor Data**:
+  - Fixed issue where contributor data was missing by making `git clone` depth configurable.
+  - Added `GIT_CLONE_DEPTH` environment variable (default: `0` for full history) to ensure all commits are fetched for accurate contributor analysis.
 - **Intelligent Progress Monitoring System** - Adaptive timeout system that monitors subprocess progress
   - Replaces fixed 30-minute timeout with 5-minute initial timeout
   - Monitors CPU usage, file I/O, and output in real-time

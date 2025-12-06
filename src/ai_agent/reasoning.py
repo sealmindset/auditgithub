@@ -14,6 +14,7 @@ from .diagnostics import DiagnosticCollector
 import json
 from sqlalchemy.orm import Session
 from .tools.db_tools import search_dependencies, search_repositories_by_technology
+from .tools.exception_manager import ExceptionManager
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class ReasoningEngine:
         self.diagnostic_collector = diagnostic_collector
         self.max_cost_per_analysis = max_cost_per_analysis
         self.analysis_history: List[Dict[str, Any]] = []
+        self.exception_manager = ExceptionManager()
     
     async def analyze_stuck_scan(
         self,
@@ -534,3 +536,33 @@ class ReasoningEngine:
             estimated_cost=0.0,
             tokens_used=0
         )
+
+    async def generate_exception_rule(
+        self,
+        finding: Dict[str, Any],
+        scope: str
+    ) -> Dict[str, Any]:
+        """
+        Generate an exception rule for a finding.
+        
+        Args:
+            finding: Finding details
+            scope: 'global' or 'specific'
+            
+        Returns:
+            Dict with rule details
+        """
+        scanner = finding.get("scanner_name", "unknown")
+        
+        # Use the ExceptionManager tool
+        rule_data = self.exception_manager.generate_rule(scanner, finding, scope)
+        
+        # We could optionally use the LLM here to refine the rule or explanation
+        # For now, the deterministic tool is safer and faster
+        
+        return {
+            "rule": rule_data,
+            "status": "generated",
+            "scanner": scanner,
+            "scope": scope
+        }

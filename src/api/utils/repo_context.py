@@ -54,7 +54,10 @@ def get_repo_structure(repo_path: str, max_depth: int = 3) -> str:
                 continue
             output.append(f"{subindent}{f}")
             
-    return "\n".join(output)
+    output_str = "\n".join(output)
+    if len(output) > 200:
+        return "\n".join(output[:200]) + "\n... (structure truncated)"
+    return output_str
 
 def get_config_files(repo_path: str) -> Dict[str, str]:
     """
@@ -62,12 +65,21 @@ def get_config_files(repo_path: str) -> Dict[str, str]:
     """
     configs = {}
     
+    MAX_TOTAL_SIZE = 10000  # ~2.5k tokens
+    current_total_size = 0
+    
     for root, _, files in os.walk(repo_path):
+        if current_total_size > MAX_TOTAL_SIZE:
+            break
+            
         # Limit depth for config search to avoid deep nested node_modules etc
         if root.count(os.sep) - repo_path.count(os.sep) > 3:
             continue
             
         for f in files:
+            if current_total_size > MAX_TOTAL_SIZE:
+                break
+                
             # Check if file matches any config pattern
             matched = False
             for pattern in CONFIG_FILES:
@@ -81,9 +93,20 @@ def get_config_files(repo_path: str) -> Dict[str, str]:
                     with open(os.path.join(root, f), 'r', encoding='utf-8', errors='ignore') as file:
                         content = file.read()
                         # Truncate large files
-                        if len(content) > 5000:
-                            content = content[:5000] + "\n... (truncated)"
+                        if len(content) > 2000:
+                            content = content[:2000] + "\n... (truncated)"
+                        
+                        # Check availability in budget
+                        if current_total_size + len(content) > MAX_TOTAL_SIZE:
+                            remaining = MAX_TOTAL_SIZE - current_total_size
+                            if remaining > 100:
+                                content = content[:remaining] + "\n... (global limit reached)"
+                                configs[rel_path] = content
+                                current_total_size += len(content)
+                            break
+                        
                         configs[rel_path] = content
+                        current_total_size += len(content)
                 except Exception:
                     pass
                     

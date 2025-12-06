@@ -69,7 +69,10 @@ export function ContributorsView({ projectId }: ContributorsViewProps) {
                         </div>
                     </div>
                 )
-            }
+            },
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "commits",
@@ -101,7 +104,9 @@ export function ContributorsView({ projectId }: ContributorsViewProps) {
         },
         {
             accessorKey: "languages",
-            header: "Languages",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Languages" />
+            ),
             cell: ({ row }) => {
                 const languages = row.getValue("languages") as string[]
                 return (

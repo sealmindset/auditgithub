@@ -12,6 +12,7 @@ import { ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { AiTriageDialog } from "@/components/ai-triage-dialog"
 import { ArchitectureView } from "@/components/ArchitectureView"
+import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { ContributorsView } from "@/components/ContributorsView"
 import { LanguagesView } from "@/components/LanguagesView"
 import { SbomView } from "@/components/SbomView"
@@ -73,7 +74,9 @@ export default function ProjectPage() {
     const findingColumns: ColumnDef<any>[] = [
         {
             accessorKey: "severity",
-            header: "Severity",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Severity" />
+            ),
             cell: ({ row }) => {
                 const severity = row.getValue("severity") as string
                 return (
@@ -87,11 +90,16 @@ export default function ProjectPage() {
                         {severity}
                     </Badge>
                 )
-            }
+            },
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "title",
-            header: "Title",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Title" />
+            ),
             cell: ({ row }) => (
                 <Link href={`/findings/${row.original.id}`} className="font-medium text-blue-600 hover:underline">
                     {row.getValue("title")}
@@ -100,11 +108,15 @@ export default function ProjectPage() {
         },
         {
             accessorKey: "file_path",
-            header: "File",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="File" />
+            ),
         },
         {
             accessorKey: "line",
-            header: "Line",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Line" />
+            ),
         },
         {
             id: "actions",
@@ -115,7 +127,9 @@ export default function ProjectPage() {
     const runColumns: ColumnDef<any>[] = [
         {
             accessorKey: "status",
-            header: "Status",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Status" />
+            ),
             cell: ({ row }) => {
                 const status = row.getValue("status") as string
                 return (
@@ -123,24 +137,38 @@ export default function ProjectPage() {
                         {status}
                     </Badge>
                 )
-            }
+            },
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "scan_type",
-            header: "Type",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Type" />
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "findings_count",
-            header: "Findings",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Findings" />
+            ),
         },
         {
             accessorKey: "created_at",
-            header: "Date",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Date" />
+            ),
             cell: ({ row }) => new Date(row.getValue("created_at")).toLocaleString()
         },
         {
             accessorKey: "duration_seconds",
-            header: "Duration (s)",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Duration (s)" />
+            ),
         }
     ]
 

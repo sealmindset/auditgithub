@@ -153,7 +153,10 @@ export function SbomView({ projectId }: SbomViewProps) {
                         )}
                     </div>
                 )
-            }
+            },
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "source",
@@ -164,7 +167,10 @@ export function SbomView({ projectId }: SbomViewProps) {
                 <div className="text-sm text-muted-foreground">
                     {row.getValue("source") || "-"}
                 </div>
-            )
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             id: "locations",

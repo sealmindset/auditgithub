@@ -112,3 +112,7 @@ class AIAgent:
     async def analyze_zero_day(self, *args, **kwargs):
         """Delegate to reasoning engine."""
         return await self.reasoning_engine.analyze_zero_day(*args, **kwargs)
+
+    async def generate_exception_rule(self, *args, **kwargs):
+        """Delegate to reasoning engine."""
+        return await self.reasoning_engine.generate_exception_rule(*args, **kwargs)

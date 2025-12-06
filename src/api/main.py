@@ -21,7 +21,7 @@ from . import models
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, exceptions
 
 app.include_router(repositories.router)
 app.include_router(jira.router)
@@ -31,6 +31,7 @@ app.include_router(analytics.router)
 app.include_router(findings.router)
 app.include_router(projects.router)
 app.include_router(settings.router)
+app.include_router(exceptions.router)
 
 # CORS Configuration
 app.add_middleware(

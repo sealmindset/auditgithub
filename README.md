@@ -32,6 +32,10 @@ A modular and extensible security scanning tool that checks GitHub repositories 
   - **Immediate Ctrl-C response**: Properly cancels all pending scans and exits cleanly
   - **Comprehensive logging**: Tracks stuck repositories with detailed diagnostics
   - **Backward compatible**: All existing commands work unchanged
+- **Incremental & Resumable Scanning**:
+  - **Smart Skipping**: Automatically skips repositories that haven't changed since the last successful scan.
+  - **Resumable**: Interrupted scans can be resumed without re-scanning completed repositories.
+  - **Force Mode**: Use `--force` to bypass checks and re-scan everything.
 
 ## Prerequisites
 
@@ -130,6 +134,9 @@ You can pass arguments to `run_scan.sh` which are forwarded to the orchestrator 
 
 # Increase verbosity
 ./run_scan.sh -v
+
+# Force a full re-scan (bypass incremental checks)
+./run_scan.sh --force
 ```
 
 **3. Timeout and Self-Annealing:**

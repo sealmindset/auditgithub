@@ -8,8 +8,9 @@ import { AiRemediationCard } from "@/components/ai-remediation-card"
 import { Loader2, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { ExceptionDialog } from "@/components/findings/exception-dialog"
 
-const API_BASE = "http://localhost:8000"
+const API_BASE = "/api"
 
 export default function FindingDetailsPage() {
     const params = useParams()
@@ -26,8 +27,9 @@ export default function FindingDetailsPage() {
                 if (!res.ok) throw new Error("Finding not found")
                 const data = await res.json()
                 setFinding(data)
-            } catch (err) {
-                setError("Failed to load finding details")
+            } catch (err: any) {
+                console.error("Error fetching finding:", err)
+                setError(err.message || "Failed to load finding details")
             } finally {
                 setLoading(false)
             }
@@ -67,13 +69,25 @@ export default function FindingDetailsPage() {
                         <span>{finding.id.substring(0, 8)}</span>
                     </div>
                 </div>
-                <Badge
-                    className={`ml-auto ${finding.severity === "Critical" ? "bg-red-500" :
-                        finding.severity === "High" ? "bg-orange-500" : "bg-blue-500"
-                        }`}
-                >
-                    {finding.severity}
-                </Badge>
+                <div className="ml-auto flex items-center gap-2">
+                    <ExceptionDialog
+                        findingId={finding.id}
+                        scannerName={finding.scanner_name}
+                        onSuccess={() => {
+                            // Optional: refresh finding or redirect if deleted
+                            if (finding) {
+                                // Maybe show a toast?
+                            }
+                        }}
+                    />
+                    <Badge
+                        className={`${finding.severity === "Critical" ? "bg-red-500" :
+                            finding.severity === "High" ? "bg-orange-500" : "bg-blue-500"
+                            }`}
+                    >
+                        {finding.severity}
+                    </Badge>
+                </div>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">

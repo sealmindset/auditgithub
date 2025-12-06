@@ -57,7 +57,10 @@ export function LanguagesView({ projectId }: LanguagesViewProps) {
             ),
             cell: ({ row }) => (
                 <div className="font-medium">{row.getValue("name")}</div>
-            )
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id))
+            },
         },
         {
             accessorKey: "files",
@@ -79,7 +82,9 @@ export function LanguagesView({ projectId }: LanguagesViewProps) {
         },
         {
             id: "total_lines",
-            header: "Total Lines",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Total Lines" />
+            ),
             cell: ({ row }) => {
                 const total = row.original.lines + row.original.blanks + row.original.comments
                 return <div className="text-muted-foreground">{total}</div>

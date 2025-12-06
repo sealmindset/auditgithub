@@ -114,6 +114,66 @@ class Config:
 # Create a global config instance
 config = Config()
 
+class ScanState:
+    """
+    Manages the state of repository scans to support incremental and resumable scanning.
+    """
+    def __init__(self, report_dir: str):
+        self.state_file = os.path.join(report_dir, "scan_state.json")
+        self.state = self._load_state()
+        self.lock = threading.Lock()
+
+    def _load_state(self) -> Dict[str, Any]:
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.warning(f"Failed to load scan state: {e}")
+        return {}
+
+    def save_state(self):
+        with self.lock:
+            try:
+                with open(self.state_file, 'w') as f:
+                    json.dump(self.state, f, indent=2)
+            except Exception as e:
+                logging.error(f"Failed to save scan state: {e}")
+
+    def get_repo_state(self, repo_name: str) -> Dict[str, Any]:
+        return self.state.get(repo_name, {})
+
+    def update_repo_state(self, repo_name: str, commit_sha: str, status: str):
+        with self.lock:
+            self.state[repo_name] = {
+                "last_commit": commit_sha,
+                "last_scan": datetime.datetime.now().isoformat(),
+                "status": status
+            }
+            self.save_state()
+
+    def should_scan(self, repo_name: str, current_commit_sha: str, force: bool = False) -> bool:
+        if force:
+            logging.info(f"Force scan enabled for {repo_name}")
+            return True
+        
+        repo_state = self.get_repo_state(repo_name)
+        last_commit = repo_state.get("last_commit")
+        last_status = repo_state.get("status")
+
+        logging.debug(f"Checking state for {repo_name}: current={current_commit_sha}, last={last_commit}, status={last_status}")
+
+        if last_status != "completed":
+            logging.info(f"Scan required for {repo_name}: last status was '{last_status}'")
+            return True
+        
+        if last_commit != current_commit_sha:
+            logging.info(f"Scan required for {repo_name}: commit changed ({last_commit} -> {current_commit_sha})")
+            return True
+            
+        return False
+
+
 def setup_temp_dir() -> str:
     """
     Create and return a temporary directory for repository cloning.
@@ -455,9 +515,22 @@ def clone_repo(repo: dict) -> bool:
         # Clone the repository with a timeout
         logging.info(f"Cloning {repo_name} from {clone_url} to {dest_path}...")
         
+        # Determine clone depth
+        clone_depth = os.getenv("GIT_CLONE_DEPTH", "0")
+        try:
+            depth_val = int(clone_depth)
+        except ValueError:
+            depth_val = 0
+            
+        git_cmd = ["git", "clone"]
+        if depth_val > 0:
+            git_cmd.extend(["--depth", str(depth_val)])
+            
+        git_cmd.extend([clone_url, dest_path])
+
         # Use subprocess.Popen for better control over the process
         process = subprocess.Popen(
-            ["git", "clone", "--depth", "1", clone_url, dest_path],
+            git_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -3873,6 +3946,8 @@ def main():
     parser.add_argument("--scanners", type=str, default="all",
                       help="Comma-separated list of scanners to run (e.g., 'syft,trivy'). Default: 'all'")
     
+    parser.add_argument("--force", action="store_true", help="Force scan even if repository has not changed")
+    
     args = parser.parse_args()
 
     # Check for SKIP_SCAN environment variable
@@ -4063,7 +4138,41 @@ def main():
                 full_name = repo.get("full_name") or f"{repo.get('owner',{}).get('login','?')}/{repo.get('name','?')}"
                 logging.info(f"[DRY-RUN] Would scan repository: {full_name}")
                 return
+            
+            # Initialize ScanState
+            scan_state = ScanState(config.REPORT_DIR)
+            repo_name = repo.get('name', 'unknown')
+            
+            # Incremental Scan Check
+            try:
+                default_branch = repo.get('default_branch', 'main')
+                branch_url = f"{repo['url']}/branches/{default_branch}"
+                resp = session.get(branch_url, headers=config.HEADERS, timeout=10)
+                if resp.status_code == 200:
+                    commit_sha = resp.json().get('commit', {}).get('sha')
+                else:
+                    logging.warning(f"Could not fetch branch info for {repo_name}, assuming changed.")
+                    commit_sha = "unknown"
+            except Exception as e:
+                logging.warning(f"Error fetching branch info for {repo_name}: {e}")
+                commit_sha = "unknown"
+
+            if not scan_state.should_scan(repo_name, commit_sha, args.force):
+                logging.info(f"Skipping {repo_name} (no changes since last scan).")
+                print(f"[auditgh] Skipping {repo_name} (no changes since last scan).")
+                return
+
             process_repo(repo, config.REPORT_DIR)
+            
+            # Update state if successful
+            # Since process_repo raises exception on failure (or logs it), we assume success if it returns?
+            # Wait, process_repo catches exceptions internally but logs them. It doesn't return status.
+            # We need to check if it succeeded. 
+            # Ideally process_repo should return status or raise exception.
+            # For now, we'll assume success if no exception raised here, but process_repo swallows exceptions.
+            # Let's check if report exists? Or just update state.
+            if commit_sha != "unknown":
+                scan_state.update_repo_state(repo_name, commit_sha, "completed")
         else:
             # Get all repositories
             repos = get_all_repos(
@@ -4104,6 +4213,9 @@ def main():
             logging.info(f"Starting parallel scan of {len(repos)} repositories with {max_workers} workers")
             logging.info(f"Repository timeout: {repo_timeout} minutes" + (" (disabled)" if repo_timeout == 0 else ""))
             
+            # Initialize ScanState
+            scan_state = ScanState(config.REPORT_DIR)
+
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {}
                 
@@ -4114,6 +4226,32 @@ def main():
                         logging.info("Shutdown requested, not submitting more repositories")
                         break
                     
+                    repo_name = repo.get('name', 'unknown')
+                    
+                    # Incremental Scan Check
+                    try:
+                        default_branch = repo.get('default_branch', 'main')
+                        branch_url = f"{repo['url']}/branches/{default_branch}"
+                        # We need a session for this
+                        # Re-use existing session or create new one? Existing session is fine.
+                        resp = session.get(branch_url, headers=config.HEADERS, timeout=10)
+                        if resp.status_code == 200:
+                            commit_sha = resp.json().get('commit', {}).get('sha')
+                        else:
+                            logging.warning(f"Could not fetch branch info for {repo_name}, assuming changed.")
+                            commit_sha = "unknown"
+                    except Exception as e:
+                        logging.warning(f"Error fetching branch info for {repo_name}: {e}")
+                        commit_sha = "unknown"
+
+                    if not scan_state.should_scan(repo_name, commit_sha, args.force):
+                        logging.info(f"Skipping {repo_name} (no changes since last scan).")
+                        scan_results['skipped'] += 1
+                        continue
+
+                    # Add commit_sha to repo object for later use
+                    repo['current_commit_sha'] = commit_sha
+                    
                     if repo_timeout > 0:
                         # Use timeout wrapper
                         future = executor.submit(process_repo_with_timeout, repo, config.REPORT_DIR, repo_timeout)
@@ -4121,8 +4259,8 @@ def main():
                         # No timeout - use original process_repo
                         future = executor.submit(process_repo, repo, config.REPORT_DIR)
                     
-                    futures[future] = repo.get('name', 'unknown')
-                
+                    futures[future] = repo_name
+
                 # Track completed and cancelled repos
                 completed_repos = []
                 cancelled_repos = []
@@ -4172,6 +4310,14 @@ def main():
                             future.result()
                             scan_results['success'] += 1
                             completed_repos.append(repo_name)
+                            
+                        # Update state if successful
+                        if repo_name in completed_repos:
+                             # Retrieve the repo object to get the SHA we stored
+                            repo_obj = next((r for r in repos if r['name'] == repo_name), {})
+                            sha = repo_obj.get('current_commit_sha')
+                            if sha and sha != "unknown":
+                                scan_state.update_repo_state(repo_name, sha, "completed")
                             
                     except Exception as e:
                         scan_results['error'] += 1

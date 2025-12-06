@@ -425,6 +425,29 @@ Format as clean Markdown. Be concise but technical.
             return response.content[0].text
         except Exception as e:
             logger.error(f"Claude architecture report generation failed: {e}")
+            
+            # Check for Rate Limit Error
+            if "rate_limit_error" in str(e) or "429" in str(e):
+                logger.warning("Rate limit hit. Returning fallback generic report.")
+                return f"""# Architecture Overview: {repo_name} (Fallback)
+
+> **Note**: AI generation is currently rate-limited. This is a generic fallback report.
+
+## High-Level Overview
+This project appears to be a software application. A detailed analysis is currently unavailable due to high AI load.
+
+## Tech Stack
+- **Languages**: Detected from codebase (e.g., Python, TypeScript, Go).
+- **Infrastructure**: Likely Dockerized.
+
+## Architecture
+The system likely follows standard patterns for its language ecosystem.
+
+## Next Steps
+- Try generating this report again later.
+- Manually edit this report to reflect the actual architecture.
+"""
+            
             return f"Error generating architecture report: {e}"
 
     async def generate_diagram_code(
@@ -498,6 +521,33 @@ Return ONLY the Python code block.
             return response.content[0].text
         except Exception as e:
             logger.error(f"Claude diagram code generation failed: {e}")
+            
+            # Check for Rate Limit Error
+            if "rate_limit_error" in str(e) or "429" in str(e):
+                logger.warning("Rate limit hit. Returning fallback generic diagram.")
+                return """```python
+from diagrams import Diagram, Cluster
+from diagrams.onprem.client import User
+from diagrams.onprem.compute import Server
+from diagrams.onprem.database import PostgreSQL
+from diagrams.programming.framework import React
+from diagrams.programming.language import Python
+
+# Fallback: Generated due to AI Rate Limiting
+with Diagram("Architecture (Fallback)", show=False, filename="architecture_diagram", graph_attr={"splines": "ortho", "nodesep": "0.8", "ranksep": "1.0"}):
+    user = User("User")
+    
+    with Cluster("Application"):
+        app = React("Frontend")
+        backend = Python("Backend")
+        
+        app >> backend
+        
+    with Cluster("Data"):
+        db = PostgreSQL("Database")
+        backend >> db
+```"""
+            
             return f"# Error generating diagram code: {e}"
 
     async def generate_architecture_overview(
