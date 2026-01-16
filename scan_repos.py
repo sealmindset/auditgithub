@@ -5523,6 +5523,10 @@ def main():
     parser.add_argument("--overridescan", action="store_true",
                       help="Override all skip logic and scan every repository regardless of activity or scan age")
 
+    # Auto-ingestion control
+    parser.add_argument("--no-auto-ingest", action="store_true",
+                      help="Disable automatic data ingestion after scan completes (ingestion runs by default)")
+
     # Resume functionality arguments
     parser.add_argument("--resume", action="store_true",
                       help="Resume from previous interrupted scan (skips already completed repos)")
@@ -6240,8 +6244,51 @@ def main():
 
             # Ensure a final console line for users
             print(f"[auditgh] Scan completed. Reports saved to: {os.path.abspath(config.REPORT_DIR)}")
+
+            # AUTO-INGEST: Automatically load scan results into database
+            if not args.dry_run and not args.no_auto_ingest and scan_results['success'] > 0:
+                try:
+                    logging.info("=" * 80)
+                    logging.info("AUTO-INGEST: Loading scan results into database")
+                    logging.info("=" * 80)
+
+                    # Import ingestion module
+                    sys.path.insert(0, '/app')
+                    from ingest_reports import ingest_all_organizations
+
+                    # Run ingestion for all organizations
+                    logging.info(f"Ingesting reports from: {config.REPORT_DIR}")
+                    results = ingest_all_organizations()
+
+                    # Report results
+                    if results:
+                        for org_name, stats in results.items():
+                            logging.info(f"  ✅ {org_name}: {stats['repos']} repos, {stats['findings']} findings")
+                        logging.info("✅ Auto-ingest completed successfully")
+                    else:
+                        logging.warning("⚠️  No data ingested (no organizations found)")
+
+                    logging.info("=" * 80)
+
+                except ImportError as e:
+                    logging.warning("=" * 80)
+                    logging.warning(f"⚠️  Auto-ingest unavailable: {e}")
+                    logging.warning("   Database connection may not be available from scanner")
+                    logging.warning("   Run manually: docker exec auditgh_api python ingest_reports.py")
+                    logging.warning("=" * 80)
+
+                except Exception as e:
+                    logging.error("=" * 80)
+                    logging.error(f"❌ Auto-ingest failed: {e}")
+                    logging.error("   Run manually: docker exec auditgh_api python ingest_reports.py")
+                    logging.error("=" * 80)
+
+            elif args.no_auto_ingest:
+                logging.info("⏭️  Auto-ingest disabled (--no-auto-ingest flag)")
+                logging.info("   Run manually: docker exec auditgh_api python ingest_reports.py")
+
             print("\n✅ All repositories successfully scanned. Shutting down.")
-        
+
     except KeyboardInterrupt:
         logging.info("\n🛑 Scan interrupted by user")
         if resume_state:

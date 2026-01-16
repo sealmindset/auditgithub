@@ -1,7 +1,8 @@
 """
 Gemini (Google) provider implementation.
 
-Uses Google's Generative AI SDK to interact with Gemini models.
+Uses Google's new genai SDK to interact with Gemini models.
+Migration from deprecated google.generativeai to google.genai package.
 """
 
 import json
@@ -10,8 +11,8 @@ import asyncio
 from typing import Dict, Any, Optional, List
 
 try:
-    import google.generativeai as genai
-    from google.api_core import exceptions as google_exceptions
+    from google import genai
+    from google.genai import types
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
@@ -33,7 +34,7 @@ class GeminiProvider(AIProvider):
     def __init__(self, api_key: str, model: str = "gemini-1.5-pro-latest", max_tokens: int = 4000):
         """
         Initialize Gemini provider.
-        
+
         Args:
             api_key: Google API key
             model: Model name (default: gemini-1.5-pro-latest)
@@ -41,53 +42,60 @@ class GeminiProvider(AIProvider):
         """
         if not GOOGLE_AVAILABLE:
             raise ImportError(
-                "Google Generative AI library not installed. Install with: pip install google-generativeai"
+                "Google GenAI library not installed. Install with: pip install google-genai"
             )
-        
+
         super().__init__(api_key, model, max_tokens)
-        genai.configure(api_key=api_key)
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model
-        self.client = genai.GenerativeModel(model)
         logger.info(f"Initialized Gemini provider with model: {model}")
 
     async def _call_api_with_retry(self, prompt: str, system_instruction: str = None, retries: int = 3) -> str:
         """Video-game style retry logic for API calls."""
         base_delay = 2
-        
-        # Configure generation config
-        generation_config = genai.types.GenerationConfig(
-            max_output_tokens=self.max_tokens,
-            temperature=0.3,
-        )
-        
-        # Gemini uses 'system_instruction' in the model constuctor or chat history usually,
-        # but for single turn generation we can prepend it or use the system_instruction param if supported.
-        # The python SDK v0.5+ supports system_instruction in GenerativeModel constructor.
-        # Since we use one instance, we might need to recreate it or just prepend to prompt.
-        # Prepending is safer for stateless usage across different system prompts.
-        full_prompt = prompt
+
+        # Build content with system instruction if provided
+        contents = []
         if system_instruction:
-            full_prompt = f"System Instruction: {system_instruction}\n\nUser Question: {prompt}"
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part(text=f"{system_instruction}\n\n{prompt}")]
+            ))
+        else:
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part(text=prompt)]
+            ))
+
+        # Configure generation settings
+        generate_content_config = types.GenerateContentConfig(
+            temperature=0.3,
+            max_output_tokens=self.max_tokens,
+        )
 
         for attempt in range(retries + 1):
             try:
-                # Run in executor because genai is synchronous blocking
+                # Run in executor because new genai client is synchronous
                 loop = asyncio.get_running_loop()
                 response = await loop.run_in_executor(
-                    None, 
-                    lambda: self.client.generate_content(
-                        full_prompt, 
-                        generation_config=generation_config
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=contents,
+                        config=generate_content_config
                     )
                 )
-                
-                # Check safeguards
-                if response.prompt_feedback and response.prompt_feedback.block_reason:
-                    logger.warning(f"Gemini blocked prompt: {response.prompt_feedback.block_reason}")
-                    raise ValueError(f"Prompt blocked: {response.prompt_feedback.block_reason}")
-                
-                return response.text
-                
+
+                # Extract text from response
+                if response.candidates and len(response.candidates) > 0:
+                    candidate = response.candidates[0]
+                    if candidate.content and candidate.content.parts:
+                        return candidate.content.parts[0].text
+
+                # If we get here, response was empty
+                logger.warning("Gemini returned empty response")
+                return ""
+
             except Exception as e:
                 error_str = str(e).lower()
                 # Check for 429 or quota exceeded
@@ -97,11 +105,11 @@ class GeminiProvider(AIProvider):
                         logger.warning(f"Gemini rate limit hit. Retrying in {delay}s... (Attempt {attempt+1}/{retries})")
                         await asyncio.sleep(delay)
                         continue
-                
+
                 logger.error(f"Gemini API call failed: {e}")
                 if attempt == retries:
                     raise e
-                    
+
         return ""
 
     async def analyze_stuck_scan(

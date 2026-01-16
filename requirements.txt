@@ -56,7 +56,7 @@ slowapi>=0.1.9  # Rate limiting for API protection
 # Export/Report Generation
 reportlab>=4.0.0  # For PDF generation
 python-docx>=0.8.11  # For DOCX generation
-google-generativeai>=0.5.0
+google-genai>=0.2.0  # New Google GenAI SDK (replaces deprecated google-generativeai)
 
 # Logging & Observability
 loguru>=0.7.0  # Structured logging with HTTP transport

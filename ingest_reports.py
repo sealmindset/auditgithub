@@ -111,16 +111,17 @@ def ingest_gitleaks_findings(session, repo_id, report_path):
             session.execute(
                 text("""
                     INSERT INTO findings
-                    (id, repository_id, scanner_name, finding_type, severity, title,
+                    (id, organization_id, repository_id, scanner_name, finding_type, severity, title,
                      description, file_path, line_start, line_end, finding_uuid,
                      status, created_at, updated_at)
                     VALUES
-                    (:id, :repo_id, :scanner, :finding_type, :severity, :title,
+                    (:id, :org_id, :repo_id, :scanner, :finding_type, :severity, :title,
                      :description, :file_path, :line_start, :line_end, :finding_uuid,
                      :status, :created_at, :updated_at)
                 """),
                 {
                     "id": finding_id,
+                    "org_id": org_id,
                     "repo_id": repo_id,
                     "scanner": "gitleaks",
                     "finding_type": finding.get('RuleID', 'unknown'),
@@ -187,16 +188,17 @@ def ingest_semgrep_findings(session, repo_id, report_path):
             session.execute(
                 text("""
                     INSERT INTO findings
-                    (id, repository_id, scanner_name, finding_type, severity, title,
+                    (id, organization_id, repository_id, scanner_name, finding_type, severity, title,
                      description, file_path, line_start, line_end, finding_uuid,
                      status, created_at, updated_at)
                     VALUES
-                    (:id, :repo_id, :scanner, :finding_type, :severity, :title,
+                    (:id, :org_id, :repo_id, :scanner, :finding_type, :severity, :title,
                      :description, :file_path, :line_start, :line_end, :finding_uuid,
                      :status, :created_at, :updated_at)
                 """),
                 {
                     "id": finding_id,
+                    "org_id": org_id,
                     "repo_id": repo_id,
                     "scanner": "semgrep",
                     "finding_type": check_id,
@@ -263,16 +265,17 @@ def ingest_grype_findings(session, repo_id, report_path):
             session.execute(
                 text("""
                     INSERT INTO findings
-                    (id, repository_id, scanner_name, finding_type, severity, title,
+                    (id, organization_id, repository_id, scanner_name, finding_type, severity, title,
                      description, package_name, package_version, cve_id, finding_uuid,
                      status, created_at, updated_at)
                     VALUES
-                    (:id, :repo_id, :scanner, :finding_type, :severity, :title,
+                    (:id, :org_id, :repo_id, :scanner, :finding_type, :severity, :title,
                      :description, :package_name, :package_version, :cve_id, :finding_uuid,
                      :status, :created_at, :updated_at)
                 """),
                 {
                     "id": finding_id,
+                    "org_id": org_id,
                     "repo_id": repo_id,
                     "scanner": "grype",
                     "finding_type": "vulnerability",
@@ -298,11 +301,15 @@ def ingest_grype_findings(session, repo_id, report_path):
         return 0
 
 def ingest_organization_reports(org_name):
-    """Ingest all reports for an organization."""
+    """Ingest all reports for an organization.
+
+    Returns:
+        dict: Statistics with 'repos' and 'findings' counts, or None if failed
+    """
     org_dir = REPORTS_DIR / org_name
     if not org_dir.exists():
         logger.warning(f"Organization directory not found: {org_dir}")
-        return
+        return None
 
     session = Session()
     try:
@@ -310,7 +317,7 @@ def ingest_organization_reports(org_name):
         org_id = get_organization_id(session, org_name)
         if not org_id:
             logger.error(f"Organization not found in database: {org_name}")
-            return
+            return None
 
         logger.info(f"Processing organization: {org_name} (ID: {org_id})")
 
@@ -355,16 +362,57 @@ def ingest_organization_reports(org_name):
 
         logger.info(f"Completed {org_name}: {total_repos} repositories, {total_findings} findings")
 
+        return {
+            'repos': total_repos,
+            'findings': total_findings
+        }
+
+    except Exception as e:
+        logger.error(f"Error ingesting organization {org_name}: {e}")
+        return None
     finally:
         session.close()
+
+def ingest_all_organizations(org_names=None):
+    """
+    Ingest reports for all organizations.
+
+    Args:
+        org_names: List of organization names to ingest. If None, ingests all found.
+
+    Returns:
+        dict: Results by organization name
+    """
+    if org_names is None:
+        # Auto-detect organizations from report directory
+        org_names = []
+        if REPORTS_DIR.exists():
+            for item in REPORTS_DIR.iterdir():
+                if item.is_dir() and not item.name.startswith(('_', '.')):
+                    org_names.append(item.name)
+
+    if not org_names:
+        logger.warning("No organizations found to ingest")
+        return {}
+
+    results = {}
+    for org_name in org_names:
+        result = ingest_organization_reports(org_name)
+        if result:
+            results[org_name] = result
+
+    return results
 
 def main():
     """Main ingestion function."""
     logger.info("Starting report ingestion...")
 
-    # Ingest for each organization
-    for org_name in ['sleepnumberlabs', 'SleepNumberInc']:
-        ingest_organization_reports(org_name)
+    # Ingest for all organizations
+    results = ingest_all_organizations(['sleepnumberlabs', 'SleepNumberInc'])
+
+    # Print summary
+    for org_name, stats in results.items():
+        logger.info(f"{org_name}: {stats['repos']} repos, {stats['findings']} findings")
 
     logger.info("Report ingestion complete!")
 

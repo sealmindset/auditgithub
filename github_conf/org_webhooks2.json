@@ -1,0 +1,23 @@
+[
+    {
+        "type": "Organization",
+        "id": 567832212,
+        "name": "web",
+        "active": true,
+        "events": [
+            "issue_comment",
+            "workflow_job"
+        ],
+        "config": {
+            "content_type": "json",
+            "insecure_ssl": "0",
+            "secret": "********",
+            "url": "https://codebuild.us-east-1.amazonaws.com/webhooks?t=eyJlbmNyeXB0ZWREYXRhIjoiR1BXcmZlNUh4VTNHMCs1TGExcHdsQTVoNnhNME5WMFN5WFBvOW94L0ZFdTNGbUQrOWxUSTNPRDhaZ0dZd1ZIMnF4M0REbUdieGY5K2E2dlQrbXZUWTZFPSIsIml2UGFyYW1ldGVyU3BlYyI6ImhCU2RMSjZMbmgvRmhoRmEiLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&v=1"
+        },
+        "updated_at": "2025-09-04T19:27:50Z",
+        "created_at": "2025-09-04T19:27:50Z",
+        "url": "https://api.github.com/orgs/sleepnumberlabs/hooks/567832212",
+        "ping_url": "https://api.github.com/orgs/sleepnumberlabs/hooks/567832212/pings",
+        "deliveries_url": "https://api.github.com/orgs/sleepnumberlabs/hooks/567832212/deliveries"
+    }
+]

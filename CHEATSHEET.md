@@ -178,6 +178,8 @@ docker exec auditgh-redis redis-cli ping
 
 ## Scanning Variations
 
+**🔥 NEW:** All scans now automatically ingest data into the database when complete! No manual `ingest_reports.py` needed.
+
 ### Basic Scans
 
 #### 1. Dry Run (Preview Only)
@@ -186,10 +188,25 @@ docker exec auditgh-redis redis-cli ping
 docker-compose run --rm scanner --target sleepnumberlabs --dry-run
 ```
 
-#### 2. Basic Scan (All Repos)
-**What it does:** Scans all repositories in the organization with default scanners (gitleaks, semgrep, grype)
+#### 2. Basic Scan (All Repos) ⭐ RECOMMENDED
+**What it does:** Scans all repositories + automatically loads results into database
+**Data immediately available in Web UI!**
 ```bash
 docker-compose run --rm scanner --target sleepnumberlabs
+
+# Output shows auto-ingest:
+# ================================================================================
+# Scan Summary
+# ================================================================================
+# Total repositories: 484
+# Successful: 484
+# ================================================================================
+# AUTO-INGEST: Loading scan results into database
+# ================================================================================
+# Ingesting reports from: /app/vulnerability_reports
+#   ✅ sleepnumberlabs: 484 repos, 277 findings
+# ✅ Auto-ingest completed successfully
+# ================================================================================
 ```
 
 #### 3. Single Repository Scan
@@ -267,10 +284,21 @@ docker-compose run --rm scanner \
 docker-compose run --rm scanner --target sleepnumberlabs --loglevel DEBUG
 ```
 
+#### 13. Disable Auto-Ingest (Manual Control)
+**What it does:** Scans without automatically ingesting data (old behavior)
+**Use when:** Testing, troubleshooting, or need to review reports first
+```bash
+# Scan without auto-ingest
+docker-compose run --rm scanner --target sleepnumberlabs --no-auto-ingest
+
+# Then manually ingest when ready
+docker exec auditgh_api python ingest_reports.py
+```
+
 ### Comprehensive Scans
 
-#### 13. Full Production Scan (Recommended Monthly)
-**What it does:** Complete scan with AI, all repos, overriding previous results
+#### 14. Full Production Scan (Recommended Monthly)
+**What it does:** Complete scan with AI, all repos, overriding previous results + auto-ingest
 ```bash
 docker-compose run --rm scanner \
   --target sleepnumberlabs \
@@ -281,8 +309,8 @@ docker-compose run --rm scanner \
   --max-workers 4
 ```
 
-#### 14. Quick Daily Scan (Recommended)
-**What it does:** Fast incremental scan of changed/new repos
+#### 15. Quick Daily Scan (Recommended)
+**What it does:** Fast incremental scan of changed/new repos + auto-ingest
 ```bash
 docker-compose run --rm scanner \
   --target sleepnumberlabs \
@@ -290,8 +318,8 @@ docker-compose run --rm scanner \
   --max-workers 4
 ```
 
-#### 15. Weekly Comprehensive Scan
-**What it does:** Thorough weekly scan with AI analysis
+#### 16. Weekly Comprehensive Scan
+**What it does:** Thorough weekly scan with AI analysis + auto-ingest
 ```bash
 docker-compose run --rm scanner \
   --target sleepnumberlabs \
@@ -302,33 +330,38 @@ docker-compose run --rm scanner \
 
 ### Multi-Organization Scans
 
-#### 16. Scan Multiple Organizations
-**What it does:** Runs scans sequentially for multiple organizations
+#### 17. Scan Multiple Organizations
+**What it does:** Runs scans sequentially for multiple organizations + auto-ingest each
 ```bash
-# Scan first organization
+# Scan first organization (auto-ingests)
 docker-compose run --rm scanner --target sleepnumberlabs
 
-# Scan second organization
+# Scan second organization (auto-ingests)
 docker-compose run --rm scanner --target SleepNumberInc
 
-# Or use a script for both
+# Or use a loop for multiple orgs (each auto-ingests)
 for org in sleepnumberlabs SleepNumberInc; do
   docker-compose run --rm scanner --target $org
 done
+
+# Data for all orgs immediately available in Web UI!
 ```
 
 ### Scan Variations Summary Table
 
-| Use Case | Command | When to Use |
-|----------|---------|-------------|
-| Preview | `--dry-run` | Before first scan or testing |
-| First scan | `--target org` | Initial setup |
-| Daily | `--rescan-days 1` | Continuous monitoring |
-| Weekly | `--rescan-days 7 --ai-agent` | Regular comprehensive review |
-| Monthly | `--overridescan --ai-agent` | Full audit |
-| Single repo | `--repo name` | Investigating specific issue |
-| Debug | `--loglevel DEBUG` | Troubleshooting problems |
-| Fast scan | `--max-workers 8` | When you need results quickly |
+| Use Case | Command | When to Use | Auto-Ingest |
+|----------|---------|-------------|-------------|
+| Preview | `--dry-run` | Before first scan or testing | No |
+| First scan | `--target org` | Initial setup | ✅ Yes |
+| Daily | `--rescan-days 1` | Continuous monitoring | ✅ Yes |
+| Weekly | `--rescan-days 7 --ai-agent` | Regular comprehensive review | ✅ Yes |
+| Monthly | `--overridescan --ai-agent` | Full audit | ✅ Yes |
+| Single repo | `--repo name` | Investigating specific issue | ✅ Yes |
+| Debug | `--loglevel DEBUG` | Troubleshooting problems | ✅ Yes |
+| Fast scan | `--max-workers 8` | When you need results quickly | ✅ Yes |
+| Manual ingest | `--no-auto-ingest` | Need to review reports first | No |
+
+**Note:** All scans (except dry-run) now automatically ingest data! No need to run `ingest_reports.py` manually.
 
 ---
 
@@ -382,11 +415,27 @@ curl http://localhost:8000/organizations/sleepnumberlabs | jq
 
 ## Data Ingestion
 
-After scanning, you need to ingest the JSON reports into the database.
+**🔥 NEW:** Auto-ingest is now automatic! Data is loaded immediately after scanning.
 
-### Basic Ingestion
+### Automatic Ingestion (Default)
 ```bash
-# Ingest all reports for all organizations
+# Just scan - data is automatically ingested!
+docker-compose run --rm scanner --target sleepnumberlabs
+
+# Output shows auto-ingest:
+# ================================================================================
+# AUTO-INGEST: Loading scan results into database
+# ================================================================================
+#   ✅ sleepnumberlabs: 484 repos, 277 findings
+# ✅ Auto-ingest completed successfully
+# ================================================================================
+
+# Data immediately available at http://localhost:3000
+```
+
+### Manual Ingestion (Only if using --no-auto-ingest)
+```bash
+# If you disabled auto-ingest, run manually:
 docker exec auditgh_api python ingest_reports.py
 ```
 
@@ -407,18 +456,6 @@ docker exec auditgh_db psql -U postgres -d security_portal -c \
    LEFT JOIN repositories r ON o.id = r.organization_id
    LEFT JOIN findings f ON r.id = f.repository_id
    GROUP BY o.name;"
-```
-
-### Scan + Ingest Workflow
-```bash
-# Complete workflow: scan and ingest
-docker-compose run --rm scanner --target sleepnumberlabs
-docker exec auditgh_api python ingest_reports.py
-
-# Verify in Web UI
-# Navigate to http://localhost:3000
-# Select organization from dropdown
-# View repositories and findings
 ```
 
 ---

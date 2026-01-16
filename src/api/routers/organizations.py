@@ -147,11 +147,18 @@ async def list_organizations(
         models.Organization.name
     ).all()
 
-    # Build response with computed fields
-    # Note: For orgs with dedicated databases, use /organizations/{org_name}/repositories
-    # and /organizations/{org_name}/findings endpoints for actual counts
+    # Build response with computed fields including counts
     result = []
     for org in orgs:
+        # Calculate actual counts from database
+        repo_count = db.query(models.Repository).filter(
+            models.Repository.organization_id == org.id
+        ).count()
+
+        finding_count = db.query(models.Finding).filter(
+            models.Finding.organization_id == org.id
+        ).count()
+
         result.append(OrganizationResponse(
             id=str(org.id),
             api_id=org.api_id,
@@ -163,8 +170,8 @@ async def list_organizations(
             is_default=org.is_default if org.is_default is not None else False,
             created_at=org.created_at,
             updated_at=org.updated_at,
-            total_repos=0,  # Use org-specific endpoints for accurate counts
-            total_findings=0
+            total_repos=repo_count,
+            total_findings=finding_count
         ))
 
     return result
