@@ -1,0 +1,13 @@
+{
+    "data": {
+        "organization": {
+            "name": "Sleep Number Labs",
+            "login": "sleepnumberlabs",
+            "description": "Sleep Number Labs",
+            "ipAllowListEnabledSetting": "DISABLED",
+            "ipAllowListForInstalledAppsEnabledSetting": "DISABLED",
+            "requiresTwoFactorAuthentication": false,
+            "samlIdentityProvider": null
+        }
+    }
+}

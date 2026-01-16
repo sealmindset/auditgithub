@@ -1,0 +1,218 @@
+rules:
+  # =============================================================================
+  # OUTBOUND HTTP REQUESTS - Python
+  # =============================================================================
+  - id: python-requests-outbound
+    patterns:
+      - pattern-either:
+          - pattern: requests.get($URL, ...)
+          - pattern: requests.post($URL, ...)
+          - pattern: requests.put($URL, ...)
+          - pattern: requests.delete($URL, ...)
+          - pattern: requests.patch($URL, ...)
+          - pattern: requests.request($METHOD, $URL, ...)
+    message: "Outbound HTTP request to: $URL"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: requests
+
+  - id: python-httpx-outbound
+    patterns:
+      - pattern-either:
+          - pattern: httpx.get($URL, ...)
+          - pattern: httpx.post($URL, ...)
+          - pattern: $CLIENT.get($URL, ...)
+          - pattern: $CLIENT.post($URL, ...)
+          - pattern: await $CLIENT.get($URL, ...)
+          - pattern: await $CLIENT.post($URL, ...)
+    message: "Outbound HTTPX request to: $URL"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: httpx
+
+  - id: python-aiohttp-outbound
+    patterns:
+      - pattern-either:
+          - pattern: await $SESSION.get($URL, ...)
+          - pattern: await $SESSION.post($URL, ...)
+          - pattern: aiohttp.ClientSession().get($URL, ...)
+    message: "Outbound aiohttp request to: $URL"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: aiohttp
+
+  - id: python-urllib-outbound
+    patterns:
+      - pattern-either:
+          - pattern: urllib.request.urlopen($URL, ...)
+          - pattern: urllib.request.Request($URL, ...)
+    message: "Outbound urllib request to: $URL"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: urllib
+
+  # =============================================================================
+  # OUTBOUND HTTP REQUESTS - JavaScript/TypeScript
+  # =============================================================================
+  - id: js-axios-outbound
+    patterns:
+      - pattern-either:
+          - pattern: axios.get($URL, ...)
+          - pattern: axios.post($URL, ...)
+          - pattern: axios.put($URL, ...)
+          - pattern: axios.delete($URL, ...)
+          - pattern: axios($CONFIG)
+          - pattern: $INSTANCE.get($URL, ...)
+          - pattern: $INSTANCE.post($URL, ...)
+    message: "Outbound Axios request to: $URL"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: axios
+
+  - id: js-fetch-outbound
+    patterns:
+      - pattern-either:
+          - pattern: fetch($URL, ...)
+          - pattern: await fetch($URL, ...)
+    message: "Outbound fetch request to: $URL"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: fetch
+
+  - id: js-got-outbound
+    patterns:
+      - pattern-either:
+          - pattern: got($URL, ...)
+          - pattern: got.get($URL, ...)
+          - pattern: got.post($URL, ...)
+    message: "Outbound got request to: $URL"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: got
+
+  - id: js-superagent-outbound
+    patterns:
+      - pattern-either:
+          - pattern: superagent.get($URL)
+          - pattern: superagent.post($URL)
+          - pattern: request.get($URL)
+          - pattern: request.post($URL)
+    message: "Outbound superagent request to: $URL"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: superagent
+
+  # =============================================================================
+  # OUTBOUND HTTP REQUESTS - Go
+  # =============================================================================
+  - id: go-http-outbound
+    patterns:
+      - pattern-either:
+          - pattern: http.Get($URL)
+          - pattern: http.Post($URL, ...)
+          - pattern: http.NewRequest($METHOD, $URL, ...)
+          - pattern: $CLIENT.Get($URL)
+          - pattern: $CLIENT.Post($URL, ...)
+          - pattern: $CLIENT.Do($REQ)
+    message: "Outbound Go HTTP request to: $URL"
+    languages: [go]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: net/http
+
+  - id: go-resty-outbound
+    patterns:
+      - pattern-either:
+          - pattern: $CLIENT.R().Get($URL)
+          - pattern: $CLIENT.R().Post($URL)
+          - pattern: resty.New().R().Get($URL)
+    message: "Outbound Resty request to: $URL"
+    languages: [go]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: resty
+
+  # =============================================================================
+  # OUTBOUND HTTP REQUESTS - Java
+  # =============================================================================
+  - id: java-httpclient-outbound
+    patterns:
+      - pattern-either:
+          - pattern: new URL($URL).openConnection()
+          - pattern: URI.create($URL)
+    message: "Outbound Java HTTP request to: $URL"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: java.net.http
+
+  - id: java-okhttp-outbound
+    patterns:
+      - pattern-either:
+          - pattern: $CLIENT.newCall($REQUEST).execute()
+          - pattern: $CLIENT.newCall($REQUEST).enqueue($CALLBACK)
+    message: "Outbound OkHttp request"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: okhttp
+
+  - id: java-resttemplate-outbound
+    patterns:
+      - pattern-either:
+          - pattern: $TEMPLATE.getForObject($URL, ...)
+          - pattern: $TEMPLATE.postForObject($URL, ...)
+          - pattern: $TEMPLATE.exchange($URL, ...)
+    message: "Outbound RestTemplate request to: $URL"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: spring-resttemplate
+
+  - id: java-webclient-outbound
+    patterns:
+      - pattern-either:
+          - pattern: WebClient.create($URL)
+          - pattern: WebClient.builder().baseUrl($URL).build()
+    message: "Outbound WebClient request to: $URL"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      library: spring-webclient
+

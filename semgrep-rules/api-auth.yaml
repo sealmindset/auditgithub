@@ -1,0 +1,209 @@
+rules:
+  # =============================================================================
+  # AUTHENTICATION HEADERS - All Languages
+  # =============================================================================
+  - id: auth-bearer-header
+    patterns:
+      - pattern-either:
+          # Python
+          - pattern: '"Authorization": "Bearer ..."'
+          - pattern: "'Authorization': 'Bearer ...'"
+          - pattern: |
+              {"Authorization": f"Bearer {$TOKEN}"}
+          - pattern: |
+              headers["Authorization"] = f"Bearer {$TOKEN}"
+          # JavaScript
+          - pattern: |
+              "Authorization": `Bearer ${$TOKEN}`
+          - pattern: |
+              Authorization: `Bearer ${$TOKEN}`
+          - pattern: |
+              headers.Authorization = `Bearer ${...}`
+    message: "Bearer token authentication detected"
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: bearer
+
+  - id: auth-api-key-header
+    patterns:
+      - pattern-either:
+          - pattern: '"X-API-Key": $VALUE'
+          - pattern: "'X-API-Key': $VALUE"
+          - pattern: '"x-api-key": $VALUE'
+          - pattern: '"Api-Key": $VALUE'
+          - pattern: '"apikey": $VALUE'
+          - pattern: |
+              headers["X-API-Key"] = $VALUE
+          - pattern: |
+              headers["x-api-key"] = $VALUE
+    message: "API Key authentication detected"
+    languages: [python, javascript, typescript, java]
+    severity: WARNING
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: api-key
+
+  - id: auth-basic-header
+    patterns:
+      - pattern-either:
+          - pattern: '"Authorization": "Basic ..."'
+          - pattern: auth=($USER, $PASS)
+          - pattern: HTTPBasicAuth($USER, $PASS)
+          - pattern: requests.auth.HTTPBasicAuth(...)
+          - pattern: btoa($CREDENTIALS)
+    message: "Basic authentication detected"
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: basic
+
+  # =============================================================================
+  # OAUTH2 FLOWS
+  # =============================================================================
+  - id: oauth2-token-request
+    patterns:
+      - pattern-either:
+          - pattern: grant_type=...
+          - pattern: '"grant_type": $VALUE'
+          - pattern: client_credentials
+          - pattern: authorization_code
+    message: "OAuth2 token request detected"
+    languages: [python, javascript, typescript, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: oauth2
+
+  - id: oauth2-client-credentials
+    patterns:
+      - pattern-either:
+          - pattern: '"client_id": $VALUE'
+          - pattern: '"client_secret": $VALUE'
+          - pattern: client_id=$VALUE
+          - pattern: client_secret=$VALUE
+    message: "OAuth2 client credentials detected"
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: oauth2-client
+
+  # =============================================================================
+  # SESSION/COOKIE AUTH
+  # =============================================================================
+  - id: session-cookie-auth
+    patterns:
+      - pattern-either:
+          - pattern: session.cookies
+          - pattern: '"Cookie": $VALUE'
+          - pattern: "'Cookie': $VALUE"
+          - pattern: document.cookie
+          - pattern: req.cookies
+          - pattern: res.cookie(...)
+    message: "Cookie/Session authentication detected"
+    languages: [python, javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: cookie
+
+  # =============================================================================
+  # JWT HANDLING
+  # =============================================================================
+  - id: jwt-token-handling
+    patterns:
+      - pattern-either:
+          - pattern: jwt.encode(...)
+          - pattern: jwt.decode(...)
+          - pattern: jwt.sign(...)
+          - pattern: jwt.verify(...)
+          - pattern: jsonwebtoken.sign(...)
+          - pattern: jsonwebtoken.verify(...)
+          - pattern: PyJWT.encode(...)
+    message: "JWT token handling detected"
+    languages: [python, javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      auth_type: jwt
+
+  # =============================================================================
+  # SECURITY DECORATORS/MIDDLEWARE
+  # =============================================================================
+  - id: fastapi-security-dep
+    patterns:
+      - pattern-either:
+          - pattern: Depends(oauth2_scheme)
+          - pattern: Depends($SECURITY)
+          - pattern: Security($DEP)
+          - pattern: HTTPBearer()
+          - pattern: OAuth2PasswordBearer(...)
+    message: "FastAPI security dependency detected"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      framework: fastapi
+
+  - id: flask-login-required
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @login_required
+              def $FUNC(...): ...
+          - pattern: |
+              @jwt_required()
+              def $FUNC(...): ...
+          - pattern: |
+              @auth.login_required
+              def $FUNC(...): ...
+    message: "Flask authentication decorator detected"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      framework: flask
+
+  - id: express-auth-middleware
+    patterns:
+      - pattern-either:
+          - pattern: app.use(passport.authenticate(...))
+          - pattern: router.use($AUTH_MIDDLEWARE)
+          - pattern: authenticate($STRATEGY)
+          - pattern: isAuthenticated()
+    message: "Express authentication middleware detected"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      framework: express
+
+  - id: spring-security-annotation
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @PreAuthorize($EXPR)
+          - pattern: |
+              @Secured($ROLES)
+          - pattern: |
+              @RolesAllowed($ROLES)
+    message: "Spring Security annotation detected"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: authentication
+      framework: spring

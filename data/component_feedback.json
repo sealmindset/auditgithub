@@ -1,0 +1,37 @@
+[
+  {
+    "component_id": "test",
+    "component_name": "Test Component",
+    "vote": "up",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "received_at": "2025-12-08T14:14:42.503536"
+  },
+  {
+    "component_id": "executive-security-posture",
+    "component_name": "Security Posture Card",
+    "vote": "up",
+    "timestamp": "2025-12-08T14:15:38.919Z",
+    "received_at": "2025-12-08T14:15:38.932914"
+  },
+  {
+    "component_id": "executive-weekly-trends",
+    "component_name": "Weekly Trends Card",
+    "vote": "up",
+    "timestamp": "2025-12-08T14:15:40.502Z",
+    "received_at": "2025-12-08T14:15:40.512879"
+  },
+  {
+    "component_id": "executive-immediate-action",
+    "component_name": "Immediate Action Card",
+    "vote": "up",
+    "timestamp": "2025-12-08T14:15:49.417Z",
+    "received_at": "2025-12-08T14:15:49.424933"
+  },
+  {
+    "component_id": "hero-metrics",
+    "component_name": "Hero Metrics",
+    "vote": "up",
+    "timestamp": "2025-12-08T14:15:53.283Z",
+    "received_at": "2025-12-08T14:15:53.287971"
+  }
+]

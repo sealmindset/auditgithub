@@ -1,0 +1,246 @@
+services:
+  # =============================================================================
+  # Scanner Service - Runs security scans on repositories
+  # =============================================================================
+  # This is a heavy-weight container with all security tools installed.
+  # It runs on-demand (not continuously) to scan repositories.
+  # Usage: docker-compose run --rm scanner --target <org-name>
+  # =============================================================================
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+      args:
+        - GITHUB_TOKEN=${GITHUB_TOKEN}
+    container_name: auditgh_scanner
+    env_file:
+      - .env
+    environment:
+      # Override specific vars for container context
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-auditgh_kb}
+      - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-auditgh_dev_secrets_key_32chars}
+    volumes:
+      - .:/app
+      - ./vulnerability_reports:/app/vulnerability_reports
+      # Cache directories for various tools to speed up subsequent runs
+      - dependency-cache:/root/.cache/dependency-check
+      - semgrep-cache:/root/.cache/semgrep
+      - npm-cache:/root/.npm
+      - bundle-cache:/usr/local/bundle
+      - trivy-cache:/root/.cache/trivy
+      - grype-cache:/root/.cache/grype
+    # Resource limits for scanner (can use more memory during scans)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    # Default command - can be overridden with docker-compose run
+    command: >
+      --org ${GITHUB_ORG} --api-base ${GITHUB_API:-https://api.github.com} --report-dir /app/vulnerability_reports --max-workers 4 --loglevel INFO
+    depends_on:
+      db:
+        condition: service_started
+    # Scanner runs on-demand, not as a persistent service
+    profiles:
+      - scan
+
+  # =============================================================================
+  # API Service - FastAPI backend for the web UI
+  # =============================================================================
+  # Lightweight container for serving the API.
+  # Runs continuously to handle web requests.
+  # =============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: auditgh_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override specific vars for container context
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-security_portal}
+      - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-auditgh_dev_secrets_key_32chars}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL}
+      - AZURE_AI_FOUNDRY_ENDPOINT=${AZURE_AI_FOUNDRY_ENDPOINT}
+      - AZURE_AI_FOUNDRY_API_KEY=${AZURE_AI_FOUNDRY_API_KEY}
+      # Multi-tenant configuration
+      - MULTI_TENANT_ENABLED=${MULTI_TENANT_ENABLED:-false}
+      - DEFAULT_TENANT_SLUG=${DEFAULT_TENANT_SLUG:-default}
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_started
+    volumes:
+      - .:/app
+      - ./vulnerability_reports:/app/vulnerability_reports
+    # Resource limits for API (lighter weight than scanner)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Health check for API
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # =============================================================================
+  # Web UI Service - Next.js frontend
+  # =============================================================================
+  web-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+      target: deps
+    container_name: auditgh_ui
+    ports:
+      - "3000:3000"
+    environment:
+      - API_BASE=http://api:8000
+      - NODE_ENV=development
+    volumes:
+      - ./src/web-ui:/app
+      - web-ui-node-modules:/app/node_modules
+      - web-ui-next:/app/.next
+    working_dir: /app
+    command: sh -c "npm install && npx next dev"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # =============================================================================
+  # Database Service - PostgreSQL
+  # =============================================================================
+  db:
+    image: postgres:15-alpine
+    container_name: auditgh_db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-auditgh_kb}
+      - POSTGRES_MAX_CONNECTIONS=200
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =============================================================================
+  # Redis Service - Permission Caching, Token Blacklist, Session Metadata
+  # =============================================================================
+  # Provides Redis cache for:
+  # - RBAC permission lookups (5-minute TTL with LRU eviction)
+  # - Token blacklist (JWT revocation with TTL auto-expiry)
+  # - Refresh token rotation tracking (one-time use enforcement)
+  # - Session metadata (expiry and activity tracking)
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: auditgh-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # =============================================================================
+  # Session Cleanup Service - Periodic Redis Session Cleanup
+  # =============================================================================
+  # Runs every 5 minutes to clean up expired session metadata from Redis.
+  # Uses SCAN cursor to avoid blocking Redis on large datasets.
+  # =============================================================================
+  session-cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: auditgh_session_cleanup
+    command: python -m src.auth.cleanup
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    restart: unless-stopped
+
+  # =============================================================================
+  # MinIO Service - S3-compatible Log Storage
+  # =============================================================================
+  # Provides centralized log storage for all containers.
+  # Acts as a collector source for Cribl Stream (pull model).
+  # Console UI available at http://localhost:9001
+  # =============================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: auditgh_minio
+    ports:
+      - "9009:9000"   # S3 API (changed from 9000 to avoid Zscaler conflict)
+      - "9001:9001"   # Console UI
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-auditgh}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-auditgh_logs_2024}
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  dependency-cache:
+  semgrep-cache:
+  npm-cache:
+  bundle-cache:
+  trivy-cache:
+  grype-cache:
+  postgres-data:
+  redis-data:
+  web-ui-node-modules:
+  web-ui-next:
+  minio-data:

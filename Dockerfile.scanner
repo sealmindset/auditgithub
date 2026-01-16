@@ -1,0 +1,197 @@
+FROM python:3.11-slim
+
+# Add build argument for target architecture (amd64, arm64)
+ARG TARGETARCH
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    npm \
+    openjdk-21-jre-headless \
+    ruby \
+    ruby-dev \
+    build-essential \
+    wget \
+    curl \
+    unzip \
+    ca-certificates \
+    libpq-dev \
+    cloc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js tools
+RUN npm install -g retire pnpm yarn
+
+# Install Ruby gems
+RUN gem install bundler-audit
+
+# Install Go tools (Architecture Aware)
+RUN echo "Installing Go for ${TARGETARCH}..." && \
+    curl -Lk https://go.dev/dl/go1.21.5.linux-${TARGETARCH}.tar.gz -o go.tar.gz && \
+    tar -C /usr/local -xzf go.tar.gz && \
+    rm go.tar.gz
+ENV PATH="${PATH}:/usr/local/go/bin:/root/go/bin"
+ENV GOPATH="/root/go"
+
+RUN go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Install OWASP Dependency-Check
+ENV DEPENDENCY_CHECK_VERSION=12.1.0
+ENV DEPENDENCY_CHECK_URL=https://github.com/jeremylong/DependencyCheck/releases/download/v${DEPENDENCY_CHECK_VERSION}/dependency-check-${DEPENDENCY_CHECK_VERSION}-release.zip
+
+# Download and install Dependency-Check
+RUN echo "Downloading OWASP Dependency-Check ${DEPENDENCY_CHECK_VERSION}..." && \
+    wget --no-check-certificate -q ${DEPENDENCY_CHECK_URL} -O /tmp/dependency-check.zip && \
+    unzip -q /tmp/dependency-check.zip -d /opt/ && \
+    rm /tmp/dependency-check.zip && \
+    chmod +x /opt/dependency-check/bin/* && \
+    echo "Dependency-Check installed successfully" && \
+    /opt/dependency-check/bin/dependency-check.sh --version
+
+ENV PATH="${PATH}:/opt/dependency-check/bin"
+
+# Configure git to use the token for authentication
+ARG GITHUB_TOKEN
+RUN git config --global credential.helper store && \
+    echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > /root/.git-credentials && \
+    chmod 600 /root/.git-credentials
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt psycopg2-binary
+
+# Create virtual environments for Python security tools to avoid dependency conflicts
+RUN python -m venv /opt/venv/semgrep && \
+    /opt/venv/semgrep/bin/pip install --no-cache-dir semgrep && \
+    rm -f /usr/local/bin/semgrep && \
+    ln -s /opt/venv/semgrep/bin/semgrep /usr/local/bin/semgrep
+
+RUN python -m venv /opt/venv/bandit && \
+    /opt/venv/bandit/bin/pip install --no-cache-dir bandit && \
+    rm -f /usr/local/bin/bandit && \
+    ln -s /opt/venv/bandit/bin/bandit /usr/local/bin/bandit
+
+RUN python -m venv /opt/venv/checkov && \
+    /opt/venv/checkov/bin/pip install --no-cache-dir checkov && \
+    rm -f /usr/local/bin/checkov && \
+    ln -s /opt/venv/checkov/bin/checkov /usr/local/bin/checkov
+
+# Install Gitleaks (Architecture Aware)
+RUN ARCH_TAG="x64"; \
+    if [ "$TARGETARCH" = "arm64" ]; then ARCH_TAG="arm64"; fi; \
+    echo "Installing Gitleaks for linux_${ARCH_TAG}..." && \
+    curl -sSfLk https://github.com/zricethezav/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_${ARCH_TAG}.tar.gz -o gitleaks.tar.gz && \
+    tar -xzf gitleaks.tar.gz && \
+    mv gitleaks /usr/local/bin/ && \
+    rm gitleaks.tar.gz
+
+# Install Trivy
+RUN curl -sfLk https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+# Install Syft
+RUN curl -sSfLk https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+# Install Grype
+RUN curl -sSfLk https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+# Install CodeQL CLI (AMD64 only - no native ARM64 Linux binaries available)
+# On ARM64, CodeQL will be skipped and scans will proceed without it
+ENV CODEQL_VERSION=2.15.3
+ENV CODEQL_HOME=/opt/codeql
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+    echo "Installing CodeQL..." && \
+    mkdir -p ${CODEQL_HOME} && \
+    wget -q --no-check-certificate https://github.com/github/codeql-cli-binaries/releases/download/v${CODEQL_VERSION}/codeql-linux64.zip -O /tmp/codeql.zip && \
+    unzip -q /tmp/codeql.zip -d ${CODEQL_HOME} && \
+    rm /tmp/codeql.zip && \
+    ln -s ${CODEQL_HOME}/codeql/codeql /usr/local/bin/codeql && \
+    codeql pack download codeql/python-queries codeql/javascript-queries codeql/go-queries codeql/java-queries; \
+    else \
+    echo "Skipping CodeQL on non-x86_64 architecture"; \
+    fi
+
+# Install TruffleHog
+RUN curl -sSfLk https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+# Install Nuclei
+RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+# Install .NET SDK and OSSGadget
+# Note: Microsoft package repository setup might differ for ARM64. 
+# Using dotnet-install script is often more robust for multi-arch.
+RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
+    chmod +x dotnet-install.sh && \
+    ./dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet && \
+    ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet && \
+    rm dotnet-install.sh
+
+# Install OSSGadget
+RUN dotnet tool install --global Microsoft.CST.OSSGadget.CLI
+ENV PATH="${PATH}:/root/.dotnet/tools"
+
+# =============================================================================
+# PHASE 1 SECURITY TOOLS (December 2024)
+# =============================================================================
+
+# Install Horusec (Architecture Aware)
+RUN ARCH_TAG="amd64"; \
+    if [ "$TARGETARCH" = "arm64" ]; then ARCH_TAG="arm64"; fi; \
+    echo "Installing Horusec for ${ARCH_TAG}..." && \
+    curl -fsSLk https://github.com/ZupIT/horusec/releases/latest/download/horusec_linux_${ARCH_TAG} -o /usr/local/bin/horusec && \
+    chmod +x /usr/local/bin/horusec
+
+# Install Whispers (config file secrets) in isolated venv
+RUN python -m venv /opt/venv/whispers && \
+    /opt/venv/whispers/bin/pip install --no-cache-dir whispers && \
+    ln -s /opt/venv/whispers/bin/whispers /usr/local/bin/whispers
+
+# Install Bearer (data flow analysis)
+RUN curl -sfLk https://raw.githubusercontent.com/Bearer/bearer/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+# Install Terrascan (Architecture Aware)
+RUN ARCH_TAG="x86_64"; \
+    if [ "$TARGETARCH" = "arm64" ]; then ARCH_TAG="arm64"; fi; \
+    echo "Installing Terrascan for ${ARCH_TAG}..." && \
+    curl -Lk https://github.com/tenable/terrascan/releases/download/v1.19.1/terrascan_1.19.1_Linux_${ARCH_TAG}.tar.gz -o terrascan.tar.gz && \
+    tar -xzf terrascan.tar.gz terrascan && \
+    mv terrascan /usr/local/bin/ && \
+    rm terrascan.tar.gz
+
+# Install Dockle (Architecture Aware)
+# Release pattern: dockle_0.4.14_Linux-64bit.tar.gz vs dockle_0.4.14_Linux-ARM64.tar.gz
+RUN ARCH_TAG="64bit"; \
+    if [ "$TARGETARCH" = "arm64" ]; then ARCH_TAG="ARM64"; fi; \
+    echo "Installing Dockle for Linux-${ARCH_TAG}..." && \
+    curl -Lk https://github.com/goodwithtech/dockle/releases/download/v0.4.14/dockle_0.4.14_Linux-${ARCH_TAG}.tar.gz -o dockle.tar.gz && \
+    tar -xzf dockle.tar.gz && \
+    mv dockle /usr/local/bin/ && \
+    rm dockle.tar.gz
+
+# =============================================================================
+# PHASE 3 SECURITY TOOLS: Go & Mobile Security (December 2024)
+# =============================================================================
+
+# Install gosec (Go security scanner)
+RUN go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+# Install GolangCI-Lint (Go linter aggregator with security linters)
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v1.55.2
+
+# Note: MobSF runs as a separate Docker container for full functionality
+# For source code analysis, we use built-in pattern matching (no additional install needed)
+# Full MobSF: docker pull opensecurity/mobile-security-framework-mobsf
+
+# Copy the rest of the application
+COPY . .
+
+# Create a volume for reports
+VOLUME ["/app/vulnerability_reports"]
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+
+# Entrypoint
+ENTRYPOINT ["python", "scan_repos.py"]

@@ -1,0 +1,278 @@
+rules:
+  # =============================================================================
+  # PYTHON - FastAPI/Starlette
+  # =============================================================================
+  - id: fastapi-endpoint-get
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.get($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$ROUTER.get($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$ROUTER.get($PATH, ...)
+              async def $FUNC(...): ...
+    message: "FastAPI GET endpoint: $PATH"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: fastapi
+      http_method: GET
+
+  - id: fastapi-endpoint-post
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.post($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.post($PATH, ...)
+              async def $FUNC(...): ...
+    message: "FastAPI POST endpoint: $PATH"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: fastapi
+      http_method: POST
+
+  - id: fastapi-endpoint-all-methods
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.$METHOD($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.$METHOD($PATH, ...)
+              async def $FUNC(...): ...
+    message: "FastAPI endpoint: $METHOD $PATH"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: fastapi
+
+  # =============================================================================
+  # PYTHON - Flask
+  # =============================================================================
+  - id: flask-route-endpoint
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.route($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$BP.route($PATH, ...)
+              def $FUNC(...): ...
+    message: "Flask route endpoint: $PATH"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: flask
+
+  - id: flask-restful-resource
+    pattern: |
+      class $CLASS(Resource):
+        ...
+    message: "Flask-RESTful resource class: $CLASS"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: flask-restful
+
+  # =============================================================================
+  # PYTHON - Django REST Framework
+  # =============================================================================
+  - id: django-viewset
+    pattern: |
+      class $CLASS(viewsets.$TYPE):
+        ...
+    message: "Django REST ViewSet: $CLASS"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: django-rest
+
+  - id: django-apiview
+    pattern: |
+      class $CLASS(APIView):
+        ...
+    message: "Django APIView: $CLASS"
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: django-rest
+
+  # =============================================================================
+  # JAVASCRIPT/TYPESCRIPT - Express
+  # =============================================================================
+  - id: express-route-get
+    patterns:
+      - pattern-either:
+          - pattern: $APP.get($PATH, ...)
+          - pattern: $ROUTER.get($PATH, ...)
+    message: "Express GET route: $PATH"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: express
+      http_method: GET
+
+  - id: express-route-post
+    patterns:
+      - pattern-either:
+          - pattern: $APP.post($PATH, ...)
+          - pattern: $ROUTER.post($PATH, ...)
+    message: "Express POST route: $PATH"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: express
+      http_method: POST
+
+  - id: express-route-all-methods
+    patterns:
+      - pattern-either:
+          - pattern: $APP.$METHOD($PATH, $HANDLER, ...)
+          - pattern: $ROUTER.$METHOD($PATH, $HANDLER, ...)
+    message: "Express route: $METHOD $PATH"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: express
+
+  - id: express-router-use
+    pattern: $ROUTER.use($PATH, ...)
+    message: "Express router mount: $PATH"
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: express
+
+  # =============================================================================
+  # JAVA - Spring
+  # =============================================================================
+  - id: spring-getmapping
+    pattern: |
+      @GetMapping($PATH)
+      $RETURNTYPE $METHOD(...) { ... }
+    message: "Spring GET mapping: $PATH"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: spring
+      http_method: GET
+
+  - id: spring-postmapping
+    pattern: |
+      @PostMapping($PATH)
+      $RETURNTYPE $METHOD(...) { ... }
+    message: "Spring POST mapping: $PATH"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: spring
+      http_method: POST
+
+  - id: spring-requestmapping
+    pattern: |
+      @RequestMapping(...)
+      $RETURNTYPE $METHOD(...) { ... }
+    message: "Spring RequestMapping endpoint"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: spring
+
+  - id: spring-restcontroller
+    pattern: |
+      @RestController
+      class $CLASS { ... }
+    message: "Spring REST controller: $CLASS"
+    languages: [java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: spring
+
+  # =============================================================================
+  # GO - Gin
+  # =============================================================================
+  - id: gin-route-get
+    pattern: $ROUTER.GET($PATH, ...)
+    message: "Gin GET route: $PATH"
+    languages: [go]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: gin
+      http_method: GET
+
+  - id: gin-route-post
+    pattern: $ROUTER.POST($PATH, ...)
+    message: "Gin POST route: $PATH"
+    languages: [go]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: gin
+      http_method: POST
+
+  - id: gin-route-group
+    pattern: $GROUP := $ROUTER.Group($PATH)
+    message: "Gin route group: $PATH"
+    languages: [go]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: gin
+
+  # =============================================================================
+  # GO - Echo
+  # =============================================================================
+  - id: echo-route
+    patterns:
+      - pattern-either:
+          - pattern: $E.GET($PATH, ...)
+          - pattern: $E.POST($PATH, ...)
+          - pattern: $E.PUT($PATH, ...)
+          - pattern: $E.DELETE($PATH, ...)
+    message: "Echo route: $PATH"
+    languages: [go]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: inbound
+      framework: echo

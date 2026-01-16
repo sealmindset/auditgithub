@@ -1,0 +1,214 @@
+rules:
+  # ===========================================================================
+  # Retrofit API Definitions (Kotlin/Java)
+  # Using specific string patterns to avoid over-matching
+  # ===========================================================================
+  
+  - id: retrofit-get-endpoint
+    pattern: '@GET("$PATH")'
+    message: "Retrofit GET endpoint: $PATH"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: retrofit
+      http_method: GET
+
+  - id: retrofit-post-endpoint
+    pattern: '@POST("$PATH")'
+    message: "Retrofit POST endpoint: $PATH"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: retrofit
+      http_method: POST
+
+  - id: retrofit-put-endpoint
+    pattern: '@PUT("$PATH")'
+    message: "Retrofit PUT endpoint: $PATH"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: retrofit
+      http_method: PUT
+
+  - id: retrofit-delete-endpoint
+    pattern: '@DELETE("$PATH")'
+    message: "Retrofit DELETE endpoint: $PATH"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: retrofit
+      http_method: DELETE
+
+  - id: retrofit-patch-endpoint
+    pattern: '@PATCH("$PATH")'
+    message: "Retrofit PATCH endpoint: $PATH"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: retrofit
+      http_method: PATCH
+
+  - id: retrofit-base-url
+    pattern: Retrofit.Builder().baseUrl($URL)
+    message: "Retrofit base URL: $URL"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: config
+      framework: retrofit
+
+  # ===========================================================================
+  # OkHttp Client (Kotlin/Java)
+  # ===========================================================================
+
+  - id: okhttp-request-builder
+    pattern: Request.Builder().url($URL)
+    message: "OkHttp request to: $URL"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: okhttp
+
+  - id: okhttp-newcall
+    patterns:
+      - pattern-either:
+          - pattern: $CLIENT.newCall($REQUEST).execute()
+          - pattern: $CLIENT.newCall($REQUEST).enqueue($CALLBACK)
+    message: "OkHttp request executed"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: okhttp
+
+  # ===========================================================================
+  # Android HttpURLConnection
+  # ===========================================================================
+
+  - id: android-url-connection
+    patterns:
+      - pattern-either:
+          - pattern: URL($URL).openConnection()
+          - pattern: new URL($URL).openConnection()
+    message: "HttpURLConnection: $URL"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: android-native
+
+  # ===========================================================================
+  # Volley (Android)
+  # ===========================================================================
+
+  - id: volley-request
+    patterns:
+      - pattern-either:
+          - pattern: StringRequest($METHOD, $URL, ...)
+          - pattern: JsonObjectRequest($METHOD, $URL, ...)
+          - pattern: JsonArrayRequest($METHOD, $URL, ...)
+    message: "Volley request: $URL"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: volley
+
+  # ===========================================================================
+  # Ktor Client (Kotlin)
+  # ===========================================================================
+
+  - id: ktor-client-get
+    patterns:
+      - pattern-either:
+          - pattern: client.get($URL)
+          - pattern: httpClient.get($URL)
+    message: "Ktor GET: $URL"
+    languages: [kotlin]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: ktor
+      http_method: GET
+
+  - id: ktor-client-post
+    patterns:
+      - pattern-either:
+          - pattern: client.post($URL)
+          - pattern: httpClient.post($URL)
+    message: "Ktor POST: $URL"
+    languages: [kotlin]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: outbound
+      framework: ktor
+      http_method: POST
+
+  # ===========================================================================
+  # API Authentication Patterns
+  # ===========================================================================
+
+  - id: android-authorization-header
+    patterns:
+      - pattern-either:
+          - pattern: .addHeader("Authorization", $TOKEN)
+          - pattern: .header("Authorization", $TOKEN)
+    message: "Authorization header"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: auth
+      auth_type: bearer
+
+  - id: android-api-key
+    patterns:
+      - pattern-either:
+          - pattern: .addHeader("X-API-Key", $KEY)
+          - pattern: .header("X-API-Key", $KEY)
+    message: "API key header"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: auth
+      auth_type: api-key
+
+  - id: retrofit-header-param
+    pattern: '@Header("$NAME")'
+    message: "Retrofit header: $NAME"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: auth
+      framework: retrofit
+
+  - id: retrofit-headers-static
+    pattern: '@Headers("$HEADERS")'
+    message: "Retrofit headers: $HEADERS"
+    languages: [kotlin, java]
+    severity: INFO
+    metadata:
+      category: api-discovery
+      subcategory: auth
+      framework: retrofit
