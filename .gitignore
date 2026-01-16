@@ -15,8 +15,6 @@ minikube-darwin-arm64
 minikube-darwin-amd64
 
 backups/
-backups_test/
-backups/*
 
 # Python
 __pycache__/
