@@ -27,16 +27,25 @@ cd auditgithub
 cp .env.sample .env
 # Edit .env with your GitHub token and settings
 
-# Start the stack (API, Web UI, Database)
+# Start the stack (API, Web UI, Database, Redis)
 docker-compose up -d
 
-# Run your first scan (uses dedicated scanner container)
-docker-compose run --rm scanner --dry-run
+# Initialize database schema
+docker exec auditgh_api python init_db.py
+
+# Run your first scan (preview mode)
+docker-compose run --rm scanner --target myorg --dry-run
+
+# Run actual scan
+docker-compose run --rm scanner --target myorg
+
+# Ingest scan results into database
+docker exec auditgh_api python ingest_reports.py
 ```
 
 **Access the dashboard:** http://localhost:3000
 
-→ [Full Getting Started Guide](docs/GETTING_STARTED.md)
+→ [Full Getting Started Guide](docs/GETTING_STARTED.md) | **[Command Cheatsheet](CHEATSHEET.md)**
 
 ---
 
@@ -45,29 +54,33 @@ docker-compose run --rm scanner --dry-run
 ### Security Scanning
 | Category | Tools | Detects |
 |----------|-------|--------|
-| **Secrets** | Gitleaks, TruffleHog | API keys, tokens, passwords |
+| **Secrets** | Gitleaks, TruffleHog, Whispers | API keys, tokens, passwords |
 | **Vulnerabilities** | Grype, Trivy, OSV | CVEs in dependencies |
-| **Static Analysis** | Semgrep, CodeQL | Code vulnerabilities |
-| **Infrastructure** | Checkov, Trivy | IaC misconfigurations |
-| **AI Tokens** | Custom scanner | OpenAI, Anthropic keys |
+| **Static Analysis** | Semgrep, CodeQL, Bandit | Code vulnerabilities |
+| **Infrastructure** | Checkov, Trivy, Terrascan | IaC misconfigurations |
+| **Container Security** | Dockle, Trivy | Docker image issues |
+| **Go Security** | gosec, govulncheck | Go-specific vulnerabilities |
 
 ### Multi-Organization Support
 - Scan multiple GitHub organizations from one installation
 - Isolated data per organization (same database, securely segmented)
 - Separate credentials per organization
+- Persistent organization selection across UI navigation
 - Schema synchronization and drift detection
 
 ### AI-Powered Analysis
-- **4 AI agents** for intelligent security analysis
-- Credential-to-URL correlation and testing
-- API path discovery and fuzzing
-- Executive summaries and risk assessments
-- Supports Claude, GPT-4, and local Ollama
+- **Zero Day Analysis** - AI-powered vulnerability impact assessment
+- **Credential-to-URL correlation** and automated testing
+- **API path discovery** and fuzzing
+- **Executive summaries** and risk assessments
+- Supports **Claude (Anthropic), GPT-4 (OpenAI), and local Ollama**
 
 ### Self-Healing Operations
 - Automatic timeout recovery for stuck scans
 - Schema drift detection and auto-sync
 - Backup and restore with 30-day retention
+- Session-based authentication with Redis caching
+- CORS preflight handling for cross-origin requests
 
 ---
 
@@ -76,6 +89,7 @@ docker-compose run --rm scanner --dry-run
 ### Getting Started
 | Guide | Description |
 |-------|-------------|
+| **[Cheatsheet](CHEATSHEET.md)** | **Quick reference for all commands** |
 | [Getting Started](docs/GETTING_STARTED.md) | Installation and first scan |
 | [Running Modes](docs/RUNNING_MODES.md) | Docker vs CLI, when to use each |
 | [Configuration](docs/CONFIGURATION.md) | All environment variables and options |
@@ -83,7 +97,6 @@ docker-compose run --rm scanner --dry-run
 ### Operations
 | Guide | Description |
 |-------|-------------|
-| [Cheatsheet](docs/CHEATSHEET.md) | Quick reference for common commands |
 | [Multi-Tenant Setup](docs/MULTI_TENANT.md) | Add and manage multiple organizations |
 | [Database Reset](docs/DATABASE_RESET.md) | Backup, reset, and restore data |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
@@ -99,64 +112,26 @@ docker-compose run --rm scanner --dry-run
 
 ## Common Commands
 
-### Scanning
+See **[CHEATSHEET.md](CHEATSHEET.md)** for complete command reference with detailed explanations.
 
-The scanner runs in a dedicated container, separate from the API, for better resource isolation.
-
-```bash
-# Scan default organization (from GITHUB_ORG in .env)
-docker-compose run --rm scanner
-
-# Scan specific organization
-docker-compose run --rm scanner --target myorg
-
-# Incremental scan: new repos + repos not scanned in 14 days (recommended for regular use)
-docker-compose run --rm scanner --target myorg --rescan-days 14
-
-# Scan a single repository
-docker-compose run --rm scanner --target myorg --repo specific-repo-name
-
-# Dry run (preview without scanning)
-docker-compose run --rm scanner --target myorg --dry-run
-
-# With AI analysis (disabled by default, requires API key)
-docker-compose run --rm scanner --target myorg --ai-agent
-
-# Run with custom options
-docker-compose run --rm scanner --target myorg --max-workers 8 --loglevel DEBUG
-```
-
-### Organization Management
+### Quick Reference
 
 ```bash
-# List organizations
-docker-compose run --rm scanner --list-orgs
+# Scanning
+docker-compose run --rm scanner --target myorg --dry-run        # Preview
+docker-compose run --rm scanner --target myorg                  # Basic scan
+docker-compose run --rm scanner --target myorg --rescan-days 7  # Incremental
+docker-compose run --rm scanner --target myorg --overridescan   # Force rescan
+docker-compose run --rm scanner --target myorg --ai-agent       # With AI
 
-# Reset organization data (creates backup first)
-docker-compose run --rm scanner python scripts/reset_organization_data.py --target myorg --force
+# Data ingestion
+docker exec auditgh_api python ingest_reports.py
 
-# Check schema drift
-docker-compose run --rm scanner --check-drift
-```
-
-### Services
-
-```bash
-# Start all services (API, Web UI, Database)
-docker-compose up -d
-
-# Start only API and database
-docker-compose up -d api db
-
-# View logs
-docker-compose logs -f api
-
-# Stop services
-docker-compose down
-
-# Rebuild containers after code changes
-docker-compose build api
-docker-compose build scanner
+# Services
+docker-compose up -d          # Start all services
+docker-compose logs -f api    # View API logs
+docker-compose restart api    # Restart API
+docker-compose down           # Stop all services
 ```
 
 ---
@@ -169,46 +144,21 @@ docker-compose build scanner
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
 │  │   Web UI    │  │   FastAPI   │  │      Scanner Engine     │ │
-│  │  (React)    │  │   Backend   │  │  (Python + AI Agents)   │ │
-│  │  :3000      │  │   :8000     │  │                         │ │
+│  │  (Next.js)  │  │   Backend   │  │  (Python + AI Agents)   │ │
+│  │  :3000      │  │   :8000     │  │   (on-demand)           │ │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
 │         │                │                      │               │
 │         └────────────────┼──────────────────────┘               │
 │                          │                                      │
-│                 ┌────────────────┐                              │
-│                 │   PostgreSQL   │                              │
-│                 │   (Multi-org)  │                              │
-│                 │     :5432      │                              │
-│                 └────────────────┘                              │
+│         ┌────────────────┼────────────────┐                     │
+│         │                │                │                     │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐            │
+│  │  PostgreSQL  │ │    Redis     │ │    MinIO     │            │
+│  │  (Multi-org) │ │   (Cache)    │ │  (Logs/S3)   │            │
+│  │    :5432     │ │    :6379     │ │    :9009     │            │
+│  └──────────────┘ └──────────────┘ └──────────────┘            │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-### Key Components
-
-| Component | Purpose | Location |
-|-----------|---------|----------|
-| Scanner Engine | Security scanning orchestration | `scan_repos.py`, `execution/` |
-| AI Agents | Intelligent analysis | `execution/ai_*.py` |
-| FastAPI Backend | REST API | `src/api/` |
-| React Frontend | Web dashboard | `src/web-ui/` |
-| Migrations | Database schema | `migrations/` |
-
----
-
-## AI Agents
-
-AuditGH includes 4 AI agents for enhanced security analysis:
-
-| Agent | Purpose | LLM Required |
-|-------|---------|-------------|
-| **Organization Agent** | Multi-org orchestration | No |
-| **Credential Matcher** | Credential-to-URL correlation | Optional |
-| **API Discovery** | API path reverse engineering | Optional |
-| **Credential URL Tester** | Security testing & analysis | Yes |
-
-**Recommended LLM:** Claude 3 (lowest hallucination for security analysis)
-
-→ [Full AI Agents Guide](docs/AI_AGENTS.md)
 
 ---
 
@@ -217,13 +167,12 @@ AuditGH includes 4 AI agents for enhanced security analysis:
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
 | Docker | 20.10+ | 24.0+ |
+| Docker Compose | 1.29+ | 2.0+ |
 | RAM | 4GB | 8GB |
 | Disk | 20GB | 50GB |
-| GitHub PAT | `repo`, `read:org` scopes | - |
+| GitHub PAT | `repo`, `read:org` scopes | Classic token with full permissions |
 
 **Optional:** AI provider API key (Anthropic, OpenAI, or Ollama)
-
-→ [Full Dependencies Guide](docs/DEPENDENCIES.md)
 
 ---
 
@@ -236,5 +185,6 @@ GNU General Public License v3.0
 ## Support
 
 - **Issues:** [GitHub Issues](https://github.com/sealmindset/auditgithub/issues)
-- **Docs:** [docs/](docs/)
+- **Documentation:** [docs/](docs/)
+- **Cheatsheet:** [CHEATSHEET.md](CHEATSHEET.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
