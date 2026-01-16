@@ -11,6 +11,9 @@ vulnerability_reports_test/
 vulnerability_reports/
 vulnerability_reports_test/
 
+minikube-darwin-arm64
+minikube-darwin-amd64
+
 # Python
 __pycache__/
 *.py[cod]
