@@ -43,9 +43,11 @@ class ClaudeModelSelfAnnealing:
         "claude-3-haiku-20240307",
         "claude-sonnet-4-20250514",
         "claude-3-5-sonnet-20241022",
+        # Azure AI Foundry deployment names
+        "cogdep-aifoundry",  # Prefix for Azure AI Foundry models
     ]
-    
-    DEFAULT_MODEL = "claude-sonnet-4-20250514"
+
+    DEFAULT_MODEL = "cogdep-aifoundry-dev-eus2-claude-sonnet-4-5"  # Azure AI Foundry default
     
     def __init__(self):
         self.corrections = []

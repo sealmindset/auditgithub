@@ -201,6 +201,10 @@ class SessionActivityMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from next handler
         """
+        # Skip session tracking for OPTIONS preflight requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Process request
         response = await call_next(request)
 
