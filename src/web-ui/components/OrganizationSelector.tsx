@@ -91,53 +91,57 @@ export function OrganizationSelector({
     // Fetch all organizations and current org in one effect to avoid race conditions
     useEffect(() => {
         let isMounted = true;
-        
+
         const fetchData = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
 
-                // Fetch both in parallel
-                const [orgsResponse, currentResponse] = await Promise.all([
-                    fetch(`${API_BASE}/organizations/`),
-                    fetch(`${API_BASE}/organizations/current`)
-                ]);
+                // Fetch organizations
+                const orgsResponse = await fetch(`${API_BASE}/organizations/`);
 
                 if (!orgsResponse.ok) {
                     throw new Error("Failed to fetch organizations");
                 }
 
                 const orgsData = await orgsResponse.json();
-                
+
                 if (!isMounted) return;
-                
+
                 setOrganizations(orgsData);
 
-                // Try to get current org from API first
-                if (currentResponse.ok) {
-                    const currentData = await currentResponse.json();
-                    if (currentData && currentData.name) {
-                        setCurrentOrg(currentData);
-                        return;
-                    }
+                // Check localStorage for previously selected org
+                const savedOrgName = typeof window !== 'undefined' ? localStorage.getItem('selectedOrganization') : null;
+                let orgToSelect: Organization | null = null;
+
+                if (savedOrgName) {
+                    // Try to find the saved org in the list
+                    orgToSelect = orgsData.find((o: Organization) => o.name === savedOrgName);
                 }
 
-                // Fallback to default org if no current org set - auto-select it
-                if (orgsData.length > 0) {
-                    const defaultOrg = orgsData.find((o: Organization) => o.is_default) || orgsData[0];
-                    // Auto-select the default org on the API side
+                // If no saved org or saved org not found, use default
+                if (!orgToSelect && orgsData.length > 0) {
+                    orgToSelect = orgsData.find((o: Organization) => o.is_default) || orgsData[0];
+                }
+
+                // Select the org on the API side and update state
+                if (orgToSelect) {
                     try {
-                        const selectResponse = await fetch(`${API_BASE}/organizations/${defaultOrg.name}/select`, {
+                        const selectResponse = await fetch(`${API_BASE}/organizations/${orgToSelect.name}/select`, {
                             method: "POST"
                         });
                         if (selectResponse.ok) {
                             const selectedOrg = await selectResponse.json();
                             setCurrentOrg(selectedOrg);
+                            // Save to localStorage
+                            if (typeof window !== 'undefined') {
+                                localStorage.setItem('selectedOrganization', selectedOrg.name);
+                            }
                         } else {
-                            setCurrentOrg(defaultOrg);
+                            setCurrentOrg(orgToSelect);
                         }
                     } catch {
-                        setCurrentOrg(defaultOrg);
+                        setCurrentOrg(orgToSelect);
                     }
                 }
             } catch (e) {
@@ -153,7 +157,7 @@ export function OrganizationSelector({
         };
 
         fetchData();
-        
+
         return () => {
             isMounted = false;
         };
@@ -183,6 +187,11 @@ export function OrganizationSelector({
 
             const selectedOrg = await response.json();
             setCurrentOrg(selectedOrg);
+
+            // Save to localStorage for persistence across page navigation
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('selectedOrganization', selectedOrg.name);
+            }
 
             // Notify parent component
             if (onOrganizationChange) {
