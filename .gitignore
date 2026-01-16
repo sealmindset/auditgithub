@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 
+backups/
+
 GEMINI.md
 global_rules.md
 vulnerability_reports/
@@ -14,7 +16,9 @@ vulnerability_reports_test/
 minikube-darwin-arm64
 minikube-darwin-amd64
 
-backups/
+backups/auditgithub_kb_backups_*.json
+
+getleaked/
 
 # Python
 __pycache__/
