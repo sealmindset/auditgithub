@@ -4,6 +4,7 @@
 .env.*.local
 
 backups/
+backups/auditgithub_kb_backups_*.json
 
 GEMINI.md
 global_rules.md
@@ -15,8 +16,6 @@ vulnerability_reports_test/
 
 minikube-darwin-arm64
 minikube-darwin-amd64
-
-backups/auditgithub_kb_backups_*.json
 
 getleaked/
 
