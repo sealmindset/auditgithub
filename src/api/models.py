@@ -190,6 +190,44 @@ class ScanSchedule(Base):
     )
 
 
+class ScheduleOverride(Base):
+    """
+    Audit log for schedule overrides.
+    Tracks when users manually change AI-generated schedules.
+    """
+    __tablename__ = "schedule_overrides"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('schedule_overrides_api_id_seq'), unique=True)
+
+    schedule_id = Column(UUID(as_uuid=True), ForeignKey("scan_schedules.id", ondelete="CASCADE"), nullable=False)
+
+    # What changed
+    previous_frequency = Column(String(20))
+    previous_day_of_week = Column(Integer)
+    previous_time_window = Column(String(20))
+    previous_scan_arguments = Column(JSONB)
+
+    new_frequency = Column(String(20))
+    new_day_of_week = Column(Integer)
+    new_time_window = Column(String(20))
+    new_scan_arguments = Column(JSONB)
+
+    # Who changed it
+    override_reason = Column(Text)
+    overridden_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    # Relationships
+    schedule = relationship("ScanSchedule", backref="override_history")
+    user = relationship("User", foreign_keys=[overridden_by])
+
+
+# =============================================================================
+# SCAN RUN - Scan execution records
+# =============================================================================
+
 class ScanRun(Base):
     __tablename__ = "scan_runs"
 
