@@ -112,3 +112,112 @@ class OverrideHistoryResponse(BaseModel):
     schedule_id: str
     repository_name: str
     overrides: List[OverrideHistoryItem]
+
+
+@router.get("/", response_model=ScheduleListResponse)
+def list_schedules(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all scan schedules for the current organization.
+
+    Returns schedules with repository names and lock status.
+    """
+    query = (
+        db.query(models.ScanSchedule, models.Repository.name)
+        .join(models.Repository, models.ScanSchedule.repository_id == models.Repository.id)
+        .filter(models.ScanSchedule.is_active == True)
+        .offset(skip)
+        .limit(limit)
+    )
+
+    results = query.all()
+    total = db.query(models.ScanSchedule).filter(models.ScanSchedule.is_active == True).count()
+
+    schedules = []
+    for schedule, repo_name in results:
+        # Get locked_by email if locked
+        locked_by_email = None
+        if schedule.locked_by:
+            user = db.query(User).filter(User.id == schedule.locked_by).first()
+            locked_by_email = user.email if user else None
+
+        schedules.append(ScheduleResponse(
+            id=str(schedule.id),
+            repository_id=str(schedule.repository_id),
+            repository_name=repo_name,
+            schedule_type=schedule.schedule_type,
+            frequency=schedule.frequency,
+            day_of_week=schedule.day_of_week,
+            time_window=schedule.time_window,
+            scan_arguments=schedule.scan_arguments,
+            next_scheduled_at=schedule.next_scheduled_at,
+            last_executed_at=schedule.last_executed_at,
+            last_execution_status=schedule.last_execution_status,
+            is_locked=schedule.is_locked,
+            locked_at=schedule.locked_at,
+            locked_by_email=locked_by_email,
+            ai_reasoning=schedule.ai_reasoning,
+            ai_confidence=float(schedule.ai_confidence) if schedule.ai_confidence else None,
+            created_at=schedule.created_at,
+            updated_at=schedule.updated_at
+        ))
+
+    return ScheduleListResponse(schedules=schedules, total=total)
+
+
+@router.get("/{repo_id}", response_model=ScheduleResponse)
+def get_schedule(
+    repo_id: str,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the scan schedule for a specific repository.
+
+    Args:
+        repo_id: Repository UUID
+    """
+    schedule = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == repo_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .first()
+    )
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found for this repository")
+
+    # Get repository name
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    repo_name = repo.name if repo else "Unknown"
+
+    # Get locked_by email
+    locked_by_email = None
+    if schedule.locked_by:
+        user = db.query(User).filter(User.id == schedule.locked_by).first()
+        locked_by_email = user.email if user else None
+
+    return ScheduleResponse(
+        id=str(schedule.id),
+        repository_id=str(schedule.repository_id),
+        repository_name=repo_name,
+        schedule_type=schedule.schedule_type,
+        frequency=schedule.frequency,
+        day_of_week=schedule.day_of_week,
+        time_window=schedule.time_window,
+        scan_arguments=schedule.scan_arguments,
+        next_scheduled_at=schedule.next_scheduled_at,
+        last_executed_at=schedule.last_executed_at,
+        last_execution_status=schedule.last_execution_status,
+        is_locked=schedule.is_locked,
+        locked_at=schedule.locked_at,
+        locked_by_email=locked_by_email,
+        ai_reasoning=schedule.ai_reasoning,
+        ai_confidence=float(schedule.ai_confidence) if schedule.ai_confidence else None,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at
+    )
