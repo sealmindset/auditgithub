@@ -23,6 +23,26 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Corporate identity matching configuration
+    # Comma-separated list of corporate email domains (e.g., "sleepnumber.com,company.com")
+    CORPORATE_EMAIL_DOMAINS: str = ""
+    # Comma-separated list of GitHub username suffixes to strip (e.g., "-sn,-snc,-sleepnumber,_sn,_snc")
+    CORPORATE_USERNAME_SUFFIXES: str = ""
+
+    @property
+    def corporate_email_domains_list(self) -> list[str]:
+        """Parse CORPORATE_EMAIL_DOMAINS into a list."""
+        if not self.CORPORATE_EMAIL_DOMAINS:
+            return []
+        return [d.strip().lower() for d in self.CORPORATE_EMAIL_DOMAINS.split(',') if d.strip()]
+
+    @property
+    def corporate_username_suffixes_list(self) -> list[str]:
+        """Parse CORPORATE_USERNAME_SUFFIXES into a list."""
+        if not self.CORPORATE_USERNAME_SUFFIXES:
+            return []
+        return [s.strip().lower() for s in self.CORPORATE_USERNAME_SUFFIXES.split(',') if s.strip()]
+
     # AI Configuration - Values come from .env file
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = ""  # Set in .env (e.g., gpt-5.1, gpt-4.1, gpt-3.5-turbo)

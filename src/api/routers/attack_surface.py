@@ -273,11 +273,12 @@ def simple_identity_match(sig1: Dict, sig2: Dict) -> tuple[bool, float, str]:
         if sig1['email'].lower().strip() == sig2['email'].lower().strip():
             return True, 1.0, "exact_email_match"
 
-    # Same email local part at sleepnumber.com = very likely match
-    if sig1['email_local'] and sig2['email_local']:
-        if sig1['email_domain'] == 'sleepnumber.com' and sig2['email_domain'] == 'sleepnumber.com':
+    # Same email local part at corporate domain = very likely match
+    corp_domains = settings.corporate_email_domains_list
+    if sig1['email_local'] and sig2['email_local'] and corp_domains:
+        if sig1['email_domain'] in corp_domains and sig2['email_domain'] in corp_domains:
             if sig1['email_local'] == sig2['email_local']:
-                return True, 0.99, "same_sleepnumber_email"
+                return True, 0.99, "same_corporate_email"
 
     # GitHub username matches email local part (normalize both to handle konrad-dunikowski vs konrad.dunikowski)
     if sig1['github_username'] and sig2['email_local']:
@@ -287,13 +288,13 @@ def simple_identity_match(sig1: Dict, sig2: Dict) -> tuple[bool, float, str]:
         if normalize_identifier(sig2['github_username']) == normalize_identifier(sig1['email_local']):
             return True, 0.95, "github_matches_email"
 
-    # GitHub noreply username matches corporate email local (e.g., konrad-dunikowski matches konrad.dunikowski@sleepnumber.com)
+    # GitHub noreply username matches corporate email local
     if sig1['is_noreply'] and sig1['github_username'] and sig2['email_local']:
-        if sig2['email_domain'] == 'sleepnumber.com':
+        if sig2['email_domain'] in corp_domains:
             if normalize_identifier(sig1['github_username']) == normalize_identifier(sig2['email_local']):
                 return True, 0.96, "noreply_github_matches_corp_email"
     if sig2['is_noreply'] and sig2['github_username'] and sig1['email_local']:
-        if sig1['email_domain'] == 'sleepnumber.com':
+        if sig1['email_domain'] in corp_domains:
             if normalize_identifier(sig2['github_username']) == normalize_identifier(sig1['email_local']):
                 return True, 0.96, "noreply_github_matches_corp_email"
     
@@ -312,11 +313,11 @@ def simple_identity_match(sig1: Dict, sig2: Dict) -> tuple[bool, float, str]:
     # Same name (case-insensitive) with related domains
     if sig1['name_parts'] and sig2['name_parts']:
         if sig1['name_parts'] == sig2['name_parts']:
-            # Same name, check domains
-            corp_domains = ['sleepnumber.com', 'users.noreply.github.com']
+            # Same name, check domains (include noreply as valid corporate indicator)
+            all_corp_domains = corp_domains + ['users.noreply.github.com']
             d1 = sig1['email_domain'] or ''
             d2 = sig2['email_domain'] or ''
-            if any(d in d1 for d in corp_domains) and any(d in d2 for d in corp_domains):
+            if any(d in d1 for d in all_corp_domains) and any(d in d2 for d in all_corp_domains):
                 return True, 0.85, "same_name_corp_domains"
     
     # Same FULL name with first+last = very high confidence for unique names
@@ -355,12 +356,17 @@ async def ai_identity_match(contributors: List[Dict], agent) -> Dict[str, List[s
         return {}
     
     # Build prompt with contributor info
-    prompt = """You are an expert at identity resolution. Analyze these contributors and identify which ones are the SAME PERSON with 99%+ confidence.
+    # Build corporate domain hint for AI
+    corp_domain_hint = ""
+    if corp_domains:
+        corp_domain_hint = f"Corporate domains: {', '.join(corp_domains)}. "
+
+    prompt = f"""You are an expert at identity resolution. Analyze these contributors and identify which ones are the SAME PERSON with 99%+ confidence.
 
 IMPORTANT RULES:
 1. Same email (case-insensitive) = ALWAYS the same person
 2. GitHub noreply format "12345+username@users.noreply.github.com" - the username often matches their real name or email
-3. First.Last@sleepnumber.com usually matches username "flast" or "firstlast"
+3. {corp_domain_hint}First.Last@corp.com usually matches username "flast" or "firstlast"
 4. Be VERY confident - only group people you're 99%+ sure are the same person
 5. Consider: name similarity, email patterns, username patterns
 
@@ -471,13 +477,16 @@ def merge_contributor_group(group: List[Dict]) -> Dict:
     
     # Pick the best canonical name (prefer full names with spaces)
     canonical_name = max(all_names, key=lambda n: (len(n.split()), len(n))) if all_names else 'Unknown'
-    
-    # Pick the best email (prefer sleepnumber.com)
+
+    # Pick the best email (prefer corporate domains)
+    corp_domains = settings.corporate_email_domains_list
     canonical_email = None
     for email in all_emails:
-        if email and 'sleepnumber.com' in email.lower():
-            canonical_email = email
-            break
+        if email:
+            email_lower = email.lower()
+            if any(domain in email_lower for domain in corp_domains):
+                canonical_email = email
+                break
     if not canonical_email:
         canonical_email = all_emails[0] if all_emails else None
     

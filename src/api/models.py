@@ -555,7 +555,7 @@ class ContributorProfile(Base):
     
     # Canonical identity (preferred display)
     display_name = Column(String, nullable=False)  # "Isaac Springer"
-    primary_email = Column(String, unique=True)  # Preferred email (usually @sleepnumber.com)
+    primary_email = Column(String, unique=True)  # Preferred email (usually corporate domain)
     primary_github_username = Column(String)  # Primary GitHub handle
     
     # Entra ID / Azure AD integration

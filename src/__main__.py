@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Default configuration
 DEFAULT_CONFIG = {
-    'github_org': 'sleepnumberinc',
+    'github_org': os.getenv('DEFAULT_GITHUB_ORG', ''),
     'output_dir': 'reports',
     'temp_dir': tempfile.mkdtemp(prefix='auditgh_'),
     'max_workers': 4,
@@ -58,7 +58,7 @@ def parse_args():
     # GitHub options
     github_group = parser.add_argument_group('GitHub Options')
     github_group.add_argument('--org', default=DEFAULT_CONFIG['github_org'],
-                            help=f'GitHub organization (default: {DEFAULT_CONFIG["github_org"]})')
+                            help='GitHub organization (default: DEFAULT_GITHUB_ORG env var)')
     github_group.add_argument('--token', help='GitHub personal access token (default: GITHUB_TOKEN env var)')
     github_group.add_argument('--repo', help='Specific repository to scan (format: owner/name)')
     github_group.add_argument('--include-forks', action='store_true', default=DEFAULT_CONFIG['include_forks'],

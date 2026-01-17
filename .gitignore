@@ -2,9 +2,11 @@
 .env
 .env.local
 .env.*.local
+.env.tmp
 
 backups/
 backups/auditgithub_kb_backups_*.json
+.backup/
 
 GEMINI.md
 global_rules.md

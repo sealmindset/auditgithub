@@ -19,6 +19,7 @@ from difflib import SequenceMatcher
 
 from ..dependencies import get_tenant_db
 from .. import models
+from ..config import settings
 from src.rbac.dependencies import require_permissions
 
 router = APIRouter(
@@ -206,12 +207,12 @@ def normalize_unicode(s: str) -> str:
 
 
 def normalize_github_username(username: str) -> str:
-    """Normalize GitHub username by removing corporate suffixes like -sn, -snc."""
+    """Normalize GitHub username by removing corporate suffixes."""
     if not username:
         return ""
     lower = username.lower()
-    # Remove common corporate suffixes
-    for suffix in ['-sn', '-snc', '-sleepnumber', '_sn', '_snc']:
+    # Remove corporate suffixes from config
+    for suffix in settings.corporate_username_suffixes_list:
         if lower.endswith(suffix):
             lower = lower[:-len(suffix)]
     # Remove numbers at end (GitHub noreply IDs)
@@ -252,11 +253,12 @@ def calculate_match_confidence(sig1: Dict, sig2: Dict) -> tuple[float, str]:
         if sig1['email'].lower().strip() == sig2['email'].lower().strip():
             return 1.0, "exact_email_match"
 
-    # Same SleepNumber email local part
-    if sig1['email_local'] and sig2['email_local']:
-        if sig1['email_domain'] == 'sleepnumber.com' and sig2['email_domain'] == 'sleepnumber.com':
+    # Same corporate email local part
+    corp_domains = settings.corporate_email_domains_list
+    if sig1['email_local'] and sig2['email_local'] and corp_domains:
+        if sig1['email_domain'] in corp_domains and sig2['email_domain'] in corp_domains:
             if sig1['email_local'] == sig2['email_local']:
-                return 0.99, "same_sleepnumber_email"
+                return 0.99, "same_corporate_email"
 
     # =========================================================================
     # NEW: Unicode-normalized name comparison (Kalač vs Kalac)
@@ -307,11 +309,11 @@ def calculate_match_confidence(sig1: Dict, sig2: Dict) -> tuple[float, str]:
 
     # GitHub noreply username matches corporate email local
     if sig1['is_noreply'] and sig1['github_username'] and sig2['email_local']:
-        if sig2['email_domain'] == 'sleepnumber.com':
+        if sig2['email_domain'] in corp_domains:
             if normalize_identifier(sig1['github_username']) == normalize_identifier(sig2['email_local']):
                 return 0.96, "noreply_github_matches_corp_email"
     if sig2['is_noreply'] and sig2['github_username'] and sig1['email_local']:
-        if sig1['email_domain'] == 'sleepnumber.com':
+        if sig1['email_domain'] in corp_domains:
             if normalize_identifier(sig2['github_username']) == normalize_identifier(sig1['email_local']):
                 return 0.96, "noreply_github_matches_corp_email"
     
@@ -369,10 +371,14 @@ def get_canonical_email(emails: List[str]) -> Optional[str]:
     """Pick the best email from a list, preferring corporate domain."""
     if not emails:
         return None
-    # Prefer sleepnumber.com
+    # Prefer corporate domains from config
+    corp_domains = settings.corporate_email_domains_list
     for email in emails:
-        if email and 'sleepnumber.com' in email.lower() and 'noreply' not in email.lower():
-            return email
+        if email and 'noreply' not in email.lower():
+            email_lower = email.lower()
+            for domain in corp_domains:
+                if domain in email_lower:
+                    return email
     # Exclude noreply emails
     non_noreply = [e for e in emails if e and 'noreply' not in e.lower()]
     return non_noreply[0] if non_noreply else emails[0]
@@ -646,12 +652,15 @@ def lookup_profile_by_email(
         )
     
     # Multiple profiles with same display_name - merge them
-    # Prefer profile with @sleepnumber.com email as primary
+    # Prefer profile with corporate email as primary
+    corp_domains = settings.corporate_email_domains_list
     primary_profile = profile
     for p in related_profiles:
-        if p.primary_email and 'sleepnumber.com' in p.primary_email.lower():
-            primary_profile = p
-            break
+        if p.primary_email:
+            email_lower = p.primary_email.lower()
+            if any(domain in email_lower for domain in corp_domains):
+                primary_profile = p
+                break
     
     # Aggregate all aliases from all related profiles
     all_aliases = []

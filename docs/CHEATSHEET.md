@@ -1,281 +1,468 @@
 # AuditGH Cheatsheet
 
-Quick reference for common operations. Print this out or keep it handy.
+Quick reference guide for common AuditGH operations, from startup to advanced scanning.
 
 ---
 
-## � Configuration Reference
+## Table of Contents
 
-| Setting | Value | Notes |
-|---------|-------|-------|
-| Database | `auditgh_kb` | PostgreSQL database name |
-| DB User | `postgres` | Default PostgreSQL user |
-| DB Password | `postgres` | Default (change in production) |
-| API Port | `8000` | FastAPI backend |
-| UI Port | `3000` | Next.js frontend |
-| DB Port | `5432` | PostgreSQL |
+1. [First-Time Setup](#first-time-setup)
+2. [Starting the Application](#starting-the-application)
+3. [Scanning Variations](#scanning-variations)
+4. [Organization Management](#organization-management)
+5. [Data Ingestion](#data-ingestion)
+6. [Service Management](#service-management)
+7. [Troubleshooting Quick Fixes](#troubleshooting-quick-fixes)
 
 ---
 
-## 🚀 Starting the Application
+## First-Time Setup
 
-### Fresh Start (New Installation)
-
+### 1. Prerequisites
 ```bash
-# 1. Start database
-docker-compose up -d db && sleep 5
+# Verify Docker is installed
+docker --version  # Should be 20.10+
+docker-compose --version
 
-# 2. Apply schema and migrations
-docker-compose exec -T db psql -U postgres -d auditgh_kb < setup/schema.sql
-for f in migrations/*.sql; do docker-compose exec -T db psql -U postgres -d auditgh_kb < "$f"; done
-
-# 3. Start API and UI
-docker-compose up -d api web-ui
+# Verify Git is installed
+git --version
 ```
 
-### Quick Start (Database Already Set Up)
-
+### 2. Clone and Configure
 ```bash
-# Start all services
+# Clone repository
+git clone https://github.com/sealmindset/auditgithub.git
+cd auditgithub
+
+# Copy environment template
+cp .env.sample .env
+
+# Edit .env with your settings
+nano .env  # or vim, code, etc.
+```
+
+### 3. Required Environment Variables
+```bash
+# Minimum configuration in .env:
+
+# GitHub Tokens
+GITHUB_TOKEN=ghp_your_default_token_here
+GITHUB_ORG=your_default_org_name
+
+# For multiple organizations (optional)
+ORG_SLEEPNUMBERLABS_TOKEN=ghp_token_for_org1
+ORG_SLEEPNUMBERLABS_GITHUB=sleepnumberlabs
+ORG_SLEEPNUMBERINC_TOKEN=ghp_token_for_org2
+ORG_SLEEPNUMBERINC_GITHUB=SleepNumberInc
+
+# Database (defaults are fine for dev)
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=security_portal
+DATABASE_URL=postgres://postgres:postgres@db:5432/security_portal
+
+# AI Provider (optional - for AI-powered analysis)
+AI_PROVIDER=anthropic_foundry
+ANTHROPIC_MODEL=cogdep-aifoundry-dev-eus2-claude-sonnet-4-5
+AZURE_AI_FOUNDRY_ENDPOINT=https://your-endpoint.azure.com/anthropic
+AZURE_AI_FOUNDRY_API_KEY=your_api_key_here
+```
+
+### 4. Initial Database Setup
+```bash
+# Start database first
+docker-compose up -d db
+
+# Wait for database to be ready (5-10 seconds)
+sleep 10
+
+# Initialize database schema
+docker-compose up -d api
+docker exec auditgh_api python init_db.py
+
+# Verify tables were created
+docker exec auditgh_db psql -U postgres -d security_portal -c "\dt"
+```
+
+### 5. Create Organizations
+```bash
+# Create your first organization
+docker exec auditgh_api python -c "
+from src.api.database import SessionLocal
+from src.api import models
+import uuid
+
+db = SessionLocal()
+org = models.Organization(
+    id=str(uuid.uuid4()),
+    name='sleepnumberlabs',
+    display_name='Sleep Number Labs',
+    github_org='sleepnumberlabs',
+    database_name='org_sleepnumberlabs',
+    is_active=True,
+    is_default=True
+)
+db.add(org)
+db.commit()
+print(f'Created organization: {org.name}')
+"
+
+# Add second organization (optional)
+docker exec auditgh_api python -c "
+from src.api.database import SessionLocal
+from src.api import models
+import uuid
+
+db = SessionLocal()
+org = models.Organization(
+    id=str(uuid.uuid4()),
+    name='SleepNumberInc',
+    display_name='Sleep Number Inc',
+    github_org='SleepNumberInc',
+    database_name='org_sleepnumberinc',
+    is_active=True,
+    is_default=False
+)
+db.add(org)
+db.commit()
+print(f'Created organization: {org.name}')
+"
+```
+
+---
+
+## Starting the Application
+
+### Start All Services
+```bash
+# Start everything (API, Web UI, Database, Redis, Session Cleanup)
 docker-compose up -d
 
 # Verify all services are running
 docker-compose ps
+
+# Check logs for any errors
+docker-compose logs -f
+
+# Access the application
+# Web UI: http://localhost:3000
+# API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
 ```
 
-**Expected output:**
+### Start Specific Services
+```bash
+# Just database and API
+docker-compose up -d db api
+
+# Just web UI (requires API to be running)
+docker-compose up -d web-ui
+
+# With Redis for caching
+docker-compose up -d db redis api web-ui
 ```
-NAME              STATUS          PORTS
-auditgh_db        Up (healthy)    0.0.0.0:5432->5432/tcp
-auditgh_api       Up (healthy)    0.0.0.0:8000->8000/tcp
-auditgh_ui        Up              0.0.0.0:3000->3000/tcp
+
+### Health Check
+```bash
+# Check API health
+curl http://localhost:8000/health
+
+# Check database connection
+docker exec auditgh_db pg_isready -U postgres
+
+# Check Redis (if running)
+docker exec auditgh-redis redis-cli ping
 ```
-
-> **Note:** The scanner (`auditgh_scanner`) runs on-demand and won't appear unless actively scanning.
-
-### Access Points
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| Web UI | http://localhost:3000 | Dashboard |
-| API | http://localhost:8000 | REST API |
-| API Docs | http://localhost:8000/docs | Swagger UI |
-| Database | localhost:5432 | PostgreSQL |
 
 ---
 
-## 🔍 Running Scans
+## Scanning Variations
 
-> **Architecture Note:** The scanner runs in a dedicated container (`auditgh_scanner`) separate from the API, with resource limits of 8GB RAM and 4 CPUs for heavy security scanning operations.
+**🔥 NEW:** All scans now automatically ingest data into the database when complete! No manual `ingest_reports.py` needed.
 
-### First-Time Scan (New Organization)
+### Basic Scans
 
+#### 1. Dry Run (Preview Only)
+**What it does:** Lists repositories that would be scanned without actually scanning
 ```bash
-# 1. List available organizations
+docker-compose run --rm scanner --target sleepnumberlabs --dry-run
+```
+
+#### 2. Basic Scan (All Repos) ⭐ RECOMMENDED
+**What it does:** Scans all repositories + automatically loads results into database
+**Data immediately available in Web UI!**
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs
+
+# Output shows auto-ingest:
+# ================================================================================
+# Scan Summary
+# ================================================================================
+# Total repositories: 484
+# Successful: 484
+# ================================================================================
+# AUTO-INGEST: Loading scan results into database
+# ================================================================================
+# Ingesting reports from: /app/vulnerability_reports
+#   ✅ sleepnumberlabs: 484 repos, 277 findings
+# ✅ Auto-ingest completed successfully
+# ================================================================================
+```
+
+#### 3. Single Repository Scan
+**What it does:** Scans only one specific repository
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --repo repository-name
+```
+
+### Incremental Scans
+
+#### 4. Rescan Stale Repos (Recommended for Daily Use)
+**What it does:** Only scans repos that haven't been scanned in X days + new repos
+```bash
+# Rescan repos older than 14 days
+docker-compose run --rm scanner --target sleepnumberlabs --rescan-days 14
+
+# Rescan repos older than 7 days
+docker-compose run --rm scanner --target sleepnumberlabs --rescan-days 7
+```
+
+#### 5. Override Previous Scans (Force Rescan)
+**What it does:** Rescans everything regardless of when it was last scanned
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --overridescan
+```
+
+### AI-Powered Scans
+
+#### 6. Scan with AI Analysis
+**What it does:** Runs scans + AI-powered analysis for deeper insights
+**Requirements:** AI_PROVIDER configured in .env
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --ai-agent
+```
+
+#### 7. AI Analysis with Auto-Remediation
+**What it does:** AI analyzes findings and suggests fixes
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --ai-agent --ai-auto-remediate
+```
+
+#### 8. Disable AI (Override Default)
+**What it does:** Explicitly disables AI even if configured
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --no-ai-agent
+```
+
+### Advanced Scans
+
+#### 9. High-Performance Scan
+**What it does:** Uses more workers for faster scanning (requires more RAM)
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --max-workers 8
+```
+
+#### 10. Include Forks and Archived Repos
+**What it does:** Scans repos normally excluded (forks and archived)
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --include-forks --include-archived
+```
+
+#### 11. Custom Timeout Settings
+**What it does:** Adjusts timeouts for slow networks or large repos
+```bash
+# Longer timeouts for large repositories
+docker-compose run --rm scanner \
+  --target sleepnumberlabs \
+  --repo-timeout 10 \
+  --scanner-timeout 20
+```
+
+#### 12. Debug Mode
+**What it does:** Verbose logging for troubleshooting
+```bash
+docker-compose run --rm scanner --target sleepnumberlabs --loglevel DEBUG
+```
+
+#### 13. Disable Auto-Ingest (Manual Control)
+**What it does:** Scans without automatically ingesting data (old behavior)
+**Use when:** Testing, troubleshooting, or need to review reports first
+```bash
+# Scan without auto-ingest
+docker-compose run --rm scanner --target sleepnumberlabs --no-auto-ingest
+
+# Then manually ingest when ready
+docker exec auditgh_api python ingest_reports.py
+```
+
+### Comprehensive Scans
+
+#### 14. Full Production Scan (Recommended Monthly)
+**What it does:** Complete scan with AI, all repos, overriding previous results + auto-ingest
+```bash
+docker-compose run --rm scanner \
+  --target sleepnumberlabs \
+  --overridescan \
+  --ai-agent \
+  --include-forks \
+  --include-archived \
+  --max-workers 4
+```
+
+#### 15. Quick Daily Scan (Recommended)
+**What it does:** Fast incremental scan of changed/new repos + auto-ingest
+```bash
+docker-compose run --rm scanner \
+  --target sleepnumberlabs \
+  --rescan-days 1 \
+  --max-workers 4
+```
+
+#### 16. Weekly Comprehensive Scan
+**What it does:** Thorough weekly scan with AI analysis + auto-ingest
+```bash
+docker-compose run --rm scanner \
+  --target sleepnumberlabs \
+  --rescan-days 7 \
+  --ai-agent \
+  --max-workers 4
+```
+
+### Multi-Organization Scans
+
+#### 17. Scan Multiple Organizations
+**What it does:** Runs scans sequentially for multiple organizations + auto-ingest each
+```bash
+# Scan first organization (auto-ingests)
+docker-compose run --rm scanner --target sleepnumberlabs
+
+# Scan second organization (auto-ingests)
+docker-compose run --rm scanner --target SleepNumberInc
+
+# Or use a loop for multiple orgs (each auto-ingests)
+for org in sleepnumberlabs SleepNumberInc; do
+  docker-compose run --rm scanner --target $org
+done
+
+# Data for all orgs immediately available in Web UI!
+```
+
+### Scan Variations Summary Table
+
+| Use Case | Command | When to Use | Auto-Ingest |
+|----------|---------|-------------|-------------|
+| Preview | `--dry-run` | Before first scan or testing | No |
+| First scan | `--target org` | Initial setup | ✅ Yes |
+| Daily | `--rescan-days 1` | Continuous monitoring | ✅ Yes |
+| Weekly | `--rescan-days 7 --ai-agent` | Regular comprehensive review | ✅ Yes |
+| Monthly | `--overridescan --ai-agent` | Full audit | ✅ Yes |
+| Single repo | `--repo name` | Investigating specific issue | ✅ Yes |
+| Debug | `--loglevel DEBUG` | Troubleshooting problems | ✅ Yes |
+| Fast scan | `--max-workers 8` | When you need results quickly | ✅ Yes |
+| Manual ingest | `--no-auto-ingest` | Need to review reports first | No |
+
+**Note:** All scans (except dry-run) now automatically ingest data! No need to run `ingest_reports.py` manually.
+
+---
+
+## Organization Management
+
+### List Organizations
+```bash
+# List all configured organizations
 docker-compose run --rm scanner --list-orgs
 
-# 2. Dry run to preview what will be scanned
-docker-compose run --rm scanner --target myorg --dry-run
+# Or query database directly
+docker exec auditgh_api python -c "
+from src.api.database import SessionLocal
+from src.api import models
 
-# 3. Run actual scan
-docker-compose run --rm scanner --target myorg
+db = SessionLocal()
+orgs = db.query(models.Organization).all()
+for org in orgs:
+    print(f'{org.name}: {org.github_org} (default: {org.is_default})')
+"
 ```
 
-### Incremental Scan (New + Recently Updated Repos)
-
-This is the **recommended approach** for regular scanning - picks up new repos and rescans repos that have been updated:
-
+### Switch Default Organization
 ```bash
-# Scan new repos + rescan repos updated in last 14 days
-docker-compose run --rm scanner --target myorg --rescan-days 14
+# Set a different default organization
+docker exec auditgh_api python -c "
+from src.api.database import SessionLocal
+from src.api import models
 
-# Scan new repos + rescan repos updated in last 7 days
-docker-compose run --rm scanner --target myorg --rescan-days 7
-
-# Scan new repos + rescan repos updated in last 30 days
-docker-compose run --rm scanner --target myorg --rescan-days 30
+db = SessionLocal()
+# Unset current default
+db.query(models.Organization).update({'is_default': False})
+# Set new default
+org = db.query(models.Organization).filter_by(name='SleepNumberInc').first()
+org.is_default = True
+db.commit()
+print(f'Set {org.name} as default')
+"
 ```
 
-> **How it works:** `--rescan-days N` will:
-> 1. Scan any **new repositories** not yet in the database
-> 2. Rescan existing repos whose **last scan was more than N days ago**
-> 3. Skip repos recently scanned (within N days)
-
-### Force Rescan (All Repos)
-
+### Check Organization Stats
 ```bash
-# Rescan everything regardless of last scan date
-docker-compose run --rm scanner --target myorg --force-rescan
-```
+# View repository and finding counts
+curl http://localhost:8000/organizations/ | jq
 
-### Complete Reset + Fresh Scan
-
-```bash
-# Step 1: Reset organization data (creates backup)
-docker-compose run --rm scanner python scripts/reset_organization_data.py --target myorg --force
-
-# Step 2: Run fresh scan from scratch
-docker-compose run --rm scanner --target myorg
-```
-
-### Scan with AI Analysis
-
-```bash
-# Enable AI agent for enhanced analysis
-docker-compose run --rm scanner --target myorg --ai-agent
-
-# With specific AI provider
-docker-compose run --rm scanner --target myorg --ai-agent --ai-provider claude
-```
-
-### Scan Single Repository
-
-```bash
-docker-compose run --rm scanner --target myorg --repo specific-repo-name
+# Or via API
+curl http://localhost:8000/organizations/sleepnumberlabs | jq
 ```
 
 ---
 
-## 🔄 Restarting Services
+## Data Ingestion
 
-### When to Restart What
+**🔥 NEW:** Auto-ingest is now automatic! Data is loaded immediately after scanning.
 
-| Change Made | Restart Command | Why |
-|-------------|-----------------|-----|
-| `.env` changes | `docker-compose down && docker-compose up -d` | Env vars loaded at startup |
-| UI/UX changes (React) | `docker-compose restart web-ui` | Hot reload may not catch all |
-| API changes (Python) | `docker-compose restart api` | Python needs restart |
-| Scanner changes | `docker-compose build scanner` | Scanner runs on-demand |
-| New npm packages | `docker-compose build web-ui && docker-compose up -d web-ui` | Need to rebuild |
-| New pip packages (API) | `docker-compose build api && docker-compose up -d api` | Need to rebuild |
-| New pip packages (Scanner) | `docker-compose build scanner` | Scanner runs on-demand |
-| Database schema | See "Applying Migrations" below | Migrations required |
-
-### Quick Restart Commands
-
+### Automatic Ingestion (Default)
 ```bash
-# Restart single service
-docker-compose restart api
-docker-compose restart web-ui
+# Just scan - data is automatically ingested!
+docker-compose run --rm scanner --target sleepnumberlabs
 
-# Scanner runs on-demand, no restart needed
-# Just rebuild if code changed: docker-compose build scanner
+# Output shows auto-ingest:
+# ================================================================================
+# AUTO-INGEST: Loading scan results into database
+# ================================================================================
+#   ✅ sleepnumberlabs: 484 repos, 277 findings
+# ✅ Auto-ingest completed successfully
+# ================================================================================
 
-# Restart all services (keeps data)
-docker-compose restart
-
-# Full restart (recreates containers)
-docker-compose down && docker-compose up -d
+# Data immediately available at http://localhost:3000
 ```
 
-### Rebuilding After Code Changes
-
+### Manual Ingestion (Only if using --no-auto-ingest)
 ```bash
-# Rebuild specific service
-docker-compose build api
-docker-compose build web-ui
-docker-compose build scanner
+# If you disabled auto-ingest, run manually:
+docker exec auditgh_api python ingest_reports.py
+```
 
-# Rebuild and restart
-docker-compose up -d --build api
+### Verify Ingestion
+```bash
+# Check repository count
+docker exec auditgh_db psql -U postgres -d security_portal -c \
+  "SELECT COUNT(*) FROM repositories;"
 
-# Rebuild without cache (clean build)
-docker-compose build --no-cache api
-docker-compose build --no-cache scanner
-docker-compose up -d api
+# Check findings count
+docker exec auditgh_db psql -U postgres -d security_portal -c \
+  "SELECT scanner_name, COUNT(*) FROM findings GROUP BY scanner_name;"
+
+# Check per organization
+docker exec auditgh_db psql -U postgres -d security_portal -c \
+  "SELECT o.name, COUNT(r.id) as repos, COUNT(f.id) as findings
+   FROM organizations o
+   LEFT JOIN repositories r ON o.id = r.organization_id
+   LEFT JOIN findings f ON r.id = f.repository_id
+   GROUP BY o.name;"
 ```
 
 ---
 
-## 📦 Applying Migrations
-
-```bash
-# Apply all migrations in order
-docker-compose exec -T db psql -U postgres -d auditgh_kb < migrations/002_organizations.sql
-docker-compose exec -T db psql -U postgres -d auditgh_kb < migrations/003_credential_url_test_results.sql
-docker-compose exec -T db psql -U postgres -d auditgh_kb < migrations/004_fix_multi_tenant_repositories.sql
-
-# Check current schema
-docker-compose exec db psql -U postgres -d auditgh_kb -c "\dt"
-```
-
----
-
-## 🛑 Graceful Shutdown & Safe Restart
-
-### Standard Shutdown
-
-```bash
-# Stop all services gracefully (keeps data)
-docker-compose down
-```
-
-### Safe Restart (Prevents Data Corruption)
-
-**IMPORTANT:** Always follow this sequence to prevent database corruption:
-
-```bash
-# Option 1: Simple restart (recommended)
-docker-compose down && docker-compose up -d
-
-# Option 2: If you need to apply .env changes
-docker-compose down
-# Edit .env file
-docker-compose up -d
-
-# Option 3: After code changes requiring rebuild
-docker-compose down
-docker-compose build api scanner  # rebuild changed services
-docker-compose up -d
-```
-
-> **⚠️ Never use `docker-compose kill` unless absolutely necessary** - it doesn't allow services to gracefully close database connections.
-
-### Shutdown with Cleanup
-
-```bash
-# Stop and remove containers, networks
-docker-compose down
-
-# Stop and remove volumes (DELETES DATA!)
-docker-compose down -v
-
-# Stop, remove containers, and remove images
-docker-compose down --rmi local
-```
-
-### Emergency Stop (Use with Caution)
-
-```bash
-# Force stop all containers immediately (may cause data issues)
-docker-compose kill
-
-# Then clean up
-docker-compose down
-```
-
-### Shutdown Sequence (Manual - When Needed)
-
-```bash
-# 1. Stop scanner if running (usually not needed - runs on-demand)
-# docker-compose stop scanner
-
-# 2. Stop web UI first (no database connections)
-docker-compose stop web-ui
-
-# 3. Stop API (closes DB connections gracefully)
-docker-compose stop api
-
-# 4. Stop database last (ensures all connections closed)
-docker-compose stop db
-```
-
----
-
-## 🔧 Common Operations
+## Service Management
 
 ### View Logs
-
 ```bash
 # All services
 docker-compose logs -f
@@ -287,177 +474,211 @@ docker-compose logs -f db
 
 # Last 100 lines
 docker-compose logs --tail=100 api
+
+# Scanner logs (while running)
+docker-compose run --rm scanner --target sleepnumberlabs 2>&1 | tee scan.log
 ```
 
-### Database Access
-
+### Restart Services
 ```bash
-# Interactive psql shell
-docker-compose exec db psql -U postgres -d auditgh_kb
+# Restart all services
+docker-compose restart
 
-# Run single query
-docker-compose exec db psql -U postgres -d auditgh_kb -c "SELECT COUNT(*) FROM findings;"
+# Restart specific service
+docker-compose restart api
+docker-compose restart web-ui
 
-# Backup database
-docker-compose exec db pg_dump -U postgres auditgh_kb > backup_$(date +%Y%m%d).sql
+# Rebuild and restart after code changes
+docker-compose build api
+docker-compose up -d api
 ```
 
-### Organization Management
-
+### Clean Restart
 ```bash
-# List organizations
-docker-compose run --rm scanner --list-orgs
+# Stop everything
+docker-compose down
 
-# Check schema drift
-docker-compose run --rm scanner --check-drift
+# Remove volumes (WARNING: deletes all data)
+docker-compose down -v
 
-# Sync schemas
-docker-compose run --rm scanner --sync-schemas
-
-# List backups
-docker-compose run --rm scanner --list-backups
+# Rebuild from scratch
+docker-compose build --no-cache
+docker-compose up -d
 ```
 
-### Health Checks
-
+### Resource Monitoring
 ```bash
-# Check service status
-docker-compose ps
-
-# Check API health
-curl http://localhost:8000/health
-
-# Check database connection
-docker-compose exec db pg_isready -U postgres
+# Check container resource usage
+docker stats
 
 # Check disk usage
 docker system df
+
+# Clean up unused resources
+docker system prune -a
 ```
 
 ---
 
-## 🔧 Scanner Selection
+## Troubleshooting Quick Fixes
 
-Run specific scanners instead of all:
-
+### Database Connection Errors
 ```bash
-# Run only specific scanners
-docker-compose run --rm scanner --target myorg --scanners semgrep,trivy,gitleaks
+# Check if database is running
+docker-compose ps db
 
-# Run new Phase 1 scanners only
-docker-compose run --rm scanner --target myorg --scanners horusec,whispers,bearer,terrascan
+# Restart database
+docker-compose restart db
+
+# Check database logs
+docker-compose logs db
+
+# Test connection
+docker exec auditgh_db pg_isready -U postgres
 ```
 
-### Available Scanners
-
-| Scanner | Flag | Purpose |
-|---------|------|---------|
-| `semgrep` | SAST | Static code analysis |
-| `trivy` | SCA | Vulnerability scanning |
-| `grype` | SCA | Dependency vulnerabilities |
-| `gitleaks` | Secrets | Git history secrets |
-| `trufflehog` | Secrets | Verified secrets |
-| `checkov` | IaC | Terraform/K8s |
-| `bandit` | SAST | Python security |
-| `horusec` | SAST | Multi-tool aggregation |
-| `whispers` | Secrets | Config file secrets |
-| `bearer` | Data Flow | PII/PHI detection |
-| `terrascan` | IaC | 500+ IaC policies |
-| `dockle` | Container | Dockerfile linting |
-| `gosec` | Go | Go security analysis |
-| `golangci-lint` | Go | Go linter with security |
-| `mobsf` | Mobile | Android/iOS security |
-
----
-
-## 📋 Quick Reference Table
-
-| Task | Command |
-|------|---------|
-| Start all | `docker-compose up -d` |
-| Stop all | `docker-compose down` |
-| Safe restart | `docker-compose down && docker-compose up -d` |
-| View logs | `docker-compose logs -f` |
-| Restart API | `docker-compose restart api` |
-| Rebuild all | `docker-compose build --no-cache` |
-| List orgs | `docker-compose run --rm scanner --list-orgs` |
-| Dry run scan | `docker-compose run --rm scanner --target ORG --dry-run` |
-| Run scan | `docker-compose run --rm scanner --target ORG` |
-| Scan single repo | `docker-compose run --rm scanner --target ORG --repo REPO_NAME` |
-| Incremental scan (14 days) | `docker-compose run --rm scanner --target ORG --rescan-days 14` |
-| Force rescan | `docker-compose run --rm scanner --target ORG --force-rescan` |
-| Reset org | `docker-compose run --rm scanner python scripts/reset_organization_data.py --target ORG --force` |
-| DB shell | `docker-compose exec db psql -U postgres -d auditgh_kb` |
-| Backup DB | `docker-compose exec db pg_dump -U postgres auditgh_kb > backup.sql` |
-
----
-
-## 💾 Organization Backup & Restore
-
-### List Organizations
+### API Not Responding
 ```bash
-docker-compose run --rm scanner python scripts/backup_organization.py --list
+# Check API logs
+docker-compose logs -f api
+
+# Restart API
+docker-compose restart api
+
+# Reinitialize database
+docker exec auditgh_api python init_db.py
+
+# Check health endpoint
+curl http://localhost:8000/health
 ```
 
-### Backup Single Organization
+### Web UI Not Loading
 ```bash
-docker-compose run --rm scanner python scripts/backup_organization.py --org myorg --output backups/
+# Check if Web UI container is running
+docker-compose ps web-ui
+
+# Check logs for errors
+docker-compose logs web-ui
+
+# Restart Web UI
+docker-compose restart web-ui
+
+# Rebuild if needed
+docker-compose build web-ui
+docker-compose up -d web-ui
 ```
 
-### Backup All Organizations
+### Scanner Failures
 ```bash
-docker-compose run --rm scanner python scripts/backup_organization.py --all --output backups/
+# Check scanner logs
+docker-compose logs scanner
+
+# Verify GitHub token is valid
+curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
+
+# Run with debug logging
+docker-compose run --rm scanner --target sleepnumberlabs --loglevel DEBUG
+
+# Check for timeout issues
+docker-compose run --rm scanner \
+  --target sleepnumberlabs \
+  --repo-timeout 10 \
+  --scanner-timeout 20
 ```
 
-### Restore Organization (Update Existing)
+### CORS Errors (Zero Day Analysis or API calls)
 ```bash
-docker-compose run --rm scanner python scripts/restore_organization.py --file backups/myorg_backup_20241214.json
+# Restart API to reload middleware
+docker-compose restart api
+
+# Check browser console for specific error
+# Common fix: Clear browser cache and localStorage
+# In browser console: localStorage.clear()
 ```
 
-### Restore as New Organization
+### Organization Selection Not Persisting
 ```bash
-docker-compose run --rm scanner python scripts/restore_organization.py --file backups/myorg_backup_20241214.json --as-new neworg
+# Clear browser localStorage
+# In browser console:
+localStorage.clear()
+location.reload()
+
+# Check if OrganizationSelector.tsx has localStorage implementation
+# Should see localStorage.setItem('selectedOrganization', orgName)
 ```
 
-### Preview Restore (Dry Run)
+### Out of Memory Errors
 ```bash
-docker-compose run --rm scanner python scripts/restore_organization.py --file backups/myorg_backup_20241214.json --dry-run
+# Reduce max workers
+docker-compose run --rm scanner --target sleepnumberlabs --max-workers 2
+
+# Check Docker memory allocation
+docker stats
+
+# Increase Docker memory limit in Docker Desktop settings
+# Recommended: 8GB for full scans
 ```
 
-**Backup includes:** Repositories, Findings, Credentials, API Endpoints, Credential-URL Correlations, Test Results, Scan Runs, Contributors
-
----
-
-## ⚠️ Troubleshooting Quick Fixes
-
-| Problem | Quick Fix |
-|---------|-----------|
-| Service won't start | `docker-compose logs SERVICE` to check errors |
-| Port already in use | `lsof -i :PORT` then kill process or change port |
-| Database connection failed | `docker-compose restart db` and wait 10s |
-| Stale containers | `docker-compose down && docker-compose up -d` |
-| Out of disk space | `docker system prune -a` |
-| Permission denied | `chmod +x script.sh` or check file ownership |
-| Encryption error | Delete `/tmp/auditgithub_secrets.json` and restart |
-
----
-
-## 🔑 Environment Variables Quick Reference
-
+### Port Already in Use
 ```bash
-# Required
-GITHUB_ORG=your-org
-GITHUB_TOKEN=ghp_xxx
-POSTGRES_PASSWORD=your_password
+# Check what's using port 8000
+lsof -i :8000
 
-# Recommended for production
-SECRETS_MASTER_KEY=32_char_key_here
+# Change port in docker-compose.yml
+# api:
+#   ports:
+#     - "8001:8000"  # Changed from 8000:8000
 
-# Optional AI
-AI_PROVIDER=claude
-ANTHROPIC_API_KEY=sk-ant-xxx
+# Or stop conflicting service
+sudo kill -9 $(lsof -ti:8000)
 ```
 
 ---
 
-[← Back to README](../README.md) | [Full Configuration →](CONFIGURATION.md)
+## Quick Command Reference
+
+### Most Common Commands
+```bash
+# Start application
+docker-compose up -d
+
+# Daily scan (incremental)
+docker-compose run --rm scanner --target sleepnumberlabs --rescan-days 1
+
+# Ingest reports
+docker exec auditgh_api python ingest_reports.py
+
+# View API logs
+docker-compose logs -f api
+
+# Access Web UI
+open http://localhost:3000
+
+# Stop application
+docker-compose down
+```
+
+### Emergency Fixes
+```bash
+# Nuclear option: full restart
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+docker exec auditgh_api python init_db.py
+
+# Database reset (WARNING: loses data)
+docker-compose down -v
+docker-compose up -d db
+sleep 10
+docker-compose up -d api
+docker exec auditgh_api python init_db.py
+```
+
+---
+
+## Next Steps
+
+- **Learn More:** Read [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+- **Configure AI:** See [docs/AI_AGENTS.md](docs/AI_AGENTS.md)
+- **Multi-Tenant:** Review [docs/MULTI_TENANT.md](docs/MULTI_TENANT.md)
+- **Troubleshooting:** Check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)

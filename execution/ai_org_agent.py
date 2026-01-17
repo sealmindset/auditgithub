@@ -734,20 +734,23 @@ class AIOrganizationAgent:
         # Set environment variables for this context
         os.environ['GITHUB_TOKEN'] = credentials['github_token']
         os.environ['GITHUB_ORG'] = credentials.get('github_org', org.github_org)
-        
+
+        # Determine database name - use org-specific if set, otherwise fall back to env default
+        db_name = org.database_name if org.database_name else os.getenv('POSTGRES_DB', 'security_portal')
+
         # Set database URL for this organization
         # This ensures scan results go to the org-specific database
-        org_db_url = f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{org.database_name}"
+        org_db_url = f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{db_name}"
         os.environ['DATABASE_URL'] = org_db_url
-        
+
         # Also set individual POSTGRES vars for compatibility
-        os.environ['POSTGRES_DB'] = org.database_name
-        
+        os.environ['POSTGRES_DB'] = db_name
+
         # Update current org
         self._current_org = org
-        
+
         print(f"[AIOrganizationAgent] Selected organization: {name} (GitHub: {org.github_org})")
-        print(f"[AIOrganizationAgent] Database: {org.database_name}")
+        print(f"[AIOrganizationAgent] Database: {db_name}")
         
         return org
     
@@ -853,7 +856,11 @@ class AIOrganizationAgent:
     def _row_to_org(self, row) -> Organization:
         """Convert database row to Organization object."""
         if isinstance(row, dict):
-            return Organization(**row)
+            # Handle None database_name
+            row_copy = dict(row)
+            if row_copy.get('database_name') is None:
+                row_copy['database_name'] = ''
+            return Organization(**row_copy)
         else:
             # Tuple from psycopg2 - updated to match shortened SELECT lists
             return Organization(
@@ -862,7 +869,7 @@ class AIOrganizationAgent:
                 name=row[2],
                 display_name=row[3],
                 github_org=row[4],
-                database_name=row[5],
+                database_name=row[5] or '',  # Handle None
                 is_active=row[6],
                 is_default=row[7],
                 created_at=row[8],

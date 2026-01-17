@@ -935,8 +935,8 @@ def main():
     """Main ingestion function."""
     logger.info("Starting report ingestion...")
 
-    # Ingest for all organizations
-    results = ingest_all_organizations(['sleepnumberlabs', 'SleepNumberInc'])
+    # Ingest for all organizations (auto-detect from reports directory)
+    results = ingest_all_organizations()
 
     # Print summary
     for org_name, stats in results.items():

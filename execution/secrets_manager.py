@@ -435,36 +435,53 @@ async def initialize_secrets_from_env():
 async def get_org_credentials(org_name: str) -> Dict[str, str]:
     """
     Get all credentials for an organization.
-    
+
     Args:
         org_name: Organization name (e.g., 'sealmindset')
-        
+
     Returns:
         Dict with keys like 'github_token', 'github_org', etc.
     """
     manager = get_secrets_manager()
     org_name = org_name.lower()
-    
+
     credentials = {}
-    
-    # Get org-specific secrets
+
+    # Get org-specific secrets first, then fall back to .env
     github_token = await manager.get_secret(f"{org_name}/github_token")
     if github_token:
         credentials['github_token'] = github_token
-    
+    else:
+        # Fall back to global GITHUB_TOKEN from .env
+        env_token = os.getenv('GITHUB_TOKEN')
+        if env_token:
+            credentials['github_token'] = env_token
+
     github_org = await manager.get_secret(f"{org_name}/github_org")
     if github_org:
         credentials['github_org'] = github_org
-    
+    else:
+        # Fall back to DEFAULT_GITHUB_ORG or org_name from .env
+        env_org = os.getenv('DEFAULT_GITHUB_ORG') or os.getenv('GITHUB_ORG')
+        if env_org:
+            credentials['github_org'] = env_org
+        else:
+            # Use org_name as fallback
+            credentials['github_org'] = org_name
+
     # Get global secrets (shared across orgs)
     anthropic_key = await manager.get_secret('global/anthropic_api_key')
     if anthropic_key:
         credentials['anthropic_api_key'] = anthropic_key
-    
+    elif os.getenv('ANTHROPIC_API_KEY'):
+        credentials['anthropic_api_key'] = os.getenv('ANTHROPIC_API_KEY')
+
     openai_key = await manager.get_secret('global/openai_api_key')
     if openai_key:
         credentials['openai_api_key'] = openai_key
-    
+    elif os.getenv('OPENAI_API_KEY'):
+        credentials['openai_api_key'] = os.getenv('OPENAI_API_KEY')
+
     return credentials
 
 

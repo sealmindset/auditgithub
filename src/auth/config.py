@@ -21,14 +21,14 @@ class Settings(BaseSettings):
     session_secret: str
 
     # Entra ID (Microsoft) configuration
-    entra_client_id: str
-    entra_client_secret: str
-    entra_tenant_id: str
+    entra_client_id: str = ""
+    entra_client_secret: str = ""
+    entra_tenant_id: str = ""
 
     # Okta configuration
-    okta_client_id: str
-    okta_client_secret: str
-    okta_domain: str  # e.g., "dev-12345.okta.com"
+    okta_client_id: str = ""
+    okta_client_secret: str = ""
+    okta_domain: str = ""  # e.g., "dev-12345.okta.com"
 
     # JWT token configuration
     jwt_secret_key: str = ""  # Secret key for signing tokens (HS256)
