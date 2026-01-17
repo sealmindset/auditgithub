@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
+import { RepositoryScheduleTable, RepositoryScheduleInfo } from "@/components/RepositoryScheduleTable"
 import { OrganizationSelector } from "@/components/OrganizationSelector"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 
 const API_BASE = "http://localhost:8000"
 
@@ -31,9 +33,16 @@ interface ScheduleListResponse {
     total: number
 }
 
+interface RepositoryScheduleListResponse {
+    repositories: RepositoryScheduleInfo[]
+    total: number
+}
+
 export default function SchedulerPage() {
     const [schedules, setSchedules] = useState<Schedule[]>([])
+    const [repositories, setRepositories] = useState<RepositoryScheduleInfo[]>([])
     const [loading, setLoading] = useState(true)
+    const [reposLoading, setReposLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const { toast } = useToast()
 
@@ -70,9 +79,30 @@ export default function SchedulerPage() {
         }
     }, [])
 
+    // Fetch repositories with schedule info
+    const fetchRepositories = useCallback(async () => {
+        try {
+            setReposLoading(true)
+            const res = await fetch(`${API_BASE}/schedules/repositories`, {
+                credentials: 'include'
+            })
+            if (res.ok) {
+                const data: RepositoryScheduleListResponse = await res.json()
+                setRepositories(data.repositories || [])
+            } else {
+                console.error("Failed to fetch repositories:", res.status)
+            }
+        } catch (err) {
+            console.error("Failed to fetch repositories:", err)
+        } finally {
+            setReposLoading(false)
+        }
+    }, [])
+
     useEffect(() => {
         fetchSchedules()
-    }, [fetchSchedules])
+        fetchRepositories()
+    }, [fetchSchedules, fetchRepositories])
 
     // Handle schedule update from calendar drag-and-drop with optimistic UI
     const handleScheduleUpdate = useCallback(async (data: ScheduleUpdateData) => {
@@ -317,6 +347,57 @@ export default function SchedulerPage() {
         }
     }, [schedules, fetchSchedules, toast])
 
+    // Handle creating a new schedule for a repository
+    const handleCreateSchedule = useCallback((repoId: string) => {
+        // TODO: Open schedule creation dialog
+        toast({
+            title: "Create schedule",
+            description: `Schedule creation for repository ${repoId} will be available in the next update.`,
+        })
+    }, [toast])
+
+    // Handle editing an existing schedule
+    const handleEditSchedule = useCallback((repoId: string) => {
+        // TODO: Open schedule edit dialog
+        toast({
+            title: "Edit schedule",
+            description: `Schedule editing for repository ${repoId} will be available in the next update.`,
+        })
+    }, [toast])
+
+    // Handle triggering an immediate scan
+    const handleTriggerScan = useCallback(async (repoId: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/scans`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    repository_id: repoId,
+                    scan_type: "full",
+                }),
+            })
+
+            if (!res.ok) {
+                throw new Error("Failed to trigger scan")
+            }
+
+            toast({
+                title: "Scan triggered",
+                description: "The scan has been queued and will start shortly.",
+            })
+
+            // Refresh repositories to update last_scanned_at
+            await fetchRepositories()
+        } catch (err) {
+            toast({
+                variant: "destructive",
+                title: "Failed to trigger scan",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+        }
+    }, [fetchRepositories, toast])
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
@@ -372,6 +453,23 @@ export default function SchedulerPage() {
                 onScheduleUnlock={handleUnlockSchedule}
                 onUpdateScanners={handleUpdateScanners}
             />
+
+            <Separator className="my-2" />
+
+            {/* Repository Schedule Table */}
+            <div>
+                <h2 className="text-xl font-semibold mb-4">Repository Schedules</h2>
+                <p className="text-muted-foreground text-sm mb-4">
+                    View and manage scan schedules for all repositories. Create schedules for unscheduled repos or modify existing ones.
+                </p>
+                <RepositoryScheduleTable
+                    repositories={repositories}
+                    onCreateSchedule={handleCreateSchedule}
+                    onEditSchedule={handleEditSchedule}
+                    onTriggerScan={handleTriggerScan}
+                    isLoading={reposLoading}
+                />
+            </div>
         </div>
     )
 }

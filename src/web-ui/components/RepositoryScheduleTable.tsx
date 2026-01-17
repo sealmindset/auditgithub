@@ -88,7 +88,7 @@ function formatNextScan(dateStr: string | null): string {
 function ScheduleStatusBadge({ repo }: { repo: RepositoryScheduleInfo }) {
   if (!repo.has_schedule) {
     return (
-      <Badge variant="outline\" className="gap-1 text-muted-foreground">
+      <Badge variant="outline" className="gap-1 text-muted-foreground">
         <AlertCircle className="h-3 w-3" />
         Unscheduled
       </Badge>
