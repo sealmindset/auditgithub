@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
 import { OrganizationSelector } from "@/components/OrganizationSelector"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { Badge } from "@/components/ui/badge"
 
 const API_BASE = "http://localhost:8000"
 
@@ -37,6 +38,14 @@ export default function SchedulerPage() {
 
     // Store previous state for rollback
     const previousSchedulesRef = useRef<Schedule[]>([])
+
+    // Calculate schedule statistics
+    const stats = useMemo(() => {
+        const total = schedules.length
+        const aiManaged = schedules.filter(s => s.schedule_type === "ai").length
+        const locked = schedules.filter(s => s.is_locked).length
+        return { total, aiManaged, locked }
+    }, [schedules])
 
     // Fetch schedules on mount
     const fetchSchedules = useCallback(async () => {
@@ -275,7 +284,14 @@ export default function SchedulerPage() {
                         AI-powered scan scheduling with manual override support.
                     </p>
                 </div>
-                <OrganizationSelector />
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <Badge variant="outline">{stats.total} total</Badge>
+                        <Badge variant="outline">{stats.aiManaged} AI-managed</Badge>
+                        <Badge variant="outline">{stats.locked} locked</Badge>
+                    </div>
+                    <OrganizationSelector />
+                </div>
             </div>
             <SchedulerCalendar
                 schedules={schedules}
