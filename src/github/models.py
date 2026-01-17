@@ -100,3 +100,24 @@ class CommitAnalysisResult:
     file_types: FileTypeStats
     top_contributors: List[ContributorActivity]
     is_dormant: bool  # No commits in 90+ days
+
+
+@dataclass
+class ScheduleInput:
+    """Aggregated input for AI schedule recommendation."""
+    repository_name: str
+    commit_analysis: Optional['CommitAnalysisResult']
+    finding_counts: Dict[str, int]  # severity -> count
+    risk_score: float  # 0.0-1.0
+    last_scan_date: Optional[datetime]
+    is_new_repo: bool
+
+
+@dataclass
+class ScheduleRecommendation:
+    """AI-generated schedule recommendation."""
+    frequency: str  # daily/weekly/bi-weekly/monthly
+    time_window: str  # morning/afternoon/evening/night
+    confidence: float  # 0.0-1.0
+    reasoning: str  # AI explanation
+    factors_considered: List[str]  # What influenced the decision
