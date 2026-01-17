@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useCallback } from "react"
 import { Calendar, dateFnsLocalizer, View, Views } from "react-big-calendar"
+import withDragAndDrop, { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop"
 import { format, parse, startOfWeek, getDay, addHours } from "date-fns"
 import { enUS } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +11,10 @@ import { Lock, Bot, User, CalendarDays } from "lucide-react"
 
 // Import calendar styles
 import "@/app/scheduler/calendar.css"
+import "react-big-calendar/lib/addons/dragAndDrop/styles.css"
+
+// Create drag-and-drop enabled calendar
+const DragAndDropCalendar = withDragAndDrop(Calendar)
 
 // Configure date-fns localizer for react-big-calendar
 const locales = {
@@ -106,6 +111,23 @@ function EventComponent({ event }: { event: CalendarEvent }) {
 export function SchedulerCalendar({ schedules }: SchedulerCalendarProps) {
     const [view, setView] = useState<View>(Views.MONTH)
     const [date, setDate] = useState(new Date())
+
+    // Handle event drop (drag and drop)
+    const handleEventDrop = useCallback(
+        ({ event, start, end, isAllDay }: EventInteractionArgs<CalendarEvent>) => {
+            console.log("Event dropped:", {
+                eventId: event.id,
+                title: event.title,
+                newStart: start,
+                newEnd: end,
+                isAllDay,
+            })
+        },
+        []
+    )
+
+    // Allow all events to be draggable
+    const draggableAccessor = useCallback(() => true, [])
 
     // Transform schedules to calendar events
     const events = useMemo(() => {
@@ -209,7 +231,7 @@ export function SchedulerCalendar({ schedules }: SchedulerCalendarProps) {
 
             {/* Calendar */}
             <div className="scheduler-calendar h-[600px] border rounded-lg p-2 bg-card">
-                <Calendar
+                <DragAndDropCalendar
                     localizer={localizer}
                     events={events}
                     startAccessor="start"
@@ -224,6 +246,8 @@ export function SchedulerCalendar({ schedules }: SchedulerCalendarProps) {
                     }}
                     toolbar={true}
                     popup
+                    draggableAccessor={draggableAccessor}
+                    onEventDrop={handleEventDrop}
                 />
             </div>
         </div>
