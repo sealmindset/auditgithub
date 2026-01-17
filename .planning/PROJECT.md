@@ -1,101 +1,89 @@
-# AuditGH Enterprise Security Platform
+# Rescan Scheduler
 
 ## What This Is
 
-A multi-tenant SaaS security auditing platform that scans GitHub repositories for vulnerabilities, provides AI-powered remediation guidance, and delivers comprehensive security insights. Transforms from a prototype into an enterprise-grade platform with full authentication, authorization, multi-tenant isolation, and production-ready deployment on AWS EKS.
+An AI-powered intelligent scanning scheduler for AuditGH that automatically determines optimal rescan timing based on full context analysis: commit patterns, finding history, file types changed, contributor activity, and risk scores. Features a beautiful calendar-based UI for visualizing and managing scan schedules across all repositories in an organization.
 
 ## Core Value
 
-Provide secure, isolated, enterprise-grade security auditing for multiple organizations with comprehensive RBAC, ensuring that each tenant's sensitive security data is completely protected while maintaining a seamless, scalable SaaS experience.
+Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
 
 ## Requirements
 
 ### Validated
 
-- ✓ GitHub repository scanning and analysis - existing
-- ✓ AI-powered vulnerability analysis (Claude, GPT-4, Gemini, Ollama) - existing
-- ✓ 15+ security scanner integrations (Gitleaks, Semgrep, Grype, CodeQL, etc.) - existing
-- ✓ FastAPI backend with REST API - existing
-- ✓ Next.js/React frontend with data visualization - existing
-- ✓ PostgreSQL database with SQLAlchemy ORM - existing
-- ✓ Docker containerization (API, Scanner, UI, DB) - existing
-- ✓ Basic multi-tenant organization model - existing
-- ✓ Security finding management and tracking - existing
-- ✓ Attack surface analysis capabilities - existing
-- ✓ Contributor intelligence and developer profiles - existing
-- ✓ PDF/DOCX report generation - existing
-- ✓ Jira integration for issue tracking - existing
+- ✓ Repository scanning infrastructure — existing (`scan_repos.py`, `execution/` scripts)
+- ✓ Organization/repo management — existing (`src/api/routers/organizations.py`, `repositories.py`)
+- ✓ GitHub API integration for commit data — existing (`src/github/api.py`)
+- ✓ Finding storage and history — existing (`src/api/models.py`)
+- ✓ AI provider infrastructure — existing (`src/ai_agent/providers/`)
+- ✓ React UI with Radix/Tailwind — existing (`src/web-ui/`)
 
 ### Active
 
-- [ ] **Critical Security Fixes** - Address SQL injection vulnerabilities, rotate exposed credentials, fix 50+ bare exception handlers
-- [ ] **Authentication & Authorization** - Full OIDC/SSO integration with Entra ID and Okta
-- [ ] **RBAC System** - 5-tier role hierarchy (Super Admin, Admin, Analyst, Manager, User) with granular permissions
-- [ ] **Enhanced Multi-Tenancy** - Schema-per-tenant PostgreSQL architecture with complete data isolation
-- [ ] **Cribl Integration** - Centralized log management with structured logging pipeline
-- [ ] **AWS EKS Deployment** - Production Kubernetes deployment with Helm charts and infrastructure as code
-- [ ] **Minikube Local Testing** - Complete local development and testing environment
-- [ ] **Test Infrastructure** - Comprehensive test suite (unit, integration, E2E)
-- [ ] **API Authentication** - Secure API endpoints with JWT token validation
-- [ ] **Session Management** - Secure session handling with token refresh
-- [ ] **Audit Logging** - Complete audit trail of user actions and data access
-- [ ] **Database Migrations** - Alembic integration for controlled schema evolution
+- [ ] AI scheduling engine that analyzes commit patterns, finding history, file types, contributor activity, and risk scores
+- [ ] Automatic schedule generation for all repos based on AI analysis
+- [ ] Calendar view UI showing scheduled scans with day + time window granularity
+- [ ] Drag-and-drop rescheduling on calendar
+- [ ] Manual override capability with permanent lock (AI won't modify)
+- [ ] Per-repo argument customization (`--target <org> --repo <repo> --overridescan` as defaults)
+- [ ] New repo handling: immediate scan, then daily until patterns emerge
+- [ ] Schedule persistence in database
+- [ ] Backend API endpoints for schedule CRUD operations
+- [ ] Multi-org support in scheduling (switch between orgs)
+- [ ] Scan type customization per repo (which tools to run)
 
 ### Out of Scope
 
-- Mobile/responsive UI optimization - Desktop-first design, mobile support deferred to v2
-- AI-powered local log analysis - Cribl handles centralized logging, local AI analysis is future enhancement
-- Multi-cloud deployment (Azure, GCP) - AWS EKS is v1 target, other clouds are v2+
-- Advanced analytics dashboard - Beyond basic security metrics, complex analytics are v2+
-- Additional third-party integrations - Beyond Jira, other ticketing systems (ServiceNow, PagerDuty) are future work
-- Real-time collaboration features - Comments, mentions, notifications are v2+
-- Custom scanner development SDK - Plugin system exists, formal SDK/marketplace is v2+
+- Notifications/alerts when scans complete or fail — future enhancement, not v1
+- Cross-org unified calendar view — v1 is per-org only
+- Real-time scan progress in calendar — just shows scheduled vs completed
 
 ## Context
 
-**Existing Platform:**
-The codebase is a sophisticated security auditing platform with:
-- Hybrid monolith architecture (Python backend, TypeScript frontend)
-- 25+ database models tracking organizations, repositories, findings, contributors
-- Plugin architecture for security scanners and AI providers
-- 22+ API routers handling different domains
-- Multi-language scanning support (Python, JavaScript, TypeScript, Go, Java, Ruby, .NET)
+**Existing Infrastructure:**
+- APScheduler already in `src/api/scheduler.py` for background jobs
+- Scan execution via `scan_repos.py` with `--org`, `--repo` flags
+- GitHub commit data accessible via `src/github/api.py`
+- Finding history in PostgreSQL via SQLAlchemy models
+- React 19 + Next.js 16 + Radix UI + Tailwind CSS 4 for frontend
 
-**Technical Debt Identified:**
-Codebase mapping revealed critical issues requiring immediate attention:
-- **Security:** SQL injection in `database_router.py`, hardcoded secrets in `.env`
-- **Stability:** 50+ bare `except:` blocks silently swallowing errors
-- **Maintainability:** 8,653-line `scan_repos.py` monolith
-- **Testing:** No automated test framework or test coverage
-- **Error Handling:** Missing proper exception handling and logging
+**AI Analysis Inputs:**
+- Commit frequency and timing patterns (when do commits typically happen?)
+- Historical finding counts and severity trends
+- File types being modified (security-sensitive files weight higher)
+- Contributor activity patterns
+- Current risk scores from existing scans
 
-**Current State:**
-- Development environment using Docker Compose
-- Basic organization-based multi-tenancy (row-level filtering)
-- No authentication system - trusts client-provided organization context
-- Manual testing only - no CI/CD pipeline
-- Local deployment only - no production infrastructure
+**Schedule Logic:**
+- High activity repos (daily commits) → daily scans, timed after typical commit window
+- Medium activity (weekly commits) → 2-3x/week scans
+- Low activity (monthly or less) → weekly scans
+- Dormant repos (no commits in 30+ days) → bi-weekly or monthly scans
+
+**UI/UX:**
+- Calendar view as primary interface
+- Day + time window granularity (morning/afternoon/evening/night)
+- Manual overrides are locked — AI won't touch them
+- AI sets schedules automatically, no reasoning display needed
 
 ## Constraints
 
-- **Technology Stack**: Python 3.11+ (FastAPI), TypeScript (Next.js 16), PostgreSQL 15+ - established ecosystem
-- **Container Platform**: Docker required - entire stack containerized
-- **Cloud Provider**: AWS EKS for production - Kubernetes orchestration chosen
-- **Identity Providers**: Must support Entra ID and Okta - enterprise SSO requirement
-- **Database**: PostgreSQL only - existing data model and queries
-- **Security**: Zero tolerance for data leakage between tenants - absolute isolation required
-- **Backward Compatibility**: Existing security scanner integrations must continue working
+- **UI Framework**: Must use existing Radix UI + Tailwind CSS component patterns from `src/web-ui/components/ui/`
+- **Calendar Library**: Select appropriate React calendar library that integrates well with Radix/Tailwind
+- **Database**: Must store schedules in PostgreSQL with proper org/repo relationships
+- **Execution**: Leverage existing `scan_repos.py` for actual scan execution
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Fix critical security issues before new features | SQL injection and exposed credentials are unacceptable risks in a security platform | — Pending |
-| Schema-per-tenant multi-tenancy | Stronger isolation than row-level security while simpler than database-per-tenant | — Pending |
-| AWS EKS over ECS | Kubernetes provides better orchestration for complex multi-container application | — Pending |
-| OIDC/SSO as primary auth | Enterprise customers require SSO, avoids password management burden | — Pending |
-| Cribl for centralized logging | Proven enterprise log management, integrates with existing loguru setup | — Pending |
-| Defer AI local log analysis | Cribl handles centralized needs, AI analysis is enhancement not requirement | — Pending |
+| Calendar view over table | User preference for visual scheduling interface | — Pending |
+| Manual lock (no AI override) | User wants full control when they set overrides | — Pending |
+| Day + time window granularity | Balance between precision and simplicity | — Pending |
+| Full context AI analysis | More inputs = smarter scheduling decisions | — Pending |
+| New repos default to daily | Conservative approach until patterns emerge | — Pending |
+| No reasoning display | Keep UI clean, user trusts AI decisions | — Pending |
 
 ---
-*Last updated: 2026-01-12 after initialization*
+*Last updated: 2026-01-17 after initialization*
