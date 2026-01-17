@@ -56,10 +56,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Goal**: Create new dashboard page layout with widget grid system
 **Depends on**: v1.0 complete
 **Research**: Unlikely (existing React/Radix patterns)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 11-01: TBD (run /gsd:plan-phase 11 to break down)
+- [ ] 11-01: Widget System Foundation
 
 ### Phase 12: Security Overview Widget
 **Goal**: Build security posture summary showing severity distribution, open findings count, and trend indicators
@@ -130,7 +130,7 @@ Plans:
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
 | 1-10 | v1.0 | 10/10 | Complete | 2026-01-17 |
-| 11. Dashboard Foundation | v2.0 | 0/? | Not started | - |
+| 11. Dashboard Foundation | v2.0 | 0/1 | Planned | - |
 | 12. Security Overview Widget | v2.0 | 0/? | Not started | - |
 | 13. Scan Activity Widget | v2.0 | 0/? | Not started | - |
 | 14. Repository Health Widget | v2.0 | 0/? | Not started | - |
