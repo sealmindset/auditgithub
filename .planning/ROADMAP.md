@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling ✓
 - [x] **Phase 8: Override Management** - Manual schedule locks and custom args ✓
 - [x] **Phase 9: Multi-Org Support** - Organization switching in scheduler ✓
-- [ ] **Phase 10: Scan Type Customization** - Per-repo tool selection
+- [x] **Phase 10: Scan Type Customization** - Per-repo tool selection ✓
 
 ## Phase Details
 
@@ -153,11 +153,12 @@ Key deliverables:
 - Context persistence across navigation
 - Org-specific schedule statistics
 
-### Phase 10: Scan Type Customization
+### Phase 10: Scan Type Customization ✓
 **Goal**: Per-repo tool selection for scans
 **Depends on**: Phase 8
 **Research**: Unlikely (configuration UI patterns)
-**Plans**: TBD
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - Tool selection UI in override modal
@@ -181,4 +182,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Calendar Interactions | 1/1 | Complete ✓ | 2026-01-17 |
 | 8. Override Management | 1/1 | Complete ✓ | 2026-01-17 |
 | 9. Multi-Org Support | 1/1 | Complete ✓ | 2026-01-17 |
-| 10. Scan Type Customization | 0/TBD | Not started | - |
+| 10. Scan Type Customization | 1/1 | Complete ✓ | 2026-01-17 |
