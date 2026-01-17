@@ -19,6 +19,8 @@ interface Schedule {
     next_scheduled_at: string | null
     is_locked: boolean
     ai_confidence: number | null
+    locked_by_email?: string | null
+    locked_at?: string | null
 }
 
 interface ScheduleListResponse {
@@ -120,6 +122,114 @@ export default function SchedulerPage() {
         }
     }, [schedules, fetchSchedules, toast])
 
+    // Handle lock schedule with optimistic UI
+    const handleLockSchedule = useCallback(async (repoId: string, reason: string) => {
+        // Store previous state for potential rollback
+        previousSchedulesRef.current = [...schedules]
+
+        // Optimistic update: immediately update local state
+        setSchedules((prev) =>
+            prev.map((schedule) => {
+                if (schedule.repository_id === repoId) {
+                    return {
+                        ...schedule,
+                        is_locked: true,
+                        schedule_type: "manual" as const,
+                    }
+                }
+                return schedule
+            })
+        )
+
+        try {
+            const res = await fetch(`${API_BASE}/schedules/${repoId}/lock`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason }),
+            })
+
+            if (!res.ok) {
+                throw new Error("Failed to lock schedule")
+            }
+
+            // Show success toast
+            toast({
+                title: "Schedule locked",
+                description: "The schedule has been locked and will not be modified by AI.",
+            })
+
+            // Refetch to get accurate server state
+            await fetchSchedules()
+        } catch (err) {
+            // Rollback to previous state on error
+            setSchedules(previousSchedulesRef.current)
+
+            // Show error toast
+            toast({
+                variant: "destructive",
+                title: "Failed to lock schedule",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+
+            // Re-throw so the dialog can handle it
+            throw err
+        }
+    }, [schedules, fetchSchedules, toast])
+
+    // Handle unlock schedule with optimistic UI
+    const handleUnlockSchedule = useCallback(async (repoId: string) => {
+        // Store previous state for potential rollback
+        previousSchedulesRef.current = [...schedules]
+
+        // Optimistic update: immediately update local state
+        setSchedules((prev) =>
+            prev.map((schedule) => {
+                if (schedule.repository_id === repoId) {
+                    return {
+                        ...schedule,
+                        is_locked: false,
+                        schedule_type: "ai" as const,
+                        locked_by_email: null,
+                        locked_at: null,
+                    }
+                }
+                return schedule
+            })
+        )
+
+        try {
+            const res = await fetch(`${API_BASE}/schedules/${repoId}/lock`, {
+                method: "DELETE",
+            })
+
+            if (!res.ok) {
+                throw new Error("Failed to unlock schedule")
+            }
+
+            // Show success toast
+            toast({
+                title: "Schedule unlocked",
+                description: "The schedule has been returned to AI management.",
+            })
+
+            // Refetch to get accurate server state
+            await fetchSchedules()
+        } catch (err) {
+            // Rollback to previous state on error
+            setSchedules(previousSchedulesRef.current)
+
+            // Show error toast
+            toast({
+                variant: "destructive",
+                title: "Failed to unlock schedule",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+
+            // Re-throw so the dialog can handle it
+            throw err
+        }
+    }, [schedules, fetchSchedules, toast])
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
@@ -155,7 +265,12 @@ export default function SchedulerPage() {
                     AI-powered scan scheduling with manual override support.
                 </p>
             </div>
-            <SchedulerCalendar schedules={schedules} onScheduleUpdate={handleScheduleUpdate} />
+            <SchedulerCalendar
+                schedules={schedules}
+                onScheduleUpdate={handleScheduleUpdate}
+                onScheduleLock={handleLockSchedule}
+                onScheduleUnlock={handleUnlockSchedule}
+            />
         </div>
     )
 }

@@ -184,6 +184,16 @@ interface CredentialUrlTestResult {
     auth_response_time_ms: number
     auth_error_message: string
     auth_headers_used: string[]
+    auth_request_method?: string
+    auth_request_url?: string
+    auth_request_headers?: Record<string, string>
+    auth_request_body?: string
+    auth_response_headers?: Record<string, string>
+    auth_response_body?: string
+    auth_response_body_truncated?: boolean
+    credential_value?: string
+    detected_service?: string
+    service_detection_score?: number
     discovered_paths: Array<{
         method: string
         path: string
@@ -2136,7 +2146,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                 <span className="text-muted-foreground text-xs">Detected Service</span>
                                                 <div className="font-medium mt-1 text-xs">
                                                     {selectedReportResult.detected_service || 'Unknown'}
-                                                    {selectedReportResult.service_detection_score > 0 && (
+                                                    {(selectedReportResult.service_detection_score ?? 0) > 0 && (
                                                         <span className="text-muted-foreground ml-1">
                                                             ({selectedReportResult.service_detection_score}%)
                                                         </span>

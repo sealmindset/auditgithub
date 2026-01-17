@@ -95,7 +95,7 @@ type ViewMode = "radar" | "defense" | "attack"
 
 export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: ThreatRadarProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
-    const animationRef = useRef<number>()
+    const animationRef = useRef<number | undefined>(undefined)
     const sweepAngleRef = useRef(0)
     const blipsRef = useRef<Blip[]>([])
     const missilesRef = useRef<Missile[]>([])

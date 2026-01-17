@@ -130,9 +130,9 @@ export function DataTableColumnHeader<TData, TValue>({
     }, [currentFilterValue])
 
     // Check if using comparison filter
-    const isComparisonFilter = currentFilterValue && 
-        typeof currentFilterValue === 'object' && 
-        'operator' in currentFilterValue
+    const isComparisonFilter = Boolean(currentFilterValue &&
+        typeof currentFilterValue === 'object' &&
+        'operator' in currentFilterValue)
 
     // Handlers
     const toggleValue = (value: string) => {
@@ -193,7 +193,7 @@ export function DataTableColumnHeader<TData, TValue>({
         setComparisonValue("")
     }
 
-    const isFiltered = selectedValues.size > 0 || isComparisonFilter
+    const isFiltered = (selectedValues.size > 0 || isComparisonFilter) as boolean
     const totalCount = allUniqueValues.reduce((acc, v) => acc + v.count, 0)
     const selectedCount = allUniqueValues
         .filter((v) => selectedValues.has(v.value))
@@ -225,9 +225,9 @@ export function DataTableColumnHeader<TData, TValue>({
                                 variant="secondary"
                                 className="ml-2 h-5 rounded-sm px-1.5 font-mono text-[10px] bg-primary text-primary-foreground"
                             >
-                                {isComparisonFilter 
-                                    ? `${(currentFilterValue as { operator: string }).operator}${(currentFilterValue as { value: string }).value}`
-                                    : selectedValues.size
+                                {isComparisonFilter
+                                    ? `${(currentFilterValue as unknown as { operator: string; value: string }).operator}${(currentFilterValue as unknown as { operator: string; value: string }).value}`
+                                    : String(selectedValues.size)
                                 }
                             </Badge>
                         )}

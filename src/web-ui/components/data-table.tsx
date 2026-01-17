@@ -298,7 +298,7 @@ export function DataTable<TData, TValue>({
         return columns.map(col => ({
             ...col,
             filterFn: arrayIncludesFilter,
-        }))
+        })) as typeof columns
     }, [columns])
 
     const table = useReactTable({
