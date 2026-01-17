@@ -128,7 +128,7 @@ from . import models
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -161,6 +161,7 @@ app.include_router(api_audit.router)
 app.include_router(api_audit.global_router)
 app.include_router(organizations.router)
 app.include_router(scheduler.router)
+app.include_router(schedules.router)
 app.include_router(cribl.router)
 
 
