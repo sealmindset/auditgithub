@@ -15,8 +15,17 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Lock, Unlock, Bot, User, Clock, Calendar, History, Info } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Loader2, Lock, Unlock, Bot, User, Clock, Calendar, History, Info, Settings2, ChevronDown, ChevronRight } from "lucide-react"
 import type { Schedule } from "@/components/SchedulerCalendar"
+
+// Scanner info type from API
+interface ScannerInfo {
+    id: string
+    name: string
+    category: string
+    description: string
+}
 
 const API_BASE = "http://localhost:8000"
 
@@ -46,8 +55,24 @@ interface ScheduleOverrideDialogProps {
     schedule: Schedule | null
     onLock: (reason: string) => Promise<void>
     onUnlock: () => Promise<void>
+    onUpdateScanners?: (scanners: string[] | null) => Promise<void>
     isLoading?: boolean
 }
+
+// Category display names
+const CATEGORY_NAMES: Record<string, string> = {
+    secrets: "Secrets Detection",
+    sast: "Static Analysis (SAST)",
+    deps: "Dependency Scanning",
+    iac: "Infrastructure as Code",
+    api: "API Security",
+    mobile: "Mobile Security",
+    go: "Go Tools",
+    other: "Other Tools",
+}
+
+// Category order for display
+const CATEGORY_ORDER = ["secrets", "sast", "deps", "iac", "api", "mobile", "go", "other"]
 
 // Day of week names
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -99,6 +124,7 @@ export function ScheduleOverrideDialog({
     schedule,
     onLock,
     onUnlock,
+    onUpdateScanners,
     isLoading = false,
 }: ScheduleOverrideDialogProps) {
     const [activeTab, setActiveTab] = useState("details")
@@ -107,6 +133,15 @@ export function ScheduleOverrideDialog({
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyError, setHistoryError] = useState<string | null>(null)
 
+    // Scanner state
+    const [availableScanners, setAvailableScanners] = useState<ScannerInfo[]>([])
+    const [scannersLoading, setScannersLoading] = useState(false)
+    const [scannersError, setScannersError] = useState<string | null>(null)
+    const [selectedScanners, setSelectedScanners] = useState<string[]>([])
+    const [useAllScanners, setUseAllScanners] = useState(true)
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+    const [scannersSaving, setScannersSaving] = useState(false)
+
     // Reset state when dialog opens/closes
     useEffect(() => {
         if (!open) {
@@ -114,8 +149,26 @@ export function ScheduleOverrideDialog({
             setLockReason("")
             setHistory([])
             setHistoryError(null)
+            setAvailableScanners([])
+            setScannersError(null)
+            setExpandedCategories(new Set())
         }
     }, [open])
+
+    // Initialize scanner selection from schedule
+    useEffect(() => {
+        if (schedule) {
+            const scanArgs = schedule.scan_arguments as { scanners?: string } | null
+            if (scanArgs?.scanners) {
+                const scannerList = scanArgs.scanners.split(",").map(s => s.trim()).filter(Boolean)
+                setSelectedScanners(scannerList)
+                setUseAllScanners(false)
+            } else {
+                setSelectedScanners([])
+                setUseAllScanners(true)
+            }
+        }
+    }, [schedule])
 
     // Fetch history when history tab is selected
     const fetchHistory = useCallback(async () => {
@@ -138,12 +191,102 @@ export function ScheduleOverrideDialog({
         }
     }, [schedule])
 
+    // Fetch available scanners
+    const fetchScanners = useCallback(async () => {
+        setScannersLoading(true)
+        setScannersError(null)
+
+        try {
+            const res = await fetch(`${API_BASE}/schedules/scanners`)
+            if (!res.ok) {
+                throw new Error("Failed to fetch scanners")
+            }
+            const data = await res.json()
+            setAvailableScanners(data.scanners || [])
+        } catch (err) {
+            setScannersError(err instanceof Error ? err.message : "Failed to load scanners")
+        } finally {
+            setScannersLoading(false)
+        }
+    }, [])
+
     // Lazy load history when tab changes
     useEffect(() => {
         if (activeTab === "history" && schedule && history.length === 0 && !historyLoading) {
             fetchHistory()
         }
     }, [activeTab, schedule, history.length, historyLoading, fetchHistory])
+
+    // Lazy load scanners when tab changes
+    useEffect(() => {
+        if (activeTab === "scanners" && availableScanners.length === 0 && !scannersLoading) {
+            fetchScanners()
+        }
+    }, [activeTab, availableScanners.length, scannersLoading, fetchScanners])
+
+    // Group scanners by category
+    const scannersByCategory = useMemo(() => {
+        const grouped: Record<string, ScannerInfo[]> = {}
+        for (const scanner of availableScanners) {
+            if (!grouped[scanner.category]) {
+                grouped[scanner.category] = []
+            }
+            grouped[scanner.category].push(scanner)
+        }
+        return grouped
+    }, [availableScanners])
+
+    // Toggle category expansion
+    const toggleCategory = (category: string) => {
+        setExpandedCategories((prev) => {
+            const next = new Set(prev)
+            if (next.has(category)) {
+                next.delete(category)
+            } else {
+                next.add(category)
+            }
+            return next
+        })
+    }
+
+    // Toggle scanner selection
+    const toggleScanner = (scannerId: string) => {
+        setSelectedScanners((prev) => {
+            if (prev.includes(scannerId)) {
+                return prev.filter((id) => id !== scannerId)
+            } else {
+                return [...prev, scannerId]
+            }
+        })
+    }
+
+    // Select all scanners in a category
+    const selectAllInCategory = (category: string) => {
+        const categoryIds = scannersByCategory[category]?.map((s) => s.id) || []
+        setSelectedScanners((prev) => {
+            const withoutCategory = prev.filter((id) => !categoryIds.includes(id))
+            return [...withoutCategory, ...categoryIds]
+        })
+    }
+
+    // Clear all scanners in a category
+    const clearAllInCategory = (category: string) => {
+        const categoryIds = scannersByCategory[category]?.map((s) => s.id) || []
+        setSelectedScanners((prev) => prev.filter((id) => !categoryIds.includes(id)))
+    }
+
+    // Save scanner configuration
+    const handleSaveScanners = async () => {
+        if (!onUpdateScanners) return
+
+        setScannersSaving(true)
+        try {
+            // Pass null to use all scanners, otherwise pass the selection
+            await onUpdateScanners(useAllScanners ? null : selectedScanners)
+        } finally {
+            setScannersSaving(false)
+        }
+    }
 
     const handleLock = async () => {
         if (!lockReason.trim()) return
@@ -160,6 +303,13 @@ export function ScheduleOverrideDialog({
     const isLocked = schedule.is_locked
     const isAI = schedule.schedule_type === "ai"
 
+    // Check if custom scanners are configured
+    const scanArgs = schedule.scan_arguments as { scanners?: string } | null
+    const hasCustomScanners = Boolean(scanArgs?.scanners)
+    const customScannerCount = hasCustomScanners
+        ? scanArgs!.scanners!.split(",").filter(Boolean).length
+        : 0
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[550px]">
@@ -174,7 +324,7 @@ export function ScheduleOverrideDialog({
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
+                    <TabsList className="grid w-full grid-cols-4">
                         <TabsTrigger value="details" className="flex items-center gap-1">
                             <Info className="h-4 w-4" />
                             Details
@@ -182,6 +332,10 @@ export function ScheduleOverrideDialog({
                         <TabsTrigger value="lock" className="flex items-center gap-1">
                             {isLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                             {isLocked ? "Unlock" : "Lock"}
+                        </TabsTrigger>
+                        <TabsTrigger value="scanners" className="flex items-center gap-1">
+                            <Settings2 className="h-4 w-4" />
+                            Scanners
                         </TabsTrigger>
                         <TabsTrigger value="history" className="flex items-center gap-1">
                             <History className="h-4 w-4" />
@@ -240,6 +394,19 @@ export function ScheduleOverrideDialog({
                                     </span>
                                 </div>
                             )}
+
+                            {/* Scanner Configuration */}
+                            <div className="flex items-center gap-2">
+                                <Settings2 className="h-4 w-4 text-muted-foreground" />
+                                <Label className="text-muted-foreground">Scanners:</Label>
+                                {hasCustomScanners ? (
+                                    <Badge variant="secondary" className="text-xs">
+                                        Custom ({customScannerCount} selected)
+                                    </Badge>
+                                ) : (
+                                    <span className="text-muted-foreground text-sm">All scanners (default)</span>
+                                )}
+                            </div>
 
                             {/* Locked Info */}
                             {isLocked && schedule.locked_by_email && (
@@ -331,6 +498,158 @@ export function ScheduleOverrideDialog({
                                         </>
                                     )}
                                 </Button>
+                            </div>
+                        )}
+                    </TabsContent>
+
+                    {/* Scanners Tab */}
+                    <TabsContent value="scanners" className="pt-4">
+                        {scannersLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : scannersError ? (
+                            <div className="text-center py-8 text-destructive">
+                                {scannersError}
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {/* Use all scanners toggle */}
+                                <div className="flex items-center space-x-2 p-3 bg-muted/30 rounded-md">
+                                    <Checkbox
+                                        id="use-all-scanners"
+                                        checked={useAllScanners}
+                                        onCheckedChange={(checked) => {
+                                            setUseAllScanners(checked === true)
+                                            if (checked) {
+                                                setSelectedScanners([])
+                                            }
+                                        }}
+                                    />
+                                    <label
+                                        htmlFor="use-all-scanners"
+                                        className="text-sm font-medium leading-none cursor-pointer"
+                                    >
+                                        Use all scanners (default)
+                                    </label>
+                                </div>
+
+                                {/* Scanner categories - only show when not using all */}
+                                {!useAllScanners && (
+                                    <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                                        {CATEGORY_ORDER.map((category) => {
+                                            const scanners = scannersByCategory[category]
+                                            if (!scanners || scanners.length === 0) return null
+
+                                            const isExpanded = expandedCategories.has(category)
+                                            const selectedInCategory = scanners.filter((s) =>
+                                                selectedScanners.includes(s.id)
+                                            ).length
+                                            const allSelected = selectedInCategory === scanners.length
+
+                                            return (
+                                                <div key={category} className="border rounded-md">
+                                                    {/* Category header */}
+                                                    <div
+                                                        className="flex items-center justify-between p-2 cursor-pointer hover:bg-muted/50"
+                                                        onClick={() => toggleCategory(category)}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            {isExpanded ? (
+                                                                <ChevronDown className="h-4 w-4" />
+                                                            ) : (
+                                                                <ChevronRight className="h-4 w-4" />
+                                                            )}
+                                                            <span className="text-sm font-medium">
+                                                                {CATEGORY_NAMES[category] || category}
+                                                            </span>
+                                                            <Badge variant="outline" className="text-xs">
+                                                                {selectedInCategory}/{scanners.length}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-xs"
+                                                                onClick={() => selectAllInCategory(category)}
+                                                                disabled={allSelected}
+                                                            >
+                                                                All
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-xs"
+                                                                onClick={() => clearAllInCategory(category)}
+                                                                disabled={selectedInCategory === 0}
+                                                            >
+                                                                Clear
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Scanners in category */}
+                                                    {isExpanded && (
+                                                        <div className="p-2 pt-0 space-y-1">
+                                                            {scanners.map((scanner) => (
+                                                                <div
+                                                                    key={scanner.id}
+                                                                    className="flex items-start space-x-2 py-1"
+                                                                >
+                                                                    <Checkbox
+                                                                        id={`scanner-${scanner.id}`}
+                                                                        checked={selectedScanners.includes(scanner.id)}
+                                                                        onCheckedChange={() => toggleScanner(scanner.id)}
+                                                                    />
+                                                                    <div className="grid gap-0.5">
+                                                                        <label
+                                                                            htmlFor={`scanner-${scanner.id}`}
+                                                                            className="text-sm font-medium leading-none cursor-pointer"
+                                                                        >
+                                                                            {scanner.name}
+                                                                        </label>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            {scanner.description}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Save button */}
+                                {onUpdateScanners && (
+                                    <Button
+                                        onClick={handleSaveScanners}
+                                        disabled={scannersSaving || (!useAllScanners && selectedScanners.length === 0)}
+                                        className="w-full"
+                                    >
+                                        {scannersSaving ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Settings2 className="mr-2 h-4 w-4" />
+                                                Save Scanner Config
+                                            </>
+                                        )}
+                                    </Button>
+                                )}
+
+                                {/* Selection summary */}
+                                {!useAllScanners && selectedScanners.length > 0 && (
+                                    <p className="text-xs text-muted-foreground text-center">
+                                        {selectedScanners.length} scanner{selectedScanners.length !== 1 ? "s" : ""} selected
+                                    </p>
+                                )}
                             </div>
                         )}
                     </TabsContent>
