@@ -2,6 +2,7 @@
 AI-powered Schedule Recommender service.
 Uses AI providers to analyze repository context and recommend optimal scan schedules.
 """
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -200,3 +201,39 @@ Return JSON:
             reasoning="New repository with no commit history. Daily scans recommended until patterns emerge.",
             factors_considered=["new_repository", "no_commit_history"]
         )
+
+    async def recommend_batch(
+        self,
+        schedule_inputs: List[ScheduleInput]
+    ) -> Dict[str, ScheduleRecommendation]:
+        """Generate recommendations for multiple repositories.
+
+        Args:
+            schedule_inputs: List of ScheduleInput for each repo
+
+        Returns:
+            Dict mapping repository_name to ScheduleRecommendation
+        """
+        results = {}
+
+        # Process in batches of 5 to avoid overwhelming AI provider
+        batch_size = 5
+        for i in range(0, len(schedule_inputs), batch_size):
+            batch = schedule_inputs[i:i + batch_size]
+
+            # Run batch concurrently
+            tasks = [self.recommend_schedule(inp) for inp in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for inp, result in zip(batch, batch_results):
+                if isinstance(result, Exception):
+                    self.logger.error(f"Batch recommendation failed for {inp.repository_name}: {result}")
+                    results[inp.repository_name] = self._heuristic_recommendation(inp)
+                else:
+                    results[inp.repository_name] = result
+
+            # Brief pause between batches for rate limiting
+            if i + batch_size < len(schedule_inputs):
+                await asyncio.sleep(1)
+
+        return results
