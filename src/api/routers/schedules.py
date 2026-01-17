@@ -526,6 +526,74 @@ def get_override_history(
     )
 
 
+# Scanner information models
+class ScannerInfo(BaseModel):
+    """Information about an available scanner."""
+    id: str
+    name: str
+    category: str
+    description: str
+
+
+# Available scanners grouped by category
+AVAILABLE_SCANNERS: List[ScannerInfo] = [
+    # Secrets detection
+    ScannerInfo(id="trufflehog", name="TruffleHog", category="secrets", description="Detect secrets and credentials in code"),
+    ScannerInfo(id="whispers", name="Whispers", category="secrets", description="Identify hardcoded secrets and passwords"),
+    # SAST - Static Application Security Testing
+    ScannerInfo(id="semgrep", name="Semgrep", category="sast", description="Lightweight static analysis for many languages"),
+    ScannerInfo(id="codeql", name="CodeQL", category="sast", description="GitHub's semantic code analysis engine"),
+    ScannerInfo(id="horusec", name="Horusec", category="sast", description="Open-source SAST tool by ZUP"),
+    ScannerInfo(id="bearer", name="Bearer", category="sast", description="Detect security risks and sensitive data flows"),
+    # Dependency scanning
+    ScannerInfo(id="safety", name="Safety", category="deps", description="Check Python dependencies for known vulnerabilities"),
+    ScannerInfo(id="pip-audit", name="pip-audit", category="deps", description="Audit Python packages for known vulnerabilities"),
+    ScannerInfo(id="npm-audit", name="npm-audit", category="deps", description="Audit Node.js dependencies for vulnerabilities"),
+    ScannerInfo(id="retirejs", name="Retire.js", category="deps", description="Detect JavaScript libraries with known vulnerabilities"),
+    ScannerInfo(id="govulncheck", name="govulncheck", category="deps", description="Check Go dependencies for vulnerabilities"),
+    ScannerInfo(id="bundle-audit", name="bundle-audit", category="deps", description="Audit Ruby bundler dependencies"),
+    ScannerInfo(id="dependency-check", name="OWASP Dependency-Check", category="deps", description="OWASP dependency vulnerability scanner"),
+    ScannerInfo(id="syft", name="Syft", category="deps", description="Generate SBOMs from container images and filesystems"),
+    ScannerInfo(id="grype", name="Grype", category="deps", description="Vulnerability scanner for container images and filesystems"),
+    # Infrastructure as Code
+    ScannerInfo(id="checkov", name="Checkov", category="iac", description="IaC security scanner for Terraform, CloudFormation, etc."),
+    ScannerInfo(id="trivy", name="Trivy", category="iac", description="Comprehensive vulnerability scanner for containers and IaC"),
+    ScannerInfo(id="terrascan", name="Terrascan", category="iac", description="Detect compliance and security violations in IaC"),
+    ScannerInfo(id="dockle", name="Dockle", category="iac", description="Container image linter for security best practices"),
+    # API security
+    ScannerInfo(id="api-audit", name="API Audit", category="api", description="Audit API endpoints for security issues"),
+    ScannerInfo(id="nuclei", name="Nuclei", category="api", description="Fast vulnerability scanner with community templates"),
+    # Mobile security
+    ScannerInfo(id="mobsf", name="MobSF", category="mobile", description="Mobile Security Framework for Android/iOS"),
+    # Go-specific tools
+    ScannerInfo(id="gosec", name="Gosec", category="go", description="Go security checker inspecting AST"),
+    ScannerInfo(id="golangci-lint", name="golangci-lint", category="go", description="Fast Go linter with security rules"),
+    # Other tools
+    ScannerInfo(id="cloc", name="CLOC", category="other", description="Count lines of code"),
+    ScannerInfo(id="ossgadget", name="OSS Gadget", category="other", description="Microsoft's OSS tools collection"),
+]
+
+
+class ScannerListResponse(BaseModel):
+    """Response for scanner list."""
+    scanners: List[ScannerInfo]
+    total: int
+
+
+@router.get("/scanners", response_model=ScannerListResponse)
+def list_scanners():
+    """
+    List all available scanners with their metadata.
+
+    Returns categorized scanner information for UI selection.
+    No authentication required - scanner list is not sensitive.
+    """
+    return ScannerListResponse(
+        scanners=AVAILABLE_SCANNERS,
+        total=len(AVAILABLE_SCANNERS)
+    )
+
+
 class TriggerResponse(BaseModel):
     """Response for manual scan trigger."""
     status: str
