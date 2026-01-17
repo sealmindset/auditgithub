@@ -128,10 +128,10 @@ Plans:
 **Goal**: Allow users to arrange widgets, save layouts, and set preferences
 **Depends on**: Phase 11-16
 **Research**: Unlikely (localStorage/state patterns)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 17-01: TBD
+- [x] 17-01: Dashboard Customization
 
 ### Phase 18: Navigation Redesign
 **Goal**: Improve sidebar navigation with better hierarchy, breadcrumbs, and quick search
@@ -155,5 +155,5 @@ Plans:
 | 14. Repository Health Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 15. Finding Trends Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 16. Quick Actions Panel | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 17. Dashboard Customization | v2.0 | 0/? | Not started | - |
+| 17. Dashboard Customization | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 18. Navigation Redesign | v2.0 | 0/? | Not started | - |
