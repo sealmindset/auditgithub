@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Lock, Bot, User, CalendarDays } from "lucide-react"
 
+// Import calendar styles
+import "@/app/scheduler/calendar.css"
+
 // Configure date-fns localizer for react-big-calendar
 const locales = {
     "en-US": enUS,

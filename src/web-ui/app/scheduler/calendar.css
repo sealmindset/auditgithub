@@ -1,0 +1,303 @@
+/* react-big-calendar base styles */
+@import "react-big-calendar/lib/css/react-big-calendar.css";
+
+/* Override calendar styles to match application theme */
+.scheduler-calendar {
+    --rbc-today-bg: hsl(var(--accent) / 0.3);
+    --rbc-off-range-bg: hsl(var(--muted) / 0.5);
+    --rbc-off-range-color: hsl(var(--muted-foreground));
+    --rbc-header-bg: hsl(var(--muted));
+    --rbc-border-color: hsl(var(--border));
+    --rbc-slot-bg: hsl(var(--background));
+    --rbc-event-bg: hsl(var(--primary));
+}
+
+/* Calendar container */
+.scheduler-calendar .rbc-calendar {
+    font-family: inherit;
+    color: hsl(var(--foreground));
+}
+
+/* Header styling */
+.scheduler-calendar .rbc-header {
+    padding: 8px 4px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+    background-color: var(--rbc-header-bg);
+    border-bottom: 1px solid var(--rbc-border-color);
+}
+
+.scheduler-calendar .rbc-header + .rbc-header {
+    border-left: 1px solid var(--rbc-border-color);
+}
+
+/* Month view cells */
+.scheduler-calendar .rbc-month-view {
+    border: 1px solid var(--rbc-border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.scheduler-calendar .rbc-month-row {
+    border-bottom: 1px solid var(--rbc-border-color);
+}
+
+.scheduler-calendar .rbc-month-row:last-child {
+    border-bottom: none;
+}
+
+.scheduler-calendar .rbc-day-bg {
+    background-color: var(--rbc-slot-bg);
+}
+
+.scheduler-calendar .rbc-day-bg + .rbc-day-bg {
+    border-left: 1px solid var(--rbc-border-color);
+}
+
+.scheduler-calendar .rbc-today {
+    background-color: var(--rbc-today-bg);
+}
+
+.scheduler-calendar .rbc-off-range-bg {
+    background-color: var(--rbc-off-range-bg);
+}
+
+.scheduler-calendar .rbc-off-range {
+    color: var(--rbc-off-range-color);
+}
+
+/* Date cell styling */
+.scheduler-calendar .rbc-date-cell {
+    padding: 4px 8px;
+    text-align: right;
+    font-size: 0.875rem;
+}
+
+.scheduler-calendar .rbc-date-cell > a {
+    color: hsl(var(--foreground));
+}
+
+.scheduler-calendar .rbc-date-cell.rbc-now > a {
+    font-weight: 600;
+    color: hsl(var(--primary));
+}
+
+/* Event styling */
+.scheduler-calendar .rbc-event {
+    background-color: var(--rbc-event-bg);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.scheduler-calendar .rbc-event:hover {
+    opacity: 0.9;
+}
+
+.scheduler-calendar .rbc-event:focus {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+}
+
+.scheduler-calendar .rbc-event-content {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Week view styling */
+.scheduler-calendar .rbc-time-view {
+    border: 1px solid var(--rbc-border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.scheduler-calendar .rbc-time-header {
+    border-bottom: 1px solid var(--rbc-border-color);
+}
+
+.scheduler-calendar .rbc-time-header-content {
+    border-left: 1px solid var(--rbc-border-color);
+}
+
+.scheduler-calendar .rbc-time-content {
+    border-top: none;
+}
+
+.scheduler-calendar .rbc-time-slot {
+    border-top: 1px solid var(--rbc-border-color);
+}
+
+.scheduler-calendar .rbc-timeslot-group {
+    border-bottom: 1px solid var(--rbc-border-color);
+    min-height: 60px;
+}
+
+.scheduler-calendar .rbc-day-slot .rbc-time-slot {
+    border-top: 1px dashed hsl(var(--border) / 0.5);
+}
+
+.scheduler-calendar .rbc-time-gutter {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+}
+
+.scheduler-calendar .rbc-label {
+    padding: 0 8px;
+}
+
+.scheduler-calendar .rbc-allday-cell {
+    border-bottom: 1px solid var(--rbc-border-color);
+}
+
+/* Toolbar styling */
+.scheduler-calendar .rbc-toolbar {
+    padding: 8px 0;
+    margin-bottom: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.scheduler-calendar .rbc-toolbar button {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.375rem;
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border: 1px solid hsl(var(--border));
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.scheduler-calendar .rbc-toolbar button:hover {
+    background-color: hsl(var(--accent));
+    border-color: hsl(var(--accent));
+}
+
+.scheduler-calendar .rbc-toolbar button:focus {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+}
+
+.scheduler-calendar .rbc-toolbar button.rbc-active {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+}
+
+.scheduler-calendar .rbc-toolbar-label {
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: hsl(var(--foreground));
+}
+
+/* Button groups in toolbar */
+.scheduler-calendar .rbc-btn-group {
+    display: flex;
+    gap: 2px;
+}
+
+.scheduler-calendar .rbc-btn-group button:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.scheduler-calendar .rbc-btn-group button:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.scheduler-calendar .rbc-btn-group button:not(:first-child):not(:last-child) {
+    border-radius: 0;
+}
+
+/* Show more link */
+.scheduler-calendar .rbc-show-more {
+    color: hsl(var(--primary));
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 2px 4px;
+}
+
+.scheduler-calendar .rbc-show-more:hover {
+    text-decoration: underline;
+}
+
+/* Overlay/popup for events */
+.scheduler-calendar .rbc-overlay {
+    background-color: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    padding: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.scheduler-calendar .rbc-overlay-header {
+    padding: 4px 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-bottom: 1px solid hsl(var(--border));
+    margin-bottom: 8px;
+}
+
+/* Current time indicator */
+.scheduler-calendar .rbc-current-time-indicator {
+    background-color: hsl(var(--destructive));
+    height: 2px;
+}
+
+.scheduler-calendar .rbc-current-time-indicator::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    background-color: hsl(var(--destructive));
+    border-radius: 50%;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .scheduler-calendar .rbc-toolbar {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .scheduler-calendar .rbc-toolbar-label {
+        order: -1;
+        width: 100%;
+        text-align: center;
+    }
+
+    .scheduler-calendar .rbc-header {
+        font-size: 0.75rem;
+        padding: 4px 2px;
+    }
+
+    .scheduler-calendar .rbc-date-cell {
+        padding: 2px 4px;
+        font-size: 0.75rem;
+    }
+
+    .scheduler-calendar .rbc-event {
+        font-size: 0.625rem;
+    }
+}
+
+/* Dark mode support using CSS variables */
+:root.dark .scheduler-calendar,
+.dark .scheduler-calendar {
+    --rbc-today-bg: hsl(var(--accent) / 0.2);
+    --rbc-off-range-bg: hsl(var(--muted) / 0.3);
+}
