@@ -101,10 +101,10 @@ Plans:
 **Goal**: Build repository health cards showing risk scores, last scan, and finding counts per repo
 **Depends on**: Phase 11
 **Research**: Unlikely (existing repo/schedule data)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 14-01: TBD
+- [x] 14-01: Repository Health Widget
 
 ### Phase 15: Finding Trends Widget
 **Goal**: Create finding trend charts showing finding counts over time by severity
@@ -153,7 +153,7 @@ Plans:
 | 12.1 Auto-Scan New Repos | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 13. Scan Activity Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 13.1 Background Jobs Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 14. Repository Health Widget | v2.0 | 0/? | Not started | - |
+| 14. Repository Health Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 15. Finding Trends Widget | v2.0 | 0/? | Not started | - |
 | 16. Quick Actions Panel | v2.0 | 0/? | Not started | - |
 | 17. Dashboard Customization | v2.0 | 0/? | Not started | - |
