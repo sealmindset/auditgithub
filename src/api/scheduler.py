@@ -20,7 +20,10 @@ import asyncio
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.services.schedule_executor import ScheduleExecutor
 from dataclasses import dataclass, field
 from threading import Thread
 
@@ -64,8 +67,9 @@ class SchedulerService:
         self.enabled = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
         self.jobs: Dict[str, ScheduledJob] = {}
         self.scheduler: Optional[AsyncIOScheduler] = None
+        self.schedule_executor: Optional['ScheduleExecutor'] = None
         self._running = False
-        
+
         if not APSCHEDULER_AVAILABLE:
             logger.warning("APScheduler not installed. Run: pip install apscheduler")
             self.enabled = False
@@ -166,6 +170,20 @@ class SchedulerService:
         self.scheduler.start()
         self._running = True
         logger.info("Scheduler started")
+
+        # Initialize ScheduleExecutor for database-driven schedules
+        from src.services.schedule_executor import ScheduleExecutor
+        self.schedule_executor = ScheduleExecutor(self.scheduler)
+        await self.schedule_executor.sync_schedules()
+
+        # Add periodic sync job (every hour)
+        self.scheduler.add_job(
+            self.schedule_executor.sync_schedules,
+            trigger=CronTrigger(minute=0),  # Every hour
+            id="schedule_sync",
+            name="Sync Repository Schedules",
+            replace_existing=True
+        )
     
     async def stop(self):
         """Stop the scheduler."""
