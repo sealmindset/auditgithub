@@ -9,13 +9,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Lock, Bot, User, CalendarDays } from "lucide-react"
 import { TimeWindowDialog, TimeWindow } from "@/components/TimeWindowDialog"
+import { ScheduleOverrideDialog } from "@/components/ScheduleOverrideDialog"
 
 // Import calendar styles
 import "@/app/scheduler/calendar.css"
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css"
 
 // Schedule type from API
-interface Schedule {
+export interface Schedule {
     id: string
     repository_id: string
     repository_name: string
@@ -26,6 +27,8 @@ interface Schedule {
     next_scheduled_at: string | null
     is_locked: boolean
     ai_confidence: number | null
+    locked_by_email?: string | null
+    locked_at?: string | null
 }
 
 // Calendar event type
@@ -71,6 +74,8 @@ interface PendingDrop {
 interface SchedulerCalendarProps {
     schedules: Schedule[]
     onScheduleUpdate?: (data: ScheduleUpdateData) => Promise<void>
+    onScheduleLock?: (repoId: string, reason: string) => Promise<void>
+    onScheduleUnlock?: (repoId: string) => Promise<void>
 }
 
 // Time window to hours mapping
@@ -132,7 +137,7 @@ const jsDateToApiDayOfWeek = (date: Date): number => {
     return jsDay === 0 ? 6 : jsDay - 1
 }
 
-export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCalendarProps) {
+export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock, onScheduleUnlock }: SchedulerCalendarProps) {
     const [view, setView] = useState<View>(Views.MONTH)
     const [date, setDate] = useState(new Date())
 
@@ -140,6 +145,11 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
     const [dialogOpen, setDialogOpen] = useState(false)
     const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
+
+    // Override dialog state
+    const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
+    const [overrideDialogOpen, setOverrideDialogOpen] = useState(false)
+    const [isLockLoading, setIsLockLoading] = useState(false)
 
     // Handle event drop (drag and drop)
     const handleEventDrop = useCallback(
@@ -194,6 +204,47 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
             setPendingDrop(null)
         }
     }, [isSubmitting])
+
+    // Handle event click (opens override dialog)
+    const handleSelectEvent = useCallback((event: CalendarEvent) => {
+        setSelectedSchedule(event.resource)
+        setOverrideDialogOpen(true)
+    }, [])
+
+    // Handle override dialog close
+    const handleOverrideDialogOpenChange = useCallback((open: boolean) => {
+        if (isLockLoading) return // Prevent close while loading
+        setOverrideDialogOpen(open)
+        if (!open) {
+            setSelectedSchedule(null)
+        }
+    }, [isLockLoading])
+
+    // Handle lock schedule
+    const handleLock = useCallback(async (reason: string) => {
+        if (!selectedSchedule || !onScheduleLock) return
+        setIsLockLoading(true)
+        try {
+            await onScheduleLock(selectedSchedule.repository_id, reason)
+            setOverrideDialogOpen(false)
+            setSelectedSchedule(null)
+        } finally {
+            setIsLockLoading(false)
+        }
+    }, [selectedSchedule, onScheduleLock])
+
+    // Handle unlock schedule
+    const handleUnlock = useCallback(async () => {
+        if (!selectedSchedule || !onScheduleUnlock) return
+        setIsLockLoading(true)
+        try {
+            await onScheduleUnlock(selectedSchedule.repository_id)
+            setOverrideDialogOpen(false)
+            setSelectedSchedule(null)
+        } finally {
+            setIsLockLoading(false)
+        }
+    }, [selectedSchedule, onScheduleUnlock])
 
     // Allow all events to be draggable
     const draggableAccessor = useCallback(() => true, [])
@@ -317,6 +368,8 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
                     popup
                     draggableAccessor={draggableAccessor}
                     onEventDrop={handleEventDrop}
+                    onSelectEvent={handleSelectEvent}
+                    selectable
                 />
             </div>
 
@@ -331,6 +384,16 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
                     isLoading={isSubmitting}
                 />
             )}
+
+            {/* Schedule Override Dialog */}
+            <ScheduleOverrideDialog
+                open={overrideDialogOpen}
+                onOpenChange={handleOverrideDialogOpenChange}
+                schedule={selectedSchedule}
+                onLock={handleLock}
+                onUnlock={handleUnlock}
+                isLoading={isLockLoading}
+            />
         </div>
     )
 }
