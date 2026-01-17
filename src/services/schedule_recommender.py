@@ -54,8 +54,56 @@ class ScheduleRecommender:
 
     def _build_recommendation_prompt(self, input: ScheduleInput) -> str:
         """Build AI prompt for schedule recommendation."""
-        # Implementation in Task 3
-        pass
+        commit_context = "No commit data available."
+        if input.commit_analysis:
+            ca = input.commit_analysis
+            commit_context = f"""
+Commit Patterns (last 90 days):
+- Commits per day: {ca.patterns.commits_per_day}
+- Commits per week: {ca.patterns.commits_per_week}
+- Peak hours: {ca.patterns.peak_hours}
+- Peak days: {ca.patterns.peak_days}
+- Suggested frequency (heuristic): {ca.patterns.suggested_frequency}
+- Suggested time window (heuristic): {ca.patterns.suggested_time_window}
+- Is dormant: {ca.is_dormant}
+- Top contributors: {len(ca.top_contributors)}
+"""
+
+        finding_context = "\n".join([
+            f"- {severity}: {count}"
+            for severity, count in input.finding_counts.items()
+        ]) or "No findings"
+
+        prompt = f"""You are an expert DevSecOps engineer optimizing security scan schedules.
+
+Repository: {input.repository_name}
+Risk Score: {input.risk_score:.2f} (0=low, 1=high)
+Last Scan: {input.last_scan_date or 'Never'}
+
+{commit_context}
+
+Current Findings by Severity:
+{finding_context}
+
+Based on this context, recommend an optimal scan schedule.
+
+Consider:
+1. High-activity repos need more frequent scans
+2. Repos with critical/high findings need more attention
+3. Scan during low-activity periods to minimize disruption
+4. Dormant repos can be scanned less frequently
+5. Risk score indicates overall security posture
+
+Return JSON:
+{{
+    "frequency": "daily|weekly|bi-weekly|monthly",
+    "time_window": "morning|afternoon|evening|night",
+    "confidence": 0.0-1.0,
+    "reasoning": "Explanation of recommendation",
+    "factors_considered": ["factor1", "factor2"]
+}}
+"""
+        return prompt
 
     def _parse_recommendation(
         self,
@@ -63,8 +111,38 @@ class ScheduleRecommender:
         input: ScheduleInput
     ) -> ScheduleRecommendation:
         """Parse AI JSON response into ScheduleRecommendation."""
-        # Implementation in Task 3
-        pass
+        try:
+            # Clean markdown code blocks
+            content = response
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            data = json.loads(content)
+
+            # Validate frequency
+            valid_frequencies = {"daily", "weekly", "bi-weekly", "monthly"}
+            frequency = data.get("frequency", self.DEFAULT_FREQUENCY)
+            if frequency not in valid_frequencies:
+                frequency = self.DEFAULT_FREQUENCY
+
+            # Validate time window
+            valid_windows = {"morning", "afternoon", "evening", "night"}
+            time_window = data.get("time_window", self.DEFAULT_TIME_WINDOW)
+            if time_window not in valid_windows:
+                time_window = self.DEFAULT_TIME_WINDOW
+
+            return ScheduleRecommendation(
+                frequency=frequency,
+                time_window=time_window,
+                confidence=min(1.0, max(0.0, float(data.get("confidence", 0.5)))),
+                reasoning=data.get("reasoning", "AI-generated recommendation"),
+                factors_considered=data.get("factors_considered", [])
+            )
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            self.logger.warning(f"Failed to parse AI response: {e}")
+            return self._heuristic_recommendation(input)
 
     def _heuristic_recommendation(
         self,
