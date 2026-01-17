@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Commit Analysis Service** - GitHub commit pattern extraction ✓
 - [x] **Phase 4: AI Scheduling Engine** - Core AI logic for schedule recommendations ✓
 - [x] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler ✓
-- [ ] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view
+- [x] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view ✓
 - [ ] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling
 - [ ] **Phase 8: Override Management** - Manual schedule locks and custom args
 - [ ] **Phase 9: Multi-Org Support** - Organization switching in scheduler
@@ -98,11 +98,12 @@ Key deliverables:
 - Schedule status updates (last_run, next_run)
 - New repo detection and immediate scan trigger
 
-### Phase 6: Calendar UI Foundation
+### Phase 6: Calendar UI Foundation ✓
 **Goal**: Calendar component with basic schedule visualization
 **Depends on**: Phase 2
-**Research**: Likely (React calendar library selection)
-**Research topics**: FullCalendar vs react-big-calendar vs alternatives, Radix/Tailwind integration, license considerations
+**Research**: Complete - selected react-big-calendar (MIT license, lightweight, native React)
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - Calendar library integration
@@ -173,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Commit Analysis | 1/1 | Complete ✓ | 2026-01-17 |
 | 4. AI Scheduling Engine | 1/1 | Complete ✓ | 2026-01-17 |
 | 5. Schedule Execution | 1/1 | Complete ✓ | 2026-01-17 |
-| 6. Calendar UI Foundation | 0/TBD | Not started | - |
+| 6. Calendar UI Foundation | 1/1 | Complete ✓ | 2026-01-17 |
 | 7. Calendar Interactions | 0/TBD | Not started | - |
 | 8. Override Management | 0/TBD | Not started | - |
 | 9. Multi-Org Support | 0/TBD | Not started | - |

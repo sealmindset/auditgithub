@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** Phase 5 — Schedule Execution
+**Current focus:** Phase 6 — Calendar UI Foundation
 
 ## Current Position
 
-Phase: 5 of 10 (Schedule Execution)
+Phase: 6 of 10 (Calendar UI Foundation)
 Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-01-17 — Completed 05-01-PLAN.md
+Last activity: 2026-01-17 — Completed 06-01-PLAN.md
 
-Progress: █████░░░░░ 50%
+Progress: ██████░░░░ 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 2.8 min
-- Total execution time: 14 min
+- Total plans completed: 6
+- Average duration: 3.2 min
+- Total execution time: 19 min
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: █████░░░░░ 50%
 | 3. Commit Analysis | 1 | 3 min | 3 min |
 | 4. AI Scheduling Engine | 1 | 3 min | 3 min |
 | 5. Schedule Execution | 1 | 3 min | 3 min |
+| 6. Calendar UI Foundation | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 3 min, 3 min, 3 min, 3 min
+- Last 5 plans: 3 min, 3 min, 3 min, 3 min, 5 min
 - Trend: —
 
 ## Accumulated Context
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - Bi-weekly via weekly cron + 10-day skip logic (Phase 5)
 - 2-hour per-repo scan timeout (Phase 5)
 - Hourly schedule sync from database (Phase 5)
+- react-big-calendar over FullCalendar: MIT license, lighter weight (Phase 6)
+- date-fns for calendar localization: tree-shakeable, ESM (Phase 6)
+- 2-hour event duration for visual scan window representation (Phase 6)
 
 ### Deferred Issues
 
@@ -79,5 +83,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Completed 05-01-PLAN.md (Phase 5 complete)
+Stopped at: Completed 06-01-PLAN.md (Phase 6 complete)
 Resume file: None
