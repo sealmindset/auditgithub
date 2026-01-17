@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** Phase 3 — Commit Analysis Service
+**Current focus:** Phase 4 — AI Scheduling Engine
 
 ## Current Position
 
-Phase: 3 of 10 (Commit Analysis Service)
+Phase: 4 of 10 (AI Scheduling Engine)
 Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-01-17 — Completed 03-01-PLAN.md
+Last activity: 2026-01-17 — Completed 04-01-PLAN.md
 
-Progress: ███░░░░░░░ 30%
+Progress: ████░░░░░░ 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2.7 min
-- Total execution time: 8 min
+- Total plans completed: 4
+- Average duration: 2.8 min
+- Total execution time: 11 min
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: ███░░░░░░░ 30%
 | 1. Database Schema | 1 | 2 min | 2 min |
 | 2. Schedule API | 1 | 3 min | 3 min |
 | 3. Commit Analysis | 1 | 3 min | 3 min |
+| 4. AI Scheduling Engine | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 3 min, 3 min
+- Last 5 plans: 2 min, 3 min, 3 min, 3 min
 - Trend: —
 
 ## Accumulated Context
@@ -54,6 +55,9 @@ Recent decisions affecting current work:
 - 90-day lookback window for commit analysis (Phase 3)
 - Frequency thresholds: 7+/week=daily, 2-7=weekly, 0.5-2=bi-weekly, <0.5=monthly (Phase 3)
 - Dormant repos cache for 7 days vs 24h for active repos (Phase 3)
+- Heuristic escalation: critical/high findings or risk >= 0.7 → weekly minimum (Phase 4)
+- Batch processing size of 5 repos with 1s delay for rate limiting (Phase 4)
+- Confidence levels: AI=variable, Heuristics=0.6, New repo=0.7 (Phase 4)
 
 ### Deferred Issues
 
@@ -70,5 +74,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Completed 03-01-PLAN.md (Phase 3 complete)
+Stopped at: Completed 04-01-PLAN.md (Phase 4 complete)
 Resume file: None
