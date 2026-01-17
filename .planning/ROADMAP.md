@@ -17,7 +17,7 @@ None
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Database Schema** - Schedule persistence models and migrations ✓
-- [ ] **Phase 2: Schedule API** - Backend CRUD endpoints for schedules
+- [x] **Phase 2: Schedule API** - Backend CRUD endpoints for schedules ✓
 - [ ] **Phase 3: Commit Analysis Service** - GitHub commit pattern extraction
 - [ ] **Phase 4: AI Scheduling Engine** - Core AI logic for schedule recommendations
 - [ ] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler
@@ -42,18 +42,20 @@ Key deliverables:
 - Alembic migration
 - Foreign keys to organizations and repositories tables
 
-### Phase 2: Schedule API
+### Phase 2: Schedule API ✓
 **Goal**: Backend REST endpoints for schedule CRUD operations
 **Depends on**: Phase 1
 **Research**: Unlikely (existing FastAPI router patterns)
-**Plans**: TBD
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - GET /schedules - list all schedules for org
 - GET /schedules/{repo_id} - get schedule for specific repo
 - PUT /schedules/{repo_id} - update schedule
-- POST /schedules/{repo_id}/override - create manual override
-- DELETE /schedules/{repo_id}/override - remove override
+- POST /schedules/{repo_id}/lock - lock schedule from AI
+- DELETE /schedules/{repo_id}/lock - unlock schedule for AI
+- GET /schedules/{repo_id}/history - override audit history
 
 ### Phase 3: Commit Analysis Service
 **Goal**: Extract commit patterns from GitHub for scheduling decisions
@@ -163,7 +165,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Database Schema | 1/1 | Complete ✓ | 2026-01-17 |
-| 2. Schedule API | 0/TBD | Not started | - |
+| 2. Schedule API | 1/1 | Complete ✓ | 2026-01-17 |
 | 3. Commit Analysis | 0/TBD | Not started | - |
 | 4. AI Scheduling Engine | 0/TBD | Not started | - |
 | 5. Schedule Execution | 0/TBD | Not started | - |
