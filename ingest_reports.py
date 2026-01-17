@@ -523,6 +523,93 @@ def ingest_dependencies(session, repo_id, report_path):
         logger.error(f"Error ingesting dependencies from {report_path}: {e}")
         return 0
 
+def ingest_api_endpoints(session, repo_id, org_id, report_path):
+    """Ingest API endpoints from api_endpoints.json report."""
+    try:
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+
+        # Get all endpoints (inbound and outbound)
+        inbound_endpoints = data.get('inbound_endpoints', [])
+        outbound_endpoints = data.get('outbound_endpoints', [])
+        all_endpoints = inbound_endpoints + outbound_endpoints
+
+        if not all_endpoints:
+            return 0
+
+        count = 0
+        for endpoint in all_endpoints:
+            # Determine direction
+            direction = endpoint.get('category', 'unknown')
+            if direction not in ['inbound', 'outbound', 'config']:
+                direction = 'unknown'
+
+            # Extract endpoint URL
+            endpoint_url = endpoint.get('endpoint_path') or endpoint.get('code', 'unknown')
+            if not endpoint_url or endpoint_url == 'unknown':
+                continue
+
+            # Extract HTTP method (if available)
+            http_method = endpoint.get('http_method', 'ANY')
+
+            # Check if endpoint already exists
+            result = session.execute(
+                text("SELECT id FROM api_endpoints WHERE repository_id = :repo_id AND endpoint_url = :url AND direction = :direction"),
+                {
+                    "repo_id": repo_id,
+                    "url": endpoint_url,
+                    "direction": direction
+                }
+            ).fetchone()
+
+            if result:
+                continue
+
+            # Extract metadata
+            metadata = endpoint.get('metadata', {})
+            framework = metadata.get('framework', 'unknown')
+            auth_method = metadata.get('auth_method')
+
+            # Create API endpoint record
+            endpoint_id = str(uuid.uuid4())
+            session.execute(
+                text("""
+                    INSERT INTO api_endpoints
+                    (id, organization_id, repository_id, endpoint_url, http_method, direction,
+                     auth_method, file_path, line_number, code_snippet, framework, rule_id,
+                     confidence, created_at, updated_at)
+                    VALUES
+                    (:id, :org_id, :repo_id, :endpoint_url, :http_method, :direction,
+                     :auth_method, :file_path, :line_number, :code_snippet, :framework, :rule_id,
+                     :confidence, :created_at, :updated_at)
+                """),
+                {
+                    "id": endpoint_id,
+                    "org_id": org_id,
+                    "repo_id": repo_id,
+                    "endpoint_url": endpoint_url,
+                    "http_method": http_method,
+                    "direction": direction,
+                    "auth_method": auth_method,
+                    "file_path": endpoint.get('path', ''),
+                    "line_number": endpoint.get('line', 0),
+                    "code_snippet": endpoint.get('code', ''),
+                    "framework": framework,
+                    "rule_id": endpoint.get('rule_id', ''),
+                    "confidence": 'high',  # Default confidence
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+            )
+            count += 1
+
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error ingesting API endpoints from {report_path}: {e}")
+        return 0
+
 def ingest_organization_reports(org_name):
     """Ingest all reports for an organization.
 
@@ -603,6 +690,13 @@ def ingest_organization_reports(org_name):
                 count = ingest_dependencies(session, repo_id, syft_file)
                 if count > 0:
                     logger.info(f"    Ingested {count} dependencies")
+
+            # Ingest API endpoints from api_endpoints.json
+            api_file = repo_dir / f"{repo_name}_api_endpoints.json"
+            if api_file.exists():
+                count = ingest_api_endpoints(session, repo_id, org_id, api_file)
+                if count > 0:
+                    logger.info(f"    Ingested {count} API endpoints")
 
         logger.info(f"Completed {org_name}: {total_repos} repositories, {total_findings} findings")
 
