@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** Phase 7 — Calendar Interactions
+**Current focus:** Phase 8 — Override Management
 
 ## Current Position
 
-Phase: 7 of 10 (Calendar Interactions)
-Plan: 1 of 1 in current phase
-Status: Plan ready for execution
-Last activity: 2026-01-17 — Created 07-01-PLAN.md
+Phase: 8 of 10 (Override Management)
+Plan: 0 of TBD in current phase
+Status: Ready for planning
+Last activity: 2026-01-17 — Completed Phase 7 (Calendar Interactions)
 
-Progress: ██████░░░░ 60%
+Progress: ███████░░░ 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 3.2 min
-- Total execution time: 19 min
+- Total plans completed: 7
+- Average duration: 3.4 min
+- Total execution time: 24 min
 
 **By Phase:**
 
@@ -33,9 +33,10 @@ Progress: ██████░░░░ 60%
 | 4. AI Scheduling Engine | 1 | 3 min | 3 min |
 | 5. Schedule Execution | 1 | 3 min | 3 min |
 | 6. Calendar UI Foundation | 1 | 5 min | 5 min |
+| 7. Calendar Interactions | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 3 min, 3 min, 3 min, 5 min
+- Last 5 plans: 3 min, 3 min, 3 min, 5 min, 5 min
 - Trend: —
 
 ## Accumulated Context
@@ -67,6 +68,9 @@ Recent decisions affecting current work:
 - react-big-calendar over FullCalendar: MIT license, lighter weight (Phase 6)
 - date-fns for calendar localization: tree-shakeable, ESM (Phase 6)
 - 2-hour event duration for visual scan window representation (Phase 6)
+- Frequency unchanged on drag, only date/time changes (Phase 7)
+- Mandatory time window selection after every drop (Phase 7)
+- Optimistic UI updates with rollback on error (Phase 7)
 
 ### Deferred Issues
 
@@ -83,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Created 07-01-PLAN.md (ready for execution)
+Stopped at: Completed Phase 7 (ready for Phase 8 planning)
 Resume file: None

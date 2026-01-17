@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: AI Scheduling Engine** - Core AI logic for schedule recommendations ✓
 - [x] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler ✓
 - [x] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view ✓
-- [ ] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling
+- [x] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling ✓
 - [ ] **Phase 8: Override Management** - Manual schedule locks and custom args
 - [ ] **Phase 9: Multi-Org Support** - Organization switching in scheduler
 - [ ] **Phase 10: Scan Type Customization** - Per-repo tool selection
@@ -112,11 +112,12 @@ Key deliverables:
 - Time window visualization (morning/afternoon/evening/night)
 - Styling to match existing UI patterns
 
-### Phase 7: Calendar Interactions
+### Phase 7: Calendar Interactions ✓
 **Goal**: Drag-and-drop rescheduling on calendar
 **Depends on**: Phase 6
 **Research**: Unlikely (calendar library drag-drop features)
-**Plans**: 1/1 created
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - Event drag-and-drop support
@@ -175,7 +176,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. AI Scheduling Engine | 1/1 | Complete ✓ | 2026-01-17 |
 | 5. Schedule Execution | 1/1 | Complete ✓ | 2026-01-17 |
 | 6. Calendar UI Foundation | 1/1 | Complete ✓ | 2026-01-17 |
-| 7. Calendar Interactions | 0/1 | Plan ready | - |
+| 7. Calendar Interactions | 1/1 | Complete ✓ | 2026-01-17 |
 | 8. Override Management | 0/TBD | Not started | - |
 | 9. Multi-Org Support | 0/TBD | Not started | - |
 | 10. Scan Type Customization | 0/TBD | Not started | - |
