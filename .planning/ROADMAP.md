@@ -119,10 +119,10 @@ Plans:
 **Goal**: Add quick actions panel for common tasks (trigger scan, view reports, jump to scheduler)
 **Depends on**: Phase 11
 **Research**: Unlikely (existing UI patterns)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 16-01: TBD
+- [x] 16-01: Quick Actions Panel
 
 ### Phase 17: Dashboard Customization
 **Goal**: Allow users to arrange widgets, save layouts, and set preferences
@@ -154,6 +154,6 @@ Plans:
 | 13.1 Background Jobs Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 14. Repository Health Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 15. Finding Trends Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 16. Quick Actions Panel | v2.0 | 0/? | Not started | - |
+| 16. Quick Actions Panel | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 17. Dashboard Customization | v2.0 | 0/? | Not started | - |
 | 18. Navigation Redesign | v2.0 | 0/? | Not started | - |
