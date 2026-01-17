@@ -134,6 +134,62 @@ class FileCommit(Base):
     )
 
 
+# =============================================================================
+# SCAN SCHEDULE - Intelligent scanning scheduler
+# =============================================================================
+
+class ScanSchedule(Base):
+    """
+    Defines when a repository should be scanned.
+    AI-generated schedules adapt to commit patterns; manual overrides are locked.
+    """
+    __tablename__ = "scan_schedules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('scan_schedules_api_id_seq'), unique=True)
+
+    # Multi-tenant scope
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False)
+
+    # Schedule configuration
+    schedule_type = Column(String(20), nullable=False, default="ai")  # 'ai' or 'manual'
+    frequency = Column(String(20), nullable=False)  # 'daily', 'weekly', 'bi-weekly', 'monthly'
+    day_of_week = Column(Integer)  # 0=Monday, 6=Sunday (for weekly/bi-weekly)
+    time_window = Column(String(20), nullable=False)  # 'morning', 'afternoon', 'evening', 'night'
+
+    # Scan arguments (defaults: --target <org> --repo <repo> --overridescan)
+    scan_arguments = Column(JSONB, default=lambda: {"overridescan": True})
+
+    # Execution tracking
+    next_scheduled_at = Column(DateTime)
+    last_executed_at = Column(DateTime)
+    last_execution_status = Column(String(20))  # 'success', 'failed', 'running'
+
+    # AI analysis metadata (null for manual schedules)
+    ai_reasoning = Column(Text)  # Why AI chose this schedule
+    ai_confidence = Column(Numeric(3, 2))  # 0.00-1.00 confidence score
+    ai_analyzed_at = Column(DateTime)
+
+    # Lock status
+    is_locked = Column(Boolean, default=False)  # True if manually overridden
+    locked_at = Column(DateTime)
+    locked_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    organization = relationship("Organization", backref="scan_schedules")
+    repository = relationship("Repository", backref="scan_schedule", uselist=False)
+    locked_by_user = relationship("User", foreign_keys=[locked_by])
+
+    __table_args__ = (
+        UniqueConstraint('repository_id', name='unique_schedule_per_repo'),
+    )
+
+
 class ScanRun(Base):
     __tablename__ = "scan_runs"
 
