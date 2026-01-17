@@ -8,6 +8,7 @@ import { enUS } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Lock, Bot, User, CalendarDays } from "lucide-react"
+import { TimeWindowDialog, TimeWindow } from "@/components/TimeWindowDialog"
 
 // Import calendar styles
 import "@/app/scheduler/calendar.css"
@@ -52,8 +53,24 @@ interface CalendarEvent {
     resource: Schedule
 }
 
+// Schedule update data for API
+export interface ScheduleUpdateData {
+    repoId: string
+    frequency: Schedule["frequency"]
+    day_of_week: number | null
+    time_window: TimeWindow
+    override_reason?: string
+}
+
+// Pending drop state
+interface PendingDrop {
+    event: CalendarEvent
+    newDate: Date
+}
+
 interface SchedulerCalendarProps {
     schedules: Schedule[]
+    onScheduleUpdate?: (data: ScheduleUpdateData) => Promise<void>
 }
 
 // Time window to hours mapping
@@ -108,23 +125,68 @@ function EventComponent({ event }: { event: CalendarEvent }) {
     )
 }
 
-export function SchedulerCalendar({ schedules }: SchedulerCalendarProps) {
+// Helper: Convert JavaScript day (0=Sunday) to API day_of_week (0=Monday)
+const jsDateToApiDayOfWeek = (date: Date): number => {
+    const jsDay = date.getDay() // 0=Sunday, 1=Monday, ..., 6=Saturday
+    // Convert to API format: 0=Monday, ..., 6=Sunday
+    return jsDay === 0 ? 6 : jsDay - 1
+}
+
+export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCalendarProps) {
     const [view, setView] = useState<View>(Views.MONTH)
     const [date, setDate] = useState(new Date())
 
+    // Dialog and pending drop state
+    const [dialogOpen, setDialogOpen] = useState(false)
+    const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
+
     // Handle event drop (drag and drop)
     const handleEventDrop = useCallback(
-        ({ event, start, end, isAllDay }: EventInteractionArgs<CalendarEvent>) => {
-            console.log("Event dropped:", {
-                eventId: event.id,
-                title: event.title,
-                newStart: start,
-                newEnd: end,
-                isAllDay,
+        ({ event, start }: EventInteractionArgs<CalendarEvent>) => {
+            // Store the pending drop and open the dialog
+            setPendingDrop({
+                event: event as CalendarEvent,
+                newDate: start as Date,
             })
+            setDialogOpen(true)
         },
         []
     )
+
+    // Handle dialog confirmation
+    const handleDialogConfirm = useCallback(
+        async (timeWindow: TimeWindow, reason?: string) => {
+            if (!pendingDrop || !onScheduleUpdate) return
+
+            const { event, newDate } = pendingDrop
+            const schedule = event.resource
+
+            // Calculate day_of_week from new date
+            const dayOfWeek = jsDateToApiDayOfWeek(newDate)
+
+            // Call the update function
+            await onScheduleUpdate({
+                repoId: schedule.repository_id,
+                frequency: schedule.frequency,
+                day_of_week: dayOfWeek,
+                time_window: timeWindow,
+                override_reason: reason,
+            })
+
+            // Close dialog and clear pending drop
+            setDialogOpen(false)
+            setPendingDrop(null)
+        },
+        [pendingDrop, onScheduleUpdate]
+    )
+
+    // Handle dialog cancel
+    const handleDialogOpenChange = useCallback((open: boolean) => {
+        setDialogOpen(open)
+        if (!open) {
+            setPendingDrop(null)
+        }
+    }, [])
 
     // Allow all events to be draggable
     const draggableAccessor = useCallback(() => true, [])
@@ -250,6 +312,17 @@ export function SchedulerCalendar({ schedules }: SchedulerCalendarProps) {
                     onEventDrop={handleEventDrop}
                 />
             </div>
+
+            {/* Time Window Selection Dialog */}
+            {pendingDrop && (
+                <TimeWindowDialog
+                    open={dialogOpen}
+                    onOpenChange={handleDialogOpenChange}
+                    onConfirm={handleDialogConfirm}
+                    eventTitle={pendingDrop.event.title}
+                    newDate={pendingDrop.newDate}
+                />
+            )}
         </div>
     )
 }

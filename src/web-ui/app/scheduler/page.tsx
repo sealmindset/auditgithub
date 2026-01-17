@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { SchedulerCalendar } from "@/components/SchedulerCalendar"
+import { useEffect, useState, useCallback } from "react"
+import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
 import { Loader2 } from "lucide-react"
 
 const API_BASE = "http://localhost:8000"
@@ -30,28 +30,50 @@ export default function SchedulerPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    useEffect(() => {
-        const fetchSchedules = async () => {
-            try {
-                const res = await fetch(`${API_BASE}/schedules`)
-                if (res.ok) {
-                    const data: ScheduleListResponse = await res.json()
-                    setSchedules(data.schedules || [])
-                } else {
-                    // Handle non-OK response
-                    console.error("Failed to fetch schedules:", res.status)
-                    setError("Failed to load schedules")
-                }
-            } catch (err) {
-                console.error("Failed to fetch schedules:", err)
-                setError("Unable to connect to the API")
-            } finally {
-                setLoading(false)
+    // Fetch schedules on mount
+    const fetchSchedules = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE}/schedules`)
+            if (res.ok) {
+                const data: ScheduleListResponse = await res.json()
+                setSchedules(data.schedules || [])
+            } else {
+                // Handle non-OK response
+                console.error("Failed to fetch schedules:", res.status)
+                setError("Failed to load schedules")
             }
+        } catch (err) {
+            console.error("Failed to fetch schedules:", err)
+            setError("Unable to connect to the API")
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        fetchSchedules()
+    }, [fetchSchedules])
+
+    // Handle schedule update from calendar drag-and-drop
+    const handleScheduleUpdate = useCallback(async (data: ScheduleUpdateData) => {
+        const res = await fetch(`${API_BASE}/schedules/${data.repoId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                frequency: data.frequency,
+                day_of_week: data.day_of_week,
+                time_window: data.time_window,
+                override_reason: data.override_reason,
+            }),
+        })
+
+        if (!res.ok) {
+            throw new Error("Failed to update schedule")
         }
 
-        fetchSchedules()
-    }, [])
+        // Refetch schedules to get updated data
+        await fetchSchedules()
+    }, [fetchSchedules])
 
     if (loading) {
         return (
@@ -88,7 +110,7 @@ export default function SchedulerPage() {
                     AI-powered scan scheduling with manual override support.
                 </p>
             </div>
-            <SchedulerCalendar schedules={schedules} />
+            <SchedulerCalendar schedules={schedules} onScheduleUpdate={handleScheduleUpdate} />
         </div>
     )
 }
