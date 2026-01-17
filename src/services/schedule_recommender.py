@@ -148,9 +148,48 @@ Return JSON:
         self,
         input: ScheduleInput
     ) -> ScheduleRecommendation:
-        """Fallback heuristic-based recommendation."""
-        # Implementation in Task 4
-        pass
+        """Fallback heuristic-based recommendation when AI unavailable."""
+        factors = []
+
+        # Start with defaults
+        frequency = self.DEFAULT_FREQUENCY
+        time_window = self.DEFAULT_TIME_WINDOW
+
+        # Adjust based on commit analysis
+        if input.commit_analysis:
+            ca = input.commit_analysis
+
+            # Use CommitAnalyzer's suggestions as baseline
+            frequency = ca.patterns.suggested_frequency
+            time_window = ca.patterns.suggested_time_window
+            factors.append("commit_patterns")
+
+            if ca.is_dormant:
+                frequency = "monthly"
+                factors.append("dormant_repository")
+
+        # Escalate if high-risk findings
+        critical_high = input.finding_counts.get("critical", 0) + input.finding_counts.get("high", 0)
+        if critical_high > 0:
+            if frequency in ("monthly", "bi-weekly"):
+                frequency = "weekly"
+            factors.append("critical_findings")
+
+        # Escalate if high risk score
+        if input.risk_score >= 0.7:
+            if frequency != "daily":
+                frequency = "weekly"
+            factors.append("high_risk_score")
+
+        reasoning = f"Heuristic recommendation based on: {', '.join(factors) or 'defaults'}"
+
+        return ScheduleRecommendation(
+            frequency=frequency,
+            time_window=time_window,
+            confidence=0.6,  # Lower confidence for heuristics
+            reasoning=reasoning,
+            factors_considered=factors
+        )
 
     def _new_repo_default(self, repo_name: str) -> ScheduleRecommendation:
         """Default schedule for new repositories."""
