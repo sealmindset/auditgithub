@@ -724,7 +724,7 @@ async def generate_security_report(
 
     infrastructure = db.query(models.Finding).filter(
         models.Finding.repository_id == project.id,
-        models.Finding.finding_type == "terraform"
+        models.Finding.finding_type == "iac"
     ).all()
 
     dependencies = db.query(models.Finding).filter(

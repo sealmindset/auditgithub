@@ -88,6 +88,13 @@ def ingest_gitleaks_findings(session, repo_id, report_path):
         if not findings:
             return 0
 
+        # Get organization_id from repository
+        repo_result = session.execute(
+            text("SELECT organization_id FROM repositories WHERE id = :repo_id"),
+            {"repo_id": repo_id}
+        ).fetchone()
+        org_id = repo_result[0] if repo_result else None
+
         count = 0
         for finding in findings:
             # Use Fingerprint as finding_uuid for deduplication
@@ -124,7 +131,7 @@ def ingest_gitleaks_findings(session, repo_id, report_path):
                     "org_id": org_id,
                     "repo_id": repo_id,
                     "scanner": "gitleaks",
-                    "finding_type": finding.get('RuleID', 'unknown'),
+                    "finding_type": "secret",  # Fixed: Use 'secret' for gitleaks findings
                     "severity": "high",  # Gitleaks secrets are high severity
                     "title": finding.get('Description', 'Secret detected'),
                     "description": finding.get('Match', ''),
@@ -155,6 +162,13 @@ def ingest_semgrep_findings(session, repo_id, report_path):
         findings = data.get('results', [])
         if not findings:
             return 0
+
+        # Get organization_id from repository
+        repo_result = session.execute(
+            text("SELECT organization_id FROM repositories WHERE id = :repo_id"),
+            {"repo_id": repo_id}
+        ).fetchone()
+        org_id = repo_result[0] if repo_result else None
 
         count = 0
         for finding in findings:
@@ -201,7 +215,7 @@ def ingest_semgrep_findings(session, repo_id, report_path):
                     "org_id": org_id,
                     "repo_id": repo_id,
                     "scanner": "semgrep",
-                    "finding_type": check_id,
+                    "finding_type": "sast",  # Fixed: Use 'sast' for semgrep findings
                     "severity": severity,
                     "title": finding.get('extra', {}).get('message', 'Security issue detected'),
                     "description": finding.get('extra', {}).get('message', ''),
@@ -232,6 +246,13 @@ def ingest_grype_findings(session, repo_id, report_path):
         findings = data.get('matches', [])
         if not findings:
             return 0
+
+        # Get organization_id from repository
+        repo_result = session.execute(
+            text("SELECT organization_id FROM repositories WHERE id = :repo_id"),
+            {"repo_id": repo_id}
+        ).fetchone()
+        org_id = repo_result[0] if repo_result else None
 
         count = 0
         for finding in findings:
@@ -278,7 +299,7 @@ def ingest_grype_findings(session, repo_id, report_path):
                     "org_id": org_id,
                     "repo_id": repo_id,
                     "scanner": "grype",
-                    "finding_type": "vulnerability",
+                    "finding_type": "oss",  # Fixed: Use 'oss' for grype findings
                     "severity": severity,
                     "title": f"{vuln_id} in {artifact}",
                     "description": vuln.get('description', ''),
@@ -298,6 +319,208 @@ def ingest_grype_findings(session, repo_id, report_path):
     except Exception as e:
         session.rollback()
         logger.error(f"Error ingesting grype findings from {report_path}: {e}")
+        return 0
+
+def ingest_contributors(session, repo_id, report_path):
+    """Ingest contributors from intel.json report."""
+    try:
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+
+        contributors_data = data.get('contributors', {})
+        top_contributors = contributors_data.get('top_contributors', [])
+
+        if not top_contributors:
+            return 0
+
+        count = 0
+        for contrib in top_contributors:
+            # Generate contributor ID
+            contrib_id = str(uuid.uuid4())
+
+            # Check if contributor exists
+            result = session.execute(
+                text("SELECT id FROM contributors WHERE repository_id = :repo_id AND email = :email"),
+                {
+                    "repo_id": repo_id,
+                    "email": contrib.get('email', '')
+                }
+            ).fetchone()
+
+            if result:
+                continue
+
+            # Extract files contributed
+            files_contributed = contrib.get('files_contributed', [])
+            folders_contributed = list(set([
+                os.path.dirname(f['path']) for f in files_contributed if f.get('path')
+            ]))
+
+            # Insert contributor
+            session.execute(
+                text("""
+                    INSERT INTO contributors
+                    (id, repository_id, name, email, github_username, commits, commit_percentage,
+                     last_commit_at, languages, files_contributed, folders_contributed, risk_score,
+                     created_at, updated_at)
+                    VALUES
+                    (:id, :repo_id, :name, :email, :github_username, :commits, :commit_percentage,
+                     :last_commit_at, :languages, :files_contributed, :folders_contributed, :risk_score,
+                     :created_at, :updated_at)
+                """),
+                {
+                    "id": contrib_id,
+                    "repo_id": repo_id,
+                    "name": contrib.get('name', 'Unknown'),
+                    "email": contrib.get('email', ''),
+                    "github_username": contrib.get('github_username'),
+                    "commits": contrib.get('commits', 0),
+                    "commit_percentage": contrib.get('commit_percentage'),
+                    "last_commit_at": contrib.get('last_commit_at'),
+                    "languages": json.dumps(contrib.get('languages', [])),
+                    "files_contributed": json.dumps(files_contributed),
+                    "folders_contributed": json.dumps(folders_contributed),
+                    "risk_score": 0,  # Calculate based on files with findings
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+            )
+            count += 1
+
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error ingesting contributors from {report_path}: {e}")
+        return 0
+
+def ingest_languages(session, repo_id, report_path):
+    """Ingest language statistics from cloc.json report."""
+    try:
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+
+        count = 0
+        for lang_name, lang_data in data.items():
+            # Skip header and SUM entries
+            if lang_name in ['header', 'SUM'] or not isinstance(lang_data, dict):
+                continue
+
+            # Check if language stat exists
+            result = session.execute(
+                text("SELECT id FROM language_stats WHERE repository_id = :repo_id AND name = :name"),
+                {
+                    "repo_id": repo_id,
+                    "name": lang_name
+                }
+            ).fetchone()
+
+            if result:
+                continue
+
+            # Insert language stat
+            lang_id = str(uuid.uuid4())
+            session.execute(
+                text("""
+                    INSERT INTO language_stats
+                    (id, repository_id, name, files, lines, blanks, comments, created_at, updated_at)
+                    VALUES
+                    (:id, :repo_id, :name, :files, :lines, :blanks, :comments, :created_at, :updated_at)
+                """),
+                {
+                    "id": lang_id,
+                    "repo_id": repo_id,
+                    "name": lang_name,
+                    "files": lang_data.get('nFiles', 0),
+                    "lines": lang_data.get('code', 0),
+                    "blanks": lang_data.get('blank', 0),
+                    "comments": lang_data.get('comment', 0),
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+            )
+            count += 1
+
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error ingesting languages from {report_path}: {e}")
+        return 0
+
+def ingest_dependencies(session, repo_id, report_path):
+    """Ingest dependencies from syft SBOM report."""
+    try:
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+
+        components = data.get('components', [])
+        if not components:
+            return 0
+
+        count = 0
+        for component in components:
+            name = component.get('name', 'unknown')
+            version = component.get('version', 'unknown')
+            purl = component.get('purl', '')
+
+            # Check if dependency exists
+            result = session.execute(
+                text("SELECT id FROM dependencies WHERE repository_id = :repo_id AND name = :name AND version = :version"),
+                {
+                    "repo_id": repo_id,
+                    "name": name,
+                    "version": version
+                }
+            ).fetchone()
+
+            if result:
+                continue
+
+            # Extract package manager from purl or properties
+            package_manager = 'unknown'
+            if purl.startswith('pkg:'):
+                package_manager = purl.split(':')[1].split('/')[0]
+
+            # Extract locations
+            locations = []
+            properties = component.get('properties', [])
+            for prop in properties:
+                if prop.get('name', '').startswith('syft:location:'):
+                    locations.append(prop.get('value', ''))
+
+            # Insert dependency
+            dep_id = str(uuid.uuid4())
+            session.execute(
+                text("""
+                    INSERT INTO dependencies
+                    (id, repository_id, name, version, type, package_manager, license,
+                     locations, source, created_at, updated_at)
+                    VALUES
+                    (:id, :repo_id, :name, :version, :type, :package_manager, :license,
+                     :locations, :source, :created_at, :updated_at)
+                """),
+                {
+                    "id": dep_id,
+                    "repo_id": repo_id,
+                    "name": name,
+                    "version": version,
+                    "type": component.get('type', 'library'),
+                    "package_manager": package_manager,
+                    "license": component.get('licenses', [{}])[0].get('license', {}).get('id', 'Unknown') if component.get('licenses') else 'Unknown',
+                    "locations": json.dumps(locations),
+                    "source": purl,
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+            )
+            count += 1
+
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error ingesting dependencies from {report_path}: {e}")
         return 0
 
 def ingest_organization_reports(org_name):
@@ -359,6 +582,27 @@ def ingest_organization_reports(org_name):
                 count = ingest_grype_findings(session, repo_id, grype_file)
                 total_findings += count
                 logger.info(f"    Ingested {count} grype findings")
+
+            # Ingest contributors from intel.json
+            intel_file = repo_dir / f"{repo_name}_intel.json"
+            if intel_file.exists():
+                count = ingest_contributors(session, repo_id, intel_file)
+                if count > 0:
+                    logger.info(f"    Ingested {count} contributors")
+
+            # Ingest languages from cloc.json
+            cloc_file = repo_dir / f"{repo_name}_cloc.json"
+            if cloc_file.exists():
+                count = ingest_languages(session, repo_id, cloc_file)
+                if count > 0:
+                    logger.info(f"    Ingested {count} languages")
+
+            # Ingest dependencies from syft SBOM
+            syft_file = repo_dir / f"{repo_name}_syft_repo.json"
+            if syft_file.exists():
+                count = ingest_dependencies(session, repo_id, syft_file)
+                if count > 0:
+                    logger.info(f"    Ingested {count} dependencies")
 
         logger.info(f"Completed {org_name}: {total_repos} repositories, {total_findings} findings")
 
