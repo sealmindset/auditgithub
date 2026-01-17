@@ -109,12 +109,11 @@ Plans:
 ### Phase 15: Finding Trends Widget
 **Goal**: Create finding trend charts showing finding counts over time by severity
 **Depends on**: Phase 11
-**Research**: Likely (charting library selection)
-**Research topics**: React charting libraries (recharts, visx, chart.js), time-series visualization patterns
-**Plans**: TBD
+**Research**: Unlikely (used existing recharts)
+**Plans**: 1
 
 Plans:
-- [ ] 15-01: TBD
+- [x] 15-01: Finding Trends Widget
 
 ### Phase 16: Quick Actions Panel
 **Goal**: Add quick actions panel for common tasks (trigger scan, view reports, jump to scheduler)
@@ -154,7 +153,7 @@ Plans:
 | 13. Scan Activity Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 13.1 Background Jobs Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 14. Repository Health Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 15. Finding Trends Widget | v2.0 | 0/? | Not started | - |
+| 15. Finding Trends Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 16. Quick Actions Panel | v2.0 | 0/? | Not started | - |
 | 17. Dashboard Customization | v2.0 | 0/? | Not started | - |
 | 18. Navigation Redesign | v2.0 | 0/? | Not started | - |
