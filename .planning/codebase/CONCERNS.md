@@ -1,243 +1,200 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-01-12
+**Analysis Date:** 2026-01-17
 
 ## Tech Debt
 
-**Monolithic scan_repos.py file:**
-- Issue: Single file with 8,653 lines and 127 function definitions
-- Files: `scan_repos.py`
-- Why: Organic growth without refactoring during rapid development
-- Impact: Extremely difficult to navigate, test, maintain, and debug
-- Fix approach: Extract into modules by responsibility (scanners/, orchestration/, reporting/)
+**Incomplete Tenant Isolation:**
+- Issue: Relying on `SET search_path` for tenant isolation instead of explicit `WHERE tenant_id=` filters
+- Files: `src/api/routers/repositories.py`, `src/api/routers/findings.py`, `src/api/routers/scans.py`
+- Why: Phase-based implementation - tenant filtering marked as TODO(Phase 5)
+- Impact: Potential cross-tenant data access if database-level isolation fails
+- Fix approach: Add explicit `organization_id` filters to all queries
 
-**Oversized API router files:**
-- Issue: Multiple routers exceeding 1,500-4,000 lines
-- Files: `src/api/routers/api_audit.py` (4,218 lines), `src/api/routers/ai.py` (2,195 lines), `src/api/routers/findings.py` (1,553 lines), `src/api/routers/attack_surface.py` (1,533 lines), `src/api/routers/projects.py` (1,405 lines)
-- Why: Business logic mixed with routing, insufficient service layer extraction
-- Impact: Violates single responsibility principle, hard to test, slow development velocity
-- Fix approach: Extract business logic to service classes in `src/api/services/`, keep routers thin
+**RBAC Resource Query Not Implemented:**
+- Issue: `require_tenant_access()` function has TODO comment, passes through without verification
+- File: `src/rbac/dependencies.py:312-320`
+- Why: Placeholder during initial RBAC implementation
+- Impact: Security checkpoint bypassed, allows any resource access
+- Fix approach: Implement actual resource query to verify tenant ownership
 
-**Loose dependency version constraints:**
-- Issue: No upper bounds on critical dependencies
-- Files: `requirements.txt` (`requests>=2.31.0`, `fastapi>=0.100.0`, `sqlalchemy>=2.0.0`, `anthropic>=0.18.0` with no max versions)
-- Why: Likely to accept latest versions without testing
-- Impact: Breaking changes can appear in production unexpectedly
-- Fix approach: Pin exact versions or use `~=` for minor version locking
-
-**Duplicate code in scan result parsing:**
-- Issue: Similar parsing logic repeated across 12+ scanner invocations
-- Files: `scan_repos.py:8478-8578` (Semgrep, Bandit, Gitleaks, Trivy, Horusec, Whispers, Bearer, Terrascan, gosec, GolangCI-Lint)
-- Why: Copy-paste development without abstraction
-- Impact: Bug fixes must be applied to multiple locations, inconsistency risk
-- Fix approach: Create `ScanResultParser` base class with language-specific implementations
-
-**Incomplete feature implementations:**
-- Issue: TODO comments marking unfinished features
+**Large Monolithic Files:**
+- Issue: Several router files exceed 1,000+ lines
 - Files:
-  - `src/api/routers/secrets.py:327` - "Implement actual secret validation via secret_validators.py"
-  - `src/api/routers/sla.py:303` - "Add assignee resolution"
-  - `execution/secrets_manager.py:292` - "Initialize hvac client"
-  - `scan_engagement.py:128` - "Implement get_all_repos if needed"
-- Why: MVP phase left features incomplete
-- Impact: Features advertised but not functional, potential runtime errors
-- Fix approach: Complete implementations or remove incomplete features
+  - `src/api/routers/api_audit.py` - **4,227 lines** (CRITICAL)
+  - `src/api/routers/ai.py` - 2,196 lines
+  - `src/api/routers/findings.py` - 1,563 lines
+  - `src/api/routers/contributor_profiles.py` - 1,541 lines
+  - `src/api/routers/attack_surface.py` - 1,541 lines
+  - `src/api/routers/projects.py` - 1,406 lines
+  - `src/api/routers/analytics.py` - 1,019 lines
+- Why: Organic growth without refactoring
+- Impact: Hard to maintain, test, and understand
+- Fix approach: Break into smaller, focused modules; extract shared logic
+
+**Missing Secret Validation:**
+- Issue: Endpoint marks secrets for "manual validation" but actual validation not implemented
+- File: `src/api/routers/secrets.py:328`
+- Why: TODO left during feature implementation
+- Impact: False sense of security validation without actual implementation
+- Fix approach: Implement validation via `secret_validators.py`
 
 ## Known Bugs
 
-**Silent bare exception handlers:**
-- Symptoms: Errors swallowed without logging, operations appear successful when they failed
-- Trigger: Any exception during scan result parsing, file reading, subprocess execution
-- Files with multiple bare excepts:
-  - `scan_repos.py:8478-8578` - 12 consecutive bare `except: pass` blocks
-  - `execution/ai_credential_matcher.py:337, 590, 766, 1036, 1314, 1462, 1614, 1858` - 8 bare except blocks
-  - `execution/ai_credential_url_agent.py` - Multiple bare excepts throughout
-  - `src/safe_subprocess.py:204, 212, 220` - Process termination failures hidden
-  - `src/api/routers/api_audit.py:363` - YAML parsing failures hidden
-  - `src/api/routers/analytics.py:441, 646` - Analytics calculation failures hidden
-  - `src/api/routers/projects.py:1063` - Project operation failures hidden
-  - `src/api/routers/feedback.py:32` - User feedback processing failures hidden
-- Workaround: None - errors are completely hidden
-- Root cause: Defensive programming taken to extreme, lack of proper error handling
-- Fix: Replace all bare `except:` with specific exceptions and logging
+**None documented at this time.**
+
+Potential issues identified through code analysis but not confirmed as bugs.
 
 ## Security Considerations
 
-**SQL Injection via f-string formatting:**
-- Risk: Database commands constructed with unvalidated input via f-strings
-- Files:
-  - `src/api/database_router.py:153` - `text(f"SELECT 1 FROM pg_database WHERE datname = '{tenant.database_name}'")`
-  - `src/api/database_router.py:159` - `text(f'CREATE DATABASE "{tenant.database_name}"')`
-  - `execution/init_db.py:51` - `cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{target_db}'")`
-- Current mitigation: None - direct SQL injection vulnerability
-- Recommendations: Use parameterized queries with `%s` placeholders or SQLAlchemy bindparams
+**AUTH_DISABLED Bypass in Production Code:**
+- Risk: Environment variable can disable all authentication
+- Files: `src/rbac/dependencies.py:65,114` and others
+- Current mitigation: Only enabled via explicit env var
+- Recommendations: Move to development-only code path or remove entirely
 
-**Hardcoded secrets in .env file:**
-- Risk: Real API keys and tokens committed to repository
-- Files: `.env` (contains actual GitHub token, Azure AI Foundry key, Jira token, etc.)
-- Current mitigation: `.gitignore` excludes `.env` but file already exists in repo
-- Recommendations:
-  - Rotate all exposed credentials immediately
-  - Remove `.env` from repository history (git filter-branch or BFG Repo-Cleaner)
-  - Use secrets manager (AWS Secrets Manager, HashiCorp Vault) for production
-  - Add pre-commit hook to detect secrets (gitleaks, detect-secrets)
+**Hardcoded Default Credentials:**
+- Risk: Default PostgreSQL password in code
+- File: `src/knowledge_base.py:29`
+- Code: `password = os.environ.get("POSTGRES_PASSWORD", "auditgh_secret")`
+- Current mitigation: Only used as fallback when env var not set
+- Recommendations: Remove default, require explicit configuration
 
-**No input validation for database provisioning:**
-- Risk: Special characters in tenant database names could cause SQL errors or injection
-- Files: `src/api/database_router.py:145-159`
+**Direct Subprocess Execution in API Router:**
+- Risk: Executing `scan_repos.py` via subprocess with user-supplied `repo_name`
+- File: `src/api/routers/scans.py:46-57`
+- Current mitigation: List-based command (no shell=True), repo_name sanitized
+- Recommendations: Use task queue instead of direct subprocess execution
+
+**Multiple Print Statements Instead of Logger:**
+- Risk: Inconsistent logging, potential information exposure
+- Files: `src/api/routers/api_audit.py:596,2503,2537,2557`, `src/api/routers/settings.py:58`, `src/api/utils/redaction.py:63-65`, `src/api/utils/cribl_logger.py:100,209`
 - Current mitigation: None
-- Recommendations: Validate database names against `^[a-z0-9_]+$` regex before use
-
-**Subprocess execution without input validation:**
-- Risk: Command injection via unsanitized repository paths or arguments
-- Files: `src/safe_subprocess.py`, multiple calls in `scan_repos.py`
-- Current mitigation: `safe_subprocess.py` implements timeout/killing but not input sanitization
-- Recommendations: Validate all paths, use subprocess with list arguments (not shell=True), sanitize inputs
+- Recommendations: Replace all `print()` with structured logger calls
 
 ## Performance Bottlenecks
 
-**N+1 query patterns in complex routers:**
-- Problem: Potential database queries in loops without eager loading
-- Files: `src/api/routers/findings.py`, `src/api/routers/projects.py`, `src/api/routers/attack_surface.py`
-- Measurement: Not measured - no performance profiling
-- Cause: ORM usage without relationship loading optimization
-- Improvement path: Use SQLAlchemy `joinedload()` or `selectinload()` for relationships
+**N+1 Query Pattern in SLA Router:**
+- Problem: Fetching all findings, then iterating in Python for MTTR calculations
+- File: `src/api/routers/sla.py:130-203`
+- Measurement: Not measured, but scales poorly with finding count
+- Cause: Python-side filtering instead of database aggregation
+- Improvement path: Use SQLAlchemy grouping/aggregation in queries
 
-**No database connection pooling configuration:**
-- Problem: Default SQLAlchemy pooling may not be optimized for production load
-- Files: `src/api/database.py`
-- Measurement: Not measured
-- Cause: Development configuration used in production
-- Improvement path: Configure pool size, overflow, timeout based on load testing
-
-**Large file operations in memory:**
-- Problem: Repository cloning and scanning may load large files into memory
-- Files: `src/api/utils/repo_context.py`, `scan_repos.py`
-- Measurement: Not measured
-- Cause: No streaming or chunking for large files
-- Improvement path: Implement streaming parsers for large results, limit file sizes
+**Large Query Result Sets Without Streaming:**
+- Problem: Loading `.all()` results for large datasets
+- File: `src/api/routers/sla.py:275` (`get_overdue_findings()`)
+- Measurement: Memory usage scales with finding count
+- Cause: No pagination or streaming for large result sets
+- Improvement path: Add pagination, use streaming cursors
 
 ## Fragile Areas
 
-**Multi-tenant database provisioning:**
-- Why fragile: Dynamic database creation with SQL injection risk, no rollback on failure
-- Files: `src/api/database_router.py:145-159`
-- Common failures: Special characters in names, insufficient permissions, database already exists
-- Safe modification: Add comprehensive validation, transaction wrapping, rollback on error
-- Test coverage: None
+**Broad Exception Handlers:**
+- Files: 162 instances of `except Exception:` across API routers
+- Why fragile: Catches all errors, may hide specific issues
+- Common failures: Silent failures, incorrect error responses
+- Safe modification: Replace with specific exception types
+- Test coverage: Limited exception-specific testing
 
-**AI provider failover chain:**
-- Why fragile: Sequential provider attempts without timeout management
-- Files: `src/ai_agent/providers/failover.py`, `src/ai_agent/agent.py`
-- Common failures: Timeout exhaustion, all providers failing, inconsistent response formats
-- Safe modification: Add per-provider timeouts, circuit breaker pattern, fallback responses
-- Test coverage: Basic connectivity tests only in `test_ai_providers.py`
-
-**Repository cloning and cleanup:**
-- Why fragile: Temporary directory management, process cleanup, disk space management
-- Files: `src/api/utils/repo_context.py`, `scan_repos.py`
-- Common failures: Disk full, permission errors, orphaned temp directories, long-running clones
-- Safe modification: Add disk space checks, timeout on clone, robust cleanup in finally blocks
-- Test coverage: None
+**Direct subprocess Module Usage:**
+- Files: 11 files import `subprocess` directly
+  - `src/safe_subprocess.py`, `src/progress_wrapper.py`, `src/scanners/python/pip_audit.py`, `src/scanners/python/safety.py`, `src/scanners/base.py`, `src/api/routers/ai.py`, `src/api/routers/scans.py`, `src/api/utils/repo_context.py`, `src/api/utils/diagram_executor.py`, `src/api/scheduler.py`, `src/repo_intel.py`
+- Why fragile: Inconsistent timeout handling, process cleanup
+- Safe modification: Route through `src/safe_subprocess.py` for consistent handling
 
 ## Scaling Limits
 
-**Synchronous repository scanning:**
-- Current capacity: One repository at a time (sequential processing)
-- Limit: Throughput limited by longest scan time (potentially hours for large repos)
-- Symptoms at limit: Queue buildup, slow response times, users waiting
-- Scaling path: Implement asynchronous task queue (Celery, RQ, or cloud task services)
+**Database Connection Pool:**
+- Current capacity: Not explicitly configured
+- Limit: Default SQLAlchemy pool size
+- Symptoms at limit: Connection timeouts, request failures
+- Scaling path: Configure pool size via `create_engine()` parameters
 
-**In-memory scan results:**
-- Current capacity: Limited by container memory (default 2GB typically)
-- Limit: Large repositories with 1000+ findings may exhaust memory
-- Symptoms at limit: Out of memory errors, container restarts
-- Scaling path: Stream results to database incrementally, don't accumulate in memory
-
-**Single PostgreSQL database:**
-- Current capacity: Development/small production workload
-- Limit: Write contention on `findings` table with high scan frequency
-- Symptoms at limit: Slow writes, lock contention, query timeouts
-- Scaling path: Read replicas for queries, partitioning for `findings` table by date
+**Redis Session Storage:**
+- Current capacity: Single Redis instance
+- Limit: Memory-bound, single-node
+- Symptoms at limit: Session failures, permission cache misses
+- Scaling path: Redis cluster for high availability
 
 ## Dependencies at Risk
 
-**setuptools version constraint:**
-- Risk: Upper bound `setuptools<81.0.0` indicates known breaking change
-- Files: `requirements.txt`
-- Impact: Can't upgrade to latest setuptools
-- Migration plan: Update dependencies to be compatible with setuptools 81.0+
-
-**No dependency vulnerability scanning:**
-- Risk: Using packages with known vulnerabilities
-- Files: `requirements.txt` (no safety, pip-audit in CI)
-- Impact: Security vulnerabilities in production
-- Migration plan: Add `safety check` or `pip-audit` to CI/CD pipeline
+**No Pinned Versions in requirements.txt:**
+- Risk: Using loose version constraints (`>=X.Y.Z` only)
+- Impact: Builds may break with dependency updates
+- Examples: `fastapi>=0.100.0`, `sqlalchemy>=2.0.0`, `pydantic>=2.0.0`
+- Migration plan: Add upper bounds or pin specific versions
 
 ## Missing Critical Features
 
-**Automated test suite:**
-- Problem: No unit tests, no integration test framework
-- Current workaround: Manual testing with ad-hoc scripts
-- Blocks: Confident refactoring, regression detection, CI/CD quality gates
-- Implementation complexity: Medium (Pytest setup, write tests for critical paths)
+**No Frontend Testing:**
+- Problem: No Jest/Vitest setup for React components
+- Current workaround: Manual testing only
+- Blocks: Automated regression testing for UI
+- Implementation complexity: Medium (add Vitest, configure for Next.js)
 
-**Database migrations framework:**
-- Problem: No Alembic or similar migration tool configured
-- Current workaround: `update_db_schema.py` script for ad-hoc updates
-- Blocks: Controlled schema evolution, rollback capability, multi-environment deployments
-- Implementation complexity: Low (Alembic setup, generate initial migration)
-
-**API authentication and authorization:**
-- Problem: No authentication on API endpoints, organization context from headers only
-- Current workaround: Trust client to provide correct organization context
-- Blocks: Production deployment, multi-user access control, security compliance
-- Implementation complexity: High (OAuth2/JWT implementation, user model, permissions)
-
-**Centralized logging and monitoring:**
-- Problem: Cribl integration optional, no error tracking service (Sentry)
-- Current workaround: Local logs only
-- Blocks: Production debugging, performance monitoring, alerting
-- Implementation complexity: Low (Sentry SDK integration, structured logging)
+**No E2E Testing:**
+- Problem: No Playwright/Cypress for end-to-end flows
+- Current workaround: Manual testing
+- Blocks: Automated verification of user workflows
+- Implementation complexity: Medium (add Playwright, write critical path tests)
 
 ## Test Coverage Gaps
 
-**Router endpoint testing:**
-- What's not tested: All 22+ API routers lack automated tests
-- Files: `src/api/routers/*.py`
-- Risk: Breaking changes in API contracts undetected
-- Priority: High
-- Difficulty to test: Medium (requires test database, fixtures)
-
-**Scanner plugin system:**
-- What's not tested: Scanner implementations, plugin loading, result parsing
-- Files: `src/scanners/*.py`, `scan_repos.py`
-- Risk: Scanner failures silently swallowed (due to bare except blocks)
-- Priority: High
-- Difficulty to test: Medium (requires mock subprocess, fixture scan results)
-
-**AI provider integration:**
-- What's not tested: Beyond basic connectivity tests
-- Files: `src/ai_agent/providers/*.py`
-- Risk: Prompt changes break analysis quality, API changes cause runtime errors
+**API Router Endpoints:**
+- What's not tested: Individual router endpoint unit tests
+- Risk: Regression in endpoint-specific logic
 - Priority: Medium
-- Difficulty to test: High (requires mock LLM responses, expensive to test with real APIs)
+- Difficulty to test: Low (use FastAPI TestClient)
 
-**Database operations:**
-- What's not tested: ORM models, migrations, multi-tenant filtering
-- Files: `src/api/models.py`, `src/api/database.py`
-- Risk: Data corruption, organization data leakage, schema drift
-- Priority: Critical
-- Difficulty to test: Low (unit tests with SQLite in-memory database)
+**Stripe Webhook Event Types:**
+- What's not tested: 9 of 12 webhook event types
+- Risk: Silent failures on unhandled events
+- Priority: High (payment processing)
+- Difficulty to test: Medium (requires Stripe test fixtures)
 
-**Frontend components:**
-- What's not tested: All React components lack tests
-- Files: `src/web-ui/components/*.tsx`, `src/web-ui/app/*/page.tsx`
-- Risk: UI regressions, broken user flows
+**TypeScript/React Components:**
+- What's not tested: All frontend components
+- Risk: UI regressions undetected
 - Priority: Medium
-- Difficulty to test: Medium (requires React Testing Library, mock API calls)
+- Difficulty to test: Medium (add testing framework)
 
 ---
 
-*Concerns audit: 2026-01-12*
+## Summary Statistics
+
+| Category | Count | Severity |
+|----------|-------|----------|
+| TODO/FIXME comments | 7 | MEDIUM |
+| Large files (>1000 lines) | 7 | MEDIUM |
+| Broad exception handlers | 162 | LOW |
+| Incomplete implementations | 2 | HIGH |
+| Security gaps (tenant isolation) | 4 | MEDIUM |
+| Print statements instead of logger | 8 | LOW |
+
+## Priority Recommendations
+
+### CRITICAL (Fix First):
+1. Implement `require_tenant_access()` actual verification in `src/rbac/dependencies.py:312`
+2. Add explicit `organization_id` filters to all queries in repositories, findings, and scans routers
+
+### HIGH (Fix Soon):
+3. Implement actual secret validation in `src/api/routers/secrets.py:328`
+4. Refactor `api_audit.py` (4,227 lines) - break into sub-modules
+5. Remove AUTH_DISABLED bypass or move to tests-only code
+
+### MEDIUM (Address):
+6. Replace `print()` with logger in 8 locations
+7. Convert N+1 patterns to aggregation queries in SLA router
+8. Pin dependency versions in requirements.txt
+9. Add frontend testing framework
+
+### LOW (Nice to Have):
+10. Add docstrings to complex API endpoints
+11. Document database schema
+12. Consolidate duplicate query patterns
+
+---
+
+*Concerns audit: 2026-01-17*
 *Update as issues are fixed or new ones discovered*

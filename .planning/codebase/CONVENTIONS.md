@@ -1,54 +1,45 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-01-12
+**Analysis Date:** 2026-01-17
 
 ## Naming Patterns
 
 **Files:**
-- Python modules: snake_case (e.g., `risk_scoring.py`, `github_client.py`, `cribl_logger.py`)
-- TypeScript/React components: PascalCase (e.g., `AskAIDialog.tsx`, `OrganizationSelector.tsx`)
-- TypeScript utilities: kebab-case (e.g., `data-table.tsx`, `theme-provider.tsx`, `use-mobile.ts`)
-- Next.js pages: `page.tsx` in route folders (e.g., `app/findings/page.tsx`)
-- Next.js dynamic routes: `[id]/page.tsx` pattern
+- Python: `snake_case.py` (e.g., `credential_matcher.py`, `risk_scoring.py`)
+- TypeScript components: `PascalCase.tsx` (e.g., `AskAIDialog.tsx`, `DataTable.tsx`)
+- TypeScript utilities: `kebab-case.ts` (e.g., `use-mobile.ts`, `theme-provider.tsx`)
+- Test files: `test_*.py` alongside source in `tests/`
 
 **Functions:**
-- Python: snake_case (e.g., `calculate_risk_score()`, `get_findings()`, `process_repo()`)
-- TypeScript/React: camelCase (e.g., `fetchData()`, `handleClose()`, `isDescriptionRevisionRequest()`)
-- Async operations: No special prefix (async keyword sufficient)
-- Handlers: `handle<Action>` prefix (e.g., `handleAnalyze()`, `handleClose()`)
+- Python: `snake_case` (e.g., `_run_git()`, `_analyze_contributors()`, `seed_rbac_data()`)
+- TypeScript: `camelCase` (e.g., `handleClick`, `setPrompt`, `scrollRef`)
+- Handlers: `handle{EventName}` pattern in React
 
 **Variables:**
-- Python: snake_case (e.g., `repo_path`, `finding_id`, `organization_name`)
-- TypeScript: camelCase (e.g., `isLoading`, `apiUrl`, `selectedOrg`)
-- Constants (Python): UPPER_SNAKE_CASE (e.g., `SEVERITY_WEIGHTS`, `MAX_RETRIES`, `API_BASE_URL`)
-- Constants (TypeScript): UPPER_SNAKE_CASE or camelCase depending on context
-- Boolean predicates: `is_<condition>`, `has_<property>` (e.g., `is_applicable`, `has_findings`)
+- Python: `snake_case` for variables
+- TypeScript: `camelCase` for variables
+- Constants: `UPPER_SNAKE_CASE` (e.g., `TEST_DATABASE_URL`, `MOBILE_BREAKPOINT`)
+- No underscore prefix for private members in TypeScript
 
 **Types:**
-- Python classes: PascalCase (e.g., `Organization`, `Finding`, `AIAgent`, `BaseScanner`)
-- TypeScript interfaces: PascalCase, no `I` prefix (e.g., `ConversationMessage`, `AskAIDialogProps`)
-- TypeScript types: PascalCase (e.g., `ResponseData`, `UserConfig`)
-- Database models: PascalCase singular (e.g., `Repository`, `Finding`, `Contributor`)
+- Python classes: `PascalCase` (e.g., `RepoIntel`, `SafeProcessResult`, `SubprocessTimeout`)
+- TypeScript interfaces: `PascalCase`, no `I` prefix (e.g., `User`, `Config`)
+- Pydantic models: `PascalCase` with descriptive names (e.g., `FindingResponse`, `RepositoryCreate`)
 
 ## Code Style
 
 **Formatting:**
-- Python: 4-space indentation (standard PEP 8)
-- TypeScript/React: 2-space indentation
-- Line length: ~100-120 characters (not strictly enforced)
-- Quotes: Double quotes for strings in TypeScript/React, single quotes in Python
-- Semicolons: Omitted in TypeScript/React (modern style)
+- Python: 4-space indentation (PEP 8)
+- TypeScript: 2-space indentation
+- Line length: Not strictly enforced
+- Quotes: Double quotes for Python strings and TypeScript JSX attributes
+- Semicolons: Required in TypeScript
 
 **Linting:**
-- TypeScript: ESLint with flat config - `src/web-ui/eslint.config.mjs`
-  - Extends: `eslint-config-next/core-web-vitals`, `eslint-config-next/typescript`
-  - Ignores: `.next/**`, `out/**`, `build/**`, `next-env.d.ts`
-- Python: No formal linting configuration (no .flake8, pyproject.toml linting section)
-- Run: `npm run lint` for frontend
-
-**Type Checking:**
-- TypeScript: Strict mode enabled - `src/web-ui/tsconfig.json`
-- Python: Type hints used throughout (Python 3.11+ style)
+- TypeScript: ESLint 9 with flat config (`src/web-ui/eslint.config.mjs`)
+- Extends: `eslint-config-next/core-web-vitals`, `eslint-config-next/typescript`
+- Ignores: `.next/`, `out/`, `build/`, `next-env.d.ts`
+- Python: No explicit linting config (follows PEP 8 implicitly)
 
 ## Import Organization
 
@@ -56,163 +47,100 @@
 1. Standard library imports
 2. Third-party packages
 3. Local application imports
-4. Relative imports
 
 **TypeScript Order:**
-1. React and Next.js imports
-2. Third-party packages
-3. Local components and utilities
-4. Type imports
-5. Styles (if any)
-
-**Grouping:**
-- Blank lines between import groups
-- Alphabetical within groups (not strictly enforced)
+1. React and framework imports
+2. External packages (`@radix-ui/*`, `lucide-react`)
+3. Internal modules (`@/components/*`, `@/lib/*`)
+4. Relative imports (`./`, `../`)
 
 **Path Aliases:**
-- TypeScript: `@/` maps to `src/web-ui/` (configured in `tsconfig.json`)
-- Python: Absolute imports from `src/` root
+- TypeScript: `@/` maps to `src/web-ui/` (e.g., `@/components/ui/dialog`)
 
 ## Error Handling
 
-**Patterns (Intended):**
-- Python: Throw exceptions, catch at router/boundary level
-- TypeScript: Try/catch with error state management
-- HTTP errors: FastAPI HTTPException for client errors
-
-**Reality - Critical Issue:**
-- **50+ bare `except: pass` blocks** that silently swallow all exceptions
-- Primary offender: `scan_repos.py` (8,653 lines) with 12+ consecutive bare excepts
-- Impact: Errors hidden, debugging extremely difficult
-- See [CONCERNS.md](CONCERNS.md) for detailed analysis
+**Patterns:**
+- Python: try/except with specific exceptions where possible
+- FastAPI: HTTPException for client errors
+- Broad `except Exception` used in 162 places (area for improvement)
 
 **Error Types:**
-- Router level: Return HTTP error responses (400, 404, 500)
-- Service level: Raise descriptive exceptions
-- Logging: Use Loguru with context for debugging
+- Throw on invalid input, missing dependencies
+- Log error with context before re-raising
+- Background jobs: catch all, log to Cribl, update status
+
+**Logging:**
+- Framework: loguru for structured logging
+- Pattern: `logger.info(f"Message with {context}")` or `logger.error(f"Error: {e}")`
+- No `print()` in production code (8 violations found)
 
 ## Logging
 
 **Framework:**
-- Loguru - Structured logging with custom Cribl integration - `src/api/utils/cribl_logger.py`
-- Levels: debug, info, warning, error, critical
+- Python: loguru 0.7.0+ with HTTP transport to Cribl
+- Fallback: MinIO object storage
 
 **Patterns:**
 - Structured logging with context objects
-- HTTP streaming to Cribl endpoint (optional)
-- Console output for development
-- Format: `logger.info({"context": "value"}, "Message")`
-
-**When:**
-- Log state transitions (scan started, completed)
-- External API calls (GitHub, AI providers)
-- Errors with full context
-- Security events (findings, credential detection)
-
-**Where:**
-- Routers: Log request/response at info level
-- Services: Log business logic at debug level
-- Utilities: Minimal logging unless errors
+- Log at service boundaries
+- Log state transitions, external API calls, errors
+- Cribl integration: `src/api/utils/cribl_logger.py`
 
 ## Comments
 
 **When to Comment:**
-- Explain "why" not "what" (code should be self-explanatory)
-- Document business logic and security considerations
-- Explain non-obvious algorithms or workarounds
-- Mark incomplete implementations (TODO)
+- Explain "why" not "what"
+- Document business logic and edge cases
+- Mark incomplete implementations with `TODO`
 
-**Python Docstrings:**
-- Required for public APIs and complex functions
-- Format: Google style (Args, Returns, Raises sections)
-- Example from `src/api/routers/findings.py`:
-  ```python
-  def get_findings(organization_id: str, db: Session):
-      """
-      Retrieve all findings for an organization.
-
-      Args:
-          organization_id: Organization UUID
-          db: Database session
-
-      Returns:
-          List of Finding objects
-      """
-  ```
-
-**TypeScript/JSDoc:**
-- Used for component props and complex functions
-- Type annotations preferred over JSDoc where possible
-- Inline comments for complex logic
+**Docstrings:**
+- Python: Module-level docstrings with triple quotes
+- Class docstrings: Include purpose, fields, usage
+- Method docstrings: Args, Returns, Yields sections
+- Example: `"""Safe Subprocess Execution - Enhanced subprocess handling with strict timeouts."""`
 
 **TODO Comments:**
-- Format: `# TODO: description` or `// TODO: description`
-- Many TODOs present in codebase (e.g., `src/api/routers/secrets.py:327`, `src/api/routers/sla.py:303`)
-- No issue linking convention
+- Pattern: `TODO(Phase N):` or `TODO:` with description
+- Examples found:
+  - `TODO(Phase 5): Add additional tenant filtering`
+  - `TODO: Implement actual secret validation`
 
 ## Function Design
 
 **Size:**
-- Target: Under 50 lines
-- Reality: Many functions exceed 100+ lines (especially in `scan_repos.py`)
-- Extract helpers for complex logic (not consistently followed)
+- Keep functions focused (SRP principle per CONTRIBUTING.md)
+- Extract helpers for complex logic
+- Large files exist: `api_audit.py` at 4,227 lines (needs refactoring)
 
 **Parameters:**
-- Python: Explicit parameters, use `**kwargs` sparingly
-- TypeScript: Use object destructuring for 3+ parameters
-- Dependency injection: Database sessions injected via FastAPI dependencies
+- Use type hints for all parameters
+- Pydantic models for complex request bodies
+- Default values for optional parameters
 
 **Return Values:**
-- Explicit return types in Python (type hints)
-- TypeScript: Inferred types or explicit annotations
+- Explicit return types via type hints
+- Use Pydantic models for API responses
 - Return early for guard clauses
 
 ## Module Design
 
 **Exports:**
-- Python: Explicit imports, avoid `from module import *` (violated in `update_db_schema.py`)
+- Python: No barrel files, direct imports
 - TypeScript: Named exports preferred
-- React components: Default export for pages, named for reusable components
+- Default exports for React components
 
-**Organization:**
-- Python: One class per file for major entities
-- Routers: Grouped by domain (findings, projects, organizations)
-- Components: Atomic design pattern (components, pages, contexts, hooks)
+**FastAPI Routers:**
+- One router per domain
+- Export `router = APIRouter(prefix="/path", tags=["tag"])`
+- Import and include in `main.py`
 
-**Circular Dependencies:**
-- Avoided through layered architecture
-- Models at bottom, routers at top
-- Utilities and services in middle
-
-## Database Patterns
-
-**ORM Usage:**
-- SQLAlchemy 2.0+ style with declarative models
-- Session management via FastAPI dependency injection
-- Organization-scoped filtering at query level
-
-**Queries:**
-- Use ORM methods, not raw SQL
-- **Critical Issue:** F-string SQL in `src/api/database_router.py:153,159` (SQL injection risk)
-- Parameterized queries via SQLAlchemy expressions
-
-**Transactions:**
-- Implicit via session context
-- Commit/rollback at router level
-
-## Multi-Tenancy Patterns
-
-**Organization Context:**
-- Extracted from request headers by middleware - `src/api/middleware/tenant.py`
-- Stored in request state
-- Applied to all queries automatically
-
-**Data Isolation:**
-- All models include `organization_id` foreign key
-- Queries filtered by organization context
-- Per-organization database option via `src/api/database_router.py`
+**Dependency Injection:**
+- FastAPI `Depends()` for database sessions
+- `get_db()`, `get_tenant_db()` providers
+- `get_current_user()` for authentication
+- `require_permissions()` for RBAC
 
 ---
 
-*Convention analysis: 2026-01-12*
+*Convention analysis: 2026-01-17*
 *Update when patterns change*

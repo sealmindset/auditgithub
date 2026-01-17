@@ -1,225 +1,239 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-01-12
+**Analysis Date:** 2026-01-17
 
 ## Test Framework
 
 **Runner:**
-- **No formal test framework configured**
-- No Jest, Vitest, Pytest, or similar test runner setup
-- No `jest.config.js`, `vitest.config.ts`, or `pytest.ini` found
+- pytest 7.4.0+
+- Config: `pytest.ini` in project root
 
-**Manual Testing Only:**
-- Ad-hoc test scripts at root level:
-  - `test_ai_providers.py` - AI provider connectivity tests
-  - `test_script.py` - General testing
-  - `test_zda_enhancements.py` - Zero-day assessment feature tests
+**Assertion Library:**
+- pytest built-in assert
+- SQLAlchemy text() for raw SQL assertions
 
 **Run Commands:**
 ```bash
-# No standardized test command
-python test_ai_providers.py     # Manual AI provider testing
-python test_script.py           # Ad-hoc testing
+pytest                              # Run all tests
+pytest -v                           # Verbose output
+pytest tests/test_file.py           # Single file
+pytest -m quick                     # Run quick-marked tests only
+pytest --cov                        # Coverage report
 ```
 
 ## Test File Organization
 
 **Location:**
-- Test files at **root level only** (not in dedicated test directory)
-- No `tests/` directory structure
-- No `__tests__/` directories
-- No test files co-located with source in `src/`
+- All tests in `tests/` directory
+- Separate from source code (not co-located)
 
 **Naming:**
-- `test_*.py` pattern for Python (root level only)
-- No TypeScript/React test files found
+- `test_*.py` for all test files
+- Classes: `Test*` (e.g., `TestGitleaksIngestion`, `TestAuthenticationRequirement`)
+- Functions: `test_*` (e.g., `test_no_orphaned_findings`)
 
 **Structure:**
 ```
-auditgithub/
-├── test_ai_providers.py    # AI connectivity tests
-├── test_script.py          # Ad-hoc tests
-├── test_zda_enhancements.py # Feature tests
-└── (no other test files)
+tests/
+├── conftest.py                    # Shared fixtures
+├── test_data_integrity.py         # Database integrity tests
+├── test_ingestion_pipeline.py     # Ingestion tests
+├── test_rbac_enforcement.py       # RBAC tests
+├── test_tenant_isolation.py       # Multi-tenant tests
+└── test_scan_repos_bugfixes.py    # Regression tests
 ```
 
 ## Test Structure
 
-**Python Test Pattern** (from `test_ai_providers.py`):
+**Suite Organization:**
 ```python
-def test_openai() -> Tuple[bool, str]:
-    """Test OpenAI API connection"""
-    try:
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            return False, "OPENAI_API_KEY not set"
+import pytest
+from sqlalchemy import text
 
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": "Test"}],
-            max_tokens=10
-        )
-        return True, f"Success: {response.choices[0].message.content}"
-    except Exception as e:
-        return False, f"Error: {str(e)}"
+class TestGitleaksIngestion:
+    """Test gitleaks ingestion functionality."""
+
+    @pytest.fixture
+    def sample_gitleaks_report(self, tmp_path):
+        """Create sample gitleaks report."""
+        # fixture setup
+        return report
+
+    @pytest.mark.quick
+    def test_gitleaks_creates_secret_finding(self, db_session, sample_gitleaks_report):
+        """Test gitleaks ingestion creates finding with correct type."""
+        # arrange
+        repo_id = "test-repo-id"
+
+        # act
+        count = ingest_gitleaks(db_session, repo_id, org_id, sample_gitleaks_report)
+
+        # assert
+        assert count == 1, "Should ingest 1 finding"
 ```
 
-**Test Characteristics:**
-- Manual execution (no test runner)
-- Integration tests (real API calls, no mocking)
-- Return tuples for success/failure
-- Color-coded terminal output using ANSI codes
-
-**No Unit Tests:**
-- No isolated function testing
-- No mocking framework detected
-- No test fixtures or factories
-- All tests are integration tests
+**Patterns:**
+- Class-based test organization with descriptive names
+- `@pytest.fixture` for test data setup
+- `@pytest.mark.quick` for fast tests
+- Docstrings explain test purpose
+- Explicit arrange/act/assert structure
 
 ## Mocking
 
 **Framework:**
-- **None** - No mocking library (pytest-mock, unittest.mock, Vitest vi)
+- unittest.mock (`from unittest.mock import patch, MagicMock`)
+- pytest fixtures for database mocking
 
 **Patterns:**
-- Tests call real external services (GitHub, OpenAI, Claude, Ollama)
-- No mock patterns detected
-- No test doubles or stubs
+```python
+from unittest.mock import patch, MagicMock
+
+@patch('module.external_function')
+def test_with_mock(mock_func):
+    mock_func.return_value = 'mocked'
+    # test code
+    mock_func.assert_called_once_with('expected_arg')
+```
+
+**What to Mock:**
+- External APIs (GitHub, AI providers)
+- File system operations
+- Database sessions (via fixtures)
+- Environment variables
+
+**What NOT to Mock:**
+- Internal business logic
+- SQLAlchemy models
+- Pydantic validators
 
 ## Fixtures and Factories
 
 **Test Data:**
-- No test fixtures directory
-- No factory pattern implementations
-- No shared test data files
-- Tests use environment variables for real credentials
+```python
+# conftest.py
+@pytest.fixture
+def db_session():
+    """Create a fresh test database for each test function."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    yield session
+    session.close()
+
+@pytest.fixture
+def test_user_analyst(db_session, test_tenant):
+    """Create analyst user with limited permissions."""
+    user = User(email="analyst@test.com", tenant_id=test_tenant.id)
+    # assign analyst role
+    return user
+```
 
 **Location:**
-- Not applicable - no test data infrastructure
+- `tests/conftest.py` - Shared fixtures for all tests
+- Test-specific fixtures defined in test files
+
+**Available Fixtures:**
+- `db_session` - In-memory SQLite session
+- `test_client` - FastAPI TestClient
+- `test_tenant` - Test tenant for multi-tenant tests
+- `test_user_super_admin`, `test_user_analyst`, `test_user_manager`, `test_user_no_role`, `test_user_admin`
 
 ## Coverage
 
 **Requirements:**
-- No coverage targets defined
-- No coverage measurement tools configured
+- No enforced coverage target
+- Coverage tracked for awareness
+- Focus on critical paths (RBAC, tenant isolation, ingestion)
 
 **Configuration:**
-- No coverage.py configuration
-- No pytest-cov setup
-- No Istanbul/Vitest coverage for frontend
+- pytest-cov 4.1.0+
+- Run: `pytest --cov`
 
 **View Coverage:**
-- Not applicable - no coverage tracking
+```bash
+pytest --cov=src --cov-report=html
+open htmlcov/index.html
+```
 
 ## Test Types
 
-**Integration Tests:**
-- Scope: Full system integration (real APIs, real database)
-- Examples: `test_ai_providers.py` (OpenAI, Claude, Gemini, Ollama connectivity)
-- Speed: Slow (network calls to external services)
-- Mocking: None
-
 **Unit Tests:**
-- **Not present** - No isolated unit tests
+- Scope: Test single function/class in isolation
+- Mocking: Mock external dependencies
+- Examples: `test_data_integrity.py`
+
+**Integration Tests:**
+- Scope: Test multiple modules together
+- Database: In-memory SQLite
+- Examples: `test_rbac_enforcement.py`, `test_tenant_isolation.py`
+
+**RBAC Tests:**
+- Scope: Test permission enforcement across API routes
+- Patterns: 401 (unauthenticated), 403 (insufficient permissions), 200 (authorized)
+- Example: `test_analyst_cannot_delete_findings()`
 
 **E2E Tests:**
-- **Not present** - No Playwright, Cypress, or similar
-
-## API Validation
-
-**Runtime Validation:**
-- Pydantic models provide automatic request/response validation - `src/api/models.py`
-- FastAPI automatically validates inputs and returns 422 for validation errors
-- TypeScript provides compile-time type checking - `src/web-ui/tsconfig.json`
-
-**This provides implicit testing:**
-- Invalid API requests rejected automatically
-- Type errors caught at compile time (frontend)
-- Schema validation via Pydantic (backend)
-
-## Pre-commit Hooks
-
-**Husky Configuration** (mentioned in `CONTRIBUTING.md`):
-```bash
-npm run typecheck      # TypeScript validation
-npm run build          # Full build validation
-```
-
-**These provide build-time validation:**
-- TypeScript compilation errors fail commit
-- Next.js build errors block commits
-- ESLint errors block commits
+- Not currently implemented
+- CLI integration tested manually
 
 ## Common Patterns
 
 **Async Testing:**
-- No async test patterns (no test framework)
-
-**Error Testing:**
-- Try/catch in manual tests
-- Return failure tuples
-
-**Example from `test_ai_providers.py`:**
 ```python
-def test_claude() -> Tuple[bool, str]:
-    """Test Claude API connection"""
-    try:
-        api_key = os.getenv('ANTHROPIC_API_KEY')
-        if not api_key:
-            return False, "ANTHROPIC_API_KEY not set"
-        # ... test logic ...
-        return True, "Success"
-    except Exception as e:
-        return False, f"Error: {str(e)}"
+@pytest.mark.asyncio
+async def test_async_operation():
+    result = await async_function()
+    assert result == expected
 ```
 
-## Testing Gaps
+**Database Testing:**
+```python
+def test_finding_exists(db_session):
+    finding = db_session.execute(
+        text("SELECT * FROM findings WHERE repository_id = :repo_id"),
+        {"repo_id": repo_id}
+    ).fetchone()
 
-**Critical Missing Coverage:**
-1. **Unit tests** - No isolated function testing
-2. **Router tests** - API endpoints not tested
-3. **Database tests** - ORM operations not tested
-4. **Scanner tests** - Security scanner plugins not tested
-5. **Frontend tests** - React components not tested
-6. **Integration tests** - Only AI provider connectivity tested
-7. **E2E tests** - No user flow testing
+    assert finding is not None, "Finding should exist"
+    assert finding.finding_type == "secret"
+```
 
-**Impact:**
-- Unknown test coverage percentage
-- Regression risk when refactoring
-- No automated test suite in CI/CD
-- Manual testing burden on developers
+**Error Testing:**
+```python
+def test_raises_on_invalid_input():
+    with pytest.raises(ValueError, match="Invalid input"):
+        function_that_should_raise()
+```
 
-## Recommendations
+**Deduplication Testing:**
+```python
+def test_no_duplicates_on_reingestion(db_session, sample_report):
+    # First ingestion
+    count1 = ingest(db_session, sample_report)
+    assert count1 == 1
 
-**To Establish Testing:**
-1. **Backend:**
-   - Add **Pytest** - `pip install pytest pytest-cov pytest-asyncio`
-   - Create `tests/` directory structure mirroring `src/`
-   - Add `pytest.ini` configuration
-   - Write unit tests for:
-     - `src/api/utils/risk_scoring.py`
-     - `src/ai_agent/agent.py`
-     - `src/api/routers/findings.py`
+    # Second ingestion (should skip duplicate)
+    count2 = ingest(db_session, sample_report)
+    assert count2 == 0
+```
 
-2. **Frontend:**
-   - Add **Vitest** or **Jest** - `npm install --save-dev vitest @testing-library/react`
-   - Add `vitest.config.ts`
-   - Write component tests for:
-     - `src/web-ui/components/AskAIDialog.tsx`
-     - `src/web-ui/components/data-table.tsx`
+## Test Statistics
 
-3. **E2E:**
-   - Add **Playwright** - `npm install --save-dev @playwright/test`
-   - Write user flow tests for critical paths
+- Total test code: 1,593 lines across test files
+- Test files: 10 files in `tests/`
+- Async support: pytest-asyncio 0.21.0+
 
-4. **CI/CD:**
-   - Add GitHub Actions workflow to run tests on PR
-   - Block merges on test failures
-   - Enforce minimum coverage threshold (70%+)
+## Gaps
+
+**Not Tested:**
+- TypeScript/React components (no Jest/Vitest setup)
+- E2E user flows
+- Individual router endpoints (only integration tested)
+- All 12 Stripe webhook event types (only 3 tested)
 
 ---
 
-*Testing analysis: 2026-01-12*
+*Testing analysis: 2026-01-17*
 *Update when test patterns change*

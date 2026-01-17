@@ -1,290 +1,197 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-01-12
+**Analysis Date:** 2026-01-17
 
 ## Directory Layout
 
 ```
 auditgithub/
-├── src/                      # Main source code
-│   ├── api/                  # FastAPI backend
-│   ├── ai_agent/             # AI/ML components
-│   ├── github/               # GitHub integration
-│   ├── scanners/             # Security scanner plugins
-│   ├── reports/              # Report generation
-│   ├── reporting/            # PDF/document generation
-│   └── web-ui/               # Next.js React frontend
-├── execution/                # Execution scripts and utilities
-├── scripts/                  # Utility and maintenance scripts
-├── migrations/               # Database migrations
-├── docs/                     # Documentation
-├── setup/                    # Setup helpers
-├── directives/               # Policy directives
-├── semgrep-rules/            # Custom Semgrep rules
-├── docker-compose.yml        # Container orchestration
-├── Dockerfile*               # Multiple Dockerfiles for services
-├── requirements.txt          # Python dependencies
-├── .env.example              # Environment template
-└── *.py                      # Root-level CLI scripts
+├── src/                    # Main application code
+│   ├── api/               # FastAPI application
+│   │   ├── routers/       # API endpoint handlers (23 routers)
+│   │   ├── middleware/    # FastAPI middleware
+│   │   ├── utils/         # Utility functions
+│   │   └── integrations/  # External integrations (Jira)
+│   ├── web-ui/            # Next.js React application
+│   │   ├── app/           # App Router pages
+│   │   ├── components/    # React components
+│   │   ├── contexts/      # React contexts
+│   │   └── hooks/         # Custom React hooks
+│   ├── ai_agent/          # AI orchestration
+│   │   ├── providers/     # AI provider implementations
+│   │   └── tools/         # AI tools/plugins
+│   ├── auth/              # Authentication & RBAC
+│   ├── rbac/              # Role-Based Access Control
+│   ├── scanners/          # Scanner modules
+│   │   └── python/        # Python-specific scanners
+│   ├── github/            # GitHub API integration
+│   └── reporting/         # Report generation
+├── execution/              # Background scanning engines
+├── scripts/                # Utility scripts
+├── tests/                  # Test suite
+├── migrations/             # Alembic DB migrations
+├── docs/                   # Documentation
+├── data/                   # Data storage
+└── vulnerability_reports/  # Scan output reports
 ```
 
 ## Directory Purposes
 
-**src/**
-- Purpose: Main application source code
-- Contains: API, AI agents, GitHub client, scanners, UI
-- Key files: `__main__.py` (CLI entry point), `__init__.py`
-
 **src/api/**
-- Purpose: FastAPI backend application
-- Contains: Routers, models, database, middleware, utilities
-- Key files:
-  - `main.py` - FastAPI app and middleware setup
-  - `models.py` - SQLAlchemy ORM models (25+ entities)
-  - `database.py` - Database connection and sessions
-  - `config.py` - Environment configuration
-  - `database_router.py` - Multi-tenant routing
-- Subdirectories:
-  - `routers/` - 22+ API endpoint handlers
-  - `middleware/` - Request middleware (tenant context)
-  - `utils/` - Shared utilities (risk scoring, code extraction, logging)
-  - `integrations/` - Third-party integrations (Jira)
+- Purpose: FastAPI REST API application
+- Contains: Main app, routers, middleware, utilities
+- Key files: `main.py` (app entry), `models.py` (ORM), `database.py` (connections)
+- Subdirectories: `routers/` (23 endpoint modules), `middleware/`, `utils/`, `integrations/`
 
 **src/api/routers/**
-- Purpose: API endpoint handlers by domain
-- Contains: FastAPI router definitions
-- Key files:
-  - `findings.py` (1,553 lines) - Security findings CRUD
-  - `ai.py` (2,195 lines) - AI analysis endpoints
-  - `projects.py` (1,405 lines) - Project management
-  - `organizations.py` - Organization/tenant management
-  - `scans.py` - Scan orchestration
-  - `attack_surface.py` (1,533 lines) - Attack surface analysis
-  - `contributor_profiles.py` (1,533 lines) - Developer intelligence
-  - `api_audit.py` (4,218 lines) - API security auditing
-  - Plus 14 more domain routers
-
-**src/ai_agent/**
-- Purpose: AI/ML components for analysis and remediation
-- Contains: AI orchestration, provider implementations, tools
-- Key files:
-  - `agent.py` - Main AIAgent class (provider orchestration)
-  - `remediation.py` - Remediation generation logic
-  - `reasoning.py` - Reasoning chain implementation
-  - `contributor_analyzer.py` - Developer profile analysis
-  - `learning.py` - Model learning and feedback
-  - `diagnostics.py` - Diagnostic mode
-- Subdirectories:
-  - `providers/` - LLM provider implementations (Claude, OpenAI, Gemini, Ollama, Foundry, failover)
-  - `tools/` - Agent tools (database access)
-
-**src/github/**
-- Purpose: GitHub API integration
-- Contains: GitHub API client, data models
-- Key files:
-  - `api.py` - GitHub API client wrapper
-  - `github_client.py` - Extended client implementation
-  - `models.py` - Repository and contributor models
-
-**src/scanners/**
-- Purpose: Security scanner plugin system
-- Contains: Base scanner interface, language-specific implementations
-- Key files:
-  - `base.py` - Abstract scanner interface
-- Subdirectories:
-  - `python/` - Python security scanners (safety.py, pip_audit.py)
-
-**src/reports/** & **src/reporting/**
-- Purpose: Report generation (multiple formats)
-- Contains: Report generators for PDF, DOCX, JSON
-- Key files:
-  - `src/reports/generator.py` - Report orchestration
-  - `src/reporting/pdf_generator.py` - PDF generation with ReportLab
+- Purpose: API endpoint handlers
+- Contains: One file per domain (repositories, findings, scans, ai, etc.)
+- Key files: `api_audit.py` (4,227 lines), `ai.py`, `findings.py`, `repositories.py`
+- Pattern: Each router exports FastAPI `APIRouter`
 
 **src/web-ui/**
 - Purpose: Next.js React frontend application
-- Contains: Pages, components, hooks, contexts, configuration
-- Key subdirectories:
-  - `app/` - Next.js App Router (pages and layouts)
-  - `components/` - React components (30+ components)
-  - `contexts/` - React Context providers (TenantContext)
-  - `hooks/` - Custom React hooks (use-mobile)
-  - `public/` - Static assets
-- Key files:
-  - `app/layout.tsx` - Root layout with providers
-  - `app/page.tsx` - Home/dashboard page
-  - `next.config.ts` - Next.js configuration
-  - `tsconfig.json` - TypeScript configuration
-  - `eslint.config.mjs` - ESLint configuration
-  - `package.json` - Frontend dependencies
+- Contains: App Router pages, components, contexts, hooks
+- Key files: `app/layout.tsx` (root layout), `package.json`
+- Subdirectories: `app/` (pages), `components/` (React), `contexts/` (state)
 
-**src/web-ui/app/**
-- Purpose: Next.js App Router pages
-- Contains: Page components organized by route
-- Key pages:
-  - `findings/page.tsx`, `findings/[id]/page.tsx` - Findings list and detail
-  - `projects/[id]/page.tsx` - Project detail
-  - `repositories/page.tsx` - Repository list
-  - `attack-surface/page.tsx` - Attack surface visualization
-  - `zero-day/page.tsx` - Zero-day assessment
-  - `settings/page.tsx` - Settings
-  - `api-audit/settings/page.tsx` - API audit configuration
-  - `api/log/route.ts` - Server-side logging endpoint
+**src/ai_agent/**
+- Purpose: AI orchestration and multi-provider support
+- Contains: Agent core, reasoning engine, remediation engine, providers
+- Key files: `agent.py` (main), `reasoning.py`, `remediation.py`, `learning.py`
+- Subdirectories: `providers/` (Claude, OpenAI, Gemini, Ollama)
 
-**src/web-ui/components/**
-- Purpose: React UI components
-- Contains: 30+ reusable components
-- Key components:
-  - `data-table.tsx`, `data-table-enhanced.tsx` - Data tables
-  - `AskAIDialog.tsx` - AI query dialog
-  - `SecurityReportModal.tsx` - Report modal
-  - `APIAuditView.tsx` - API audit visualization
-  - `ArchitectureView.tsx` - Architecture diagrams
-  - `ContributorsView.tsx` - Developer profiles
-  - `ZeroDayView.tsx`, `ZDAReportsView.tsx` - Zero-day views
-  - `OrganizationSelector.tsx` - Org switcher
-  - `theme-provider.tsx` - Theme context
+**src/ai_agent/providers/**
+- Purpose: AI provider implementations
+- Contains: Base class and concrete implementations
+- Key files: `base.py`, `claude.py`, `openai.py`, `ollama.py`, `gemini.py`, `anthropic_foundry.py`, `failover.py`
+
+**src/auth/**
+- Purpose: Authentication and session management
+- Contains: OAuth config, JWT handling, middleware, rate limiting
+- Key files: `config.py`, `providers.py`, `middleware.py`, `tokens.py`, `session.py`
+
+**src/rbac/**
+- Purpose: Role-Based Access Control
+- Contains: Permission models, checking, caching, auditing
+- Key files: `models.py`, `permissions.py`, `dependencies.py`, `cache.py`, `audit.py`
 
 **execution/**
-- Purpose: Execution scripts and workflow orchestration
-- Contains: Security scanning execution, data processing, automation
-- Key files:
-  - `scan_deps.py` - Dependency scanning
-  - `scan_secrets.py` - Secret detection
-  - `scan_sast.py` - Static analysis
-  - `scan_api.py` - API scanning
-  - `ai_credential_matcher.py` (2,744 lines) - Credential matching
-  - `ai_credential_url_agent.py` - URL credential validation
-  - `secrets_manager.py` - Secret management
-  - `init_db.py` - Database initialization
-  - `kotlin_parser.py` - Kotlin AST parsing
+- Purpose: Background scanning engines and CLI tools
+- Contains: Scanner scripts, credential testing, AI agents
+- Key files: `scan_api.py`, `scan_secrets.py`, `scan_sast.py`, `scan_deps.py`, `scan_iac.py`, `credential_tester.py`, `ai_org_agent.py`
 
 **scripts/**
 - Purpose: Utility and maintenance scripts
-- Contains: Operational scripts for backup, migration, testing
+- Contains: Database management, testing, backup tools
+- Key files: `manage_default_org.py`, `test_ai_providers.py`, `backup_organization.py`
 
-**migrations/**
-- Purpose: Database schema migrations
-- Contains: Database migration files
-
-**docs/**
-- Purpose: Project documentation
-- Subdirectories: `specs/` - Specifications
-
-**directives/**
-- Purpose: Policy and compliance directives
-- Contains: 22+ directive files for security policies
-
-**semgrep-rules/**
-- Purpose: Custom Semgrep security rules
-- Contains: YAML rule definitions
-
-**Root-level Python scripts:**
-- Purpose: CLI utilities and batch operations
-- Key files:
-  - `scan_repos.py` (8,653 lines) - Monolithic repository scanner
-  - `scan_gitleaks.py` - Secret scanning
-  - `scan_engagement.py` - Engagement workflow
-  - `ingest_scans.py` - Scan result ingestion
-  - `update_db_schema.py` - Schema updates
-  - `test_*.py` - Ad-hoc test scripts
+**tests/**
+- Purpose: pytest test suite
+- Contains: Unit and integration tests
+- Key files: `conftest.py`, `test_rbac_enforcement.py`, `test_tenant_isolation.py`, `test_ingestion_pipeline.py`
 
 ## Key File Locations
 
 **Entry Points:**
-- `src/api/main.py` - FastAPI application
 - `src/__main__.py` - CLI entry point
-- `src/web-ui/app/layout.tsx` - Frontend root
-- `docker-compose.yml` - Container orchestration
+- `src/api/main.py` - FastAPI app initialization
+- `src/web-ui/app/layout.tsx` - Next.js root layout
+- `scan_repos.py` - Main scanning orchestrator
 
 **Configuration:**
-- `src/api/config.py` - Backend configuration
-- `src/web-ui/next.config.ts` - Frontend build config
+- `.env` / `.env.sample` - Environment variables
+- `docker-compose.yml` - Container orchestration
+- `alembic.ini` - Database migration config
 - `src/web-ui/tsconfig.json` - TypeScript config
-- `src/web-ui/eslint.config.mjs` - Linting config
-- `.env.example`, `.env.sample` - Environment templates
-- `requirements.txt` - Python dependencies
-- `src/web-ui/package.json` - Frontend dependencies
+- `src/web-ui/eslint.config.mjs` - ESLint config
+- `pytest.ini` - Test configuration
 
 **Core Logic:**
-- `src/api/models.py` - Database models
-- `src/api/database.py` - Database connection
-- `src/ai_agent/agent.py` - AI orchestration
-- `src/github/api.py` - GitHub client
-- `scan_repos.py` - Main scanning logic
+- `src/api/models.py` - SQLAlchemy ORM models
+- `src/api/database.py` - Database connections
+- `src/ai_agent/agent.py` - AI agent core
+- `src/github/api.py` - GitHub API wrapper
 
 **Testing:**
-- `test_ai_providers.py` - AI provider connectivity tests
-- `test_script.py`, `test_zda_enhancements.py` - Ad-hoc tests
+- `tests/conftest.py` - pytest fixtures
+- `tests/test_*.py` - Test files
 
 **Documentation:**
 - `README.md` - Project overview
-- `CONTRIBUTING.md` - Contribution guidelines
-- `docs/` - Additional documentation
+- `docs/` - Detailed documentation
+- `CHEATSHEET.md` - Quick reference
 
 ## Naming Conventions
 
 **Files:**
-- Python: snake_case (e.g., `risk_scoring.py`, `github_client.py`)
-- TypeScript/React: kebab-case for utilities (e.g., `data-table.tsx`, `use-mobile.ts`)
-- TypeScript/React: PascalCase for components (e.g., `AskAIDialog.tsx`, `OrganizationSelector.tsx`)
-- Config files: kebab-case or standard names (e.g., `next.config.ts`, `eslint.config.mjs`)
+- Python: `snake_case.py` (e.g., `credential_tester.py`, `risk_scoring.py`)
+- TypeScript: `PascalCase.tsx` for components (e.g., `AskAIDialog.tsx`)
+- TypeScript: `kebab-case.ts` for utilities (e.g., `use-mobile.ts`)
+- Config: `kebab-case` (e.g., `eslint.config.mjs`)
 
 **Directories:**
-- snake_case for Python (e.g., `ai_agent/`, `api/routers/`)
-- kebab-case for frontend (e.g., `web-ui/`, `attack-surface/`)
-- Plural for collections (e.g., `routers/`, `components/`, `providers/`)
+- `snake_case` for Python (e.g., `ai_agent/`, `web-ui/`)
+- `kebab-case` for TypeScript (e.g., `api-audit/`, `zero-day/`)
+- Plural for collections (e.g., `routers/`, `providers/`, `scanners/`)
 
 **Special Patterns:**
-- `*.test.py` - Python test files (root level only)
-- `[id]/page.tsx` - Next.js dynamic route pages
-- `*.config.*` - Configuration files
+- `test_*.py` for test files
+- `*.test.ts` for TypeScript tests (none found)
+- `__init__.py` for Python packages
 
 ## Where to Add New Code
 
 **New API Endpoint:**
-- Primary code: `src/api/routers/{domain}.py` (create new or extend existing)
-- Model updates: `src/api/models.py` (add/modify ORM models)
-- Tests: Root-level `test_{domain}.py` (manual testing pattern)
-
-**New Security Scanner:**
-- Implementation: `src/scanners/{language}/{scanner_name}.py`
-- Base class: Extend `src/scanners/base.py`
-- Integration: Update `scan_repos.py` to invoke scanner
+- Primary code: `src/api/routers/{domain}.py`
+- Models: `src/api/models.py`
+- Tests: `tests/test_{domain}.py`
 
 **New AI Provider:**
-- Implementation: `src/ai_agent/providers/{provider_name}.py`
+- Implementation: `src/ai_agent/providers/{provider}.py`
 - Base class: Extend `src/ai_agent/providers/base.py`
-- Configuration: Add env vars to `src/api/config.py`, `.env.example`
+- Registration: Update `src/ai_agent/agent.py`
 
-**New Frontend Page:**
-- Page: `src/web-ui/app/{route}/page.tsx`
-- Components: `src/web-ui/components/{ComponentName}.tsx`
-- Hooks: `src/web-ui/hooks/use-{feature}.ts`
-- Context: `src/web-ui/contexts/{Feature}Context.tsx`
+**New Scanner:**
+- Implementation: `src/scanners/{language}/{scanner}.py`
+- Base class: Extend `src/scanners/base.py`
+- Execution script: `execution/scan_{type}.py`
 
-**New Utility:**
-- Backend: `src/api/utils/{utility_name}.py`
-- Frontend: `src/web-ui/lib/{utility_name}.ts` (create lib/ if needed)
+**New React Component:**
+- Implementation: `src/web-ui/components/{ComponentName}.tsx`
+- UI primitives: `src/web-ui/components/ui/`
+
+**New Background Job:**
+- Implementation: `execution/{job_name}.py`
+- Scheduling: `src/api/scheduler.py`
+
+**Utilities:**
+- Python shared: `src/api/utils/`
+- TypeScript shared: `src/web-ui/lib/`
 
 ## Special Directories
 
-**execution/**
-- Purpose: Workflow orchestration and batch processing
-- Source: Core execution logic
-- Committed: Yes
+**vulnerability_reports/**
+- Purpose: Generated scan reports
+- Source: Output from scanning operations
+- Committed: No (in .gitignore)
 
-**directives/**
-- Purpose: Policy directives for compliance
-- Source: Security policies and requirements
-- Committed: Yes
+**.backup/**
+- Purpose: Backup files and temporary storage
+- Source: Backup scripts
+- Committed: No (in .gitignore)
 
 **migrations/**
-- Purpose: Database schema migrations
-- Source: Migration scripts (Alembic pattern, not formalized)
+- Purpose: Alembic database migrations
+- Source: Auto-generated via `alembic revision`
 - Committed: Yes
+
+**src/web-ui/.next/**
+- Purpose: Next.js build output
+- Source: Generated by `npm build`
+- Committed: No (in .gitignore)
 
 ---
 
-*Structure analysis: 2026-01-12*
+*Structure analysis: 2026-01-17*
 *Update when directory structure changes*
