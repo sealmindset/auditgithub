@@ -305,3 +305,222 @@ def update_schedule(
         created_at=schedule.created_at,
         updated_at=schedule.updated_at
     )
+
+
+@router.post("/{repo_id}/lock", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:override"))])
+def lock_schedule(
+    repo_id: str,
+    lock_request: OverrideCreate,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Lock a schedule to prevent AI modifications.
+
+    Use this to preserve the current schedule settings without changing them.
+
+    Args:
+        repo_id: Repository UUID
+        lock_request: Reason for locking
+    """
+    schedule = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == repo_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .first()
+    )
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found for this repository")
+
+    if schedule.is_locked:
+        raise HTTPException(status_code=400, detail="Schedule is already locked")
+
+    # Create override record (values stay the same)
+    override = models.ScheduleOverride(
+        schedule_id=schedule.id,
+        previous_frequency=schedule.frequency,
+        previous_day_of_week=schedule.day_of_week,
+        previous_time_window=schedule.time_window,
+        previous_scan_arguments=schedule.scan_arguments,
+        new_frequency=schedule.frequency,
+        new_day_of_week=schedule.day_of_week,
+        new_time_window=schedule.time_window,
+        new_scan_arguments=schedule.scan_arguments,
+        override_reason=f"Locked: {lock_request.reason}",
+        overridden_by=current_user.id
+    )
+    db.add(override)
+
+    # Lock the schedule
+    schedule.schedule_type = "manual"
+    schedule.is_locked = True
+    schedule.locked_at = datetime.utcnow()
+    schedule.locked_by = current_user.id
+
+    db.commit()
+    db.refresh(schedule)
+
+    # Get repository name
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    repo_name = repo.name if repo else "Unknown"
+
+    return ScheduleResponse(
+        id=str(schedule.id),
+        repository_id=str(schedule.repository_id),
+        repository_name=repo_name,
+        schedule_type=schedule.schedule_type,
+        frequency=schedule.frequency,
+        day_of_week=schedule.day_of_week,
+        time_window=schedule.time_window,
+        scan_arguments=schedule.scan_arguments,
+        next_scheduled_at=schedule.next_scheduled_at,
+        last_executed_at=schedule.last_executed_at,
+        last_execution_status=schedule.last_execution_status,
+        is_locked=schedule.is_locked,
+        locked_at=schedule.locked_at,
+        locked_by_email=current_user.email,
+        ai_reasoning=schedule.ai_reasoning,
+        ai_confidence=float(schedule.ai_confidence) if schedule.ai_confidence else None,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at
+    )
+
+
+@router.delete("/{repo_id}/lock", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:override"))])
+def unlock_schedule(
+    repo_id: str,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Unlock a schedule to allow AI modifications.
+
+    This returns the schedule to AI management.
+
+    Args:
+        repo_id: Repository UUID
+    """
+    schedule = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == repo_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .first()
+    )
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found for this repository")
+
+    if not schedule.is_locked:
+        raise HTTPException(status_code=400, detail="Schedule is not locked")
+
+    # Create override record for unlock
+    override = models.ScheduleOverride(
+        schedule_id=schedule.id,
+        previous_frequency=schedule.frequency,
+        previous_day_of_week=schedule.day_of_week,
+        previous_time_window=schedule.time_window,
+        previous_scan_arguments=schedule.scan_arguments,
+        new_frequency=schedule.frequency,
+        new_day_of_week=schedule.day_of_week,
+        new_time_window=schedule.time_window,
+        new_scan_arguments=schedule.scan_arguments,
+        override_reason="Unlocked - returned to AI management",
+        overridden_by=current_user.id
+    )
+    db.add(override)
+
+    # Unlock the schedule
+    schedule.schedule_type = "ai"
+    schedule.is_locked = False
+    schedule.locked_at = None
+    schedule.locked_by = None
+
+    db.commit()
+    db.refresh(schedule)
+
+    # Get repository name
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    repo_name = repo.name if repo else "Unknown"
+
+    return ScheduleResponse(
+        id=str(schedule.id),
+        repository_id=str(schedule.repository_id),
+        repository_name=repo_name,
+        schedule_type=schedule.schedule_type,
+        frequency=schedule.frequency,
+        day_of_week=schedule.day_of_week,
+        time_window=schedule.time_window,
+        scan_arguments=schedule.scan_arguments,
+        next_scheduled_at=schedule.next_scheduled_at,
+        last_executed_at=schedule.last_executed_at,
+        last_execution_status=schedule.last_execution_status,
+        is_locked=schedule.is_locked,
+        locked_at=schedule.locked_at,
+        locked_by_email=None,
+        ai_reasoning=schedule.ai_reasoning,
+        ai_confidence=float(schedule.ai_confidence) if schedule.ai_confidence else None,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at
+    )
+
+
+@router.get("/{repo_id}/history", response_model=OverrideHistoryResponse)
+def get_override_history(
+    repo_id: str,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the override history for a schedule.
+
+    Shows all manual changes made to the schedule.
+
+    Args:
+        repo_id: Repository UUID
+    """
+    schedule = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == repo_id)
+        .first()
+    )
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found for this repository")
+
+    # Get repository name
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    repo_name = repo.name if repo else "Unknown"
+
+    # Get override history
+    overrides = (
+        db.query(models.ScheduleOverride)
+        .filter(models.ScheduleOverride.schedule_id == schedule.id)
+        .order_by(models.ScheduleOverride.created_at.desc())
+        .all()
+    )
+
+    history_items = []
+    for override in overrides:
+        # Get user email
+        user = db.query(User).filter(User.id == override.overridden_by).first()
+        user_email = user.email if user else "Unknown"
+
+        history_items.append(OverrideHistoryItem(
+            id=str(override.id),
+            previous_frequency=override.previous_frequency,
+            previous_day_of_week=override.previous_day_of_week,
+            previous_time_window=override.previous_time_window,
+            new_frequency=override.new_frequency,
+            new_day_of_week=override.new_day_of_week,
+            new_time_window=override.new_time_window,
+            override_reason=override.override_reason,
+            overridden_by_email=user_email,
+            created_at=override.created_at
+        ))
+
+    return OverrideHistoryResponse(
+        schedule_id=str(schedule.id),
+        repository_name=repo_name,
+        overrides=history_items
+    )
