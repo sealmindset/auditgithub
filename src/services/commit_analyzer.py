@@ -7,6 +7,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
+from sqlalchemy.orm import Session
+
 from src.github.api import GitHubAPI
 from src.github.models import (
     CommitAnalysisResult,
@@ -14,6 +16,7 @@ from src.github.models import (
     ContributorActivity,
     FileTypeStats,
 )
+from src.api.models import CommitAnalysis
 
 
 class CommitAnalyzer:
@@ -39,6 +42,10 @@ class CommitAnalyzer:
         "bi-weekly": 0.5, # 0.5-2 commits/week -> bi-weekly
         "monthly": 0,     # < 0.5 commits/week -> monthly
     }
+
+    # Cache TTL
+    CACHE_TTL_HOURS = 24  # Re-analyze after 24 hours
+    DORMANT_CACHE_TTL_HOURS = 168  # 7 days for dormant repos
 
     def __init__(self, github_api: GitHubAPI):
         self.github = github_api
@@ -276,3 +283,125 @@ class CommitAnalyzer:
         # Return top 10 contributors
         contributors.sort(key=lambda c: c.commits_last_30_days, reverse=True)
         return contributors[:10]
+
+    # =========================================================================
+    # Caching Layer
+    # =========================================================================
+
+    def analyze_with_cache(
+        self,
+        db: Session,
+        repo_id: str,
+        repo_name: str,
+        organization_id: str,
+        force_refresh: bool = False
+    ) -> CommitAnalysisResult:
+        """Analyze repository with database caching."""
+        now = datetime.now(timezone.utc)
+
+        # Check cache
+        if not force_refresh:
+            cached = db.query(CommitAnalysis).filter(
+                CommitAnalysis.repository_id == repo_id,
+                CommitAnalysis.expires_at > now,
+            ).first()
+
+            if cached:
+                self.logger.debug(f"Using cached analysis for {repo_name}")
+                return self._from_cache(cached)
+
+        # Perform fresh analysis
+        result = self.analyze_repository(repo_name)
+
+        # Determine cache TTL
+        ttl_hours = self.DORMANT_CACHE_TTL_HOURS if result.is_dormant else self.CACHE_TTL_HOURS
+        expires_at = now + timedelta(hours=ttl_hours)
+
+        # Upsert cache entry
+        cached = db.query(CommitAnalysis).filter(
+            CommitAnalysis.repository_id == repo_id
+        ).first()
+
+        if cached:
+            cached.analysis_data = self._to_cache_data(result)
+            cached.commit_count = result.commit_count
+            cached.is_dormant = result.is_dormant
+            cached.analyzed_at = now
+            cached.expires_at = expires_at
+        else:
+            cached = CommitAnalysis(
+                repository_id=repo_id,
+                organization_id=organization_id,
+                analysis_data=self._to_cache_data(result),
+                commit_count=result.commit_count,
+                is_dormant=result.is_dormant,
+                analyzed_at=now,
+                expires_at=expires_at,
+            )
+            db.add(cached)
+
+        db.commit()
+        return result
+
+    def _to_cache_data(self, result: CommitAnalysisResult) -> dict:
+        """Serialize analysis result to JSONB-compatible dict."""
+        return {
+            'repository_name': result.repository_name,
+            'analyzed_at': result.analyzed_at.isoformat(),
+            'commit_count': result.commit_count,
+            'is_dormant': result.is_dormant,
+            'patterns': {
+                'commits_per_day': result.patterns.commits_per_day,
+                'commits_per_week': result.patterns.commits_per_week,
+                'peak_hours': result.patterns.peak_hours,
+                'peak_days': result.patterns.peak_days,
+                'suggested_time_window': result.patterns.suggested_time_window,
+                'suggested_frequency': result.patterns.suggested_frequency,
+            },
+            'file_types': {
+                'extensions': result.file_types.extensions,
+                'primary_language': result.file_types.primary_language,
+            },
+            'top_contributors': [
+                {
+                    'login': c.login,
+                    'commits_last_30_days': c.commits_last_30_days,
+                    'last_commit_date': c.last_commit_date.isoformat() if c.last_commit_date else None,
+                }
+                for c in result.top_contributors
+            ],
+        }
+
+    def _from_cache(self, cached: CommitAnalysis) -> CommitAnalysisResult:
+        """Deserialize analysis result from cache."""
+        data = cached.analysis_data
+        patterns_data = data.get('patterns', {})
+        file_types_data = data.get('file_types', {})
+        contributors_data = data.get('top_contributors', [])
+
+        return CommitAnalysisResult(
+            repository_name=data.get('repository_name', ''),
+            analyzed_at=datetime.fromisoformat(data['analyzed_at']) if data.get('analyzed_at') else cached.analyzed_at,
+            commit_count=data.get('commit_count', 0),
+            is_dormant=data.get('is_dormant', False),
+            patterns=CommitPattern(
+                commits_per_day=patterns_data.get('commits_per_day', 0),
+                commits_per_week=patterns_data.get('commits_per_week', 0),
+                peak_hours=patterns_data.get('peak_hours', []),
+                peak_days=patterns_data.get('peak_days', []),
+                suggested_time_window=patterns_data.get('suggested_time_window', 'morning'),
+                suggested_frequency=patterns_data.get('suggested_frequency', 'monthly'),
+            ),
+            file_types=FileTypeStats(
+                extensions=file_types_data.get('extensions', {}),
+                primary_language=file_types_data.get('primary_language'),
+            ),
+            top_contributors=[
+                ContributorActivity(
+                    login=c.get('login', 'unknown'),
+                    commits_last_30_days=c.get('commits_last_30_days', 0),
+                    last_commit_date=datetime.fromisoformat(c['last_commit_date']) if c.get('last_commit_date') else None,
+                )
+                for c in contributors_data
+            ],
+        )
