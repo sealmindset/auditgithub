@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** v2.0 Dashboard Redesign — Phase 11 (Dashboard Foundation)
+**Current focus:** v2.0 Dashboard Redesign — Phase 12 (Security Overview Widget)
 
 ## Current Position
 
-Phase: 11 of 18 (Dashboard Foundation)
+Phase: 12 of 18 (Security Overview Widget)
 Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-01-17 — Completed 11-01-PLAN.md
+Last activity: 2026-01-17 — Completed 12-01-PLAN.md
 
-Progress: █░░░░░░░░░ 12.5%
+Progress: ██░░░░░░░░ 25%
 
 ## Performance Metrics
 
@@ -65,5 +65,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Completed 11-01-PLAN.md, Phase 11 complete
+Stopped at: Completed 12-01-PLAN.md, Phase 12 complete
 Resume file: None

@@ -68,7 +68,7 @@ Plans:
 **Plans**: 1
 
 Plans:
-- [ ] 12-01: Security Overview Widget
+- [x] 12-01: Security Overview Widget
 
 ### Phase 13: Scan Activity Widget
 **Goal**: Create recent scan activity timeline showing scan status, duration, and results
@@ -131,7 +131,7 @@ Plans:
 |-------|-----------|-------|--------|-----------|
 | 1-10 | v1.0 | 10/10 | Complete | 2026-01-17 |
 | 11. Dashboard Foundation | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 12. Security Overview Widget | v2.0 | 0/1 | Planned | - |
+| 12. Security Overview Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 13. Scan Activity Widget | v2.0 | 0/? | Not started | - |
 | 14. Repository Health Widget | v2.0 | 0/? | Not started | - |
 | 15. Finding Trends Widget | v2.0 | 0/? | Not started | - |
