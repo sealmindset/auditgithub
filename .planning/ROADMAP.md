@@ -70,6 +70,15 @@ Plans:
 Plans:
 - [x] 12-01: Security Overview Widget
 
+### Phase 12.1: Auto-Scan New Repos (INSERTED)
+**Goal**: Add 24-hour scheduled job to automatically scan new repositories that have never been scanned
+**Depends on**: Phase 5 (Schedule Execution), existing scheduler infrastructure
+**Research**: Unlikely (extends existing APScheduler patterns)
+**Plans**: 1
+
+Plans:
+- [ ] 12.1-01: New Repo Auto-Scanner
+
 ### Phase 13: Scan Activity Widget
 **Goal**: Create recent scan activity timeline showing scan status, duration, and results
 **Depends on**: Phase 11
@@ -132,6 +141,7 @@ Plans:
 | 1-10 | v1.0 | 10/10 | Complete | 2026-01-17 |
 | 11. Dashboard Foundation | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 12. Security Overview Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
+| 12.1 Auto-Scan New Repos | v2.0 | 0/1 | Planned | - |
 | 13. Scan Activity Widget | v2.0 | 0/? | Not started | - |
 | 14. Repository Health Widget | v2.0 | 0/? | Not started | - |
 | 15. Finding Trends Widget | v2.0 | 0/? | Not started | - |
