@@ -7,7 +7,7 @@ Build an AI-powered intelligent scanning scheduler that automatically determines
 ## Milestones
 
 - [v1.0 Rescan Scheduler](milestones/v1.0-ROADMAP.md) (Phases 1-10) — SHIPPED 2026-01-17
-- **v2.0 Dashboard Redesign** — Phases 11-18 (in progress)
+- [v2.0 Dashboard Redesign](milestones/v2.0-ROADMAP.md) (Phases 11-18) — SHIPPED 2026-01-17
 
 ## Domain Expertise
 
@@ -37,17 +37,23 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
-### v2.0 Dashboard Redesign (In Progress)
+<details>
+<summary>v2.0 Dashboard Redesign (Phases 11-18) — SHIPPED 2026-01-17</summary>
 
 **Milestone Goal:** Transform the AuditGH interface with a modern dashboard featuring data visualization, improved navigation, and better information architecture.
 
-- [ ] **Phase 11: Dashboard Foundation** - New dashboard page layout with widget system
-- [ ] **Phase 12: Security Overview Widget** - Security posture summary with severity charts
-- [ ] **Phase 13: Scan Activity Widget** - Recent scan activity timeline with status
-- [ ] **Phase 14: Repository Health Widget** - Repo health cards with risk indicators
-- [ ] **Phase 15: Finding Trends Widget** - Finding trend charts over time
-- [ ] **Phase 16: Quick Actions Panel** - Common actions panel (trigger scan, view reports)
-- [ ] **Phase 17: Dashboard Customization** - Widget arrangement and user preferences
+- [x] **Phase 11: Dashboard Foundation** - New dashboard page layout with widget system
+- [x] **Phase 12: Security Overview Widget** - Security posture summary with severity charts
+- [x] **Phase 12.1: Auto-Scan New Repos** - 24-hour background job to scan unscanned repos
+- [x] **Phase 13: Scan Activity Widget** - Recent scan activity timeline with status
+- [x] **Phase 13.1: Background Jobs Widget** - Scheduler job status with manual trigger
+- [x] **Phase 14: Repository Health Widget** - Repo health cards with risk indicators
+- [x] **Phase 15: Finding Trends Widget** - Finding trend charts over time
+- [x] **Phase 16: Quick Actions Panel** - Common actions panel (trigger scan, view reports)
+- [x] **Phase 17: Dashboard Customization** - Widget arrangement and user preferences
+- [x] **Phase 18: Navigation Redesign** - Breadcrumbs, quick search, active state
+
+</details>
 - [ ] **Phase 18: Navigation Redesign** - Improved sidebar navigation and breadcrumbs
 
 ## Phase Details
@@ -137,10 +143,10 @@ Plans:
 **Goal**: Improve sidebar navigation with better hierarchy, breadcrumbs, and quick search
 **Depends on**: Phase 11
 **Research**: Unlikely (existing Radix patterns)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 18-01: TBD
+- [x] 18-01: Navigation Redesign
 
 ## Progress
 
@@ -156,4 +162,4 @@ Plans:
 | 15. Finding Trends Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 16. Quick Actions Panel | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 17. Dashboard Customization | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 18. Navigation Redesign | v2.0 | 0/? | Not started | - |
+| 18. Navigation Redesign | v2.0 | 1/1 | Complete | 2026-01-17 |
