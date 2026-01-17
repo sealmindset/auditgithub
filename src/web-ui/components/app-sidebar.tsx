@@ -14,6 +14,7 @@ import {
     ClipboardList,
     ChevronDown,
     Target,
+    Calendar,
 } from "lucide-react"
 
 import {
@@ -79,6 +80,11 @@ const data: { navMain: NavGroup[] } = {
                     title: "Repositories",
                     url: "/repositories",
                     icon: GitBranch,
+                },
+                {
+                    title: "Scheduler",
+                    url: "/scheduler",
+                    icon: Calendar,
                 },
                 {
                     title: "Attack Surface",
