@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
+import Link from "next/link"
 import {
     ShieldCheck,
     ShieldAlert,
@@ -129,7 +131,15 @@ const data: { navMain: NavGroup[] } = {
     ],
 }
 
+function isPathActive(pathname: string, itemUrl: string): boolean {
+    if (itemUrl === "/") {
+        return pathname === "/"
+    }
+    return pathname === itemUrl || pathname.startsWith(itemUrl + "/")
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+    const pathname = usePathname()
     const [zdaOpen, setZdaOpen] = React.useState(true)
 
     return (
@@ -166,11 +176,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                                     <SidebarMenuSub>
                                                         {item.items?.map((subItem) => (
                                                             <SidebarMenuSubItem key={subItem.title}>
-                                                                <SidebarMenuSubButton asChild>
-                                                                    <a href={subItem.url}>
+                                                                <SidebarMenuSubButton asChild isActive={isPathActive(pathname, subItem.url)}>
+                                                                    <Link href={subItem.url}>
                                                                         <subItem.icon className="h-4 w-4" />
                                                                         <span>{subItem.title}</span>
-                                                                    </a>
+                                                                    </Link>
                                                                 </SidebarMenuSubButton>
                                                             </SidebarMenuSubItem>
                                                         ))}
@@ -180,11 +190,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                         </Collapsible>
                                     ) : (
                                         <SidebarMenuItem key={item.title}>
-                                            <SidebarMenuButton asChild isActive={item.isActive}>
-                                                <a href={item.url}>
+                                            <SidebarMenuButton asChild isActive={isPathActive(pathname, item.url || "")}>
+                                                <Link href={item.url || "/"}>
                                                     <item.icon className="h-4 w-4" />
                                                     <span>{item.title}</span>
-                                                </a>
+                                                </Link>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
                                     )
