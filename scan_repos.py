@@ -5568,6 +5568,8 @@ def main():
                       help="List all organization backups")
     parser.add_argument("--cleanup-backups", action="store_true",
                       help="Remove backups older than 30 days")
+    parser.add_argument("--new-repos-only", action="store_true",
+                      help="Only scan repositories that have never been scanned (last_scanned_at IS NULL)")
 
     args = parser.parse_args()
 
@@ -6079,7 +6081,29 @@ def main():
                 except KeyboardInterrupt:
                     logging.info("Scan interrupted by user")
                     return
-            
+
+            # Filter to only new (never scanned) repos if requested
+            if args.new_repos_only and DATABASE_AVAILABLE:
+                original_count = len(repos)
+                db = SessionLocal()
+                try:
+                    new_repos = []
+                    for repo in repos:
+                        repo_name = repo.get('full_name') or repo.get('name', 'unknown')
+                        # Query database to check if repo has been scanned
+                        db_repo = db.query(models.Repository).filter(
+                            models.Repository.name == repo_name
+                        ).first()
+                        # Include if not in DB or never scanned
+                        if not db_repo or db_repo.last_scanned_at is None:
+                            new_repos.append(repo)
+                    repos = new_repos
+                    logging.info(f"🆕 Filtering to {len(repos)} new repos (never scanned) out of {original_count} total")
+                finally:
+                    db.close()
+            elif args.new_repos_only and not DATABASE_AVAILABLE:
+                logging.warning("--new-repos-only requires database access, scanning all repos")
+
             if args.dry_run:
                 for r in repos:
                     logging.info(f"[DRY-RUN] Would scan: {r.get('full_name', r.get('name','unknown'))}")
