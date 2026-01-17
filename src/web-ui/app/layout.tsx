@@ -7,6 +7,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ModeToggle } from "@/components/mode-toggle";
 import { OrganizationSelector } from "@/components/OrganizationSelector";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { QuickSearch } from "@/components/QuickSearch";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -37,7 +39,9 @@ export default function RootLayout({
                   <div className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6">
                     <SidebarTrigger />
                     <OrganizationSelector />
+                    <Breadcrumbs />
                     <div className="flex-1" />
+                    <QuickSearch />
                     <ModeToggle />
                   </div>
                   {children}
