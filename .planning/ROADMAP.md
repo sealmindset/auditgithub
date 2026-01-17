@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view ✓
 - [x] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling ✓
 - [x] **Phase 8: Override Management** - Manual schedule locks and custom args ✓
-- [ ] **Phase 9: Multi-Org Support** - Organization switching in scheduler
+- [x] **Phase 9: Multi-Org Support** - Organization switching in scheduler ✓
 - [ ] **Phase 10: Scan Type Customization** - Per-repo tool selection
 
 ## Phase Details
@@ -140,11 +140,12 @@ Key deliverables:
 - Override removal with confirmation
 - Visual distinction between AI and manual schedules
 
-### Phase 9: Multi-Org Support
+### Phase 9: Multi-Org Support ✓
 **Goal**: Organization switching in scheduler UI
 **Depends on**: Phase 8
 **Research**: Unlikely (existing org context patterns)
-**Plans**: TBD
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - Org selector integration with scheduler page
@@ -179,5 +180,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Calendar UI Foundation | 1/1 | Complete ✓ | 2026-01-17 |
 | 7. Calendar Interactions | 1/1 | Complete ✓ | 2026-01-17 |
 | 8. Override Management | 1/1 | Complete ✓ | 2026-01-17 |
-| 9. Multi-Org Support | 0/TBD | Not started | - |
+| 9. Multi-Org Support | 1/1 | Complete ✓ | 2026-01-17 |
 | 10. Scan Type Customization | 0/TBD | Not started | - |

@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** Phase 9 — Multi-Org Support
+**Current focus:** Phase 10 — Scan Type Customization
 
 ## Current Position
 
-Phase: 9 of 10 (Multi-Org Support)
+Phase: 10 of 10 (Scan Type Customization)
 Plan: 0 of TBD in current phase
 Status: Ready for planning
-Last activity: 2026-01-17 — Completed Phase 8
+Last activity: 2026-01-17 — Completed Phase 9
 
-Progress: ████████░░ 80%
+Progress: █████████░ 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 3.6 min
-- Total execution time: 29 min
+- Total execution time: 32 min
 
 **By Phase:**
 
@@ -35,9 +35,10 @@ Progress: ████████░░ 80%
 | 6. Calendar UI Foundation | 1 | 5 min | 5 min |
 | 7. Calendar Interactions | 1 | 5 min | 5 min |
 | 8. Override Management | 1 | 5 min | 5 min |
+| 9. Multi-Org Support | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 3 min, 5 min, 5 min, 5 min
+- Last 5 plans: 3 min, 5 min, 5 min, 5 min, 3 min
 - Trend: —
 
 ## Accumulated Context
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - Tabbed interface for details/lock/history in override dialog (Phase 8)
 - Lazy-load history on tab select to avoid unnecessary API calls (Phase 8)
 - Single-button unlock (no separate confirmation dialog) (Phase 8)
+- Leverage existing OrganizationSelector page-reload pattern (Phase 9)
+- Session-based org context via tenant middleware (Phase 9)
+- Client-side stats from fetched schedules via useMemo (Phase 9)
 
 ### Deferred Issues
 
@@ -91,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Completed Phase 8 (ready for Phase 9 planning)
+Stopped at: Completed Phase 9 (ready for Phase 10 planning)
 Resume file: None
