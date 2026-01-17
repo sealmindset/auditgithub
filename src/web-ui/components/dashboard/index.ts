@@ -13,3 +13,6 @@ export { DashboardGrid, GridItem } from './DashboardGrid'
 
 // Phase 12: Security Overview Widget
 export { SecurityOverviewWidget } from './SecurityOverviewWidget'
+
+// Phase 13: Scan Activity Widget
+export { ScanActivityWidget } from './ScanActivityWidget'

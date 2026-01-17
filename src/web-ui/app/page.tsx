@@ -24,6 +24,7 @@ import { FeedbackButton } from "@/components/dashboard/FeedbackButton"
 import { ExecutiveSummaryCards } from "@/components/dashboard/ExecutiveSummaryCards"
 import { SeverityChart } from "@/components/dashboard/SeverityChart"
 import { SecurityOverviewWidget } from "@/components/dashboard/SecurityOverviewWidget"
+import { ScanActivityWidget } from "@/components/dashboard/ScanActivityWidget"
 
 const API_BASE = "http://localhost:8000"
 
@@ -176,9 +177,10 @@ export default function DashboardPage() {
                 <HeroMetrics data={heroMetrics} />
             </div>
 
-            {/* Security Overview Widget */}
+            {/* Security Overview & Scan Activity Widgets */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <SecurityOverviewWidget />
+                <ScanActivityWidget />
             </div>
 
             {/* Main Content Grid */}
