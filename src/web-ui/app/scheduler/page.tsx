@@ -41,7 +41,9 @@ export default function SchedulerPage() {
     // Fetch schedules on mount
     const fetchSchedules = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/schedules`)
+            const res = await fetch(`${API_BASE}/schedules`, {
+                credentials: 'include'
+            })
             if (res.ok) {
                 const data: ScheduleListResponse = await res.json()
                 setSchedules(data.schedules || [])
@@ -87,6 +89,7 @@ export default function SchedulerPage() {
             const res = await fetch(`${API_BASE}/schedules/${data.repoId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({
                     frequency: data.frequency,
                     day_of_week: data.day_of_week,
@@ -146,6 +149,7 @@ export default function SchedulerPage() {
             const res = await fetch(`${API_BASE}/schedules/${repoId}/lock`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({ reason }),
             })
 
@@ -201,6 +205,7 @@ export default function SchedulerPage() {
         try {
             const res = await fetch(`${API_BASE}/schedules/${repoId}/lock`, {
                 method: "DELETE",
+                credentials: 'include',
             })
 
             if (!res.ok) {
