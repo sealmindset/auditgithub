@@ -25,6 +25,7 @@ import { ExecutiveSummaryCards } from "@/components/dashboard/ExecutiveSummaryCa
 import { SeverityChart } from "@/components/dashboard/SeverityChart"
 import { SecurityOverviewWidget } from "@/components/dashboard/SecurityOverviewWidget"
 import { ScanActivityWidget } from "@/components/dashboard/ScanActivityWidget"
+import { BackgroundJobsWidget } from "@/components/dashboard/BackgroundJobsWidget"
 
 const API_BASE = "http://localhost:8000"
 
@@ -181,6 +182,7 @@ export default function DashboardPage() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <SecurityOverviewWidget />
                 <ScanActivityWidget />
+                <BackgroundJobsWidget />
             </div>
 
             {/* Main Content Grid */}

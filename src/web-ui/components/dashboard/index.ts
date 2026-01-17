@@ -16,3 +16,6 @@ export { SecurityOverviewWidget } from './SecurityOverviewWidget'
 
 // Phase 13: Scan Activity Widget
 export { ScanActivityWidget } from './ScanActivityWidget'
+
+// Phase 13.1: Background Jobs Widget
+export { BackgroundJobsWidget } from './BackgroundJobsWidget'
