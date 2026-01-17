@@ -2191,6 +2191,13 @@ class ResumeState:
         completed = len(self.completed_repos)
         remaining = max(0, self.total_repos - completed)
 
+        # Safety check: if completed > total, something is wrong (corrupted state)
+        # Cap completed at total to prevent absurd percentages
+        if completed > self.total_repos and self.total_repos > 0:
+            logging.warning(f"Resume state corrupted: completed ({completed}) > total ({self.total_repos}). Capping to total.")
+            completed = self.total_repos
+            remaining = 0
+
         progress = {
             'completed': completed,
             'remaining': remaining,
@@ -6024,9 +6031,18 @@ def main():
     else:
         logging.info(f"Fetching repositories for organization: {config.ORG_NAME}")
     
+    # Initialize scan_results at the start to prevent UnboundLocalError
+    scan_results = {
+        'success': 0,
+        'timeout': 0,
+        'error': 0,
+        'skipped': 0,
+        'total': 0
+    }
+
     try:
         session = make_session()
-        
+
         if args.repo:
             # Single repository mode
             repo = get_single_repo(session, args.repo)
@@ -6039,9 +6055,12 @@ def main():
                 logging.info(f"[DRY-RUN] Would scan repository: {full_name}")
                 return
 
-            # Initialize resume state for single repo
+            # Initialize resume state and scan_results for single repo
             if resume_state:
                 resume_state.initialize_scan(1)
+
+            scan_results['total'] = 1
+            scan_results['success'] = 1  # Assume success unless process_repo throws
 
             process_repo(repo, config.REPORT_DIR, force_rescan=args.force_rescan, rescan_days=args.rescan_days, skip_scan=args.skipscan, override_scan=args.overridescan, resume_state=resume_state, tenant_slug=args.tenant)
         else:
@@ -6077,14 +6096,8 @@ def main():
             max_workers = max(1, int(args.max_workers))
             repo_timeout = args.repo_timeout
 
-            # Track scan results
-            scan_results = {
-                'success': 0,
-                'timeout': 0,
-                'error': 0,
-                'skipped': 0,
-                'total': len(repos)
-            }
+            # Update scan_results for multi-repo mode
+            scan_results['total'] = len(repos)
 
             logging.info(f"Starting parallel scan of {len(repos)} repositories with {max_workers} workers")
             logging.info(f"Repository timeout: {repo_timeout} minutes" + (" (disabled)" if repo_timeout == 0 else ""))

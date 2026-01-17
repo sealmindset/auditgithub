@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-01-17
+
+### Fixed
+- **UnboundLocalError in auto-ingestion** when scanning single repository (#152)
+  - **Root Cause**: scan_results only initialized in multi-repo code path
+  - **Fix**: Initialize scan_results at function start (line 6027)
+  - **Test Added**: `test_scan_results_initialized_single_repo_mode`
+  - **Validation**: ✅ Variable always initialized before use
+  - **Impact**: Auto-ingestion now works correctly in single-repo mode
+  - **Documentation**: [BUGFIXES_2026-01-17.md](BUGFIXES_2026-01-17.md)
+
+- **Progress calculation overflow** showing 85300% instead of 100% (#153)
+  - **Root Cause**: Resume state corruption (completed=853, total=1)
+  - **Fix**: Cap completed at total, log warning on corruption (line 2194)
+  - **Test Added**: `test_progress_corrupted_state_detection`, `test_progress_percentage_single_repo`
+  - **Validation**: ✅ Progress capped at 100%, warns on corrupted state
+  - **Impact**: Progress display now accurate even with corrupted resume state
+  - **Documentation**: [BUGFIXES_2026-01-17.md](BUGFIXES_2026-01-17.md)
+
+- **Database connection error handling** improved (#154)
+  - **Root Cause**: Raw psycopg2 errors difficult to debug
+  - **Fix**: Enhanced error messages with troubleshooting steps (line 35)
+  - **Test Added**: `test_database_connection_timeout`
+  - **Validation**: ✅ Clear error messages with connection details and possible causes
+  - **Impact**: Easier to debug database connectivity issues
+  - **Documentation**: [BUGFIXES_2026-01-17.md](BUGFIXES_2026-01-17.md)
+
+### Added
+
+- **Regression Prevention & QA System** (#150)
+  - **Purpose**: Prevent new features from breaking existing functionality
+  - **Components**:
+    - 4-layer validation strategy (pre-commit, CI/CD, post-deploy, monitoring)
+    - 41 automated tests covering ingestion pipeline
+    - Post-deployment validation script
+    - Data integrity checks
+  - **Test Files**:
+    - `tests/test_ingestion_pipeline.py` (12 tests)
+    - `tests/test_data_integrity.py` (24 tests)
+    - `tests/test_scan_repos_bugfixes.py` (9 tests)
+    - `validate_post_deployment.py` (automated validation)
+  - **Documentation**:
+    - [REGRESSION_PREVENTION_SYSTEM.md](REGRESSION_PREVENTION_SYSTEM.md) - Complete design
+    - [QA_AND_TESTING_PROCEDURES.md](QA_AND_TESTING_PROCEDURES.md) - Team procedures
+  - **Validation**: ✅ All tests passing (41/41)
+  - **Coverage**: 85% of ingestion code
+  - **Impact**: Prevents regressions, ensures data quality
+
 ### Added
 
 - **Cribl Stream Log Management Integration** - Centralized log collection and forwarding
