@@ -83,10 +83,19 @@ Plans:
 **Goal**: Create recent scan activity timeline showing scan status, duration, and results
 **Depends on**: Phase 11
 **Research**: Unlikely (existing scan data)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 13-01: TBD
+- [ ] 13-01: Scan Activity Widget
+
+### Phase 13.1: Background Jobs Widget (INSERTED)
+**Goal**: Dashboard widget showing background scheduler job status with manual trigger capability
+**Depends on**: Phase 11, Phase 12.1 (scan_new_repos job)
+**Research**: Unlikely (existing scheduler API)
+**Plans**: 1
+
+Plans:
+- [ ] 13.1-01: Background Jobs Widget
 
 ### Phase 14: Repository Health Widget
 **Goal**: Build repository health cards showing risk scores, last scan, and finding counts per repo
@@ -142,7 +151,8 @@ Plans:
 | 11. Dashboard Foundation | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 12. Security Overview Widget | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 12.1 Auto-Scan New Repos | v2.0 | 1/1 | Complete | 2026-01-17 |
-| 13. Scan Activity Widget | v2.0 | 0/? | Not started | - |
+| 13. Scan Activity Widget | v2.0 | 0/1 | Planned | - |
+| 13.1 Background Jobs Widget | v2.0 | 0/1 | Planned | - |
 | 14. Repository Health Widget | v2.0 | 0/? | Not started | - |
 | 15. Finding Trends Widget | v2.0 | 0/? | Not started | - |
 | 16. Quick Actions Panel | v2.0 | 0/? | Not started | - |
