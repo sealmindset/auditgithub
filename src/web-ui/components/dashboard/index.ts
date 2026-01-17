@@ -28,3 +28,6 @@ export { FindingTrendsWidget } from './FindingTrendsWidget'
 
 // Phase 16: Quick Actions Widget
 export { QuickActionsWidget } from './QuickActionsWidget'
+
+// Phase 17: Dashboard Customization
+export { DashboardCustomizer } from './DashboardCustomizer'

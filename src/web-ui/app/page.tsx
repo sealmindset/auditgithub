@@ -29,6 +29,8 @@ import { BackgroundJobsWidget } from "@/components/dashboard/BackgroundJobsWidge
 import { RepositoryHealthWidget } from "@/components/dashboard/RepositoryHealthWidget"
 import { FindingTrendsWidget } from "@/components/dashboard/FindingTrendsWidget"
 import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget"
+import { DashboardCustomizer } from "@/components/dashboard/DashboardCustomizer"
+import { useDashboardLayout } from "@/hooks/useDashboardLayout"
 
 const API_BASE = "http://localhost:8000"
 
@@ -69,7 +71,10 @@ interface InsightItem {
 export default function DashboardPage() {
     const searchParams = useSearchParams()
     const currentOrg = searchParams.get("org")
-    
+
+    // Dashboard customization
+    const layout = useDashboardLayout()
+
     // Hollywood dashboard state
     const [heroMetrics, setHeroMetrics] = useState<HeroMetricsData>({
         repositories: 0,
@@ -167,65 +172,76 @@ export default function DashboardPage() {
                         </span>
                         Live
                     </Badge>
+                    <DashboardCustomizer layout={layout} />
                 </div>
             </div>
 
             {/* Hero Metrics */}
-            <div className="relative">
-                <div className="absolute top-2 right-2 z-10">
-                    <FeedbackButton
-                        componentId="hero-metrics"
-                        componentName="Hero Metrics"
-                    />
+            {layout.isVisible("hero-metrics") && (
+                <div className="relative">
+                    <div className="absolute top-2 right-2 z-10">
+                        <FeedbackButton
+                            componentId="hero-metrics"
+                            componentName="Hero Metrics"
+                        />
+                    </div>
+                    <HeroMetrics data={heroMetrics} />
                 </div>
-                <HeroMetrics data={heroMetrics} />
-            </div>
+            )}
 
             {/* Security Overview & Scan Activity Widgets */}
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                <SecurityOverviewWidget />
-                <ScanActivityWidget />
-                <BackgroundJobsWidget />
-            </div>
+            {(layout.isVisible("security-overview") || layout.isVisible("scan-activity") || layout.isVisible("background-jobs")) && (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {layout.isVisible("security-overview") && <SecurityOverviewWidget />}
+                    {layout.isVisible("scan-activity") && <ScanActivityWidget />}
+                    {layout.isVisible("background-jobs") && <BackgroundJobsWidget />}
+                </div>
+            )}
 
             {/* Repository Health Widget - Full Width */}
-            <RepositoryHealthWidget />
+            {layout.isVisible("repository-health") && <RepositoryHealthWidget />}
 
             {/* Finding Trends Widget - Full Width */}
-            <FindingTrendsWidget />
+            {layout.isVisible("finding-trends") && <FindingTrendsWidget />}
 
             {/* Quick Actions Widget - Full Width */}
-            <QuickActionsWidget />
+            {layout.isVisible("quick-actions") && <QuickActionsWidget />}
 
             {/* Main Content Grid */}
-            <div className="grid gap-6 lg:grid-cols-5">
-                {/* Threat Radar - Takes 2 columns */}
-                <div className="lg:col-span-2">
-                    <ThreatRadar
-                        data={threatRadarData}
-                        investigationCount={heroMetrics.underInvestigation}
-                    />
-                </div>
+            {(layout.isVisible("threat-radar") || layout.isVisible("ai-insights")) && (
+                <div className="grid gap-6 lg:grid-cols-5">
+                    {/* Threat Radar - Takes 2 columns */}
+                    {layout.isVisible("threat-radar") && (
+                        <div className="lg:col-span-2">
+                            <ThreatRadar
+                                data={threatRadarData}
+                                investigationCount={heroMetrics.underInvestigation}
+                            />
+                        </div>
+                    )}
 
-                {/* AI Insights Panel - Takes 3 columns */}
-                <div className="lg:col-span-3">
-                    <AIInsightsPanel
-                        insights={aiInsights}
-                        maxDisplay={6}
-                        onRefresh={fetchHollywoodData}
-                        refreshInterval={30000}
-                    />
+                    {/* AI Insights Panel - Takes 3 columns */}
+                    {layout.isVisible("ai-insights") && (
+                        <div className={layout.isVisible("threat-radar") ? "lg:col-span-3" : "lg:col-span-5"}>
+                            <AIInsightsPanel
+                                insights={aiInsights}
+                                maxDisplay={6}
+                                onRefresh={fetchHollywoodData}
+                                refreshInterval={30000}
+                            />
+                        </div>
+                    )}
                 </div>
-            </div>
+            )}
 
             {/* Executive Summary Cards - What Matters Now */}
-            <ExecutiveSummaryCards />
+            {layout.isVisible("executive-summary") && <ExecutiveSummaryCards />}
 
             {/* Enhanced Severity Distribution Chart */}
-            <SeverityChart />
+            {layout.isVisible("severity-chart") && <SeverityChart />}
 
             {/* Recent Critical Findings Table */}
-            <Card>
+            {layout.isVisible("recent-findings") && <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
                         <CardTitle>Recent Critical Findings</CardTitle>
@@ -311,7 +327,7 @@ export default function DashboardPage() {
                         </TableBody>
                     </Table>
                 </CardContent>
-            </Card>
+            </Card>}
         </div>
     )
 }
