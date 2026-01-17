@@ -18,6 +18,7 @@ interface Schedule {
     frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
     day_of_week: number | null
     time_window: "morning" | "afternoon" | "evening" | "night"
+    scan_arguments: Record<string, unknown> | null
     next_scheduled_at: string | null
     is_locked: boolean
     ai_confidence: number | null
@@ -245,6 +246,77 @@ export default function SchedulerPage() {
         }
     }, [schedules, fetchSchedules, toast])
 
+    // Handle update scanners with optimistic UI
+    const handleUpdateScanners = useCallback(async (repoId: string, scanners: string[] | null) => {
+        // Find the schedule to get current settings
+        const schedule = schedules.find((s) => s.repository_id === repoId)
+        if (!schedule) return
+
+        // Store previous state for potential rollback
+        previousSchedulesRef.current = [...schedules]
+
+        // Compute new scan_arguments
+        const newScanArguments = scanners && scanners.length > 0
+            ? { scanners: scanners.join(",") }
+            : null
+
+        // Optimistic update: immediately update local state
+        setSchedules((prev) =>
+            prev.map((s) => {
+                if (s.repository_id === repoId) {
+                    return {
+                        ...s,
+                        scan_arguments: newScanArguments,
+                    }
+                }
+                return s
+            })
+        )
+
+        try {
+            const res = await fetch(`${API_BASE}/schedules/${repoId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    frequency: schedule.frequency,
+                    day_of_week: schedule.day_of_week,
+                    time_window: schedule.time_window,
+                    scan_arguments: newScanArguments,
+                    override_reason: "Updated scanner configuration",
+                }),
+            })
+
+            if (!res.ok) {
+                throw new Error("Failed to update scanners")
+            }
+
+            // Show success toast
+            toast({
+                title: "Scanner config updated",
+                description: scanners && scanners.length > 0
+                    ? `${scanners.length} scanner${scanners.length !== 1 ? "s" : ""} selected.`
+                    : "Using all scanners (default).",
+            })
+
+            // Refetch to get accurate server state
+            await fetchSchedules()
+        } catch (err) {
+            // Rollback to previous state on error
+            setSchedules(previousSchedulesRef.current)
+
+            // Show error toast
+            toast({
+                variant: "destructive",
+                title: "Failed to update scanners",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+
+            // Re-throw so the dialog can handle it
+            throw err
+        }
+    }, [schedules, fetchSchedules, toast])
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
@@ -298,6 +370,7 @@ export default function SchedulerPage() {
                 onScheduleUpdate={handleScheduleUpdate}
                 onScheduleLock={handleLockSchedule}
                 onScheduleUnlock={handleUnlockSchedule}
+                onUpdateScanners={handleUpdateScanners}
             />
         </div>
     )

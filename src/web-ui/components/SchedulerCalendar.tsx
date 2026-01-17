@@ -24,6 +24,7 @@ export interface Schedule {
     frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
     day_of_week: number | null
     time_window: "morning" | "afternoon" | "evening" | "night"
+    scan_arguments: Record<string, unknown> | null
     next_scheduled_at: string | null
     is_locked: boolean
     ai_confidence: number | null
@@ -76,6 +77,7 @@ interface SchedulerCalendarProps {
     onScheduleUpdate?: (data: ScheduleUpdateData) => Promise<void>
     onScheduleLock?: (repoId: string, reason: string) => Promise<void>
     onScheduleUnlock?: (repoId: string) => Promise<void>
+    onUpdateScanners?: (repoId: string, scanners: string[] | null) => Promise<void>
 }
 
 // Time window to hours mapping
@@ -137,7 +139,7 @@ const jsDateToApiDayOfWeek = (date: Date): number => {
     return jsDay === 0 ? 6 : jsDay - 1
 }
 
-export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock, onScheduleUnlock }: SchedulerCalendarProps) {
+export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock, onScheduleUnlock, onUpdateScanners }: SchedulerCalendarProps) {
     const [view, setView] = useState<View>(Views.MONTH)
     const [date, setDate] = useState(new Date())
 
@@ -245,6 +247,12 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
             setIsLockLoading(false)
         }
     }, [selectedSchedule, onScheduleUnlock])
+
+    // Handle update scanners
+    const handleUpdateScanners = useCallback(async (scanners: string[] | null) => {
+        if (!selectedSchedule || !onUpdateScanners) return
+        await onUpdateScanners(selectedSchedule.repository_id, scanners)
+    }, [selectedSchedule, onUpdateScanners])
 
     // Allow all events to be draggable
     const draggableAccessor = useCallback(() => true, [])
@@ -392,6 +400,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                 schedule={selectedSchedule}
                 onLock={handleLock}
                 onUnlock={handleUnlock}
+                onUpdateScanners={onUpdateScanners ? handleUpdateScanners : undefined}
                 isLoading={isLockLoading}
             />
         </div>
