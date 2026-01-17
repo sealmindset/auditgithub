@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** v1.0 Complete — Planning next milestone
+**Current focus:** v2.0 Dashboard Redesign — Phase 11 (Dashboard Foundation)
 
 ## Current Position
 
-Phase: All complete (v1.0 shipped)
-Plan: N/A
-Status: MILESTONE SHIPPED
-Last activity: 2026-01-17 — v1.0 Rescan Scheduler shipped
+Phase: 11 of 18 (Dashboard Foundation)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-01-17 — Milestone v2.0 created
 
-Progress: 100%
+Progress: ░░░░░░░░░░ 0%
 
 ## Performance Metrics
 
@@ -45,6 +45,11 @@ Progress: 100%
 All decisions documented in PROJECT.md Key Decisions table.
 See .planning/milestones/v1.0-ROADMAP.md for v1.0 decisions.
 
+### Roadmap Evolution
+
+- v1.0 Rescan Scheduler shipped: 10 phases, AI scheduling + calendar UI
+- v2.0 Dashboard Redesign created: 8 phases (Phase 11-18), UI/UX overhaul with dashboard widgets
+
 ### Deferred Issues
 
 None.
@@ -60,5 +65,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: v1.0 MILESTONE SHIPPED
+Stopped at: Milestone v2.0 initialization
 Resume file: None
