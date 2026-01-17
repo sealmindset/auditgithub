@@ -8,6 +8,7 @@ Build an AI-powered intelligent scanning scheduler that automatically determines
 
 - [v1.0 Rescan Scheduler](milestones/v1.0-ROADMAP.md) (Phases 1-10) — SHIPPED 2026-01-17
 - [v2.0 Dashboard Redesign](milestones/v2.0-ROADMAP.md) (Phases 11-18) — SHIPPED 2026-01-17
+- **v2.1 Scheduler UI Enhancements** — Phases 19-21 (in progress)
 
 ## Domain Expertise
 
@@ -54,7 +55,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 18: Navigation Redesign** - Breadcrumbs, quick search, active state
 
 </details>
-- [ ] **Phase 18: Navigation Redesign** - Improved sidebar navigation and breadcrumbs
+### v2.1 Scheduler UI Enhancements (In Progress)
+
+**Milestone Goal:** Make the Scheduler page actually usable by showing all repositories, their schedule status, last commit dates, and providing actions to create/modify schedules.
+
+- [x] **Phase 19: Repository Schedule Table** - Table view of all repos with schedule status, last commit, next scan
+- [ ] **Phase 20: Schedule Creation UI** - Create schedules for unscheduled repos, manual or AI-recommended
+- [ ] **Phase 21: Schedule Actions** - Trigger immediate scan, edit schedule, view history
 
 ## Phase Details
 
@@ -148,6 +155,33 @@ Plans:
 Plans:
 - [x] 18-01: Navigation Redesign
 
+### Phase 19: Repository Schedule Table
+**Goal**: Add a table view showing all repositories with their schedule status, last commit date, next scheduled scan, and quick actions
+**Depends on**: v1.0 (existing schedule API)
+**Research**: Unlikely (existing table patterns)
+**Plans**: 1
+
+Plans:
+- [x] 19-01: Repository Schedule Table
+
+### Phase 20: Schedule Creation UI
+**Goal**: Allow users to create schedules for repos that don't have one, with AI recommendation or manual configuration
+**Depends on**: Phase 19
+**Research**: Unlikely (existing form patterns)
+**Plans**: TBD
+
+Plans:
+- [ ] 20-01: TBD
+
+### Phase 21: Schedule Actions
+**Goal**: Add actions to trigger immediate scan, edit existing schedule, view schedule history
+**Depends on**: Phase 19
+**Research**: Unlikely (existing dialog patterns)
+**Plans**: TBD
+
+Plans:
+- [ ] 21-01: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -163,3 +197,6 @@ Plans:
 | 16. Quick Actions Panel | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 17. Dashboard Customization | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 18. Navigation Redesign | v2.0 | 1/1 | Complete | 2026-01-17 |
+| 19. Repository Schedule Table | v2.1 | 1/1 | Complete | 2026-01-17 |
+| 20. Schedule Creation UI | v2.1 | 0/? | Not started | - |
+| 21. Schedule Actions | v2.1 | 0/? | Not started | - |

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** v2.0 Dashboard Redesign — COMPLETE
+**Current focus:** v2.1 Scheduler UI Enhancements — Phase 19 (Repository Schedule Table)
 
 ## Current Position
 
-Phase: 18 of 18 (Navigation Redesign)
-Plan: 1 of 1 in current phase
-Status: Phase complete — v2.0 MILESTONE COMPLETE
-Last activity: 2026-01-17 — Completed 18-01-PLAN.md
+Phase: 19 of 21 (Repository Schedule Table)
+Plan: 1 of 1 in current phase — COMPLETE
+Status: Ready for Phase 20
+Last activity: 2026-01-17 — Completed Phase 19 Repository Schedule Table
 
-Progress: ██████████ 100%
+Progress: ██████████ 90% (v1.0 + v2.0 complete, v2.1 Phase 19 complete)
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: ██████████ 100%
 | 16. Quick Actions Panel | 1 | 2 min | 2 min |
 | 17. Dashboard Customization | 1 | 2 min | 2 min |
 | 18. Navigation Redesign | 1 | 2 min | 2 min |
+| 19. Repository Schedule Table | 1 | 3 min | 3 min |
 
 ## Accumulated Context
 
@@ -63,9 +64,8 @@ See .planning/milestones/v1.0-ROADMAP.md for v1.0 decisions.
 ### Roadmap Evolution
 
 - v1.0 Rescan Scheduler shipped: 10 phases, AI scheduling + calendar UI
-- v2.0 Dashboard Redesign created: 8 phases (Phase 11-18), UI/UX overhaul with dashboard widgets
-- Phase 12.1 inserted: Auto-scan new repos (backend scheduler job)
-- Phase 13.1 inserted: Background Jobs Widget (scheduler visibility on dashboard)
+- v2.0 Dashboard Redesign shipped: 10 phases (Phase 11-18 + 2 insertions), UI/UX overhaul with dashboard widgets
+- v2.1 Scheduler UI Enhancements created: 3 phases (Phase 19-21), make scheduler page actually usable
 
 ### Deferred Issues
 
@@ -82,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Completed 18-01-PLAN.md, v2.0 Dashboard Redesign milestone complete
+Stopped at: Completed Phase 19 Repository Schedule Table
 Resume file: None
