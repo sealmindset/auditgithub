@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler ✓
 - [x] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view ✓
 - [x] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling ✓
-- [ ] **Phase 8: Override Management** - Manual schedule locks and custom args
+- [x] **Phase 8: Override Management** - Manual schedule locks and custom args ✓
 - [ ] **Phase 9: Multi-Org Support** - Organization switching in scheduler
 - [ ] **Phase 10: Scan Type Customization** - Per-repo tool selection
 
@@ -126,11 +126,12 @@ Key deliverables:
 - Optimistic UI updates
 - Error handling and rollback
 
-### Phase 8: Override Management
+### Phase 8: Override Management ✓
 **Goal**: Manual schedule locks and custom scan arguments
 **Depends on**: Phase 7
 **Research**: Unlikely (CRUD operations with existing patterns)
-**Plans**: 1/1 created
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - Override modal/dialog UI
@@ -177,6 +178,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Schedule Execution | 1/1 | Complete ✓ | 2026-01-17 |
 | 6. Calendar UI Foundation | 1/1 | Complete ✓ | 2026-01-17 |
 | 7. Calendar Interactions | 1/1 | Complete ✓ | 2026-01-17 |
-| 8. Override Management | 0/1 | Plan ready | - |
+| 8. Override Management | 1/1 | Complete ✓ | 2026-01-17 |
 | 9. Multi-Org Support | 0/TBD | Not started | - |
 | 10. Scan Type Customization | 0/TBD | Not started | - |
