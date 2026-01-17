@@ -114,6 +114,116 @@ class OverrideHistoryResponse(BaseModel):
     overrides: List[OverrideHistoryItem]
 
 
+# Schema for repository with schedule info
+class RepositoryScheduleInfo(BaseModel):
+    """Repository with optional schedule information."""
+    repository_id: str
+    repository_name: str
+    pushed_at: Optional[datetime] = None  # Last commit from GitHub
+    last_scanned_at: Optional[datetime] = None
+    is_archived: bool = False
+
+    # Schedule info (null if no schedule exists)
+    has_schedule: bool
+    schedule_id: Optional[str] = None
+    schedule_type: Optional[ScheduleType] = None
+    frequency: Optional[Frequency] = None
+    day_of_week: Optional[int] = None
+    time_window: Optional[TimeWindow] = None
+    next_scheduled_at: Optional[datetime] = None
+    last_executed_at: Optional[datetime] = None
+    last_execution_status: Optional[str] = None
+    is_locked: bool = False
+    ai_confidence: Optional[float] = None
+
+    model_config = {"from_attributes": True}
+
+
+class RepositoryScheduleListResponse(BaseModel):
+    """Response for repository schedule list."""
+    repositories: List[RepositoryScheduleInfo]
+    total: int
+    scheduled_count: int
+    unscheduled_count: int
+
+
+@router.get("/repositories", response_model=RepositoryScheduleListResponse)
+def list_repositories_with_schedules(
+    filter: Optional[str] = None,  # 'scheduled', 'unscheduled', or None for all
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all repositories with their schedule information.
+
+    Returns all repos with LEFT JOIN to schedules, showing schedule status for each.
+    Use filter param to show only scheduled or unscheduled repos.
+    """
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import outerjoin
+
+    # Build query with LEFT JOIN to schedules
+    query = (
+        db.query(
+            models.Repository,
+            models.ScanSchedule
+        )
+        .outerjoin(
+            models.ScanSchedule,
+            (models.Repository.id == models.ScanSchedule.repository_id) &
+            (models.ScanSchedule.is_active == True)
+        )
+        .order_by(models.Repository.name)
+    )
+
+    results = query.all()
+
+    repositories = []
+    scheduled_count = 0
+    unscheduled_count = 0
+
+    for repo, schedule in results:
+        has_schedule = schedule is not None
+
+        if has_schedule:
+            scheduled_count += 1
+        else:
+            unscheduled_count += 1
+
+        # Apply filter
+        if filter == "scheduled" and not has_schedule:
+            continue
+        if filter == "unscheduled" and has_schedule:
+            continue
+
+        repo_info = RepositoryScheduleInfo(
+            repository_id=str(repo.id),
+            repository_name=repo.name,
+            pushed_at=repo.pushed_at,
+            last_scanned_at=repo.last_scanned_at,
+            is_archived=repo.is_archived or False,
+            has_schedule=has_schedule,
+            schedule_id=str(schedule.id) if schedule else None,
+            schedule_type=schedule.schedule_type if schedule else None,
+            frequency=schedule.frequency if schedule else None,
+            day_of_week=schedule.day_of_week if schedule else None,
+            time_window=schedule.time_window if schedule else None,
+            next_scheduled_at=schedule.next_scheduled_at if schedule else None,
+            last_executed_at=schedule.last_executed_at if schedule else None,
+            last_execution_status=schedule.last_execution_status if schedule else None,
+            is_locked=schedule.is_locked if schedule else False,
+            ai_confidence=float(schedule.ai_confidence) if schedule and schedule.ai_confidence else None,
+        )
+        repositories.append(repo_info)
+
+    return RepositoryScheduleListResponse(
+        repositories=repositories,
+        total=len(repositories),
+        scheduled_count=scheduled_count,
+        unscheduled_count=unscheduled_count
+    )
+
+
 @router.get("/", response_model=ScheduleListResponse)
 def list_schedules(
     skip: int = 0,
