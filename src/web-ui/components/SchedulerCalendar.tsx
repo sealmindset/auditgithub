@@ -1,8 +1,8 @@
 "use client"
 
 import { useMemo, useState, useCallback } from "react"
-import { Calendar, dateFnsLocalizer, View, Views } from "react-big-calendar"
-import withDragAndDrop, { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop"
+import { Calendar, dateFnsLocalizer, View, Views, CalendarProps } from "react-big-calendar"
+import withDragAndDrop, { EventInteractionArgs, withDragAndDropProps } from "react-big-calendar/lib/addons/dragAndDrop"
 import { format, parse, startOfWeek, getDay, addHours } from "date-fns"
 import { enUS } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
@@ -13,22 +13,6 @@ import { TimeWindowDialog, TimeWindow } from "@/components/TimeWindowDialog"
 // Import calendar styles
 import "@/app/scheduler/calendar.css"
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css"
-
-// Create drag-and-drop enabled calendar
-const DragAndDropCalendar = withDragAndDrop(Calendar)
-
-// Configure date-fns localizer for react-big-calendar
-const locales = {
-    "en-US": enUS,
-}
-
-const localizer = dateFnsLocalizer({
-    format,
-    parse,
-    startOfWeek,
-    getDay,
-    locales,
-})
 
 // Schedule type from API
 interface Schedule {
@@ -52,6 +36,22 @@ interface CalendarEvent {
     end: Date
     resource: Schedule
 }
+
+// Create typed drag-and-drop enabled calendar
+const DragAndDropCalendar = withDragAndDrop<CalendarEvent>(Calendar as React.ComponentType<CalendarProps<CalendarEvent>>)
+
+// Configure date-fns localizer for react-big-calendar
+const locales = {
+    "en-US": enUS,
+}
+
+const localizer = dateFnsLocalizer({
+    format,
+    parse,
+    startOfWeek,
+    getDay,
+    locales,
+})
 
 // Schedule update data for API
 export interface ScheduleUpdateData {
@@ -139,6 +139,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
     // Dialog and pending drop state
     const [dialogOpen, setDialogOpen] = useState(false)
     const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
+    const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Handle event drop (drag and drop)
     const handleEventDrop = useCallback(
@@ -164,29 +165,35 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
             // Calculate day_of_week from new date
             const dayOfWeek = jsDateToApiDayOfWeek(newDate)
 
-            // Call the update function
-            await onScheduleUpdate({
-                repoId: schedule.repository_id,
-                frequency: schedule.frequency,
-                day_of_week: dayOfWeek,
-                time_window: timeWindow,
-                override_reason: reason,
-            })
+            setIsSubmitting(true)
+            try {
+                // Call the update function
+                await onScheduleUpdate({
+                    repoId: schedule.repository_id,
+                    frequency: schedule.frequency,
+                    day_of_week: dayOfWeek,
+                    time_window: timeWindow,
+                    override_reason: reason,
+                })
 
-            // Close dialog and clear pending drop
-            setDialogOpen(false)
-            setPendingDrop(null)
+                // Close dialog and clear pending drop on success
+                setDialogOpen(false)
+                setPendingDrop(null)
+            } finally {
+                setIsSubmitting(false)
+            }
         },
         [pendingDrop, onScheduleUpdate]
     )
 
     // Handle dialog cancel
     const handleDialogOpenChange = useCallback((open: boolean) => {
+        if (isSubmitting) return // Prevent close while submitting
         setDialogOpen(open)
         if (!open) {
             setPendingDrop(null)
         }
-    }, [])
+    }, [isSubmitting])
 
     // Allow all events to be draggable
     const draggableAccessor = useCallback(() => true, [])
@@ -321,6 +328,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate }: SchedulerCale
                     onConfirm={handleDialogConfirm}
                     eventTitle={pendingDrop.event.title}
                     newDate={pendingDrop.newDate}
+                    isLoading={isSubmitting}
                 />
             )}
         </div>

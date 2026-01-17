@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
 import { Loader2 } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 
 const API_BASE = "http://localhost:8000"
 
@@ -29,6 +30,10 @@ export default function SchedulerPage() {
     const [schedules, setSchedules] = useState<Schedule[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const { toast } = useToast()
+
+    // Store previous state for rollback
+    const previousSchedulesRef = useRef<Schedule[]>([])
 
     // Fetch schedules on mount
     const fetchSchedules = useCallback(async () => {
@@ -54,26 +59,66 @@ export default function SchedulerPage() {
         fetchSchedules()
     }, [fetchSchedules])
 
-    // Handle schedule update from calendar drag-and-drop
+    // Handle schedule update from calendar drag-and-drop with optimistic UI
     const handleScheduleUpdate = useCallback(async (data: ScheduleUpdateData) => {
-        const res = await fetch(`${API_BASE}/schedules/${data.repoId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                frequency: data.frequency,
-                day_of_week: data.day_of_week,
-                time_window: data.time_window,
-                override_reason: data.override_reason,
-            }),
-        })
+        // Store previous state for potential rollback
+        previousSchedulesRef.current = [...schedules]
 
-        if (!res.ok) {
-            throw new Error("Failed to update schedule")
+        // Optimistic update: immediately update local state
+        setSchedules((prev) =>
+            prev.map((schedule) => {
+                if (schedule.repository_id === data.repoId) {
+                    return {
+                        ...schedule,
+                        day_of_week: data.day_of_week,
+                        time_window: data.time_window,
+                        // Mark as manual since user overrode
+                        schedule_type: "manual" as const,
+                    }
+                }
+                return schedule
+            })
+        )
+
+        try {
+            const res = await fetch(`${API_BASE}/schedules/${data.repoId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    frequency: data.frequency,
+                    day_of_week: data.day_of_week,
+                    time_window: data.time_window,
+                    override_reason: data.override_reason,
+                }),
+            })
+
+            if (!res.ok) {
+                throw new Error("Failed to update schedule")
+            }
+
+            // Show success toast
+            toast({
+                title: "Schedule updated",
+                description: "The scan has been rescheduled successfully.",
+            })
+
+            // Refetch to get accurate server state (including next_scheduled_at)
+            await fetchSchedules()
+        } catch (err) {
+            // Rollback to previous state on error
+            setSchedules(previousSchedulesRef.current)
+
+            // Show error toast
+            toast({
+                variant: "destructive",
+                title: "Failed to update schedule",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+
+            // Re-throw so the dialog can handle it
+            throw err
         }
-
-        // Refetch schedules to get updated data
-        await fetchSchedules()
-    }, [fetchSchedules])
+    }, [schedules, fetchSchedules, toast])
 
     if (loading) {
         return (

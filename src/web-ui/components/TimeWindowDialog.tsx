@@ -20,15 +20,17 @@ import {
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Loader2 } from "lucide-react"
 
 export type TimeWindow = "morning" | "afternoon" | "evening" | "night"
 
 interface TimeWindowDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
-    onConfirm: (timeWindow: TimeWindow, reason?: string) => void
+    onConfirm: (timeWindow: TimeWindow, reason?: string) => Promise<void>
     eventTitle: string
     newDate: Date
+    isLoading?: boolean
 }
 
 const TIME_WINDOW_OPTIONS: { value: TimeWindow; label: string; time: string }[] = [
@@ -44,18 +46,20 @@ export function TimeWindowDialog({
     onConfirm,
     eventTitle,
     newDate,
+    isLoading = false,
 }: TimeWindowDialogProps) {
     const [selectedTimeWindow, setSelectedTimeWindow] = useState<TimeWindow>("morning")
     const [reason, setReason] = useState("")
 
-    const handleConfirm = () => {
-        onConfirm(selectedTimeWindow, reason || undefined)
+    const handleConfirm = async () => {
+        await onConfirm(selectedTimeWindow, reason || undefined)
         // Reset form state
         setSelectedTimeWindow("morning")
         setReason("")
     }
 
     const handleCancel = () => {
+        if (isLoading) return // Prevent cancel while loading
         onOpenChange(false)
         // Reset form state
         setSelectedTimeWindow("morning")
@@ -104,11 +108,18 @@ export function TimeWindowDialog({
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={handleCancel}>
+                    <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
                         Cancel
                     </Button>
-                    <Button onClick={handleConfirm}>
-                        Reschedule
+                    <Button onClick={handleConfirm} disabled={isLoading}>
+                        {isLoading ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            "Reschedule"
+                        )}
                     </Button>
                 </DialogFooter>
             </DialogContent>
