@@ -256,7 +256,14 @@ class IngestionValidator:
             with open(syft_file, 'r') as f:
                 syft_data = json.load(f)
 
-            file_count = len(syft_data.get('components', []))
+            # Count UNIQUE dependencies (name+version) not total components
+            # Syft files contain massive duplication (e.g., terraform modules repeated hundreds of times)
+            components = syft_data.get('components', [])
+            unique_deps = set()
+            for comp in components:
+                key = f"{comp.get('name', 'unknown')}@{comp.get('version', 'unknown')}"
+                unique_deps.add(key)
+            file_count = len(unique_deps)
 
             db_count_result = self.session.execute(
                 text("SELECT COUNT(*) FROM dependencies WHERE repository_id = :repo_id"),
