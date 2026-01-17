@@ -130,7 +130,7 @@ Key deliverables:
 **Goal**: Manual schedule locks and custom scan arguments
 **Depends on**: Phase 7
 **Research**: Unlikely (CRUD operations with existing patterns)
-**Plans**: TBD
+**Plans**: 1/1 created
 
 Key deliverables:
 - Override modal/dialog UI
@@ -177,6 +177,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Schedule Execution | 1/1 | Complete ✓ | 2026-01-17 |
 | 6. Calendar UI Foundation | 1/1 | Complete ✓ | 2026-01-17 |
 | 7. Calendar Interactions | 1/1 | Complete ✓ | 2026-01-17 |
-| 8. Override Management | 0/TBD | Not started | - |
+| 8. Override Management | 0/1 | Plan ready | - |
 | 9. Multi-Org Support | 0/TBD | Not started | - |
 | 10. Scan Type Customization | 0/TBD | Not started | - |
