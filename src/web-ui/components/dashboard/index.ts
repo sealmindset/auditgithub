@@ -22,3 +22,9 @@ export { BackgroundJobsWidget } from './BackgroundJobsWidget'
 
 // Phase 14: Repository Health Widget
 export { RepositoryHealthWidget } from './RepositoryHealthWidget'
+
+// Phase 15: Finding Trends Widget
+export { FindingTrendsWidget } from './FindingTrendsWidget'
+
+// Phase 16: Quick Actions Widget
+export { QuickActionsWidget } from './QuickActionsWidget'
