@@ -4,12 +4,14 @@ Scheduler Service for AuditGH
 Provides configurable cron-based scheduling for:
 - Self-Annealing Data Integrity Agent
 - Automated Repository Scanning
+- New Repository Auto-Scanning
 - Organization Backups
 
 Configuration via environment variables:
 - SCHEDULER_ENABLED: Master switch for scheduler
 - ANNEALING_CRON/ENABLED: Data integrity checks
 - SCAN_CRON/ENABLED: Repository scanning
+- SCAN_NEW_REPOS_CRON/ENABLED: New repo auto-scanning
 - BACKUP_CRON/ENABLED: Organization backups
 """
 
@@ -109,7 +111,17 @@ class SchedulerService:
             handler=self._run_backup,
             description="Organization Backup"
         )
-        
+
+        # New Repo Auto-Scanner
+        self._add_job(
+            name="scan_new_repos",
+            cron_env="SCAN_NEW_REPOS_CRON",
+            enabled_env="SCAN_NEW_REPOS_ENABLED",
+            default_cron="0 2 * * *",  # 2 AM daily
+            handler=self._run_scan_new_repos,
+            description="Auto-scan new repositories"
+        )
+
         logger.info(f"Scheduler configured with {len([j for j in self.jobs.values() if j.enabled])} active jobs")
     
     def _add_job(
@@ -313,7 +325,42 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Backup failed: {e}")
             raise
-    
+
+    async def _run_scan_new_repos(self):
+        """Execute scan for new repositories that have never been scanned."""
+        logger.info("=" * 60)
+        logger.info("SCHEDULED: Auto-scan New Repositories")
+        logger.info("=" * 60)
+
+        try:
+            cmd = ["python", "scan_repos.py", "--new-repos-only"]
+
+            # Optional: Add target organization if configured
+            target = os.getenv("SCAN_TARGET", "").strip()
+            if target:
+                cmd.extend(["--target", target])
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3600 * 2  # 2 hour timeout (shorter than full scan)
+            )
+
+            if result.returncode == 0:
+                logger.info("New repo scan completed successfully")
+                return {"status": "success", "output": result.stdout[-1000:]}
+            else:
+                logger.error(f"New repo scan failed: {result.stderr[-500:]}")
+                raise RuntimeError(result.stderr[-500:])
+
+        except subprocess.TimeoutExpired:
+            logger.error("New repo scan timed out after 2 hours")
+            raise
+        except Exception as e:
+            logger.error(f"New repo scan failed: {e}")
+            raise
+
     # -------------------------------------------------------------------------
     # Manual Triggers
     # -------------------------------------------------------------------------
