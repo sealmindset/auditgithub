@@ -524,3 +524,47 @@ def get_override_history(
         repository_name=repo_name,
         overrides=history_items
     )
+
+
+class TriggerResponse(BaseModel):
+    """Response for manual scan trigger."""
+    status: str
+    message: str
+
+
+@router.post("/{repo_id}/trigger", response_model=TriggerResponse, dependencies=[Depends(require_permissions("schedules:trigger"))])
+async def trigger_scan(
+    repo_id: str,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Trigger an immediate scan for a repository.
+
+    This runs the scan now, regardless of the schedule.
+
+    Args:
+        repo_id: Repository UUID
+    """
+    schedule = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == repo_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .first()
+    )
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found for this repository")
+
+    from src.api.scheduler import get_scheduler
+    scheduler_service = get_scheduler()
+
+    if not scheduler_service.schedule_executor:
+        raise HTTPException(status_code=503, detail="Scheduler not running")
+
+    success = await scheduler_service.schedule_executor.trigger_immediate(str(schedule.id))
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to trigger scan")
+
+    return TriggerResponse(status="triggered", message="Scan triggered for repository")

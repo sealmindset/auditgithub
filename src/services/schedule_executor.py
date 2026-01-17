@@ -6,11 +6,20 @@ import asyncio
 import logging
 import subprocess
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
+# APScheduler imports (optional at import time for environments without it)
+try:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.date import DateTrigger
+    APSCHEDULER_AVAILABLE = True
+except ImportError:
+    APSCHEDULER_AVAILABLE = False
+    AsyncIOScheduler = None
+    CronTrigger = None
+    DateTrigger = None
+
 from sqlalchemy.orm import Session
 
 from src.api import models
