@@ -23,6 +23,7 @@ import { AIInsightsPanel } from "@/components/dashboard/AIInsightsPanel"
 import { FeedbackButton } from "@/components/dashboard/FeedbackButton"
 import { ExecutiveSummaryCards } from "@/components/dashboard/ExecutiveSummaryCards"
 import { SeverityChart } from "@/components/dashboard/SeverityChart"
+import { SecurityOverviewWidget } from "@/components/dashboard/SecurityOverviewWidget"
 
 const API_BASE = "http://localhost:8000"
 
@@ -173,6 +174,11 @@ export default function DashboardPage() {
                     />
                 </div>
                 <HeroMetrics data={heroMetrics} />
+            </div>
+
+            {/* Security Overview Widget */}
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <SecurityOverviewWidget />
             </div>
 
             {/* Main Content Grid */}
