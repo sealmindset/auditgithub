@@ -224,6 +224,44 @@ class ScheduleOverride(Base):
     user = relationship("User", foreign_keys=[overridden_by])
 
 
+class CommitAnalysis(Base):
+    """
+    Cached commit analysis results for AI scheduling decisions.
+    Stores patterns, file types, and contributor activity to avoid repeated GitHub API calls.
+    """
+    __tablename__ = "commit_analyses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+
+    # Analysis results (JSONB for flexibility)
+    analysis_data = Column(JSONB, nullable=False)
+
+    # Cache metadata
+    commit_count = Column(Integer, nullable=False, default=0)
+    last_commit_sha = Column(String(40))  # Track newest commit analyzed
+    is_dormant = Column(Boolean, default=False)
+
+    # Timestamps
+    analyzed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)  # Cache TTL
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    repository = relationship("Repository", backref="commit_analyses")
+    organization = relationship("Organization")
+
+    # Indexes and constraints
+    __table_args__ = (
+        Index("ix_commit_analyses_repository_id", "repository_id"),
+        Index("ix_commit_analyses_expires_at", "expires_at"),
+        UniqueConstraint("repository_id", name="uq_commit_analyses_repository"),
+    )
+
+
 # =============================================================================
 # SCAN RUN - Scan execution records
 # =============================================================================
