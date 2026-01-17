@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
+import { OrganizationSelector } from "@/components/OrganizationSelector"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -241,11 +242,14 @@ export default function SchedulerPage() {
     if (error) {
         return (
             <div className="flex flex-1 flex-col gap-6 p-6">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Scan Scheduler</h1>
-                    <p className="text-muted-foreground">
-                        AI-powered scan scheduling with manual override support.
-                    </p>
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Scan Scheduler</h1>
+                        <p className="text-muted-foreground">
+                            AI-powered scan scheduling with manual override support.
+                        </p>
+                    </div>
+                    <OrganizationSelector />
                 </div>
                 <div className="flex flex-col items-center justify-center h-96 border border-dashed rounded-lg">
                     <p className="text-destructive">{error}</p>
@@ -259,11 +263,14 @@ export default function SchedulerPage() {
 
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Scan Scheduler</h1>
-                <p className="text-muted-foreground">
-                    AI-powered scan scheduling with manual override support.
-                </p>
+            <div className="flex items-start justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Scan Scheduler</h1>
+                    <p className="text-muted-foreground">
+                        AI-powered scan scheduling with manual override support.
+                    </p>
+                </div>
+                <OrganizationSelector />
             </div>
             <SchedulerCalendar
                 schedules={schedules}
