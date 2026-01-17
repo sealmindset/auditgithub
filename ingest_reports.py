@@ -610,6 +610,177 @@ def ingest_api_endpoints(session, repo_id, org_id, report_path):
         logger.error(f"Error ingesting API endpoints from {report_path}: {e}")
         return 0
 
+def ingest_threat_assessments(session, repo_id, org_id, report_path):
+    """Ingest API threat assessments from threat_matrix.json report."""
+    try:
+        with open(report_path, 'r') as f:
+            threats = json.load(f)
+
+        if not threats:
+            return 0
+
+        count = 0
+        for threat in threats:
+            endpoint = threat.get('endpoint', 'unknown')
+            if not endpoint or endpoint == 'unknown':
+                continue
+
+            file_path = threat.get('file', '')
+            line_number = threat.get('line', 0)
+            risk_score = threat.get('risk_score', 0)
+
+            # Process each vulnerability for this endpoint
+            vulnerabilities = threat.get('vulnerabilities', [])
+            for vuln in vulnerabilities:
+                # Check if assessment already exists (DEDUPLICATION)
+                result = session.execute(
+                    text("""SELECT id FROM api_threat_assessments
+                            WHERE repository_id = :repo_id
+                            AND endpoint = :endpoint
+                            AND owasp_id = :owasp_id
+                            AND file_path = :file_path
+                            AND line_number = :line_number"""),
+                    {
+                        "repo_id": repo_id,
+                        "endpoint": endpoint,
+                        "owasp_id": vuln.get('owasp_id', ''),
+                        "file_path": file_path,
+                        "line_number": line_number
+                    }
+                ).fetchone()
+
+                if result:
+                    continue
+
+                # Create threat assessment record
+                assessment_id = str(uuid.uuid4())
+                session.execute(
+                    text("""
+                        INSERT INTO api_threat_assessments
+                        (id, organization_id, repository_id, endpoint, file_path, line_number,
+                         owasp_id, vulnerability_title, severity, description, risk_score,
+                         created_at, updated_at)
+                        VALUES
+                        (:id, :org_id, :repo_id, :endpoint, :file_path, :line_number,
+                         :owasp_id, :vuln_title, :severity, :description, :risk_score,
+                         :created_at, :updated_at)
+                    """),
+                    {
+                        "id": assessment_id,
+                        "org_id": org_id,
+                        "repo_id": repo_id,
+                        "endpoint": endpoint,
+                        "file_path": file_path,
+                        "line_number": line_number,
+                        "owasp_id": vuln.get('owasp_id', ''),
+                        "vuln_title": vuln.get('title', ''),
+                        "severity": vuln.get('severity', 'UNKNOWN'),
+                        "description": vuln.get('description', ''),
+                        "risk_score": risk_score,
+                        "created_at": datetime.now(),
+                        "updated_at": datetime.now()
+                    }
+                )
+                count += 1
+
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error ingesting threat assessments from {report_path}: {e}")
+        return 0
+
+def ingest_openapi_specs(session, repo_id, org_id, report_path):
+    """Ingest OpenAPI specification from openapi.json or openapi.yaml report."""
+    try:
+        # Check if spec already exists for this repository
+        result = session.execute(
+            text("SELECT id FROM openapi_specs WHERE repository_id = :repo_id"),
+            {"repo_id": repo_id}
+        ).fetchone()
+
+        if result:
+            # Update existing spec
+            with open(report_path, 'r') as f:
+                spec_content = f.read()
+
+            spec_format = 'yaml' if report_path.suffix == '.yaml' else 'json'
+
+            # Parse to get endpoint count and version
+            if spec_format == 'json':
+                spec_data = json.loads(spec_content)
+            else:
+                # For YAML, just store as-is (parsing YAML requires pyyaml)
+                spec_data = {}
+
+            endpoint_count = len(spec_data.get('paths', {}))
+            version = spec_data.get('info', {}).get('version', '1.0.0')
+
+            session.execute(
+                text("""
+                    UPDATE openapi_specs
+                    SET spec_content = :content,
+                        spec_format = :format,
+                        version = :version,
+                        endpoint_count = :count,
+                        updated_at = :updated_at
+                    WHERE repository_id = :repo_id
+                """),
+                {
+                    "content": spec_content,
+                    "format": spec_format,
+                    "version": version,
+                    "count": endpoint_count,
+                    "updated_at": datetime.now(),
+                    "repo_id": repo_id
+                }
+            )
+        else:
+            # Create new spec
+            with open(report_path, 'r') as f:
+                spec_content = f.read()
+
+            spec_format = 'yaml' if report_path.suffix == '.yaml' else 'json'
+
+            # Parse to get endpoint count and version
+            if spec_format == 'json':
+                spec_data = json.loads(spec_content)
+            else:
+                spec_data = {}
+
+            endpoint_count = len(spec_data.get('paths', {}))
+            version = spec_data.get('info', {}).get('version', '1.0.0')
+
+            spec_id = str(uuid.uuid4())
+            session.execute(
+                text("""
+                    INSERT INTO openapi_specs
+                    (id, organization_id, repository_id, spec_content, spec_format,
+                     version, endpoint_count, created_at, updated_at)
+                    VALUES
+                    (:id, :org_id, :repo_id, :content, :format,
+                     :version, :count, :created_at, :updated_at)
+                """),
+                {
+                    "id": spec_id,
+                    "org_id": org_id,
+                    "repo_id": repo_id,
+                    "content": spec_content,
+                    "format": spec_format,
+                    "version": version,
+                    "count": endpoint_count,
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+            )
+
+        session.commit()
+        return 1
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error ingesting OpenAPI spec from {report_path}: {e}")
+        return 0
+
 def ingest_organization_reports(org_name):
     """Ingest all reports for an organization.
 
@@ -697,6 +868,25 @@ def ingest_organization_reports(org_name):
                 count = ingest_api_endpoints(session, repo_id, org_id, api_file)
                 if count > 0:
                     logger.info(f"    Ingested {count} API endpoints")
+
+            # Ingest AI threat assessments from threat_matrix.json
+            threat_file = repo_dir / f"{repo_name}_threat_matrix.json"
+            if threat_file.exists():
+                count = ingest_threat_assessments(session, repo_id, org_id, threat_file)
+                if count > 0:
+                    logger.info(f"    Ingested {count} threat assessments")
+
+            # Ingest OpenAPI specifications
+            openapi_json = repo_dir / f"{repo_name}_openapi.json"
+            openapi_yaml = repo_dir / f"{repo_name}_openapi.yaml"
+            if openapi_json.exists():
+                count = ingest_openapi_specs(session, repo_id, org_id, openapi_json)
+                if count > 0:
+                    logger.info(f"    Ingested OpenAPI spec (JSON)")
+            elif openapi_yaml.exists():
+                count = ingest_openapi_specs(session, repo_id, org_id, openapi_yaml)
+                if count > 0:
+                    logger.info(f"    Ingested OpenAPI spec (YAML)")
 
         logger.info(f"Completed {org_name}: {total_repos} repositories, {total_findings} findings")
 
