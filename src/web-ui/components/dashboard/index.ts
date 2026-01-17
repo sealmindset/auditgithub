@@ -6,3 +6,10 @@ export { ThreatRadar } from './ThreatRadar'
 export { FeedbackButton } from './FeedbackButton'
 export { ExecutiveSummaryCards } from './ExecutiveSummaryCards'
 export { SeverityChart } from './SeverityChart'
+
+// Phase 11: Widget System Foundation
+export { Widget, WidgetHeader, WidgetContent, WidgetSkeleton, WidgetError } from './Widget'
+export { DashboardGrid, GridItem } from './DashboardGrid'
+
+// Phase 12: Security Overview Widget
+export { SecurityOverviewWidget } from './SecurityOverviewWidget'
