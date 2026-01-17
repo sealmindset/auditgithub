@@ -19,3 +19,6 @@ export { ScanActivityWidget } from './ScanActivityWidget'
 
 // Phase 13.1: Background Jobs Widget
 export { BackgroundJobsWidget } from './BackgroundJobsWidget'
+
+// Phase 14: Repository Health Widget
+export { RepositoryHealthWidget } from './RepositoryHealthWidget'
