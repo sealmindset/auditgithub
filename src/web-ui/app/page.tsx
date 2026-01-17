@@ -27,6 +27,7 @@ import { SecurityOverviewWidget } from "@/components/dashboard/SecurityOverviewW
 import { ScanActivityWidget } from "@/components/dashboard/ScanActivityWidget"
 import { BackgroundJobsWidget } from "@/components/dashboard/BackgroundJobsWidget"
 import { RepositoryHealthWidget } from "@/components/dashboard/RepositoryHealthWidget"
+import { FindingTrendsWidget } from "@/components/dashboard/FindingTrendsWidget"
 
 const API_BASE = "http://localhost:8000"
 
@@ -188,6 +189,9 @@ export default function DashboardPage() {
 
             {/* Repository Health Widget - Full Width */}
             <RepositoryHealthWidget />
+
+            {/* Finding Trends Widget - Full Width */}
+            <FindingTrendsWidget />
 
             {/* Main Content Grid */}
             <div className="grid gap-6 lg:grid-cols-5">
