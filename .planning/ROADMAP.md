@@ -1,8 +1,8 @@
-# Roadmap: AuditGH Enterprise Security Platform
+# Roadmap: Rescan Scheduler
 
 ## Overview
 
-Transform the existing security auditing platform from a prototype into a production-ready enterprise SaaS. The journey begins with critical security remediation, then builds authentication and authorization infrastructure, implements proper multi-tenant isolation, and culminates with production deployment on AWS EKS with comprehensive testing and centralized logging.
+Build an AI-powered intelligent scanning scheduler that automatically determines optimal rescan timing based on commit patterns, finding history, file types, contributor activity, and risk scores. The journey progresses from database foundation through AI engine to a beautiful calendar-based UI with drag-and-drop rescheduling and manual override capabilities.
 
 ## Domain Expertise
 
@@ -16,107 +16,158 @@ None
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Critical Security Remediation** - Fix SQL injection, rotate credentials, implement proper error handling (Completed 2026-01-12)
-- [x] **Phase 2: Authentication Foundation** - Set up OIDC/SSO infrastructure with Entra ID and Okta (Completed 2026-01-12)
-- [ ] **Phase 3: RBAC System** - Implement 5-tier role hierarchy with permission system
-- [ ] **Phase 4: Multi-Tenant Architecture** - Schema-per-tenant PostgreSQL with complete isolation
-- [ ] **Phase 5: API Security & Sessions** - JWT authentication, token refresh, secure endpoints
-- [ ] **Phase 6: Cribl Log Integration** - Centralized logging with structured pipeline
-- [ ] **Phase 7: Test Infrastructure** - Pytest, test coverage, CI/CD foundation
-- [ ] **Phase 8: AWS EKS Deployment** - Kubernetes manifests, Helm charts, production infrastructure
+- [ ] **Phase 1: Database Schema** - Schedule persistence models and migrations
+- [ ] **Phase 2: Schedule API** - Backend CRUD endpoints for schedules
+- [ ] **Phase 3: Commit Analysis Service** - GitHub commit pattern extraction
+- [ ] **Phase 4: AI Scheduling Engine** - Core AI logic for schedule recommendations
+- [ ] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler
+- [ ] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view
+- [ ] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling
+- [ ] **Phase 8: Override Management** - Manual schedule locks and custom args
+- [ ] **Phase 9: Multi-Org Support** - Organization switching in scheduler
+- [ ] **Phase 10: Scan Type Customization** - Per-repo tool selection
 
 ## Phase Details
 
-### Phase 1: Critical Security Remediation
-**Goal**: Eliminate critical security vulnerabilities identified in codebase analysis before building new features
+### Phase 1: Database Schema
+**Goal**: Create SQLAlchemy models for scan schedules with org/repo relationships
 **Depends on**: Nothing (first phase)
-**Research**: Unlikely (internal code fixes, established patterns)
-**Plans**: 3 plans
+**Research**: Unlikely (existing SQLAlchemy patterns in codebase)
+**Plans**: TBD
 
-1. **01-01: Fix SQL Injection Vulnerabilities** - Replace f-string SQL with parameterized queries in database_router.py and init_db.py
-2. **01-02: Rotate Exposed Credentials** - Rotate GitHub, Azure AI, and Jira credentials; implement .env.example template
-3. **01-03: Replace Bare Exception Handlers** - Fix 50+ bare except blocks with specific exceptions and proper logging
+Key deliverables:
+- ScanSchedule model with schedule_type, frequency, time_window, next_run
+- ScheduleOverride model for manual locks
+- Alembic migration
+- Foreign keys to organizations and repositories tables
 
-### Phase 2: Authentication Foundation
-**Goal**: Implement OIDC/SSO authentication with Entra ID and Okta for enterprise user access
+### Phase 2: Schedule API
+**Goal**: Backend REST endpoints for schedule CRUD operations
 **Depends on**: Phase 1
-**Research**: Completed (2026-01-12)
-**Research topics**: OIDC/OAuth2 flows, Entra ID app registration and configuration, Okta app setup, FastAPI auth middleware patterns, token validation strategies
-**Plans**: 3 plans
+**Research**: Unlikely (existing FastAPI router patterns)
+**Plans**: TBD
 
-1. **02-01: OIDC Foundation & Provider Setup** - Install Authlib and dependencies, create src/auth/ module, configure Entra ID and Okta with OIDC discovery, integrate SessionMiddleware
-2. **02-02: Login Flow with PKCE** - Implement /auth/login/{provider} with forced PKCE, /auth/callback/{provider} with token exchange and email_verified validation, /auth/logout and /auth/me endpoints
-3. **02-03: JWT Validation & Protected Routes** - Create JWT validation middleware with JWKS 24-hour caching, implement algorithm whitelist and claim validation, build FastAPI auth dependencies, protect 3 representative API routes
+Key deliverables:
+- GET /schedules - list all schedules for org
+- GET /schedules/{repo_id} - get schedule for specific repo
+- PUT /schedules/{repo_id} - update schedule
+- POST /schedules/{repo_id}/override - create manual override
+- DELETE /schedules/{repo_id}/override - remove override
 
-### Phase 3: RBAC System
-**Goal**: Build comprehensive role-based access control with 5-tier hierarchy (Super Admin, Admin, Analyst, Manager, User)
-**Depends on**: Phase 2
-**Research**: Completed (2026-01-12)
-**Research topics**: RBAC implementation patterns in FastAPI, permission decorator design, role hierarchy best practices, resource-level permissions, audit logging for access control
-**Plans**: 4 plans (recommended)
+### Phase 3: Commit Analysis Service
+**Goal**: Extract commit patterns from GitHub for scheduling decisions
+**Depends on**: Phase 1
+**Research**: Likely (GitHub API for commit history, file types)
+**Research topics**: GitHub commits API pagination, commit file types, rate limiting considerations
 
-1. **03-01: RBAC Database Schema** - ✅ Completed (2026-01-12) - Create Role, Permission, RolePermission, UserRole tables with 5-tier hierarchy and tenant-scoped roles
-2. **03-02: Permission Dependencies & Decorators** - ✅ Completed (2026-01-13) - Implement require_permissions(), require_role(), get_user_permissions() with Redis caching (5-min TTL)
-3. **03-03: Audit Logging Infrastructure** - ✅ Completed (2026-01-13) - Structured audit logging for authorization decisions with Cribl integration and automatic logging
-4. **03-04: Protect API Routes** - Add permission dependencies to all 22+ API routers with RBAC enforcement
+Key deliverables:
+- CommitAnalyzer class that fetches commit history
+- Pattern extraction: frequency, typical timing, file types modified
+- Contributor activity analysis
+- Caching to avoid repeated API calls
 
-Plans will be finalized during phase planning.
-
-### Phase 4: Multi-Tenant Architecture
-**Goal**: Implement schema-per-tenant PostgreSQL architecture with complete data isolation between organizations
+### Phase 4: AI Scheduling Engine
+**Goal**: AI-powered schedule recommendation based on full context analysis
 **Depends on**: Phase 3
-**Research**: Likely (schema isolation patterns)
-**Research topics**: PostgreSQL schema-per-tenant implementation, SQLAlchemy multi-schema configuration, tenant resolution from authentication context, schema migration strategies, connection pooling per tenant
+**Research**: Likely (AI provider integration, scheduling algorithm design)
+**Research topics**: Prompt engineering for schedule analysis, existing AI agent patterns
+
+Key deliverables:
+- ScheduleRecommender class using AI providers
+- Input aggregation: commits, findings, risk scores, file types
+- Schedule frequency determination (daily/weekly/bi-weekly/monthly)
+- Time window recommendation based on commit patterns
+- Batch processing for initial schedule generation
+
+### Phase 5: Schedule Execution
+**Goal**: Integrate schedules with APScheduler and scan_repos.py
+**Depends on**: Phase 2, Phase 4
+**Research**: Unlikely (existing APScheduler in src/api/scheduler.py)
 **Plans**: TBD
 
-Plans will be defined during phase planning.
+Key deliverables:
+- APScheduler job registration for each schedule
+- scan_repos.py invocation with correct arguments
+- Schedule status updates (last_run, next_run)
+- New repo detection and immediate scan trigger
 
-### Phase 5: API Security & Sessions
-**Goal**: Secure all API endpoints with JWT authentication, implement token refresh, and proper session management
-**Depends on**: Phase 4
-**Research**: Unlikely (JWT is well-established, building on Phase 2 auth foundation)
-**Plans**: TBD
+### Phase 6: Calendar UI Foundation
+**Goal**: Calendar component with basic schedule visualization
+**Depends on**: Phase 2
+**Research**: Likely (React calendar library selection)
+**Research topics**: FullCalendar vs react-big-calendar vs alternatives, Radix/Tailwind integration, license considerations
 
-Plans will be defined during phase planning.
+Key deliverables:
+- Calendar library integration
+- Monthly/weekly view switching
+- Schedule events rendered on calendar
+- Time window visualization (morning/afternoon/evening/night)
+- Styling to match existing UI patterns
 
-### Phase 6: Cribl Log Integration
-**Goal**: Integrate Cribl for centralized log management with structured logging pipeline
-**Depends on**: Phase 5
-**Research**: Likely (external service integration)
-**Research topics**: Cribl HTTP Event Collector API, structured logging formats for security events, loguru-to-Cribl pipeline configuration, log retention policies, sensitive data redaction
-**Plans**: TBD
-
-Plans will be defined during phase planning.
-
-### Phase 7: Test Infrastructure
-**Goal**: Establish comprehensive test infrastructure with Pytest, achieve test coverage, and set up CI/CD foundation
+### Phase 7: Calendar Interactions
+**Goal**: Drag-and-drop rescheduling on calendar
 **Depends on**: Phase 6
-**Research**: Unlikely (Pytest is established, standard testing patterns)
+**Research**: Unlikely (calendar library drag-drop features)
 **Plans**: TBD
 
-Plans will be defined during phase planning.
+Key deliverables:
+- Event drag-and-drop support
+- Date change API integration
+- Time window selection on drop
+- Optimistic UI updates
+- Error handling and rollback
 
-### Phase 8: AWS EKS Deployment
-**Goal**: Deploy platform to AWS EKS with Kubernetes manifests, Helm charts, and Minikube local testing environment
+### Phase 8: Override Management
+**Goal**: Manual schedule locks and custom scan arguments
 **Depends on**: Phase 7
-**Research**: Likely (Kubernetes deployment architecture)
-**Research topics**: EKS cluster setup and best practices, Helm chart structure for multi-container apps, PostgreSQL in Kubernetes (StatefulSet vs managed RDS), AWS Secrets Manager integration, Minikube local development workflow, ingress controller configuration
+**Research**: Unlikely (CRUD operations with existing patterns)
 **Plans**: TBD
 
-Plans will be defined during phase planning.
+Key deliverables:
+- Override modal/dialog UI
+- Lock indicator on calendar events
+- Custom argument editor (--target, --repo, --overridescan defaults)
+- Override removal with confirmation
+- Visual distinction between AI and manual schedules
+
+### Phase 9: Multi-Org Support
+**Goal**: Organization switching in scheduler UI
+**Depends on**: Phase 8
+**Research**: Unlikely (existing org context patterns)
+**Plans**: TBD
+
+Key deliverables:
+- Org selector integration with scheduler page
+- Schedule data filtering by org
+- Context persistence across navigation
+- Org-specific schedule statistics
+
+### Phase 10: Scan Type Customization
+**Goal**: Per-repo tool selection for scans
+**Depends on**: Phase 8
+**Research**: Unlikely (configuration UI patterns)
+**Plans**: TBD
+
+Key deliverables:
+- Tool selection UI in override modal
+- Available tools enumeration from scan infrastructure
+- Tool configuration persistence
+- Default vs custom tool set indicator
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Critical Security Remediation | 3/3 | Complete | 2026-01-12 |
-| 2. Authentication Foundation | 3/3 | Complete | 2026-01-12 |
-| 3. RBAC System | 4/4 | Complete | 2026-01-13 |
-| 4. Multi-Tenant Architecture | 0/TBD | Not started | - |
-| 5. API Security & Sessions | 0/TBD | Not started | - |
-| 6. Cribl Log Integration | 0/TBD | Not started | - |
-| 7. Test Infrastructure | 0/TBD | Not started | - |
-| 8. AWS EKS Deployment | 0/TBD | Not started | - |
+| 1. Database Schema | 0/TBD | Not started | - |
+| 2. Schedule API | 0/TBD | Not started | - |
+| 3. Commit Analysis | 0/TBD | Not started | - |
+| 4. AI Scheduling Engine | 0/TBD | Not started | - |
+| 5. Schedule Execution | 0/TBD | Not started | - |
+| 6. Calendar UI Foundation | 0/TBD | Not started | - |
+| 7. Calendar Interactions | 0/TBD | Not started | - |
+| 8. Override Management | 0/TBD | Not started | - |
+| 9. Multi-Org Support | 0/TBD | Not started | - |
+| 10. Scan Type Customization | 0/TBD | Not started | - |
