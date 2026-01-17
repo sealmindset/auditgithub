@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_, case, desc
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -1017,3 +1017,33 @@ async def get_executive_summary(db: Session = Depends(get_tenant_db)):
             summary=summary
         )
     )
+
+
+@router.get("/recent-scans", dependencies=[Depends(require_permissions("scans:read"))])
+async def get_recent_scans(limit: int = 10, db: Session = Depends(get_tenant_db)):
+    """Get recent scan runs across all repositories."""
+    query = db.query(models.ScanRun).options(
+        joinedload(models.ScanRun.repository)
+    )
+
+    # Apply org filter for multi-tenant
+    query = apply_org_filter(query, models.ScanRun)
+
+    # Order by created_at desc, limit results
+    scans = query.order_by(models.ScanRun.created_at.desc()).limit(limit).all()
+
+    return [
+        {
+            "id": str(scan.id),
+            "repository_name": scan.repository.name if scan.repository else "Unknown",
+            "scan_type": scan.scan_type,
+            "status": scan.status,
+            "findings_count": scan.findings_count or 0,
+            "new_findings_count": scan.new_findings_count or 0,
+            "created_at": scan.created_at.isoformat() if scan.created_at else None,
+            "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+            "duration_seconds": scan.duration_seconds,
+            "triggered_by": scan.triggered_by
+        }
+        for scan in scans
+    ]
