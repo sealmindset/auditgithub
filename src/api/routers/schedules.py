@@ -221,3 +221,87 @@ def get_schedule(
         created_at=schedule.created_at,
         updated_at=schedule.updated_at
     )
+
+
+@router.put("/{repo_id}", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:update"))])
+def update_schedule(
+    repo_id: str,
+    update: ScheduleUpdate,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update the scan schedule for a repository.
+
+    This creates a manual override and locks the schedule from AI changes.
+
+    Args:
+        repo_id: Repository UUID
+        update: New schedule configuration
+    """
+    schedule = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == repo_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .first()
+    )
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found for this repository")
+
+    # Create override audit record
+    override = models.ScheduleOverride(
+        schedule_id=schedule.id,
+        previous_frequency=schedule.frequency,
+        previous_day_of_week=schedule.day_of_week,
+        previous_time_window=schedule.time_window,
+        previous_scan_arguments=schedule.scan_arguments,
+        new_frequency=update.frequency.value,
+        new_day_of_week=update.day_of_week,
+        new_time_window=update.time_window.value,
+        new_scan_arguments=update.scan_arguments,
+        override_reason=update.override_reason,
+        overridden_by=current_user.id
+    )
+    db.add(override)
+
+    # Update schedule
+    schedule.frequency = update.frequency.value
+    schedule.day_of_week = update.day_of_week
+    schedule.time_window = update.time_window.value
+    if update.scan_arguments is not None:
+        schedule.scan_arguments = update.scan_arguments
+
+    # Mark as manual and lock
+    schedule.schedule_type = "manual"
+    schedule.is_locked = True
+    schedule.locked_at = datetime.utcnow()
+    schedule.locked_by = current_user.id
+
+    db.commit()
+    db.refresh(schedule)
+
+    # Get repository name for response
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    repo_name = repo.name if repo else "Unknown"
+
+    return ScheduleResponse(
+        id=str(schedule.id),
+        repository_id=str(schedule.repository_id),
+        repository_name=repo_name,
+        schedule_type=schedule.schedule_type,
+        frequency=schedule.frequency,
+        day_of_week=schedule.day_of_week,
+        time_window=schedule.time_window,
+        scan_arguments=schedule.scan_arguments,
+        next_scheduled_at=schedule.next_scheduled_at,
+        last_executed_at=schedule.last_executed_at,
+        last_execution_status=schedule.last_execution_status,
+        is_locked=schedule.is_locked,
+        locked_at=schedule.locked_at,
+        locked_by_email=current_user.email,
+        ai_reasoning=schedule.ai_reasoning,
+        ai_confidence=float(schedule.ai_confidence) if schedule.ai_confidence else None,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at
+    )
