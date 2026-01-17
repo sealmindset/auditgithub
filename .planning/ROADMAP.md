@@ -19,8 +19,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Database Schema** - Schedule persistence models and migrations ✓
 - [x] **Phase 2: Schedule API** - Backend CRUD endpoints for schedules ✓
 - [x] **Phase 3: Commit Analysis Service** - GitHub commit pattern extraction ✓
-- [ ] **Phase 4: AI Scheduling Engine** - Core AI logic for schedule recommendations
-- [ ] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler
+- [x] **Phase 4: AI Scheduling Engine** - Core AI logic for schedule recommendations ✓
+- [x] **Phase 5: Schedule Execution** - Integration with scan_repos.py and APScheduler ✓
 - [ ] **Phase 6: Calendar UI Foundation** - Calendar library setup and basic view
 - [ ] **Phase 7: Calendar Interactions** - Drag-and-drop rescheduling
 - [ ] **Phase 8: Override Management** - Manual schedule locks and custom args
@@ -70,11 +70,13 @@ Key deliverables:
 - Contributor activity analysis
 - Caching to avoid repeated API calls
 
-### Phase 4: AI Scheduling Engine
+### Phase 4: AI Scheduling Engine ✓
 **Goal**: AI-powered schedule recommendation based on full context analysis
 **Depends on**: Phase 3
 **Research**: Likely (AI provider integration, scheduling algorithm design)
 **Research topics**: Prompt engineering for schedule analysis, existing AI agent patterns
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - ScheduleRecommender class using AI providers
@@ -83,11 +85,12 @@ Key deliverables:
 - Time window recommendation based on commit patterns
 - Batch processing for initial schedule generation
 
-### Phase 5: Schedule Execution
+### Phase 5: Schedule Execution ✓
 **Goal**: Integrate schedules with APScheduler and scan_repos.py
 **Depends on**: Phase 2, Phase 4
 **Research**: Unlikely (existing APScheduler in src/api/scheduler.py)
-**Plans**: TBD
+**Plans**: 1/1 complete
+**Completed**: 2026-01-17
 
 Key deliverables:
 - APScheduler job registration for each schedule
@@ -168,8 +171,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Database Schema | 1/1 | Complete ✓ | 2026-01-17 |
 | 2. Schedule API | 1/1 | Complete ✓ | 2026-01-17 |
 | 3. Commit Analysis | 1/1 | Complete ✓ | 2026-01-17 |
-| 4. AI Scheduling Engine | 0/TBD | Not started | - |
-| 5. Schedule Execution | 0/TBD | Not started | - |
+| 4. AI Scheduling Engine | 1/1 | Complete ✓ | 2026-01-17 |
+| 5. Schedule Execution | 1/1 | Complete ✓ | 2026-01-17 |
 | 6. Calendar UI Foundation | 0/TBD | Not started | - |
 | 7. Calendar Interactions | 0/TBD | Not started | - |
 | 8. Override Management | 0/TBD | Not started | - |

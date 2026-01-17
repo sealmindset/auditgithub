@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Smart AI scheduling that automatically adapts scan frequency to repository activity patterns — high-activity repos get scanned more often, dormant repos less often, all without manual configuration.
-**Current focus:** Phase 4 — AI Scheduling Engine
+**Current focus:** Phase 5 — Schedule Execution
 
 ## Current Position
 
-Phase: 4 of 10 (AI Scheduling Engine)
+Phase: 5 of 10 (Schedule Execution)
 Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-01-17 — Completed 04-01-PLAN.md
+Last activity: 2026-01-17 — Completed 05-01-PLAN.md
 
-Progress: ████░░░░░░ 40%
+Progress: █████░░░░░ 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 2.8 min
-- Total execution time: 11 min
+- Total execution time: 14 min
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: ████░░░░░░ 40%
 | 2. Schedule API | 1 | 3 min | 3 min |
 | 3. Commit Analysis | 1 | 3 min | 3 min |
 | 4. AI Scheduling Engine | 1 | 3 min | 3 min |
+| 5. Schedule Execution | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 3 min, 3 min, 3 min
+- Last 5 plans: 2 min, 3 min, 3 min, 3 min, 3 min
 - Trend: —
 
 ## Accumulated Context
@@ -58,6 +59,10 @@ Recent decisions affecting current work:
 - Heuristic escalation: critical/high findings or risk >= 0.7 → weekly minimum (Phase 4)
 - Batch processing size of 5 repos with 1s delay for rate limiting (Phase 4)
 - Confidence levels: AI=variable, Heuristics=0.6, New repo=0.7 (Phase 4)
+- Time window hours: morning=8, afternoon=14, evening=20, night=2 (Phase 5)
+- Bi-weekly via weekly cron + 10-day skip logic (Phase 5)
+- 2-hour per-repo scan timeout (Phase 5)
+- Hourly schedule sync from database (Phase 5)
 
 ### Deferred Issues
 
@@ -74,5 +79,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17
-Stopped at: Completed 04-01-PLAN.md (Phase 4 complete)
+Stopped at: Completed 05-01-PLAN.md (Phase 5 complete)
 Resume file: None
