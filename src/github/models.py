@@ -62,3 +62,41 @@ class LanguageStats:
         if not self.total_bytes or language not in self.languages:
             return 0.0
         return (self.languages[language] / self.total_bytes) * 100
+
+
+@dataclass
+class CommitPattern:
+    """Commit timing and frequency patterns for scheduling decisions."""
+    commits_per_day: float
+    commits_per_week: float
+    peak_hours: List[int]  # 0-23
+    peak_days: List[int]  # 0=Monday, 6=Sunday
+    suggested_time_window: str  # morning/afternoon/evening/night
+    suggested_frequency: str  # daily/weekly/bi-weekly/monthly
+
+
+@dataclass
+class FileTypeStats:
+    """File extension statistics from commits."""
+    extensions: Dict[str, int] = field(default_factory=dict)  # extension -> count
+    primary_language: Optional[str] = None
+
+
+@dataclass
+class ContributorActivity:
+    """Contributor commit activity for scheduling analysis."""
+    login: str
+    commits_last_30_days: int
+    last_commit_date: Optional[datetime] = None
+
+
+@dataclass
+class CommitAnalysisResult:
+    """Complete commit analysis result for AI scheduling decisions."""
+    repository_name: str
+    analyzed_at: datetime
+    commit_count: int
+    patterns: CommitPattern
+    file_types: FileTypeStats
+    top_contributors: List[ContributorActivity]
+    is_dormant: bool  # No commits in 90+ days
