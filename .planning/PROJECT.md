@@ -18,20 +18,21 @@ Smart AI scheduling that automatically adapts scan frequency to repository activ
 - ✓ Finding storage and history — existing (`src/api/models.py`)
 - ✓ AI provider infrastructure — existing (`src/ai_agent/providers/`)
 - ✓ React UI with Radix/Tailwind — existing (`src/web-ui/`)
+- ✓ AI scheduling engine that analyzes commit patterns, finding history, file types, contributor activity, and risk scores — v1.0
+- ✓ Automatic schedule generation for all repos based on AI analysis — v1.0
+- ✓ Calendar view UI showing scheduled scans with day + time window granularity — v1.0
+- ✓ Drag-and-drop rescheduling on calendar — v1.0
+- ✓ Manual override capability with permanent lock (AI won't modify) — v1.0
+- ✓ Per-repo argument customization (`--target <org> --repo <repo> --overridescan` as defaults) — v1.0
+- ✓ New repo handling: immediate scan, then daily until patterns emerge — v1.0
+- ✓ Schedule persistence in database — v1.0
+- ✓ Backend API endpoints for schedule CRUD operations — v1.0
+- ✓ Multi-org support in scheduling (switch between orgs) — v1.0
+- ✓ Scan type customization per repo (which tools to run) — v1.0
 
 ### Active
 
-- [ ] AI scheduling engine that analyzes commit patterns, finding history, file types, contributor activity, and risk scores
-- [ ] Automatic schedule generation for all repos based on AI analysis
-- [ ] Calendar view UI showing scheduled scans with day + time window granularity
-- [ ] Drag-and-drop rescheduling on calendar
-- [ ] Manual override capability with permanent lock (AI won't modify)
-- [ ] Per-repo argument customization (`--target <org> --repo <repo> --overridescan` as defaults)
-- [ ] New repo handling: immediate scan, then daily until patterns emerge
-- [ ] Schedule persistence in database
-- [ ] Backend API endpoints for schedule CRUD operations
-- [ ] Multi-org support in scheduling (switch between orgs)
-- [ ] Scan type customization per repo (which tools to run)
+(None — v1.0 complete)
 
 ### Out of Scope
 
@@ -78,12 +79,33 @@ Smart AI scheduling that automatically adapts scan frequency to repository activ
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Calendar view over table | User preference for visual scheduling interface | — Pending |
-| Manual lock (no AI override) | User wants full control when they set overrides | — Pending |
-| Day + time window granularity | Balance between precision and simplicity | — Pending |
-| Full context AI analysis | More inputs = smarter scheduling decisions | — Pending |
-| New repos default to daily | Conservative approach until patterns emerge | — Pending |
-| No reasoning display | Keep UI clean, user trusts AI decisions | — Pending |
+| Calendar view over table | User preference for visual scheduling interface | ✓ Good |
+| Manual lock (no AI override) | User wants full control when they set overrides | ✓ Good |
+| Day + time window granularity | Balance between precision and simplicity | ✓ Good |
+| Full context AI analysis | More inputs = smarter scheduling decisions | ✓ Good |
+| New repos default to daily | Conservative approach until patterns emerge | ✓ Good |
+| No reasoning display | Keep UI clean, user trusts AI decisions | ✓ Good |
+| react-big-calendar over FullCalendar | MIT license, lighter weight (~50KB vs ~150KB) | ✓ Good |
+| date-fns over moment | Tree-shakeable, modern ESM support | ✓ Good |
+| One schedule per repo (unique constraint) | Prevents duplicate schedules | ✓ Good |
+| 90-day lookback for commit analysis | Sufficient history for pattern detection | ✓ Good |
+| Heuristic fallback when AI unavailable | System remains functional without AI | ✓ Good |
+| Lazy-load history/scanners on tab | Avoid unnecessary API calls | ✓ Good |
+| Empty scanners = all scanners | No storage needed for default state | ✓ Good |
+
+## Current State
+
+**Shipped:** v1.0 Rescan Scheduler (2026-01-17)
+
+**Tech Stack:**
+- Backend: FastAPI + SQLAlchemy + APScheduler
+- Frontend: React 19 + Next.js 16 + react-big-calendar + date-fns
+- Database: PostgreSQL with JSONB for scan_arguments
+
+**Codebase:**
+- ~5,700 net lines added
+- 46 files modified
+- Key new files: `src/api/routers/schedules.py`, `src/services/commit_analyzer.py`, `src/services/schedule_recommender.py`, `src/services/schedule_executor.py`, `src/web-ui/components/SchedulerCalendar.tsx`, `src/web-ui/components/ScheduleOverrideDialog.tsx`
 
 ---
-*Last updated: 2026-01-17 after initialization*
+*Last updated: 2026-01-17 after v1.0 milestone*
