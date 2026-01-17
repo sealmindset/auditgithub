@@ -1047,3 +1047,67 @@ async def get_recent_scans(limit: int = 10, db: Session = Depends(get_tenant_db)
         }
         for scan in scans
     ]
+
+
+@router.get("/finding-trends", dependencies=[Depends(require_permissions("reports:read"))])
+async def get_finding_trends(days: int = 30, db: Session = Depends(get_tenant_db)):
+    """Get finding counts by severity over time for trend charts."""
+    now = datetime.utcnow()
+    start_date = now - timedelta(days=days)
+
+    # Generate date buckets (daily for 30 days, weekly for longer)
+    if days <= 30:
+        interval_days = 1
+        date_format = "%m/%d"
+    elif days <= 90:
+        interval_days = 7
+        date_format = "%m/%d"
+    else:
+        interval_days = 30
+        date_format = "%b '%y"
+
+    severities = ["critical", "high", "medium", "low"]
+    timeline = []
+
+    current_date = start_date
+    while current_date <= now:
+        bucket_end = min(current_date + timedelta(days=interval_days), now)
+
+        # Count findings by severity created in this bucket
+        counts = {"date": current_date.strftime(date_format)}
+        for severity in severities:
+            base_query = apply_org_filter(db.query(models.Finding), models.Finding)
+            count = base_query.filter(
+                models.Finding.severity == severity,
+                models.Finding.created_at >= current_date,
+                models.Finding.created_at < bucket_end
+            ).count()
+            counts[severity] = count
+
+        # Also count total open at this point
+        base_query = apply_org_filter(db.query(models.Finding), models.Finding)
+        counts["total_open"] = base_query.filter(
+            models.Finding.created_at <= bucket_end,
+            or_(
+                models.Finding.resolved_at.is_(None),
+                models.Finding.resolved_at > bucket_end
+            )
+        ).count()
+
+        timeline.append(counts)
+        current_date = bucket_end
+
+    # Get current totals by severity
+    totals = {}
+    for severity in severities:
+        base_query = apply_org_filter(db.query(models.Finding), models.Finding)
+        totals[severity] = base_query.filter(
+            models.Finding.severity == severity,
+            models.Finding.status == "open"
+        ).count()
+
+    return {
+        "days": days,
+        "timeline": timeline,
+        "current_totals": totals
+    }
