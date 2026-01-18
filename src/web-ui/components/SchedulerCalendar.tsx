@@ -538,6 +538,13 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                     >
                         Week
                     </Button>
+                    <Button
+                        variant={view === Views.AGENDA ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setView(Views.AGENDA)}
+                    >
+                        Agenda
+                    </Button>
                 </div>
             </div>
 
