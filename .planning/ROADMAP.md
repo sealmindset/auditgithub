@@ -60,7 +60,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Milestone Goal:** Make the Scheduler page actually usable by showing all repositories, their schedule status, last commit dates, and providing actions to create/modify schedules.
 
 - [x] **Phase 19: Repository Schedule Table** - Table view of all repos with schedule status, last commit, next scan
-- [ ] **Phase 20: Schedule Creation UI** - Create schedules for unscheduled repos, manual or AI-recommended
+- [x] **Phase 20: Schedule Creation UI** - Create schedules for unscheduled repos, manual or AI-recommended
 - [ ] **Phase 21: Schedule Actions** - Trigger immediate scan, edit schedule, view history
 
 ## Phase Details
@@ -168,10 +168,10 @@ Plans:
 **Goal**: Allow users to create schedules for repos that don't have one, with AI recommendation or manual configuration
 **Depends on**: Phase 19
 **Research**: Unlikely (existing form patterns)
-**Plans**: TBD
+**Plans**: 1
 
 Plans:
-- [ ] 20-01: TBD
+- [x] 20-01: Schedule Creation UI
 
 ### Phase 21: Schedule Actions
 **Goal**: Add actions to trigger immediate scan, edit existing schedule, view schedule history
@@ -198,5 +198,5 @@ Plans:
 | 17. Dashboard Customization | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 18. Navigation Redesign | v2.0 | 1/1 | Complete | 2026-01-17 |
 | 19. Repository Schedule Table | v2.1 | 1/1 | Complete | 2026-01-17 |
-| 20. Schedule Creation UI | v2.1 | 0/? | Not started | - |
+| 20. Schedule Creation UI | v2.1 | 1/1 | Complete | 2026-01-17 |
 | 21. Schedule Actions | v2.1 | 0/? | Not started | - |
