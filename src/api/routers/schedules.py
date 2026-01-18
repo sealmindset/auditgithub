@@ -177,9 +177,14 @@ def list_repositories_with_schedules(
 
     Returns all repos with LEFT JOIN to schedules, showing schedule status for each.
     Use filter param to show only scheduled or unscheduled repos.
+    Filters by the currently selected organization.
     """
     from sqlalchemy.orm import aliased
     from sqlalchemy import outerjoin
+    from ..database import get_current_org_id
+
+    # Get current organization context
+    org_id = get_current_org_id()
 
     # Build query with LEFT JOIN to schedules
     query = (
@@ -192,8 +197,13 @@ def list_repositories_with_schedules(
             (models.Repository.id == models.ScanSchedule.repository_id) &
             (models.ScanSchedule.is_active == True)
         )
-        .order_by(models.Repository.name)
     )
+
+    # Filter by organization if context is set
+    if org_id:
+        query = query.filter(models.Repository.organization_id == org_id)
+
+    query = query.order_by(models.Repository.name)
 
     results = query.all()
 
@@ -435,14 +445,24 @@ def list_schedules(
     List all scan schedules for the current organization.
 
     Returns schedules with repository names and lock status.
+    Filters by the currently selected organization.
     """
+    from ..database import get_current_org_id
+
+    # Get current organization context
+    org_id = get_current_org_id()
+
     query = (
         db.query(models.ScanSchedule, models.Repository.name)
         .join(models.Repository, models.ScanSchedule.repository_id == models.Repository.id)
         .filter(models.ScanSchedule.is_active == True)
-        .offset(skip)
-        .limit(limit)
     )
+
+    # Filter by organization if context is set
+    if org_id:
+        query = query.filter(models.Repository.organization_id == org_id)
+
+    query = query.offset(skip).limit(limit)
 
     results = query.all()
     total = db.query(models.ScanSchedule).filter(models.ScanSchedule.is_active == True).count()
