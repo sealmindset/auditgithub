@@ -73,6 +73,236 @@ class FindingResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
+class PaginatedFindingsResponse(BaseModel):
+    """Paginated response for findings with metadata for UI pagination."""
+    items: List[FindingResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+
+
+# Redis cache helper
+def get_redis_client():
+    """Get Redis client for caching."""
+    from src.auth.tokens import redis_client
+    return redis_client
+
+
+def get_findings_cache_key(org_id: Optional[str], page: int, page_size: int,
+                           severity: Optional[str], status: Optional[str],
+                           repo_name: Optional[str], order_by: str) -> str:
+    """Generate cache key for findings query."""
+    return f"findings:v1:{org_id or 'all'}:{page}:{page_size}:{severity or ''}:{status or ''}:{repo_name or ''}:{order_by}"
+
+
+def get_count_cache_key(org_id: Optional[str], severity: Optional[str],
+                        status: Optional[str], repo_name: Optional[str]) -> str:
+    """Generate cache key for findings count."""
+    return f"findings_count:v1:{org_id or 'all'}:{severity or ''}:{status or ''}:{repo_name or ''}"
+
+
+@router.get(
+    "/paginated",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    response_model=PaginatedFindingsResponse
+)
+def get_findings_paginated(
+    page: int = 1,
+    page_size: int = 50,
+    severity: Optional[str] = None,
+    status: Optional[str] = None,
+    repo_name: Optional[str] = None,
+    order_by: Optional[str] = "severity",
+    include_snoozed: Optional[bool] = False,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get paginated findings with caching for better performance.
+
+    Returns findings with pagination metadata for efficient UI rendering.
+    Results are cached in Redis for 60 seconds to reduce database load.
+    """
+    import json
+
+    org_id = get_current_org_id()
+    redis = get_redis_client()
+
+    # Validate pagination params
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 50
+
+    skip = (page - 1) * page_size
+
+    # Try to get count from cache
+    count_cache_key = get_count_cache_key(org_id, severity, status, repo_name)
+    cached_count = None
+    try:
+        cached_count = redis.get(count_cache_key)
+        if cached_count:
+            cached_count = int(cached_count)
+    except Exception as e:
+        logger.warning(f"Redis cache read error: {e}")
+
+    # Build base query for counting
+    count_query = db.query(func.count(models.Finding.id)).join(models.Repository)
+
+    if org_id:
+        count_query = count_query.filter(models.Finding.organization_id == org_id)
+    if severity:
+        count_query = count_query.filter(models.Finding.severity == severity)
+    if status:
+        count_query = count_query.filter(models.Finding.status == status)
+    if repo_name:
+        count_query = count_query.filter(models.Repository.name == repo_name)
+    if not include_snoozed:
+        from sqlalchemy import or_
+        count_query = count_query.filter(
+            or_(
+                models.Finding.snoozed_until.is_(None),
+                models.Finding.snoozed_until < datetime.utcnow()
+            )
+        )
+
+    # Get total count (from cache or query)
+    if cached_count is not None:
+        total = cached_count
+    else:
+        total = count_query.scalar() or 0
+        # Cache count for 60 seconds
+        try:
+            redis.setex(count_cache_key, 60, str(total))
+        except Exception as e:
+            logger.warning(f"Redis cache write error: {e}")
+
+    # Calculate pagination metadata
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+    has_next = page < total_pages
+    has_prev = page > 1
+
+    # Build data query
+    query = db.query(models.Finding).join(models.Repository)
+
+    if org_id:
+        query = query.filter(models.Finding.organization_id == org_id)
+    if severity:
+        query = query.filter(models.Finding.severity == severity)
+    if status:
+        query = query.filter(models.Finding.status == status)
+    if repo_name:
+        query = query.filter(models.Repository.name == repo_name)
+    if not include_snoozed:
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                models.Finding.snoozed_until.is_(None),
+                models.Finding.snoozed_until < datetime.utcnow()
+            )
+        )
+
+    # Order by
+    if order_by == "risk_score":
+        query = query.order_by(
+            models.Finding.risk_score.desc().nullslast(),
+            models.Finding.created_at.desc()
+        )
+    elif order_by == "severity":
+        severity_order = case(
+            (models.Finding.severity == 'critical', 1),
+            (models.Finding.severity == 'high', 2),
+            (models.Finding.severity == 'medium', 3),
+            (models.Finding.severity == 'low', 4),
+            (models.Finding.severity == 'info', 5),
+            (models.Finding.severity == 'warning', 6),
+            else_=7
+        )
+        query = query.order_by(severity_order, models.Finding.created_at.desc())
+    elif order_by == "repo_name":
+        query = query.order_by(models.Repository.name, models.Finding.created_at.desc())
+    else:
+        query = query.order_by(models.Finding.created_at.desc())
+
+    # Apply pagination
+    query = query.offset(skip).limit(page_size)
+    findings = query.all()
+
+    # Get file commit data for findings (batch query)
+    file_commits_map: Dict[str, models.FileCommit] = {}
+    finding_file_keys = [
+        (f.repository_id, f.file_path)
+        for f in findings
+        if f.repository_id and f.file_path
+    ]
+    if finding_file_keys:
+        file_commits = db.query(models.FileCommit).filter(
+            models.FileCommit.repository_id.in_([k[0] for k in finding_file_keys])
+        ).all()
+        for fc in file_commits:
+            key = f"{fc.repository_id}:{fc.file_path}"
+            file_commits_map[key] = fc
+
+    # Build response items
+    items = []
+    for f in findings:
+        stored_score = f.risk_score
+        stored_factors = f.risk_factors
+        if stored_score is None:
+            computed_score, computed_factors = calculate_risk_score(f, f.repository)
+            stored_score = computed_score
+            stored_factors = computed_factors
+
+        fc_key = f"{f.repository_id}:{f.file_path}"
+        items.append(FindingResponse(
+            id=str(f.finding_uuid),
+            title=f.title,
+            description=f.description,
+            severity=f.severity,
+            status=f.status,
+            scanner_name=f.scanner_name,
+            file_path=f.file_path,
+            line_start=f.line_start,
+            code_snippet=f.code_snippet,
+            created_at=f.created_at,
+            repo_pushed_at=f.repository.pushed_at if f.repository else None,
+            file_last_commit_at=file_commits_map.get(fc_key).last_commit_date if fc_key in file_commits_map else None,
+            file_last_commit_author=file_commits_map.get(fc_key).last_commit_author if fc_key in file_commits_map else None,
+            repo_name=f.repository.name if f.repository else "Unknown",
+            repository_id=str(f.repository.id) if f.repository else None,
+            is_archived=f.repository.is_archived if f.repository else None,
+            investigation_status=f.investigation_status,
+            investigation_started_at=f.investigation_started_at,
+            risk_score=stored_score,
+            risk_level=get_risk_level(stored_score) if stored_score else None,
+            risk_factors=stored_factors,
+            snoozed_until=f.snoozed_until,
+            snooze_reason=f.snooze_reason,
+            ai_triage_recommendation=f.ai_triage_recommendation,
+            ai_triage_confidence=float(f.ai_triage_confidence) if f.ai_triage_confidence else None,
+            remediations=[RemediationModel(
+                id=str(r.id),
+                remediation_text=r.remediation_text,
+                diff=r.diff,
+                confidence=float(r.confidence) if r.confidence else None,
+                created_at=r.created_at
+            ) for r in f.remediations]
+        ))
+
+    return PaginatedFindingsResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
+
+
 @router.get(
     "/",
     dependencies=[Depends(require_permissions("findings:read"))],

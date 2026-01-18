@@ -27,6 +27,7 @@ const API_BASE = "http://localhost:8000"
 interface AIRecommendation {
   frequency: string
   time_window: string
+  day_of_week: number | null
   confidence: number
   reasoning: string
   factors_considered: string[]
@@ -45,6 +46,7 @@ const FREQUENCIES = [
   { value: "weekly", label: "Weekly" },
   { value: "bi-weekly", label: "Bi-weekly" },
   { value: "monthly", label: "Monthly" },
+  { value: "annually", label: "Annually" },
 ]
 
 const TIME_WINDOWS = [
@@ -92,6 +94,10 @@ export function ScheduleCreateDialog({
     if (mode === "ai" && recommendation) {
       setFrequency(recommendation.frequency)
       setTimeWindow(recommendation.time_window)
+      // Apply recommended day of week (derived from last commit date)
+      if (recommendation.day_of_week !== null) {
+        setDayOfWeek(recommendation.day_of_week.toString())
+      }
     }
   }, [mode, recommendation])
 
@@ -112,6 +118,10 @@ export function ScheduleCreateDialog({
         if (mode === "ai") {
           setFrequency(data.frequency)
           setTimeWindow(data.time_window)
+          // Apply recommended day of week (derived from last commit date)
+          if (data.day_of_week !== null) {
+            setDayOfWeek(data.day_of_week.toString())
+          }
         }
       } else {
         console.error("Failed to fetch recommendation")
@@ -239,6 +249,11 @@ export function ScheduleCreateDialog({
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {recommendation.reasoning}
+                    {recommendation.day_of_week !== null && (recommendation.frequency === "weekly" || recommendation.frequency === "bi-weekly") && (
+                      <span className="block mt-1">
+                        Scan day: <strong>{DAYS.find(d => d.value === recommendation.day_of_week?.toString())?.label}</strong> (based on last commit activity)
+                      </span>
+                    )}
                   </p>
                   {recommendation.factors_considered.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">

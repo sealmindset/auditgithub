@@ -682,3 +682,88 @@ docker exec auditgh_api python init_db.py
 - **Configure AI:** See [docs/AI_AGENTS.md](docs/AI_AGENTS.md)
 - **Multi-Tenant:** Review [docs/MULTI_TENANT.md](docs/MULTI_TENANT.md)
 - **Troubleshooting:** Check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
+## PostgreSQL
+
+To stop PostgreSQL installed via Homebrew:
+
+```bash
+brew services stop postgresql
+```
+
+Or if you have a specific version:
+
+```bash
+brew services stop postgresql@14
+brew services stop postgresql@15
+brew services stop postgresql@16
+```
+
+To check what's running:
+
+```bash
+brew services list | grep postgres
+```
+
+To stop it without using brew services (one-time stop):
+
+```bash
+pg_ctl -D /usr/local/var/postgres stop
+```
+
+# or for Apple Silicon:
+```bash
+pg_ctl -D /opt/homebrew/var/postgres stop
+```
+
+### Rebuild
+To rebuild Docker from scratch for this project:
+
+# Stop and remove everything (containers, volumes, networks)
+```bash
+docker compose down -v
+```
+
+# Remove any dangling images/cache
+```bash
+docker system prune -f
+```
+
+# Rebuild and start fresh
+```bash
+docker compose up --build -d
+```
+
+### If you want a complete clean slate (removes ALL Docker data, not just this project):
+
+
+# Nuclear option - removes everything
+```bash
+docker compose down -v
+docker system prune -a --volumes -f
+docker compose up --build -d
+```
+
+For this specific project, you likely want:
+
+# Stop containers and remove volumes (wipes database)
+```bash
+docker compose down -v
+```
+
+# Rebuild images and start
+```bash
+docker compose up --build -d
+```
+
+# Watch logs to see startup
+```bash
+docker compose logs -f
+```
+
+This will:
+
+- Stop all containers
+- Delete all volumes (database data)
+- Rebuild images from scratch
+- Start fresh with empty database

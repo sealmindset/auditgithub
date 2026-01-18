@@ -80,7 +80,9 @@ export default function SettingsPage() {
         const fetchSettings = async () => {
             setLoading(true)
             try {
-                const res = await fetch(`${API_BASE}/settings/`)
+                const res = await fetch(`${API_BASE}/settings/`, {
+                    credentials: 'include'
+                })
                 if (res.ok) {
                     const data = await res.json()
                     setOpenaiKey(data.OPENAI_API_KEY || "")
@@ -97,7 +99,9 @@ export default function SettingsPage() {
         
         const fetchCriblConfig = async () => {
             try {
-                const res = await fetch(`${API_BASE}/cribl/config`)
+                const res = await fetch(`${API_BASE}/cribl/config`, {
+                    credentials: 'include'
+                })
                 if (res.ok) {
                     const data: CriblConfig = await res.json()
                     setCriblConfig(data)
@@ -126,6 +130,7 @@ export default function SettingsPage() {
             const res = await fetch(`${API_BASE}/settings/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({
                     openai_api_key: openaiKey,
                     jira_url: jiraUrl,
@@ -154,6 +159,7 @@ export default function SettingsPage() {
             const res = await fetch(`${API_BASE}/settings/verify/openai`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({ token: openaiKey })
             })
             const data = await res.json()
@@ -172,6 +178,7 @@ export default function SettingsPage() {
             const res = await fetch(`${API_BASE}/settings/verify/jira`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({
                     token: jiraToken,
                     url: jiraUrl,
@@ -193,6 +200,7 @@ export default function SettingsPage() {
             const res = await fetch(`${API_BASE}/cribl/config`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({
                     ingest_url: criblIngestUrl,
                     auth_token: criblAuthToken || undefined,
@@ -233,6 +241,7 @@ export default function SettingsPage() {
             const res = await fetch(`${API_BASE}/cribl/test`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: 'include',
                 body: JSON.stringify({
                     ingest_url: criblIngestUrl || undefined,
                     auth_token: criblAuthToken || undefined,
@@ -254,7 +263,8 @@ export default function SettingsPage() {
         try {
             const res = await fetch(`${API_BASE}/cribl/test-minio`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" }
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include'
             })
             const data: CriblTestResult = await res.json()
             setMinioTestResult(data)

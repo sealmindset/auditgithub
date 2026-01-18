@@ -1,7 +1,5 @@
-/* react-big-calendar base styles */
-@import "react-big-calendar/lib/css/react-big-calendar.css";
-
 /* Override calendar styles to match application theme */
+/* Note: react-big-calendar base styles imported in SchedulerCalendar.tsx */
 .scheduler-calendar {
     --rbc-today-bg: hsl(var(--accent) / 0.3);
     --rbc-off-range-bg: hsl(var(--muted) / 0.5);

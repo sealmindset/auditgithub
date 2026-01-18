@@ -138,6 +138,8 @@ async def list_organizations(
 
     Returns organizations sorted by default status, then name.
     """
+    from sqlalchemy import func
+
     # Direct database query - more reliable than agent
     query = db.query(models.Organization)
     if not include_inactive:
@@ -147,18 +149,28 @@ async def list_organizations(
         models.Organization.name
     ).all()
 
-    # Build response with computed fields including counts
+    # Get counts in bulk using efficient queries
+    org_ids = [org.id for org in orgs]
+
+    # Bulk repo counts
+    repo_counts = dict(
+        db.query(models.Repository.organization_id, func.count(models.Repository.id))
+        .filter(models.Repository.organization_id.in_(org_ids))
+        .group_by(models.Repository.organization_id)
+        .all()
+    )
+
+    # Bulk finding counts
+    finding_counts = dict(
+        db.query(models.Finding.organization_id, func.count(models.Finding.id))
+        .filter(models.Finding.organization_id.in_(org_ids))
+        .group_by(models.Finding.organization_id)
+        .all()
+    )
+
+    # Build response with computed fields
     result = []
     for org in orgs:
-        # Calculate actual counts from database
-        repo_count = db.query(models.Repository).filter(
-            models.Repository.organization_id == org.id
-        ).count()
-
-        finding_count = db.query(models.Finding).filter(
-            models.Finding.organization_id == org.id
-        ).count()
-
         result.append(OrganizationResponse(
             id=str(org.id),
             api_id=org.api_id,
@@ -170,8 +182,8 @@ async def list_organizations(
             is_default=org.is_default if org.is_default is not None else False,
             created_at=org.created_at,
             updated_at=org.updated_at,
-            total_repos=repo_count,
-            total_findings=finding_count
+            total_repos=repo_counts.get(org.id, 0),
+            total_findings=finding_counts.get(org.id, 0)
         ))
 
     return result
@@ -226,23 +238,25 @@ async def get_current_organization(db: Session = Depends(get_tenant_db)):
 async def get_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     """
     Get organization details by name.
-    
+
     Args:
         org_name: Organization name (case-insensitive)
     """
+    from sqlalchemy import func
+
     org = db.query(models.Organization).filter(
         models.Organization.name.ilike(org_name)
     ).first()
-    
+
     if not org:
         raise HTTPException(status_code=404, detail=f"Organization '{org_name}' not found")
-    
-    repo_count = db.query(models.Repository).filter(
+
+    repo_count = db.query(func.count(models.Repository.id)).filter(
         models.Repository.organization_id == org.id
-    ).count()
-    finding_count = db.query(models.Finding).filter(
+    ).scalar() or 0
+    finding_count = db.query(func.count(models.Finding.id)).filter(
         models.Finding.organization_id == org.id
-    ).count()
+    ).scalar() or 0
     
     return OrganizationResponse(
         id=str(org.id),
@@ -344,21 +358,23 @@ async def delete_organization(
 async def select_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     """
     Select organization as current context.
-    
+
     This loads the organization's credentials and configures
     the environment for scanning operations. It also switches
     the database connection to the organization's database.
-    
+
     Args:
         org_name: Organization name to select
     """
+    from sqlalchemy import func
+
     org = db.query(models.Organization).filter(
         models.Organization.name.ilike(org_name)
     ).first()
-    
+
     if not org:
         raise HTTPException(status_code=404, detail=f"Organization '{org_name}' not found")
-    
+
     # Set organization context for query filtering
     # NOTE: We use master DB with organization_id filtering, not separate DBs
     from ..database import set_current_org_database
@@ -367,14 +383,14 @@ async def select_organization(org_name: str, db: Session = Depends(get_tenant_db
         org_id=str(org.id),
         org_name=org.name
     )
-    
-    repo_count = db.query(models.Repository).filter(
+
+    repo_count = db.query(func.count(models.Repository.id)).filter(
         models.Repository.organization_id == org.id
-    ).count()
-    finding_count = db.query(models.Finding).filter(
+    ).scalar() or 0
+    finding_count = db.query(func.count(models.Finding.id)).filter(
         models.Finding.organization_id == org.id
-    ).count()
-    
+    ).scalar() or 0
+
     return OrganizationResponse(
         id=str(org.id),
         api_id=org.api_id,

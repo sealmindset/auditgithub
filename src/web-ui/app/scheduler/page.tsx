@@ -4,11 +4,14 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
 import { RepositoryScheduleTable, RepositoryScheduleInfo } from "@/components/RepositoryScheduleTable"
 import { ScheduleCreateDialog } from "@/components/ScheduleCreateDialog"
+import { ScheduleEditDialog } from "@/components/ScheduleEditDialog"
 import { OrganizationSelector } from "@/components/OrganizationSelector"
-import { Loader2 } from "lucide-react"
+import { Loader2, Bot, RefreshCw, Wand2, CalendarDays, BarChart3, Table2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { ScanActivityGraph } from "@/components/ScanActivityGraph"
 
 const API_BASE = "http://localhost:8000"
 
@@ -18,7 +21,7 @@ interface Schedule {
     repository_id: string
     repository_name: string
     schedule_type: "ai" | "manual"
-    frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
+    frequency: "daily" | "weekly" | "bi-weekly" | "monthly" | "annually"
     day_of_week: number | null
     time_window: "morning" | "afternoon" | "evening" | "night"
     scan_arguments: Record<string, unknown> | null
@@ -47,6 +50,10 @@ export default function SchedulerPage() {
     const [error, setError] = useState<string | null>(null)
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
     const [selectedRepoForCreate, setSelectedRepoForCreate] = useState<{id: string, name: string} | null>(null)
+    const [editDialogOpen, setEditDialogOpen] = useState(false)
+    const [selectedScheduleForEdit, setSelectedScheduleForEdit] = useState<Schedule | null>(null)
+    const [applyingAI, setApplyingAI] = useState(false)
+    const [refreshingAI, setRefreshingAI] = useState(false)
     const { toast } = useToast()
 
     // Store previous state for rollback
@@ -57,8 +64,9 @@ export default function SchedulerPage() {
         const total = schedules.length
         const aiManaged = schedules.filter(s => s.schedule_type === "ai").length
         const locked = schedules.filter(s => s.is_locked).length
-        return { total, aiManaged, locked }
-    }, [schedules])
+        const unscheduled = repositories.filter(r => !r.has_schedule && !r.is_archived).length
+        return { total, aiManaged, locked, unscheduled }
+    }, [schedules, repositories])
 
     // Fetch schedules on mount
     const fetchSchedules = useCallback(async () => {
@@ -371,28 +379,40 @@ export default function SchedulerPage() {
 
     // Handle editing an existing schedule
     const handleEditSchedule = useCallback((repoId: string) => {
-        // TODO: Open schedule edit dialog
+        // Find the schedule for this repository
+        const schedule = schedules.find(s => s.repository_id === repoId)
+        if (schedule) {
+            setSelectedScheduleForEdit(schedule)
+            setEditDialogOpen(true)
+        } else {
+            toast({
+                variant: "destructive",
+                title: "Schedule not found",
+                description: "Could not find the schedule for this repository.",
+            })
+        }
+    }, [schedules, toast])
+
+    // Handle schedule updated - refresh data
+    const handleScheduleUpdated = useCallback(async () => {
         toast({
-            title: "Edit schedule",
-            description: `Schedule editing for repository ${repoId} will be available in the next update.`,
+            title: "Schedule updated",
+            description: "The scan schedule has been updated successfully.",
         })
-    }, [toast])
+        await Promise.all([fetchSchedules(), fetchRepositories()])
+    }, [fetchSchedules, fetchRepositories, toast])
 
     // Handle triggering an immediate scan
     const handleTriggerScan = useCallback(async (repoId: string) => {
         try {
-            const res = await fetch(`${API_BASE}/scans`, {
+            const res = await fetch(`${API_BASE}/schedules/${repoId}/trigger`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 credentials: 'include',
-                body: JSON.stringify({
-                    repository_id: repoId,
-                    scan_type: "full",
-                }),
             })
 
             if (!res.ok) {
-                throw new Error("Failed to trigger scan")
+                const data = await res.json().catch(() => ({}))
+                throw new Error(data.detail || "Failed to trigger scan")
             }
 
             toast({
@@ -410,6 +430,72 @@ export default function SchedulerPage() {
             })
         }
     }, [fetchRepositories, toast])
+
+    // Handle applying AI schedules to all unscheduled repositories
+    const handleApplyAISchedules = useCallback(async () => {
+        setApplyingAI(true)
+        try {
+            const res = await fetch(`${API_BASE}/schedules/batch/apply-ai`, {
+                method: "POST",
+                credentials: 'include',
+            })
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}))
+                throw new Error(data.detail || "Failed to apply AI schedules")
+            }
+
+            const result = await res.json()
+            toast({
+                title: "AI schedules applied",
+                description: `Created ${result.created} schedules, skipped ${result.skipped}, errors: ${result.errors}`,
+            })
+
+            // Refresh data
+            await Promise.all([fetchSchedules(), fetchRepositories()])
+        } catch (err) {
+            toast({
+                variant: "destructive",
+                title: "Failed to apply AI schedules",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+        } finally {
+            setApplyingAI(false)
+        }
+    }, [fetchSchedules, fetchRepositories, toast])
+
+    // Handle refreshing AI recommendations for existing AI-managed schedules
+    const handleRefreshAISchedules = useCallback(async () => {
+        setRefreshingAI(true)
+        try {
+            const res = await fetch(`${API_BASE}/schedules/batch/refresh-ai`, {
+                method: "POST",
+                credentials: 'include',
+            })
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}))
+                throw new Error(data.detail || "Failed to refresh AI schedules")
+            }
+
+            const result = await res.json()
+            toast({
+                title: "AI schedules refreshed",
+                description: `Updated ${result.created} schedules based on latest AI recommendations`,
+            })
+
+            // Refresh data
+            await Promise.all([fetchSchedules(), fetchRepositories()])
+        } catch (err) {
+            toast({
+                variant: "destructive",
+                title: "Failed to refresh AI schedules",
+                description: err instanceof Error ? err.message : "An unexpected error occurred",
+            })
+        } finally {
+            setRefreshingAI(false)
+        }
+    }, [fetchSchedules, fetchRepositories, toast])
 
     if (loading) {
         return (
@@ -452,37 +538,114 @@ export default function SchedulerPage() {
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <Badge variant="outline">{stats.total} total</Badge>
+                        <Badge variant="outline">{stats.total} scheduled</Badge>
                         <Badge variant="outline">{stats.aiManaged} AI-managed</Badge>
                         <Badge variant="outline">{stats.locked} locked</Badge>
+                        {stats.unscheduled > 0 && (
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+                                {stats.unscheduled} unscheduled
+                            </Badge>
+                        )}
                     </div>
                     <OrganizationSelector />
                 </div>
             </div>
-            <SchedulerCalendar
-                schedules={schedules}
-                onScheduleUpdate={handleScheduleUpdate}
-                onScheduleLock={handleLockSchedule}
-                onScheduleUnlock={handleUnlockSchedule}
-                onUpdateScanners={handleUpdateScanners}
-            />
 
-            <Separator className="my-2" />
-
-            {/* Repository Schedule Table */}
-            <div>
-                <h2 className="text-xl font-semibold mb-4">Repository Schedules</h2>
-                <p className="text-muted-foreground text-sm mb-4">
-                    View and manage scan schedules for all repositories. Create schedules for unscheduled repos or modify existing ones.
-                </p>
-                <RepositoryScheduleTable
-                    repositories={repositories}
-                    onCreateSchedule={handleCreateSchedule}
-                    onEditSchedule={handleEditSchedule}
-                    onTriggerScan={handleTriggerScan}
-                    isLoading={reposLoading}
-                />
+            {/* AI Scheduling Actions */}
+            <div className="flex items-center gap-3 p-4 rounded-lg border bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
+                <Bot className="h-5 w-5 text-blue-500" />
+                <div className="flex-1">
+                    <p className="text-sm font-medium">AI-Powered Scheduling</p>
+                    <p className="text-xs text-muted-foreground">
+                        Automatically schedule scans based on repository activity, findings, and risk profile.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    {stats.unscheduled > 0 && (
+                        <Button
+                            variant="default"
+                            size="sm"
+                            onClick={handleApplyAISchedules}
+                            disabled={applyingAI || refreshingAI}
+                            className="bg-blue-600 hover:bg-blue-700"
+                        >
+                            {applyingAI ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <Wand2 className="h-4 w-4 mr-2" />
+                            )}
+                            Schedule {stats.unscheduled} Repos
+                        </Button>
+                    )}
+                    {stats.aiManaged > 0 && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRefreshAISchedules}
+                            disabled={applyingAI || refreshingAI}
+                        >
+                            {refreshingAI ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                            )}
+                            Refresh AI Schedules
+                        </Button>
+                    )}
+                </div>
             </div>
+
+            {/* Tabs for Activity Graph, Calendar, and Repository Schedules */}
+            <Tabs defaultValue="activity" className="space-y-4">
+                <TabsList>
+                    <TabsTrigger value="activity" className="gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Activity Graph
+                    </TabsTrigger>
+                    <TabsTrigger value="calendar" className="gap-2">
+                        <CalendarDays className="h-4 w-4" />
+                        Calendar
+                    </TabsTrigger>
+                    <TabsTrigger value="schedules" className="gap-2">
+                        <Table2 className="h-4 w-4" />
+                        Repository Schedules
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="calendar">
+                    <SchedulerCalendar
+                        schedules={schedules}
+                        onScheduleUpdate={handleScheduleUpdate}
+                        onScheduleLock={handleLockSchedule}
+                        onScheduleUnlock={handleUnlockSchedule}
+                        onUpdateScanners={handleUpdateScanners}
+                    />
+                </TabsContent>
+
+                <TabsContent value="activity">
+                    <div className="rounded-lg border p-6 bg-card">
+                        <ScanActivityGraph schedules={schedules} />
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="schedules">
+                    <div className="space-y-4">
+                        <div>
+                            <h2 className="text-xl font-semibold">Repository Schedules</h2>
+                            <p className="text-muted-foreground text-sm mt-1">
+                                View and manage scan schedules for all repositories. Create schedules for unscheduled repos or modify existing ones.
+                            </p>
+                        </div>
+                        <RepositoryScheduleTable
+                            repositories={repositories}
+                            onCreateSchedule={handleCreateSchedule}
+                            onEditSchedule={handleEditSchedule}
+                            onTriggerScan={handleTriggerScan}
+                            isLoading={reposLoading}
+                        />
+                    </div>
+                </TabsContent>
+            </Tabs>
 
             {/* Schedule Creation Dialog */}
             {selectedRepoForCreate && (
@@ -494,6 +657,14 @@ export default function SchedulerPage() {
                     onScheduleCreated={handleScheduleCreated}
                 />
             )}
+
+            {/* Schedule Edit Dialog */}
+            <ScheduleEditDialog
+                open={editDialogOpen}
+                onOpenChange={setEditDialogOpen}
+                schedule={selectedScheduleForEdit}
+                onScheduleUpdated={handleScheduleUpdated}
+            />
         </div>
     )
 }

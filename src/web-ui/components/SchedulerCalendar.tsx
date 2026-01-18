@@ -11,9 +11,10 @@ import { Lock, Bot, User, CalendarDays } from "lucide-react"
 import { TimeWindowDialog, TimeWindow } from "@/components/TimeWindowDialog"
 import { ScheduleOverrideDialog } from "@/components/ScheduleOverrideDialog"
 
-// Import calendar styles
-import "@/app/scheduler/calendar.css"
+// Import calendar styles - base styles first, then overrides
+import "react-big-calendar/lib/css/react-big-calendar.css"
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css"
+import "@/app/scheduler/calendar.css"
 
 // Schedule type from API
 export interface Schedule {
@@ -21,7 +22,7 @@ export interface Schedule {
     repository_id: string
     repository_name: string
     schedule_type: "ai" | "manual"
-    frequency: "daily" | "weekly" | "bi-weekly" | "monthly"
+    frequency: "daily" | "weekly" | "bi-weekly" | "monthly" | "annually"
     day_of_week: number | null
     time_window: "morning" | "afternoon" | "evening" | "night"
     scan_arguments: Record<string, unknown> | null

@@ -34,6 +34,7 @@ class Frequency(str, Enum):
     weekly = "weekly"
     bi_weekly = "bi-weekly"
     monthly = "monthly"
+    annually = "annually"
 
 
 class TimeWindow(str, Enum):
@@ -70,9 +71,11 @@ class AIRecommendationResponse(BaseModel):
     """AI recommendation for a repository schedule."""
     frequency: str
     time_window: str
+    day_of_week: Optional[int] = None  # 0=Monday, 6=Sunday - derived from last commit date
     confidence: float
     reasoning: str
     factors_considered: List[str]
+    anniversary_date: Optional[datetime] = None  # For annual scans: when to scan (anniversary of last commit)
 
 
 class ScheduleResponse(BaseModel):
@@ -253,14 +256,87 @@ def list_repositories_with_schedules(
     )
 
 
+def _calculate_next_run(frequency: str, time_window: str, day_of_week: Optional[int], repo_pushed_at: Optional[datetime] = None) -> datetime:
+    """Calculate next scheduled run time based on frequency and time window.
+
+    For weekly/bi-weekly scans without a specified day_of_week, uses the day of week
+    from the last commit (repo_pushed_at) to intelligently distribute scans across
+    the week based on when developers typically work on each repository.
+    """
+    from datetime import timedelta
+
+    now = datetime.utcnow()
+
+    # Map time window to hour
+    time_window_hours = {
+        "morning": 9,      # 9 AM
+        "afternoon": 14,   # 2 PM
+        "evening": 19,     # 7 PM
+        "night": 2,        # 2 AM
+    }
+    target_hour = time_window_hours.get(time_window, 2)
+
+    if frequency == "annually":
+        # Annual scans run on anniversary of last commit
+        if repo_pushed_at:
+            # Use month and day from last commit
+            this_year_anniversary = repo_pushed_at.replace(year=now.year, hour=target_hour, minute=0, second=0, microsecond=0)
+            if this_year_anniversary <= now:
+                # Anniversary passed this year, schedule for next year
+                return repo_pushed_at.replace(year=now.year + 1, hour=target_hour, minute=0, second=0, microsecond=0)
+            return this_year_anniversary
+        else:
+            # No commit date, fallback to January 1st next year
+            return now.replace(year=now.year + 1, month=1, day=1, hour=target_hour, minute=0, second=0, microsecond=0)
+
+    # Find next occurrence for other frequencies
+    next_run = now.replace(hour=target_hour, minute=0, second=0, microsecond=0)
+    if next_run <= now:
+        next_run += timedelta(days=1)
+
+    # Adjust for day_of_week for weekly/bi-weekly scans
+    if frequency in ("weekly", "bi-weekly"):
+        # Use explicit day_of_week if provided, otherwise derive from last commit date
+        # This distributes scans across the week based on when developers typically push
+        effective_day = day_of_week
+        if effective_day is None and repo_pushed_at:
+            # Use the day of week from the last commit
+            effective_day = repo_pushed_at.weekday()
+
+        if effective_day is not None:
+            while next_run.weekday() != effective_day:
+                next_run += timedelta(days=1)
+
+    # For monthly, adjust to 1st of next month if needed
+    if frequency == "monthly":
+        if now.day > 1:
+            # Move to 1st of next month
+            if now.month == 12:
+                next_run = now.replace(year=now.year + 1, month=1, day=1, hour=target_hour, minute=0, second=0, microsecond=0)
+            else:
+                next_run = now.replace(month=now.month + 1, day=1, hour=target_hour, minute=0, second=0, microsecond=0)
+        else:
+            next_run = now.replace(day=1, hour=target_hour, minute=0, second=0, microsecond=0)
+            if next_run <= now:
+                if now.month == 12:
+                    next_run = now.replace(year=now.year + 1, month=1, day=1, hour=target_hour, minute=0, second=0, microsecond=0)
+                else:
+                    next_run = now.replace(month=now.month + 1, day=1, hour=target_hour, minute=0, second=0, microsecond=0)
+
+    return next_run
+
+
 @router.post("/", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:create"))])
-def create_schedule(
+async def create_schedule(
     schedule_create: ScheduleCreate,
     db: Session = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Create a new scan schedule for a repository.
+
+    If use_ai_recommendation is True, the AI recommendation will be fetched
+    and used to set the frequency, time_window, and reasoning.
 
     Args:
         schedule_create: Schedule configuration
@@ -286,42 +362,49 @@ def create_schedule(
     if existing:
         raise HTTPException(status_code=400, detail="Schedule already exists for this repository")
 
-    # Calculate next_scheduled_at based on frequency and time window
-    from datetime import timedelta
-    now = datetime.utcnow()
+    # Get AI recommendation if requested
+    frequency = schedule_create.frequency.value
+    time_window = schedule_create.time_window.value
+    day_of_week = schedule_create.day_of_week
+    schedule_type = schedule_create.schedule_type.value
+    ai_reasoning = None
+    ai_confidence = None
 
-    # Map time window to hour
-    time_window_hours = {
-        "morning": 9,      # 9 AM
-        "afternoon": 14,   # 2 PM
-        "evening": 19,     # 7 PM
-        "night": 2,        # 2 AM
-    }
-    target_hour = time_window_hours.get(schedule_create.time_window.value, 2)
+    if schedule_create.use_ai_recommendation:
+        # Fetch AI recommendation
+        recommendation = await _get_ai_recommendation_internal(repo, db)
+        frequency = recommendation["frequency"]
+        time_window = recommendation["time_window"]
+        ai_reasoning = recommendation["reasoning"]
+        ai_confidence = recommendation["confidence"]
+        schedule_type = "ai"
 
-    # Find next occurrence
-    next_run = now.replace(hour=target_hour, minute=0, second=0, microsecond=0)
-    if next_run <= now:
-        next_run += timedelta(days=1)
+        # Skip disabled repos
+        if frequency == "disabled":
+            raise HTTPException(
+                status_code=400,
+                detail=f"AI recommends disabling scans for this repository: {ai_reasoning}"
+            )
 
-    # Adjust for day_of_week if specified (weekly/bi-weekly)
-    if schedule_create.day_of_week is not None and schedule_create.frequency in (Frequency.weekly, Frequency.bi_weekly):
-        while next_run.weekday() != schedule_create.day_of_week:
-            next_run += timedelta(days=1)
+    # Calculate next_scheduled_at
+    next_run = _calculate_next_run(frequency, time_window, day_of_week, repo.pushed_at)
 
     # Create the schedule
     schedule = models.ScanSchedule(
         id=uuid.uuid4(),
         repository_id=schedule_create.repository_id,
-        schedule_type=schedule_create.schedule_type.value,
-        frequency=schedule_create.frequency.value,
-        day_of_week=schedule_create.day_of_week,
-        time_window=schedule_create.time_window.value,
+        organization_id=repo.organization_id,
+        schedule_type=schedule_type,
+        frequency=frequency,
+        day_of_week=day_of_week,
+        time_window=time_window,
         next_scheduled_at=next_run,
         is_active=True,
-        is_locked=schedule_create.schedule_type == ScheduleType.manual,
-        locked_by=current_user.id if schedule_create.schedule_type == ScheduleType.manual else None,
-        locked_at=datetime.utcnow() if schedule_create.schedule_type == ScheduleType.manual else None,
+        is_locked=schedule_type == "manual",
+        locked_by=current_user.id if schedule_type == "manual" else None,
+        locked_at=datetime.utcnow() if schedule_type == "manual" else None,
+        ai_reasoning=ai_reasoning,
+        ai_confidence=ai_confidence,
     )
 
     db.add(schedule)
@@ -350,6 +433,141 @@ def create_schedule(
     )
 
 
+async def _get_ai_recommendation_internal(repo: models.Repository, db: Session) -> dict:
+    """
+    Internal function to get AI recommendation for a repository.
+
+    Returns a dict with: frequency, time_window, confidence, reasoning, factors, anniversary_date
+    """
+    from sqlalchemy import func
+
+    # Get finding counts efficiently
+    finding_counts = {}
+    severity_counts = db.query(
+        models.Finding.severity,
+        func.count(models.Finding.id)
+    ).filter(
+        models.Finding.repository_id == repo.id
+    ).group_by(models.Finding.severity).all()
+
+    for severity, count in severity_counts:
+        if severity:
+            finding_counts[severity.lower()] = count
+
+    critical = finding_counts.get("critical", 0)
+    high = finding_counts.get("high", 0)
+    total = sum(finding_counts.values())
+
+    factors = []
+    now = datetime.utcnow()
+    anniversary_date = None
+
+    # PRIMARY FACTOR: Repository activity (last commit/push)
+    last_activity = repo.pushed_at or repo.github_created_at or repo.created_at
+    days_since_activity = (now - last_activity).days if last_activity else 9999
+
+    # Helper function to calculate next anniversary date
+    def get_next_anniversary(last_commit_date: datetime) -> datetime:
+        """Calculate the next anniversary of the last commit date."""
+        this_year_anniversary = last_commit_date.replace(year=now.year)
+        if this_year_anniversary <= now:
+            return last_commit_date.replace(year=now.year + 1)
+        return this_year_anniversary
+
+    # Classify repository by activity level
+    if repo.is_archived:
+        frequency = "disabled"
+        factors.append(f"Repository is archived - scanning disabled")
+        reasoning = "This repository is archived and should not be scanned. Consider removing it from the scan schedule."
+        confidence = 0.95
+
+    elif days_since_activity > 365:  # No activity in 1+ years
+        frequency = "annually"
+        if last_activity:
+            anniversary_date = get_next_anniversary(last_activity)
+            factors.append(f"No commits in {days_since_activity} days ({days_since_activity // 365} years)")
+            factors.append(f"Annual scan scheduled for {anniversary_date.strftime('%B %d')} (anniversary of last commit)")
+        else:
+            factors.append(f"No commit history available")
+
+        if days_since_activity > 365 * 2:
+            factors.append("Consider archiving this repository")
+            reasoning = f"Repository has had no activity for {days_since_activity // 365} years. Annual scan on the anniversary of the last commit ({anniversary_date.strftime('%B %d') if anniversary_date else 'unknown'}). Consider archiving if no longer in use."
+        else:
+            reasoning = f"Repository inactive for {days_since_activity} days. Annual scan recommended on the anniversary of the last commit ({anniversary_date.strftime('%B %d') if anniversary_date else 'unknown'})."
+        confidence = 0.90
+
+    elif days_since_activity > 180:  # No activity in 6-12 months
+        frequency = "bi-weekly"
+        factors.append(f"Low activity ({days_since_activity} days since last commit)")
+        reasoning = f"Repository has low activity ({days_since_activity} days since last commit). Bi-weekly scans are appropriate."
+        confidence = 0.80
+
+    elif days_since_activity > 30:  # Activity within 1-6 months
+        if critical > 0:
+            frequency = "weekly"
+            factors.append(f"Moderate activity with {critical} critical findings")
+        else:
+            frequency = "bi-weekly"
+            factors.append(f"Moderate activity ({days_since_activity} days since last commit)")
+        reasoning = f"Repository has moderate activity. "
+        if critical > 0:
+            reasoning += f"Weekly scans recommended due to {critical} critical findings."
+        else:
+            reasoning += "Bi-weekly scans are sufficient."
+        confidence = 0.80
+
+    else:  # Active within last 30 days
+        if days_since_activity <= 7:
+            if critical > 0:
+                frequency = "daily"
+                factors.append(f"Very active repo with {critical} critical findings")
+            else:
+                frequency = "weekly"
+                factors.append(f"Very active repo (last commit {days_since_activity} days ago)")
+            reasoning = f"Repository is very active (last commit {days_since_activity} days ago). "
+            if critical > 0:
+                reasoning += f"Daily scans recommended due to {critical} critical findings."
+            else:
+                reasoning += "Weekly scans recommended to catch new issues."
+            confidence = 0.85
+        else:
+            if critical > 5:
+                frequency = "daily"
+                factors.append(f"Active repo with {critical} critical findings")
+            elif critical > 0 or high > 10:
+                frequency = "weekly"
+                factors.append(f"Active repo with security concerns ({critical} critical, {high} high)")
+            else:
+                frequency = "weekly"
+                factors.append(f"Active repo (last commit {days_since_activity} days ago)")
+            reasoning = f"Repository is active (last commit {days_since_activity} days ago). "
+            if critical > 5:
+                reasoning += f"Daily scans recommended due to {critical} critical findings."
+            elif critical > 0:
+                reasoning += f"Weekly scans recommended. {critical} critical findings need attention."
+            else:
+                reasoning += "Weekly scans recommended."
+            confidence = 0.80
+
+    # Add finding summary to factors
+    if total > 0:
+        factors.append(f"Total findings: {total} ({critical} critical, {high} high)")
+
+    # Time window recommendation
+    time_window = "night"
+    factors.append("Night window recommended for minimal disruption")
+
+    return {
+        "frequency": frequency,
+        "time_window": time_window,
+        "confidence": confidence,
+        "reasoning": reasoning.strip(),
+        "factors": factors,
+        "anniversary_date": anniversary_date
+    }
+
+
 @router.get("/{repo_id}/recommend", response_model=AIRecommendationResponse)
 async def get_ai_recommendation(
     repo_id: str,
@@ -359,79 +577,34 @@ async def get_ai_recommendation(
     """
     Get AI-powered schedule recommendation for a repository.
 
-    Analyzes commit patterns, finding history, and risk scores to recommend
-    optimal scan frequency and timing.
+    Primary factor: Repository activity (last commit date)
+    Secondary factor: Critical findings (only for active repos)
+
+    Inactive repos should be scanned infrequently or flagged for archival.
 
     Args:
         repo_id: Repository UUID
     """
-    from src.services.schedule_recommender import ScheduleRecommender
-    from src.ai_agent.agent import AIAgent
-    from src.github.models import ScheduleInput, CommitAnalysisResult
-    from src.services.commit_analyzer import CommitAnalyzer
-    from src.github.client import get_github_client
-
-    # Get repository
     repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    # Get finding counts
-    finding_counts = {}
-    findings = db.query(models.Finding).filter(models.Finding.repository_id == repo_id).all()
-    for f in findings:
-        severity = f.severity.lower() if f.severity else "unknown"
-        finding_counts[severity] = finding_counts.get(severity, 0) + 1
+    result = await _get_ai_recommendation_internal(repo, db)
 
-    # Calculate risk score (simplified)
-    critical = finding_counts.get("critical", 0)
-    high = finding_counts.get("high", 0)
-    medium = finding_counts.get("medium", 0)
-    risk_score = min(1.0, (critical * 0.4 + high * 0.2 + medium * 0.05))
+    # Derive day_of_week from last commit date for weekly/bi-weekly scans
+    derived_day_of_week = None
+    if result["frequency"] in ("weekly", "bi-weekly") and repo.pushed_at:
+        derived_day_of_week = repo.pushed_at.weekday()
 
-    # Try to get commit analysis
-    commit_analysis = None
-    try:
-        github_client = get_github_client()
-        if github_client:
-            analyzer = CommitAnalyzer(github_client)
-            commit_analysis = await analyzer.analyze_repository(repo.full_name or repo.name)
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to get commit analysis: {e}")
-
-    # Build schedule input
-    schedule_input = ScheduleInput(
-        repository_name=repo.name,
-        commit_analysis=commit_analysis,
-        finding_counts=finding_counts,
-        risk_score=risk_score,
-        last_scan_date=repo.last_scanned_at,
-        is_new_repo=commit_analysis is None
+    return AIRecommendationResponse(
+        frequency=result["frequency"],
+        time_window=result["time_window"],
+        day_of_week=derived_day_of_week,
+        confidence=result["confidence"],
+        reasoning=result["reasoning"],
+        factors_considered=result["factors"],
+        anniversary_date=result["anniversary_date"]
     )
-
-    # Get recommendation
-    try:
-        ai_agent = AIAgent()
-        recommender = ScheduleRecommender(ai_agent)
-        recommendation = await recommender.recommend_schedule(schedule_input)
-
-        return AIRecommendationResponse(
-            frequency=recommendation.frequency,
-            time_window=recommendation.time_window,
-            confidence=recommendation.confidence,
-            reasoning=recommendation.reasoning,
-            factors_considered=recommendation.factors_considered
-        )
-    except Exception as e:
-        # Return heuristic fallback
-        return AIRecommendationResponse(
-            frequency="weekly",
-            time_window="night",
-            confidence=0.5,
-            reasoning=f"Fallback recommendation (AI unavailable: {str(e)})",
-            factors_considered=["fallback_defaults"]
-        )
 
 
 @router.get("/", response_model=ScheduleListResponse)
@@ -497,6 +670,249 @@ def list_schedules(
         ))
 
     return ScheduleListResponse(schedules=schedules, total=total)
+
+
+# Batch operation models
+class BatchScheduleResult(BaseModel):
+    """Result for a single repository in batch operation."""
+    repository_id: str
+    repository_name: str
+    status: str  # "created", "skipped", "error"
+    frequency: Optional[str] = None
+    next_scheduled_at: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+class BatchScheduleResponse(BaseModel):
+    """Response for batch schedule creation."""
+    total_processed: int
+    created: int
+    skipped: int
+    errors: int
+    results: List[BatchScheduleResult]
+
+
+@router.post("/batch/apply-ai", response_model=BatchScheduleResponse, dependencies=[Depends(require_permissions("schedules:create"))])
+async def batch_apply_ai_schedules(
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Apply AI-recommended schedules to all unscheduled repositories.
+
+    This creates scan schedules for all repositories that don't have one,
+    using AI recommendations based on activity and findings.
+
+    Archived repos and repos with "disabled" recommendations are skipped.
+    """
+    import uuid
+    from ..database import get_current_org_id
+
+    org_id = get_current_org_id()
+
+    # Get all repositories without active schedules
+    scheduled_repo_ids = (
+        db.query(models.ScanSchedule.repository_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .subquery()
+    )
+
+    query = (
+        db.query(models.Repository)
+        .filter(~models.Repository.id.in_(scheduled_repo_ids))
+        .filter(models.Repository.is_archived == False)
+    )
+
+    if org_id:
+        query = query.filter(models.Repository.organization_id == org_id)
+
+    unscheduled_repos = query.all()
+
+    results = []
+    created = 0
+    skipped = 0
+    errors = 0
+
+    for repo in unscheduled_repos:
+        try:
+            # Get AI recommendation
+            recommendation = await _get_ai_recommendation_internal(repo, db)
+
+            # Skip disabled repos
+            if recommendation["frequency"] == "disabled":
+                results.append(BatchScheduleResult(
+                    repository_id=str(repo.id),
+                    repository_name=repo.name,
+                    status="skipped",
+                    error="AI recommends disabled (archived or inactive)"
+                ))
+                skipped += 1
+                continue
+
+            # Derive day_of_week from last commit date for weekly/bi-weekly scans
+            # This distributes scans across the week based on when developers typically push
+            derived_day_of_week = None
+            if recommendation["frequency"] in ("weekly", "bi-weekly") and repo.pushed_at:
+                derived_day_of_week = repo.pushed_at.weekday()
+
+            # Calculate next run time
+            next_run = _calculate_next_run(
+                recommendation["frequency"],
+                recommendation["time_window"],
+                derived_day_of_week,
+                repo.pushed_at
+            )
+
+            # Create the schedule
+            schedule = models.ScanSchedule(
+                id=uuid.uuid4(),
+                repository_id=repo.id,
+                organization_id=repo.organization_id,
+                schedule_type="ai",
+                frequency=recommendation["frequency"],
+                day_of_week=derived_day_of_week,
+                time_window=recommendation["time_window"],
+                next_scheduled_at=next_run,
+                is_active=True,
+                is_locked=False,
+                ai_reasoning=recommendation["reasoning"],
+                ai_confidence=recommendation["confidence"],
+            )
+
+            db.add(schedule)
+            db.flush()  # Get ID without committing
+
+            results.append(BatchScheduleResult(
+                repository_id=str(repo.id),
+                repository_name=repo.name,
+                status="created",
+                frequency=recommendation["frequency"],
+                next_scheduled_at=next_run
+            ))
+            created += 1
+
+        except Exception as e:
+            results.append(BatchScheduleResult(
+                repository_id=str(repo.id),
+                repository_name=repo.name,
+                status="error",
+                error=str(e)
+            ))
+            errors += 1
+
+    # Commit all changes
+    db.commit()
+
+    return BatchScheduleResponse(
+        total_processed=len(unscheduled_repos),
+        created=created,
+        skipped=skipped,
+        errors=errors,
+        results=results
+    )
+
+
+@router.post("/batch/refresh-ai", response_model=BatchScheduleResponse, dependencies=[Depends(require_permissions("schedules:update"))])
+async def batch_refresh_ai_schedules(
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Refresh AI recommendations for all unlocked AI-managed schedules.
+
+    This updates schedules that are:
+    - Not locked (manual override)
+    - Using AI management
+
+    Locked schedules are preserved as-is.
+    """
+    from ..database import get_current_org_id
+
+    org_id = get_current_org_id()
+
+    # Get all unlocked AI schedules
+    query = (
+        db.query(models.ScanSchedule, models.Repository)
+        .join(models.Repository, models.ScanSchedule.repository_id == models.Repository.id)
+        .filter(models.ScanSchedule.is_active == True)
+        .filter(models.ScanSchedule.is_locked == False)
+        .filter(models.ScanSchedule.schedule_type == "ai")
+    )
+
+    if org_id:
+        query = query.filter(models.Repository.organization_id == org_id)
+
+    schedules_with_repos = query.all()
+
+    results = []
+    updated = 0
+    skipped = 0
+    errors = 0
+
+    for schedule, repo in schedules_with_repos:
+        try:
+            # Get fresh AI recommendation
+            recommendation = await _get_ai_recommendation_internal(repo, db)
+
+            # Handle disabled recommendation
+            if recommendation["frequency"] == "disabled":
+                schedule.is_active = False
+                results.append(BatchScheduleResult(
+                    repository_id=str(repo.id),
+                    repository_name=repo.name,
+                    status="skipped",
+                    error="AI recommends disabled - schedule deactivated"
+                ))
+                skipped += 1
+                continue
+
+            # Update schedule with new recommendation
+            schedule.frequency = recommendation["frequency"]
+            schedule.time_window = recommendation["time_window"]
+            schedule.ai_reasoning = recommendation["reasoning"]
+            schedule.ai_confidence = recommendation["confidence"]
+
+            # Derive day_of_week from last commit date for weekly/bi-weekly scans
+            # if not already set, to distribute scans across the week
+            if schedule.day_of_week is None and recommendation["frequency"] in ("weekly", "bi-weekly") and repo.pushed_at:
+                schedule.day_of_week = repo.pushed_at.weekday()
+
+            # Recalculate next run time
+            next_run = _calculate_next_run(
+                recommendation["frequency"],
+                recommendation["time_window"],
+                schedule.day_of_week,
+                repo.pushed_at
+            )
+            schedule.next_scheduled_at = next_run
+
+            results.append(BatchScheduleResult(
+                repository_id=str(repo.id),
+                repository_name=repo.name,
+                status="created",  # "updated" would be more accurate but reusing model
+                frequency=recommendation["frequency"],
+                next_scheduled_at=next_run
+            ))
+            updated += 1
+
+        except Exception as e:
+            results.append(BatchScheduleResult(
+                repository_id=str(repo.id),
+                repository_name=repo.name,
+                status="error",
+                error=str(e)
+            ))
+            errors += 1
+
+    db.commit()
+
+    return BatchScheduleResponse(
+        total_processed=len(schedules_with_repos),
+        created=updated,  # Reusing field as "updated"
+        skipped=skipped,
+        errors=errors,
+        results=results
+    )
 
 
 @router.get("/{repo_id}", response_model=ScheduleResponse)

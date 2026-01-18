@@ -74,7 +74,7 @@ class ScheduleExecutor:
             self.scheduler.remove_job(job_id)
 
         # Build cron trigger
-        trigger = self._build_trigger(schedule)
+        trigger = self._build_trigger(schedule, db)
         if not trigger:
             self.logger.warning(f"Could not build trigger for schedule {schedule.id}")
             return
@@ -108,7 +108,7 @@ class ScheduleExecutor:
             schedule.next_scheduled_at = next_run
             db.commit()
 
-    def _build_trigger(self, schedule: models.ScanSchedule) -> Optional[CronTrigger]:
+    def _build_trigger(self, schedule: models.ScanSchedule, db: Session) -> Optional[CronTrigger]:
         """Convert schedule to APScheduler CronTrigger."""
         hour = self.TIME_WINDOWS.get(schedule.time_window, 2)
         day_of_week = schedule.day_of_week  # 0=Mon, 6=Sun
@@ -125,6 +125,15 @@ class ScheduleExecutor:
                 return CronTrigger(day_of_week=dow, hour=hour, minute=0)
             elif schedule.frequency == "monthly":
                 return CronTrigger(day=1, hour=hour, minute=0)
+            elif schedule.frequency == "annually":
+                # Annual scan on anniversary of last commit
+                repo = db.query(models.Repository).filter(models.Repository.id == schedule.repository_id).first()
+                if repo and repo.pushed_at:
+                    # Use month and day from last commit date
+                    return CronTrigger(month=repo.pushed_at.month, day=repo.pushed_at.day, hour=hour, minute=0)
+                else:
+                    # Fallback to January 1st if no commit date
+                    return CronTrigger(month=1, day=1, hour=hour, minute=0)
             else:
                 self.logger.warning(f"Unknown frequency: {schedule.frequency}")
                 return None
