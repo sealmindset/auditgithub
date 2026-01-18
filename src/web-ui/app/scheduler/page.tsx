@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { SchedulerCalendar, ScheduleUpdateData } from "@/components/SchedulerCalendar"
 import { RepositoryScheduleTable, RepositoryScheduleInfo } from "@/components/RepositoryScheduleTable"
+import { ScheduleCreateDialog } from "@/components/ScheduleCreateDialog"
 import { OrganizationSelector } from "@/components/OrganizationSelector"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
@@ -44,6 +45,8 @@ export default function SchedulerPage() {
     const [loading, setLoading] = useState(true)
     const [reposLoading, setReposLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [createDialogOpen, setCreateDialogOpen] = useState(false)
+    const [selectedRepoForCreate, setSelectedRepoForCreate] = useState<{id: string, name: string} | null>(null)
     const { toast } = useToast()
 
     // Store previous state for rollback
@@ -349,12 +352,22 @@ export default function SchedulerPage() {
 
     // Handle creating a new schedule for a repository
     const handleCreateSchedule = useCallback((repoId: string) => {
-        // TODO: Open schedule creation dialog
+        // Find the repo name
+        const repo = repositories.find(r => r.repository_id === repoId)
+        if (repo) {
+            setSelectedRepoForCreate({ id: repoId, name: repo.repository_name })
+            setCreateDialogOpen(true)
+        }
+    }, [repositories])
+
+    // Handle schedule created - refresh data
+    const handleScheduleCreated = useCallback(async () => {
         toast({
-            title: "Create schedule",
-            description: `Schedule creation for repository ${repoId} will be available in the next update.`,
+            title: "Schedule created",
+            description: "The scan schedule has been created successfully.",
         })
-    }, [toast])
+        await Promise.all([fetchSchedules(), fetchRepositories()])
+    }, [fetchSchedules, fetchRepositories, toast])
 
     // Handle editing an existing schedule
     const handleEditSchedule = useCallback((repoId: string) => {
@@ -470,6 +483,17 @@ export default function SchedulerPage() {
                     isLoading={reposLoading}
                 />
             </div>
+
+            {/* Schedule Creation Dialog */}
+            {selectedRepoForCreate && (
+                <ScheduleCreateDialog
+                    open={createDialogOpen}
+                    onOpenChange={setCreateDialogOpen}
+                    repositoryId={selectedRepoForCreate.id}
+                    repositoryName={selectedRepoForCreate.name}
+                    onScheduleCreated={handleScheduleCreated}
+                />
+            )}
         </div>
     )
 }

@@ -56,6 +56,25 @@ class ScheduleUpdate(ScheduleBase):
     override_reason: Optional[str] = Field(None, description="Reason for manual override")
 
 
+class ScheduleCreate(BaseModel):
+    """Request to create a new schedule."""
+    repository_id: str
+    frequency: Frequency
+    day_of_week: Optional[int] = Field(None, ge=0, le=6, description="0=Monday, 6=Sunday")
+    time_window: TimeWindow
+    schedule_type: ScheduleType = ScheduleType.manual
+    use_ai_recommendation: bool = False
+
+
+class AIRecommendationResponse(BaseModel):
+    """AI recommendation for a repository schedule."""
+    frequency: str
+    time_window: str
+    confidence: float
+    reasoning: str
+    factors_considered: List[str]
+
+
 class ScheduleResponse(BaseModel):
     """Response for a single schedule."""
     id: str
@@ -222,6 +241,187 @@ def list_repositories_with_schedules(
         scheduled_count=scheduled_count,
         unscheduled_count=unscheduled_count
     )
+
+
+@router.post("/", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:create"))])
+def create_schedule(
+    schedule_create: ScheduleCreate,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a new scan schedule for a repository.
+
+    Args:
+        schedule_create: Schedule configuration
+    """
+    import uuid
+
+    # Check if repo exists
+    repo = db.query(models.Repository).filter(
+        models.Repository.id == schedule_create.repository_id
+    ).first()
+
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Check if schedule already exists
+    existing = (
+        db.query(models.ScanSchedule)
+        .filter(models.ScanSchedule.repository_id == schedule_create.repository_id)
+        .filter(models.ScanSchedule.is_active == True)
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Schedule already exists for this repository")
+
+    # Calculate next_scheduled_at based on frequency and time window
+    from datetime import timedelta
+    now = datetime.utcnow()
+
+    # Map time window to hour
+    time_window_hours = {
+        "morning": 9,      # 9 AM
+        "afternoon": 14,   # 2 PM
+        "evening": 19,     # 7 PM
+        "night": 2,        # 2 AM
+    }
+    target_hour = time_window_hours.get(schedule_create.time_window.value, 2)
+
+    # Find next occurrence
+    next_run = now.replace(hour=target_hour, minute=0, second=0, microsecond=0)
+    if next_run <= now:
+        next_run += timedelta(days=1)
+
+    # Adjust for day_of_week if specified (weekly/bi-weekly)
+    if schedule_create.day_of_week is not None and schedule_create.frequency in (Frequency.weekly, Frequency.bi_weekly):
+        while next_run.weekday() != schedule_create.day_of_week:
+            next_run += timedelta(days=1)
+
+    # Create the schedule
+    schedule = models.ScanSchedule(
+        id=uuid.uuid4(),
+        repository_id=schedule_create.repository_id,
+        schedule_type=schedule_create.schedule_type.value,
+        frequency=schedule_create.frequency.value,
+        day_of_week=schedule_create.day_of_week,
+        time_window=schedule_create.time_window.value,
+        next_scheduled_at=next_run,
+        is_active=True,
+        is_locked=schedule_create.schedule_type == ScheduleType.manual,
+        locked_by=current_user.id if schedule_create.schedule_type == ScheduleType.manual else None,
+        locked_at=datetime.utcnow() if schedule_create.schedule_type == ScheduleType.manual else None,
+    )
+
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+
+    return ScheduleResponse(
+        id=str(schedule.id),
+        repository_id=str(schedule.repository_id),
+        repository_name=repo.name,
+        schedule_type=schedule.schedule_type,
+        frequency=schedule.frequency,
+        day_of_week=schedule.day_of_week,
+        time_window=schedule.time_window,
+        scan_arguments=schedule.scan_arguments,
+        next_scheduled_at=schedule.next_scheduled_at,
+        last_executed_at=schedule.last_executed_at,
+        last_execution_status=schedule.last_execution_status,
+        is_locked=schedule.is_locked,
+        locked_at=schedule.locked_at,
+        locked_by_email=current_user.email if schedule.is_locked else None,
+        ai_reasoning=schedule.ai_reasoning,
+        ai_confidence=float(schedule.ai_confidence) if schedule.ai_confidence else None,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at
+    )
+
+
+@router.get("/{repo_id}/recommend", response_model=AIRecommendationResponse)
+async def get_ai_recommendation(
+    repo_id: str,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get AI-powered schedule recommendation for a repository.
+
+    Analyzes commit patterns, finding history, and risk scores to recommend
+    optimal scan frequency and timing.
+
+    Args:
+        repo_id: Repository UUID
+    """
+    from src.services.schedule_recommender import ScheduleRecommender
+    from src.ai_agent.agent import AIAgent
+    from src.github.models import ScheduleInput, CommitAnalysisResult
+    from src.services.commit_analyzer import CommitAnalyzer
+    from src.github.client import get_github_client
+
+    # Get repository
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Get finding counts
+    finding_counts = {}
+    findings = db.query(models.Finding).filter(models.Finding.repository_id == repo_id).all()
+    for f in findings:
+        severity = f.severity.lower() if f.severity else "unknown"
+        finding_counts[severity] = finding_counts.get(severity, 0) + 1
+
+    # Calculate risk score (simplified)
+    critical = finding_counts.get("critical", 0)
+    high = finding_counts.get("high", 0)
+    medium = finding_counts.get("medium", 0)
+    risk_score = min(1.0, (critical * 0.4 + high * 0.2 + medium * 0.05))
+
+    # Try to get commit analysis
+    commit_analysis = None
+    try:
+        github_client = get_github_client()
+        if github_client:
+            analyzer = CommitAnalyzer(github_client)
+            commit_analysis = await analyzer.analyze_repository(repo.full_name or repo.name)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to get commit analysis: {e}")
+
+    # Build schedule input
+    schedule_input = ScheduleInput(
+        repository_name=repo.name,
+        commit_analysis=commit_analysis,
+        finding_counts=finding_counts,
+        risk_score=risk_score,
+        last_scan_date=repo.last_scanned_at,
+        is_new_repo=commit_analysis is None
+    )
+
+    # Get recommendation
+    try:
+        ai_agent = AIAgent()
+        recommender = ScheduleRecommender(ai_agent)
+        recommendation = await recommender.recommend_schedule(schedule_input)
+
+        return AIRecommendationResponse(
+            frequency=recommendation.frequency,
+            time_window=recommendation.time_window,
+            confidence=recommendation.confidence,
+            reasoning=recommendation.reasoning,
+            factors_considered=recommendation.factors_considered
+        )
+    except Exception as e:
+        # Return heuristic fallback
+        return AIRecommendationResponse(
+            frequency="weekly",
+            time_window="night",
+            confidence=0.5,
+            reasoning=f"Fallback recommendation (AI unavailable: {str(e)})",
+            factors_considered=["fallback_defaults"]
+        )
 
 
 @router.get("/", response_model=ScheduleListResponse)
