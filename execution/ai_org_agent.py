@@ -73,15 +73,16 @@ class Organization:
     database_name: str
     is_active: bool
     is_default: bool
-    # schema_version: Optional[str]
-    # schema_version_name: Optional[str]
-    # schema_sync_status: str
-    # last_scan_at: Optional[datetime]
-    # scan_status: str
-    # total_repos: int
-    # total_findings: int
     created_at: datetime
     updated_at: datetime
+    # Optional fields with defaults (for backward compatibility with short queries)
+    schema_version: Optional[str] = None
+    schema_version_name: Optional[str] = None
+    schema_sync_status: Optional[str] = None
+    last_scan_at: Optional[datetime] = None
+    scan_status: Optional[str] = None
+    total_repos: int = 0
+    total_findings: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary with serializable values."""
@@ -862,19 +863,42 @@ class AIOrganizationAgent:
                 row_copy['database_name'] = ''
             return Organization(**row_copy)
         else:
-            # Tuple from psycopg2 - updated to match shortened SELECT lists
-            return Organization(
-                id=str(row[0]),
-                api_id=row[1],
-                name=row[2],
-                display_name=row[3],
-                github_org=row[4],
-                database_name=row[5] or '',  # Handle None
-                is_active=row[6],
-                is_default=row[7],
-                created_at=row[8],
-                updated_at=row[9]
-            )
+            # Tuple from psycopg2 - handle both short (10 cols) and long (17 cols) queries
+            if len(row) >= 17:
+                # Long query with all fields
+                return Organization(
+                    id=str(row[0]),
+                    api_id=row[1],
+                    name=row[2],
+                    display_name=row[3],
+                    github_org=row[4],
+                    database_name=row[5] or '',
+                    is_active=row[6],
+                    is_default=row[7],
+                    created_at=row[15],
+                    updated_at=row[16],
+                    schema_version=row[8],
+                    schema_version_name=row[9],
+                    schema_sync_status=row[10],
+                    last_scan_at=row[11],
+                    scan_status=row[12],
+                    total_repos=row[13] or 0,
+                    total_findings=row[14] or 0,
+                )
+            else:
+                # Short query (10 cols) - use defaults for optional fields
+                return Organization(
+                    id=str(row[0]),
+                    api_id=row[1],
+                    name=row[2],
+                    display_name=row[3],
+                    github_org=row[4],
+                    database_name=row[5] or '',
+                    is_active=row[6],
+                    is_default=row[7],
+                    created_at=row[8],
+                    updated_at=row[9]
+                )
     
     async def _execute_query(self, query: str, *params) -> List[Any]:
         """Execute a database query."""
