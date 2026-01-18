@@ -8556,39 +8556,44 @@ def calculate_risk_metrics(report_dir: str, repo_name: str) -> Dict[str, Any]:
     try:
         with open(os.path.join(report_dir, f"{repo_name}_semgrep.json")) as f:
             data = json.load(f)
-            for r in data.get('results', []):
-                sev = map_severity(r.get('extra', {}).get('severity', 'low'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for r in data.get('results', []) or []:
+                    sev = map_severity(r.get('extra', {}).get('severity', 'low') if r else 'low')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse Semgrep results for {repo_name}: {str(e)}")
 
     # 2. Bandit
     try:
         with open(os.path.join(report_dir, f"{repo_name}_bandit.json")) as f:
             data = json.load(f)
-            for r in data.get('results', []):
-                sev = map_severity(r.get('issue_severity', 'low'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for r in data.get('results', []) or []:
+                    sev = map_severity(r.get('issue_severity', 'low') if r else 'low')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse Bandit results for {repo_name}: {str(e)}")
 
     # 3. Gitleaks (Secrets)
     try:
         with open(os.path.join(report_dir, f"{repo_name}_gitleaks.json")) as f:
             data = json.load(f)
-            metrics['secrets'] += len(data)
+            if data and isinstance(data, list):
+                metrics['secrets'] += len(data)
     except (FileNotFoundError, json.JSONDecodeError, TypeError) as e:
         logging.debug(f"Failed to parse Gitleaks results for {repo_name}: {str(e)}")
-    
+
     # 4. Trivy (Container/FS)
     try:
         with open(os.path.join(report_dir, f"{repo_name}_trivy_fs.json")) as f:
             data = json.load(f)
-            for res in data.get('Results', []):
-                for vuln in res.get('Vulnerabilities', []):
-                    sev = map_severity(vuln.get('Severity', 'low'))
-                    metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for res in data.get('Results', []) or []:
+                    if res:
+                        for vuln in res.get('Vulnerabilities', []) or []:
+                            sev = map_severity(vuln.get('Severity', 'low') if vuln else 'low')
+                            metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse Trivy results for {repo_name}: {str(e)}")
 
     # =========================================================================
@@ -8599,11 +8604,12 @@ def calculate_risk_metrics(report_dir: str, repo_name: str) -> Dict[str, Any]:
     try:
         with open(os.path.join(report_dir, f"{repo_name}_horusec.json")) as f:
             data = json.load(f)
-            for vuln in data.get('analysisVulnerabilities', []):
-                v = vuln.get('vulnerabilities', {})
-                sev = map_severity(v.get('severity', 'low'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for vuln in data.get('analysisVulnerabilities', []) or []:
+                    v = vuln.get('vulnerabilities', {}) if vuln else {}
+                    sev = map_severity(v.get('severity', 'low') if v else 'low')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse Horusec results for {repo_name}: {str(e)}")
 
     # 6. Whispers (secrets in config files)
@@ -8619,20 +8625,23 @@ def calculate_risk_metrics(report_dir: str, repo_name: str) -> Dict[str, Any]:
     try:
         with open(os.path.join(report_dir, f"{repo_name}_bearer.json")) as f:
             data = json.load(f)
-            for finding in data.get('findings', []):
-                sev = map_severity(finding.get('severity', 'medium'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for finding in data.get('findings', []) or []:
+                    sev = map_severity(finding.get('severity', 'medium') if finding else 'medium')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse Bearer results for {repo_name}: {str(e)}")
 
     # 8. Terrascan (IaC security)
     try:
         with open(os.path.join(report_dir, f"{repo_name}_terrascan.json")) as f:
             data = json.load(f)
-            for v in data.get('results', {}).get('violations', []):
-                sev = map_severity(v.get('severity', 'low'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                results = data.get('results', {}) or {}
+                for v in results.get('violations', []) or []:
+                    sev = map_severity(v.get('severity', 'low') if v else 'low')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse Terrascan results for {repo_name}: {str(e)}")
 
     # =========================================================================
@@ -8643,33 +8652,38 @@ def calculate_risk_metrics(report_dir: str, repo_name: str) -> Dict[str, Any]:
     try:
         with open(os.path.join(report_dir, f"{repo_name}_gosec.json")) as f:
             data = json.load(f)
-            for issue in data.get('Issues', []):
-                sev = map_severity(issue.get('severity', 'medium'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for issue in data.get('Issues', []) or []:
+                    sev = map_severity(issue.get('severity', 'medium') if issue else 'medium')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse gosec results for {repo_name}: {str(e)}")
 
     # 10. GolangCI-Lint (Go linting with security)
     try:
         with open(os.path.join(report_dir, f"{repo_name}_golangci.json")) as f:
             data = json.load(f)
-            for issue in data.get('Issues', []):
-                # Only count gosec issues to avoid double-counting
-                if issue.get('FromLinter') == 'gosec':
-                    continue  # Already counted above
-                sev = 'medium' if issue.get('Severity') == 'error' else 'low'
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for issue in data.get('Issues', []) or []:
+                    if not issue:
+                        continue
+                    # Only count gosec issues to avoid double-counting
+                    if issue.get('FromLinter') == 'gosec':
+                        continue  # Already counted above
+                    sev = 'medium' if issue.get('Severity') == 'error' else 'low'
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse GolangCI-Lint results for {repo_name}: {str(e)}")
 
     # 11. MobSF (Mobile security)
     try:
         with open(os.path.join(report_dir, f"{repo_name}_mobsf.json")) as f:
             data = json.load(f)
-            for finding in data.get('findings', []):
-                sev = map_severity(finding.get('severity', 'medium'))
-                metrics[sev] += 1
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError) as e:
+            if data and isinstance(data, dict):
+                for finding in data.get('findings', []) or []:
+                    sev = map_severity(finding.get('severity', 'medium') if finding else 'medium')
+                    metrics[sev] += 1
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
         logging.debug(f"Failed to parse MobSF results for {repo_name}: {str(e)}")
 
     # Calculate Score
