@@ -915,6 +915,153 @@ async def batch_refresh_ai_schedules(
     )
 
 
+# Today's Scans Models - MUST BE BEFORE /{repo_id} routes for correct routing
+class TodayScanItem(BaseModel):
+    """A single scan scheduled for today or currently running."""
+    schedule_id: str
+    repository_id: str
+    repository_name: str
+    organization_name: Optional[str] = None
+    scheduled_time: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    status: str  # scheduled, running, completed, failed
+    frequency: str
+    time_window: str
+    progress_percent: Optional[int] = None  # 0-100 for running scans
+    error_message: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    findings_count: Optional[int] = None
+
+
+class TodayScansResponse(BaseModel):
+    """Response for today's scans."""
+    scans: List[TodayScanItem]
+    total_scheduled: int
+    total_running: int
+    total_completed: int
+    total_failed: int
+    current_time: datetime
+
+
+@router.get("/today", response_model=TodayScansResponse)
+def get_todays_scans(
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all scans scheduled for today and any currently running scans.
+
+    Returns scans grouped by status: scheduled, running, completed, failed.
+    Includes progress information for running scans.
+    """
+    from datetime import date, timedelta
+    from ..database import get_current_org_id
+
+    org_id = get_current_org_id()
+    now = datetime.now()
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_end = datetime.combine(date.today(), datetime.max.time())
+
+    # Query schedules with next_scheduled_at today
+    query = (
+        db.query(models.ScanSchedule, models.Repository, models.Organization)
+        .join(models.Repository, models.ScanSchedule.repository_id == models.Repository.id)
+        .join(models.Organization, models.Repository.organization_id == models.Organization.id)
+        .filter(models.ScanSchedule.is_active == True)
+    )
+
+    if org_id:
+        query = query.filter(models.Repository.organization_id == org_id)
+
+    all_schedules = query.all()
+
+    scans = []
+    total_scheduled = 0
+    total_running = 0
+    total_completed = 0
+    total_failed = 0
+
+    for schedule, repo, org in all_schedules:
+        # Check if scheduled for today
+        scheduled_today = (
+            schedule.next_scheduled_at and
+            today_start <= schedule.next_scheduled_at <= today_end
+        )
+
+        # Check if ran today
+        ran_today = (
+            schedule.last_executed_at and
+            today_start <= schedule.last_executed_at <= today_end
+        )
+
+        # Check if currently running
+        is_running = schedule.last_execution_status == "running"
+
+        # Determine status
+        if is_running:
+            status = "running"
+            total_running += 1
+            # Estimate progress based on typical scan duration (rough estimate)
+            if schedule.last_executed_at:
+                elapsed = (now - schedule.last_executed_at).total_seconds()
+                # Assume average scan takes ~5 minutes
+                progress = min(95, int((elapsed / 300) * 100))
+            else:
+                progress = 10
+        elif ran_today and schedule.last_execution_status == "success":
+            status = "completed"
+            total_completed += 1
+            progress = 100
+        elif ran_today and schedule.last_execution_status == "failed":
+            status = "failed"
+            total_failed += 1
+            progress = None
+        elif scheduled_today:
+            status = "scheduled"
+            total_scheduled += 1
+            progress = 0
+        else:
+            # Not relevant for today
+            continue
+
+        # Calculate duration for completed scans
+        duration = None
+        if status == "completed" and schedule.last_executed_at:
+            # We don't have exact completion time, estimate based on next schedule
+            duration = None
+
+        scans.append(TodayScanItem(
+            schedule_id=str(schedule.id),
+            repository_id=str(repo.id),
+            repository_name=repo.name,
+            organization_name=org.name,
+            scheduled_time=schedule.next_scheduled_at if status == "scheduled" else None,
+            started_at=schedule.last_executed_at if status in ("running", "completed", "failed") else None,
+            completed_at=None,  # We don't track exact completion time currently
+            status=status,
+            frequency=schedule.frequency,
+            time_window=schedule.time_window,
+            progress_percent=progress,
+            error_message=None,  # Could add error tracking
+            duration_seconds=duration,
+            findings_count=None  # Would need to query findings
+        ))
+
+    # Sort: running first, then scheduled by time, then completed
+    status_order = {"running": 0, "scheduled": 1, "completed": 2, "failed": 3}
+    scans.sort(key=lambda x: (status_order.get(x.status, 4), x.scheduled_time or x.started_at or now))
+
+    return TodayScansResponse(
+        scans=scans,
+        total_scheduled=total_scheduled,
+        total_running=total_running,
+        total_completed=total_completed,
+        total_failed=total_failed,
+        current_time=now
+    )
+
+
 @router.get("/{repo_id}", response_model=ScheduleResponse)
 def get_schedule(
     repo_id: str,

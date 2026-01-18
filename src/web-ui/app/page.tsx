@@ -26,6 +26,7 @@ import { SeverityChart } from "@/components/dashboard/SeverityChart"
 import { SecurityOverviewWidget } from "@/components/dashboard/SecurityOverviewWidget"
 import { ScanActivityWidget } from "@/components/dashboard/ScanActivityWidget"
 import { BackgroundJobsWidget } from "@/components/dashboard/BackgroundJobsWidget"
+import { ScanScheduleGraphWidget } from "@/components/dashboard/ScanScheduleGraphWidget"
 import { RepositoryHealthWidget } from "@/components/dashboard/RepositoryHealthWidget"
 import { FindingTrendsWidget } from "@/components/dashboard/FindingTrendsWidget"
 import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget"
@@ -189,7 +190,25 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* Security Overview & Scan Activity Widgets */}
+            {/* Threat Radar & Scan Schedule Graph - Side by Side */}
+            {(layout.isVisible("threat-radar") || layout.isVisible("scan-schedule-graph")) && (
+                <div className="grid gap-6 md:grid-cols-2">
+                    {/* Threat Radar */}
+                    {layout.isVisible("threat-radar") && (
+                        <ThreatRadar
+                            data={threatRadarData}
+                            investigationCount={heroMetrics.underInvestigation}
+                        />
+                    )}
+
+                    {/* Scan Schedule Graph - Activity from Scheduler */}
+                    {layout.isVisible("scan-schedule-graph") && (
+                        <ScanScheduleGraphWidget />
+                    )}
+                </div>
+            )}
+
+            {/* Security Overview, Recent Scans & Background Jobs Widgets */}
             {(layout.isVisible("security-overview") || layout.isVisible("scan-activity") || layout.isVisible("background-jobs")) && (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {layout.isVisible("security-overview") && <SecurityOverviewWidget />}
@@ -207,31 +226,14 @@ export default function DashboardPage() {
             {/* Quick Actions Widget - Full Width */}
             {layout.isVisible("quick-actions") && <QuickActionsWidget />}
 
-            {/* Main Content Grid */}
-            {(layout.isVisible("threat-radar") || layout.isVisible("ai-insights")) && (
-                <div className="grid gap-6 lg:grid-cols-5">
-                    {/* Threat Radar - Takes 2 columns */}
-                    {layout.isVisible("threat-radar") && (
-                        <div className="lg:col-span-2">
-                            <ThreatRadar
-                                data={threatRadarData}
-                                investigationCount={heroMetrics.underInvestigation}
-                            />
-                        </div>
-                    )}
-
-                    {/* AI Insights Panel - Takes 3 columns */}
-                    {layout.isVisible("ai-insights") && (
-                        <div className={layout.isVisible("threat-radar") ? "lg:col-span-3" : "lg:col-span-5"}>
-                            <AIInsightsPanel
-                                insights={aiInsights}
-                                maxDisplay={6}
-                                onRefresh={fetchHollywoodData}
-                                refreshInterval={30000}
-                            />
-                        </div>
-                    )}
-                </div>
+            {/* AI Insights Panel - Full Width */}
+            {layout.isVisible("ai-insights") && (
+                <AIInsightsPanel
+                    insights={aiInsights}
+                    maxDisplay={6}
+                    onRefresh={fetchHollywoodData}
+                    refreshInterval={30000}
+                />
             )}
 
             {/* Executive Summary Cards - What Matters Now */}

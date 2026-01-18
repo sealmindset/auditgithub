@@ -13,6 +13,7 @@ export type WidgetId =
   | "finding-trends"
   | "quick-actions"
   | "threat-radar"
+  | "scan-schedule-graph"
   | "ai-insights"
   | "executive-summary"
   | "severity-chart"
@@ -72,6 +73,12 @@ export const WIDGET_CONFIGS: WidgetConfig[] = [
     id: "threat-radar",
     label: "Threat Radar",
     description: "Visual threat assessment",
+    defaultVisible: true
+  },
+  {
+    id: "scan-schedule-graph",
+    label: "Scan Schedule Graph",
+    description: "GitHub-style activity heatmap for scheduled scans",
     defaultVisible: true
   },
   {

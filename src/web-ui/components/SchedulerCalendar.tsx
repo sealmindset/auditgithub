@@ -3,13 +3,17 @@
 import { useMemo, useState, useCallback } from "react"
 import { Calendar, dateFnsLocalizer, View, Views, CalendarProps } from "react-big-calendar"
 import withDragAndDrop, { EventInteractionArgs, withDragAndDropProps } from "react-big-calendar/lib/addons/dragAndDrop"
-import { format, parse, startOfWeek, getDay, addHours } from "date-fns"
+import { format, parse, startOfWeek, getDay, addHours, setMonth, setYear, parseISO, isValid } from "date-fns"
 import { enUS } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Lock, Bot, User, CalendarDays } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Lock, Bot, User, CalendarDays, ChevronLeft, ChevronRight, Search, X } from "lucide-react"
 import { TimeWindowDialog, TimeWindow } from "@/components/TimeWindowDialog"
 import { ScheduleOverrideDialog } from "@/components/ScheduleOverrideDialog"
+import { cn } from "@/lib/utils"
 
 // Import calendar styles - base styles first, then overrides
 import "react-big-calendar/lib/css/react-big-calendar.css"
@@ -97,6 +101,16 @@ const TIME_WINDOW_COLORS: Record<string, string> = {
     night: "bg-purple-500",
 }
 
+// Month names for navigation
+const MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+]
+
+// Generate year range (current year -2 to +5)
+const currentYear = new Date().getFullYear()
+const YEARS = Array.from({ length: 8 }, (_, i) => currentYear - 2 + i)
+
 // Transform API schedule to calendar event
 const mapScheduleToEvent = (schedule: Schedule): CalendarEvent | null => {
     if (!schedule.next_scheduled_at) return null
@@ -144,6 +158,11 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
     const [view, setView] = useState<View>(Views.MONTH)
     const [date, setDate] = useState(new Date())
 
+    // Search state
+    const [searchQuery, setSearchQuery] = useState("")
+    const [searchOpen, setSearchOpen] = useState(false)
+    const [dateSearchInput, setDateSearchInput] = useState("")
+
     // Dialog and pending drop state
     const [dialogOpen, setDialogOpen] = useState(false)
     const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
@@ -153,6 +172,92 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
     const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
     const [overrideDialogOpen, setOverrideDialogOpen] = useState(false)
     const [isLockLoading, setIsLockLoading] = useState(false)
+
+    // Filter schedules based on search query
+    const filteredSchedules = useMemo(() => {
+        if (!searchQuery.trim()) return schedules
+        const query = searchQuery.toLowerCase()
+        return schedules.filter(s =>
+            s.repository_name.toLowerCase().includes(query)
+        )
+    }, [schedules, searchQuery])
+
+    // Navigation handlers
+    const handleMonthChange = useCallback((month: string) => {
+        const monthIndex = MONTHS.indexOf(month)
+        if (monthIndex !== -1) {
+            setDate(prev => setMonth(prev, monthIndex))
+        }
+    }, [])
+
+    const handleYearChange = useCallback((year: string) => {
+        const yearNum = parseInt(year, 10)
+        if (!isNaN(yearNum)) {
+            setDate(prev => setYear(prev, yearNum))
+        }
+    }, [])
+
+    const handlePrevMonth = useCallback(() => {
+        setDate(prev => {
+            const newDate = new Date(prev)
+            newDate.setMonth(newDate.getMonth() - 1)
+            return newDate
+        })
+    }, [])
+
+    const handleNextMonth = useCallback(() => {
+        setDate(prev => {
+            const newDate = new Date(prev)
+            newDate.setMonth(newDate.getMonth() + 1)
+            return newDate
+        })
+    }, [])
+
+    const handleToday = useCallback(() => {
+        setDate(new Date())
+    }, [])
+
+    // Handle date search (accepts formats: YYYY-MM-DD, MM/DD/YYYY, etc.)
+    const handleDateSearch = useCallback(() => {
+        if (!dateSearchInput.trim()) return
+
+        // Try parsing different date formats
+        let parsedDate: Date | null = null
+
+        // Try ISO format first (YYYY-MM-DD)
+        const isoDate = parseISO(dateSearchInput)
+        if (isValid(isoDate)) {
+            parsedDate = isoDate
+        } else {
+            // Try MM/DD/YYYY or M/D/YYYY
+            const parts = dateSearchInput.split(/[\/\-]/)
+            if (parts.length === 3) {
+                const [p1, p2, p3] = parts.map(p => parseInt(p, 10))
+                // Check if it's MM/DD/YYYY or YYYY/MM/DD
+                if (p1 > 31) {
+                    // YYYY/MM/DD
+                    parsedDate = new Date(p1, p2 - 1, p3)
+                } else if (p3 > 31) {
+                    // MM/DD/YYYY
+                    parsedDate = new Date(p3, p1 - 1, p2)
+                }
+            }
+        }
+
+        if (parsedDate && isValid(parsedDate)) {
+            setDate(parsedDate)
+            setDateSearchInput("")
+        }
+    }, [dateSearchInput])
+
+    // Handle repo search selection - navigate to the schedule's date
+    const handleRepoSelect = useCallback((schedule: Schedule) => {
+        if (schedule.next_scheduled_at) {
+            setDate(new Date(schedule.next_scheduled_at))
+            setSearchQuery("")
+            setSearchOpen(false)
+        }
+    }, [])
 
     // Handle event drop (drag and drop)
     const handleEventDrop = useCallback(
@@ -258,12 +363,12 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
     // Allow all events to be draggable
     const draggableAccessor = useCallback(() => true, [])
 
-    // Transform schedules to calendar events
+    // Transform schedules to calendar events (filtered by search)
     const events = useMemo(() => {
-        return schedules
+        return filteredSchedules
             .map(mapScheduleToEvent)
             .filter((event): event is CalendarEvent => event !== null)
-    }, [schedules])
+    }, [filteredSchedules])
 
     // Custom event styling based on schedule type
     const eventStyleGetter = useCallback((event: CalendarEvent) => {
@@ -301,8 +406,123 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
 
     return (
         <div className="flex flex-col gap-4">
-            {/* View toggle and legend */}
-            <div className="flex items-center justify-between">
+            {/* Navigation and Search Row */}
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+                {/* Left: Month/Year Navigation */}
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+
+                    <Select value={MONTHS[date.getMonth()]} onValueChange={handleMonthChange}>
+                        <SelectTrigger className="w-[130px]">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {MONTHS.map((month) => (
+                                <SelectItem key={month} value={month}>
+                                    {month}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={date.getFullYear().toString()} onValueChange={handleYearChange}>
+                        <SelectTrigger className="w-[90px]">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {YEARS.map((year) => (
+                                <SelectItem key={year} value={year.toString()}>
+                                    {year}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Button variant="outline" size="icon" onClick={handleNextMonth}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+
+                    <Button variant="outline" size="sm" onClick={handleToday}>
+                        Today
+                    </Button>
+                </div>
+
+                {/* Center: Search */}
+                <div className="flex items-center gap-2 flex-1 max-w-md">
+                    {/* Repo Search */}
+                    <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+                        <PopoverTrigger asChild>
+                            <div className="relative flex-1">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search repositories..."
+                                    value={searchQuery}
+                                    onChange={(e) => {
+                                        setSearchQuery(e.target.value)
+                                        setSearchOpen(e.target.value.length > 0)
+                                    }}
+                                    className="pl-9 pr-8"
+                                />
+                                {searchQuery && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute right-1 top-1 h-6 w-6"
+                                        onClick={() => {
+                                            setSearchQuery("")
+                                            setSearchOpen(false)
+                                        }}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                )}
+                            </div>
+                        </PopoverTrigger>
+                        {searchQuery && filteredSchedules.length > 0 && (
+                            <PopoverContent className="w-[300px] p-0" align="start">
+                                <div className="max-h-[200px] overflow-auto">
+                                    {filteredSchedules.slice(0, 10).map((schedule) => (
+                                        <button
+                                            key={schedule.id}
+                                            className="w-full px-3 py-2 text-left hover:bg-accent flex items-center justify-between text-sm"
+                                            onClick={() => handleRepoSelect(schedule)}
+                                        >
+                                            <span className="truncate">{schedule.repository_name}</span>
+                                            {schedule.next_scheduled_at && (
+                                                <span className="text-xs text-muted-foreground ml-2">
+                                                    {format(new Date(schedule.next_scheduled_at), "MMM d")}
+                                                </span>
+                                            )}
+                                        </button>
+                                    ))}
+                                    {filteredSchedules.length > 10 && (
+                                        <div className="px-3 py-2 text-xs text-muted-foreground border-t">
+                                            +{filteredSchedules.length - 10} more results
+                                        </div>
+                                    )}
+                                </div>
+                            </PopoverContent>
+                        )}
+                    </Popover>
+
+                    {/* Date Search */}
+                    <div className="flex items-center gap-1">
+                        <Input
+                            placeholder="Go to date (YYYY-MM-DD)"
+                            value={dateSearchInput}
+                            onChange={(e) => setDateSearchInput(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleDateSearch()}
+                            className="w-[160px]"
+                        />
+                        <Button variant="outline" size="sm" onClick={handleDateSearch}>
+                            Go
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Right: View Toggle */}
                 <div className="flex items-center gap-2">
                     <Button
                         variant={view === Views.MONTH ? "default" : "outline"}
@@ -319,8 +539,11 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                         Week
                     </Button>
                 </div>
+            </div>
 
-                {/* Legend */}
+            {/* Legend Row */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+                {/* Schedule Type Legend */}
                 <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1">
                         <Bot className="h-4 w-4 text-blue-500" />
@@ -335,27 +558,42 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                         <span className="text-muted-foreground">Locked</span>
                     </div>
                 </div>
-            </div>
 
-            {/* Time window legend */}
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span>Time windows:</span>
-                <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                    <span>Morning</span>
+                {/* Time window legend */}
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>Time windows:</span>
+                    <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                        <span>Morning</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-orange-500" />
+                        <span>Afternoon</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span>Evening</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-purple-500" />
+                        <span>Night</span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-orange-500" />
-                    <span>Afternoon</span>
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
-                    <span>Evening</span>
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-purple-500" />
-                    <span>Night</span>
-                </div>
+
+                {/* Search filter indicator */}
+                {searchQuery && (
+                    <Badge variant="secondary" className="gap-1">
+                        Filtering: {filteredSchedules.length} of {schedules.length} schedules
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 ml-1"
+                            onClick={() => setSearchQuery("")}
+                        >
+                            <X className="h-3 w-3" />
+                        </Button>
+                    </Badge>
+                )}
             </div>
 
             {/* Calendar */}
@@ -373,7 +611,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                     components={{
                         event: EventComponent,
                     }}
-                    toolbar={true}
+                    toolbar={false}
                     popup
                     draggableAccessor={draggableAccessor}
                     onEventDrop={handleEventDrop}

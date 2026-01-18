@@ -6,12 +6,13 @@ import { RepositoryScheduleTable, RepositoryScheduleInfo } from "@/components/Re
 import { ScheduleCreateDialog } from "@/components/ScheduleCreateDialog"
 import { ScheduleEditDialog } from "@/components/ScheduleEditDialog"
 import { OrganizationSelector } from "@/components/OrganizationSelector"
-import { Loader2, Bot, RefreshCw, Wand2, CalendarDays, BarChart3, Table2 } from "lucide-react"
+import { Loader2, Bot, RefreshCw, Wand2, CalendarDays, BarChart3, Table2, Radar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { ScanActivityGraph } from "@/components/ScanActivityGraph"
+import { TodayScansPanel } from "@/components/TodayScansPanel"
 
 const API_BASE = "http://localhost:8000"
 
@@ -595,7 +596,7 @@ export default function SchedulerPage() {
                 </div>
             </div>
 
-            {/* Tabs for Activity Graph, Calendar, and Repository Schedules */}
+            {/* Tabs for Activity Graph, Calendar, Repository Schedules, and Scans */}
             <Tabs defaultValue="activity" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="activity" className="gap-2">
@@ -609,6 +610,10 @@ export default function SchedulerPage() {
                     <TabsTrigger value="schedules" className="gap-2">
                         <Table2 className="h-4 w-4" />
                         Repository Schedules
+                    </TabsTrigger>
+                    <TabsTrigger value="scans" className="gap-2">
+                        <Radar className="h-4 w-4" />
+                        Scans
                     </TabsTrigger>
                 </TabsList>
 
@@ -643,6 +648,12 @@ export default function SchedulerPage() {
                             onTriggerScan={handleTriggerScan}
                             isLoading={reposLoading}
                         />
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="scans">
+                    <div className="rounded-lg border p-6 bg-card">
+                        <TodayScansPanel />
                     </div>
                 </TabsContent>
             </Tabs>
