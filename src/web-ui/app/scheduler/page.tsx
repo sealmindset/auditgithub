@@ -66,6 +66,14 @@ export default function SchedulerPage() {
         const aiManaged = schedules.filter(s => s.schedule_type === "ai").length
         const locked = schedules.filter(s => s.is_locked).length
         const unscheduled = repositories.filter(r => !r.has_schedule && !r.is_archived).length
+
+        // Debug logging
+        console.log('[Stats] Total repos:', repositories.length)
+        console.log('[Stats] Archived repos:', repositories.filter(r => r.is_archived).length)
+        console.log('[Stats] Active repos:', repositories.filter(r => !r.is_archived).length)
+        console.log('[Stats] Repos with schedules:', repositories.filter(r => r.has_schedule).length)
+        console.log('[Stats] Unscheduled active repos:', unscheduled)
+
         return { total, aiManaged, locked, unscheduled }
     }, [schedules, repositories])
 
@@ -434,27 +442,52 @@ export default function SchedulerPage() {
 
     // Handle applying AI schedules to all unscheduled repositories
     const handleApplyAISchedules = useCallback(async () => {
+        console.log('[AI Schedule] Starting to apply AI schedules...')
         setApplyingAI(true)
         try {
+            console.log('[AI Schedule] Fetching:', `${API_BASE}/schedules/batch/apply-ai`)
             const res = await fetch(`${API_BASE}/schedules/batch/apply-ai`, {
                 method: "POST",
                 credentials: 'include',
             })
 
+            console.log('[AI Schedule] Response status:', res.status)
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}))
+                console.error('[AI Schedule] Error response:', data)
                 throw new Error(data.detail || "Failed to apply AI schedules")
             }
 
             const result = await res.json()
+            console.log('[AI Schedule] Success result:', result)
+
+            // Detailed message based on results
+            let message = ""
+            let title = ""
+
+            if (result.created === 0 && result.skipped === 0 && result.errors === 0) {
+                title = "No changes made"
+                message = "No repositories found to schedule. All active repositories already have schedules."
+            } else if (result.created === 0 && result.skipped > 0) {
+                title = "No schedules created"
+                message = `${result.skipped} repositories were skipped (likely archived or already scheduled). No new schedules were created.`
+            } else if (result.created > 0) {
+                title = "AI schedules applied"
+                message = `✓ Created ${result.created} new schedules\n${result.skipped > 0 ? `⊘ Skipped ${result.skipped} repositories\n` : ''}${result.errors > 0 ? `✗ Errors: ${result.errors}` : ''}`
+            } else {
+                title = "Scheduling completed"
+                message = `Created: ${result.created}, Skipped: ${result.skipped}, Errors: ${result.errors}`
+            }
+
             toast({
-                title: "AI schedules applied",
-                description: `Created ${result.created} schedules, skipped ${result.skipped}, errors: ${result.errors}`,
+                title,
+                description: message,
             })
 
             // Refresh data
             await Promise.all([fetchSchedules(), fetchRepositories()])
         } catch (err) {
+            console.error('[AI Schedule] Exception:', err)
             toast({
                 variant: "destructive",
                 title: "Failed to apply AI schedules",
@@ -591,6 +624,21 @@ export default function SchedulerPage() {
                                 <RefreshCw className="h-4 w-4 mr-2" />
                             )}
                             Refresh AI Schedules
+                        </Button>
+                    )}
+                    {stats.unscheduled === 0 && stats.aiManaged === 0 && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleApplyAISchedules}
+                            disabled={applyingAI}
+                        >
+                            {applyingAI ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <Wand2 className="h-4 w-4 mr-2" />
+                            )}
+                            Apply AI Schedules
                         </Button>
                     )}
                 </div>

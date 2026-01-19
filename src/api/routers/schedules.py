@@ -720,7 +720,10 @@ async def batch_apply_ai_schedules(
     query = (
         db.query(models.Repository)
         .filter(~models.Repository.id.in_(scheduled_repo_ids))
-        .filter(models.Repository.is_archived == False)
+        .filter(
+            (models.Repository.is_archived == False) |
+            (models.Repository.is_archived.is_(None))
+        )
     )
 
     if org_id:

@@ -247,7 +247,7 @@ function ContributorModal({
                                     <div className="space-y-1">
                                         {detail.files_contributed.map((file, idx) => (
                                             <div
-                                                key={idx}
+                                                key={file.path || `file-${idx}`}
                                                 className="flex items-center justify-between p-2 rounded hover:bg-muted"
                                             >
                                                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -278,7 +278,7 @@ function ContributorModal({
                                     <div className="grid grid-cols-3 gap-2">
                                         {detail.folders_contributed.map((folder, idx) => (
                                             <div
-                                                key={idx}
+                                                key={folder || `folder-${idx}`}
                                                 className="flex items-center gap-2 p-3 rounded-lg bg-muted"
                                             >
                                                 <FolderOpen className="h-5 w-5 text-yellow-500" />
@@ -298,7 +298,7 @@ function ContributorModal({
                                 <div className="flex flex-wrap gap-3">
                                     {detail.languages.map((lang, idx) => (
                                         <Badge
-                                            key={idx}
+                                            key={lang || `lang-${idx}`}
                                             variant="outline"
                                             className="text-base px-4 py-2"
                                         >

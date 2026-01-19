@@ -966,8 +966,8 @@ ${htmlContent}
                                         <CardContent className="pt-6">
                                             <div className="space-y-4">
                                                 {reportData.critical_insights.map((insight, idx) => (
-                                                    <div 
-                                                        key={idx}
+                                                    <div
+                                                        key={`insight-${insight.type}-${insight.severity}-${idx}`}
                                                         className="p-4 rounded-lg border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50"
                                                     >
                                                         <div className="flex items-start gap-4">
@@ -1025,8 +1025,8 @@ ${htmlContent}
                                         {reportData.highlight_reel && reportData.highlight_reel.length > 0 ? (
                                             <div className="space-y-4">
                                                 {sortBySeverity(reportData.highlight_reel).map((highlight, idx) => (
-                                                    <div 
-                                                        key={idx}
+                                                    <div
+                                                        key={`highlight-${highlight.type}-${highlight.title}-${idx}`}
                                                         className="p-4 rounded-lg border bg-card hover:shadow-md transition-shadow"
                                                     >
                                                         <div className="flex items-start gap-4">
@@ -1109,8 +1109,8 @@ ${htmlContent}
                                                         return (threatOrder[a.threat_level] ?? 5) - (threatOrder[b.threat_level] ?? 5);
                                                     })
                                                     .map((audit: any, idx: number) => (
-                                                    <div 
-                                                        key={idx}
+                                                    <div
+                                                        key={`audit-${audit.endpoint}-${audit.http_method}-${idx}`}
                                                         className="p-4 rounded-lg border bg-card"
                                                     >
                                                         {/* Header - Status badges on left, status code on right */}
@@ -1455,7 +1455,7 @@ function FindingsTable({ findings }: { findings: any[] }) {
     return (
         <div className="space-y-4">
             {sortedFindings.slice(0, 50).map((finding, idx) => (
-                <div key={idx} className="border rounded-lg p-4 hover:bg-muted/30">
+                <div key={finding.finding_uuid || `finding-${finding.scanner_name}-${finding.title}-${idx}`} className="border rounded-lg p-4 hover:bg-muted/30">
                     {/* Header row */}
                     <div className="flex items-center justify-between gap-4 mb-2">
                         <div className="flex items-center gap-2">
@@ -1539,7 +1539,7 @@ function ContributorsTable({ contributors }: { contributors: any[] }) {
                 </thead>
                 <tbody>
                     {contributors.map((c, idx) => (
-                        <tr key={idx} className="border-t hover:bg-muted/50">
+                        <tr key={c.id || c.login || `contributor-${c.name}-${idx}`} className="border-t hover:bg-muted/50">
                             <td className="px-4 py-2 font-medium">{c.login || c.name}</td>
                             <td className="px-4 py-2">{c.commits || c.contributions || 0}</td>
                             <td className="px-4 py-2 text-green-600">+{c.additions || 0}</td>
@@ -1600,7 +1600,7 @@ function SBOMTable({ components }: { components: any[] }) {
                 </thead>
                 <tbody>
                     {components.slice(0, 50).map((c, idx) => (
-                        <tr key={idx} className="border-t hover:bg-muted/50">
+                        <tr key={`${c.name}-${c.version}-${idx}`} className="border-t hover:bg-muted/50">
                             <td className="px-4 py-2 font-medium">{c.name}</td>
                             <td className="px-4 py-2 font-mono text-xs">{c.version || "-"}</td>
                             <td className="px-4 py-2">{c.type || c.purl?.split(":")[0] || "-"}</td>
@@ -1640,7 +1640,7 @@ function APIAuditTable({ results }: { results: any[] }) {
                 </thead>
                 <tbody>
                     {results.slice(0, 50).map((r, idx) => (
-                        <tr key={idx} className="border-t hover:bg-muted/50">
+                        <tr key={`${r.target_url || r.url}-${r.credential_type}-${idx}`} className="border-t hover:bg-muted/50">
                             <td className="px-4 py-2 font-mono text-xs truncate max-w-[200px]">{r.target_url || r.url}</td>
                             <td className="px-4 py-2">{r.credential_type || "-"}</td>
                             <td className="px-4 py-2">

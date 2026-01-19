@@ -981,7 +981,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                             </thead>
                                             <tbody>
                                                 {inboundCorrelations.slice(0, 5).map((corr, i) => (
-                                                    <tr key={i} className="border-t hover:bg-muted/30">
+                                                    <tr key={`inbound-${corr.endpoint?.path}-${corr.endpoint?.method}-${i}`} className="border-t hover:bg-muted/30">
                                                         <td className="px-4 py-2">
                                                             <div className="flex items-center gap-2">
                                                                 <Badge variant="outline" className="text-xs">{corr.endpoint.method}</Badge>
@@ -1050,7 +1050,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                             </thead>
                                             <tbody>
                                                 {outboundCorrelations.slice(0, 5).map((corr, i) => (
-                                                    <tr key={i} className="border-t hover:bg-muted/30">
+                                                    <tr key={`outbound-${corr.external_url}-${i}`} className="border-t hover:bg-muted/30">
                                                         <td className="px-4 py-2">
                                                             <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate block max-w-xs">
                                                                 {corr.endpoint.code.length > 60 ? corr.endpoint.code.slice(0, 60) + '...' : corr.endpoint.code}
@@ -1458,7 +1458,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         </thead>
                                                         <tbody>
                                                             {auditData.credentials.high.slice(0, 10).map((cred, i) => (
-                                                                <tr key={i} className="border-t border-red-500/10">
+                                                                <tr key={`cred-high-${cred.url}-${cred.type}-${i}`} className="border-t border-red-500/10">
                                                                     <td className="px-4 py-2 font-mono text-xs">{cred.type}</td>
                                                                     <td className="px-4 py-2">
                                                                         <Badge variant="outline" className="text-xs">{cred.environment}</Badge>
@@ -1491,7 +1491,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         </thead>
                                                         <tbody>
                                                             {auditData.credentials.medium.slice(0, 10).map((cred, i) => (
-                                                                <tr key={i} className="border-t border-yellow-500/10">
+                                                                <tr key={`cred-medium-${cred.url}-${cred.type}-${i}`} className="border-t border-yellow-500/10">
                                                                     <td className="px-4 py-2 font-mono text-xs">{cred.type}</td>
                                                                     <td className="px-4 py-2">
                                                                         <Badge variant="outline" className="text-xs">{cred.environment}</Badge>

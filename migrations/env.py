@@ -7,7 +7,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.api.database import SessionLocal, metadata_engine
+from src.api.database import SessionLocal, engine as metadata_engine
 from src.api.models import Base, Tenant
 
 # Alembic Config object
