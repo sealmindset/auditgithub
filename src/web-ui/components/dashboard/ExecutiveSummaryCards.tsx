@@ -14,7 +14,9 @@ import {
     Shield,
     GitBranch,
     Scan,
-    Key
+    Key,
+    RefreshCw,
+    WifiOff
 } from "lucide-react"
 import { FeedbackButton } from "./FeedbackButton"
 
@@ -64,27 +66,32 @@ function getGradeBgColor(grade: string): string {
 export function ExecutiveSummaryCards() {
     const [data, setData] = useState<ExecutiveSummaryData | null>(null)
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const fetchData = async () => {
+        try {
+            setError(null)
+            const response = await fetch(`${API_BASE}/analytics/executive-summary`)
+            if (response.ok) {
+                setData(await response.json())
+            } else {
+                setError(`Server error: ${response.status}`)
+            }
+        } catch (error) {
+            console.error("Failed to fetch executive summary:", error)
+            setError("Unable to connect to server")
+        } finally {
+            setLoading(false)
+        }
+    }
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const response = await fetch(`${API_BASE}/analytics/executive-summary`)
-                if (response.ok) {
-                    setData(await response.json())
-                }
-            } catch (error) {
-                console.error("Failed to fetch executive summary:", error)
-            } finally {
-                setLoading(false)
-            }
-        }
-
         fetchData()
         const interval = setInterval(fetchData, 60000) // Refresh every minute
         return () => clearInterval(interval)
     }, [])
 
-    if (loading || !data) {
+    if (loading) {
         return (
             <div className="grid gap-6 md:grid-cols-3">
                 {[1, 2, 3].map((i) => (
@@ -93,6 +100,26 @@ export function ExecutiveSummaryCards() {
                     </Card>
                 ))}
             </div>
+        )
+    }
+
+    if (error || !data) {
+        return (
+            <Card className="border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="rounded-full bg-muted p-3 mb-4">
+                        <WifiOff className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <h3 className="font-medium mb-1">Unable to Load Executive Summary</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        {error || "No data available"}
+                    </p>
+                    <Button variant="outline" size="sm" onClick={fetchData} className="gap-2">
+                        <RefreshCw className="h-4 w-4" />
+                        Retry
+                    </Button>
+                </CardContent>
+            </Card>
         )
     }
 
