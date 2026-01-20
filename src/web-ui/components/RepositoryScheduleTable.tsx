@@ -6,6 +6,7 @@ import { DataTable } from "@/components/data-table"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 import {
   Calendar,
   Clock,
@@ -239,9 +240,16 @@ function createColumns(
       ),
       cell: ({ row }) => {
         const isArchived = row.original.is_archived
+        const repoId = row.original.repository_id
+        const repoName = row.getValue("repository_name") as string
         return (
           <div className="flex items-center gap-2">
-            <span className="font-medium">{row.getValue("repository_name")}</span>
+            <Link
+              href={`/projects/${repoId}`}
+              className="font-medium text-primary hover:underline"
+            >
+              {repoName}
+            </Link>
             {isArchived && (
               <Badge variant="secondary" className="text-xs">
                 <Archive className="h-3 w-3 mr-1" />

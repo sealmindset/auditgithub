@@ -413,7 +413,7 @@ async def get_recent_findings(limit: int = 5, db: Session = Depends(get_tenant_d
     ).order_by(models.Finding.created_at.desc()).limit(limit).all()
 
     return [{
-        "id": str(f.finding_uuid),
+        "id": str(f.id),  # Use primary key id instead of finding_uuid for uniqueness
         "title": f.title,
         "severity": f.severity.capitalize(),
         "repo": f.repository.name,
