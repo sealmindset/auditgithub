@@ -1,0 +1,167 @@
+rules:
+  # SQL Injection Vulnerabilities
+  - id: plsql-sql-injection-execute-immediate
+    pattern: EXECUTE IMMEDIATE $VAR
+    message: |
+      Potential SQL injection vulnerability. EXECUTE IMMEDIATE with dynamic SQL
+      can be exploited if user input is not properly sanitized.
+      Use bind variables instead: EXECUTE IMMEDIATE sql_stmt USING param1, param2
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+
+  - id: plsql-sql-injection-open-cursor
+    pattern: OPEN $CURSOR FOR $SQL
+    message: |
+      Dynamic SQL in cursor may be vulnerable to SQL injection.
+      Ensure proper input validation and use bind variables.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+      confidence: MEDIUM
+
+  - id: plsql-sql-injection-dbms-sql
+    pattern-regex: 'DBMS_SQL\.(PARSE|EXECUTE)'
+    message: |
+      DBMS_SQL with dynamic SQL can lead to SQL injection.
+      Validate and sanitize all inputs, use bind variables.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+
+  # Hardcoded Credentials
+  - id: plsql-hardcoded-password
+    pattern-regex: '(PASSWORD|PWD|PASSWD)\s*:?=\s*[''"][^''"]{4,}[''"]'
+    message: |
+      Hardcoded password detected. Store credentials in secure vaults
+      or use Oracle Wallet instead of hardcoding in source code.
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+
+  - id: plsql-hardcoded-connection-string
+    pattern-regex: '(CONN|CONNECTION|CONNECT)\s*:?=\s*[''"][^@]+@[^''"]+'
+    message: |
+      Hardcoded database connection string. Use TNS names or
+      secure configuration management.
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+
+  # Command Injection
+  - id: plsql-command-injection-utl-file
+    pattern-regex: 'UTL_FILE\.(FOPEN|FOPEN_NCHAR|FREMOVE|FRENAME|FCOPY)'
+    message: |
+      UTL_FILE operations with user-controlled input can lead to
+      unauthorized file access. Validate file paths strictly.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+
+  - id: plsql-command-injection-dbms-scheduler
+    pattern-regex: 'DBMS_SCHEDULER\.CREATE_JOB'
+    message: |
+      DBMS_SCHEDULER with user input can execute arbitrary code.
+      Validate all job parameters and limit to whitelisted operations.
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+
+  # Insecure Cryptography
+  - id: plsql-weak-encryption-des
+    pattern-regex: 'DBMS_CRYPTO\.(ENCRYPT|DECRYPT).*DES'
+    message: |
+      DES encryption is weak and deprecated. Use AES256 instead:
+      DBMS_CRYPTO.ENCRYPT(src => data, typ => DBMS_CRYPTO.ENCRYPT_AES256)
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+
+  - id: plsql-weak-hash-md5
+    pattern-regex: 'DBMS_CRYPTO\.HASH.*HASH_MD5'
+    message: |
+      MD5 is cryptographically broken. Use SHA256 or SHA512 instead.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-328: Use of Weak Hash"
+
+  # Information Disclosure
+  - id: plsql-exception-information-disclosure
+    pattern-regex: 'SQLERRM|DBMS_UTILITY\.FORMAT_ERROR_STACK'
+    message: |
+      Exposing detailed error messages can leak sensitive information.
+      Log detailed errors securely, return generic messages to users.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-209: Information Exposure Through an Error Message"
+
+  # Privilege Escalation
+  - id: plsql-authid-current-user-missing
+    pattern-regex: 'CREATE\s+(OR\s+REPLACE\s+)?PROCEDURE(?!.*AUTHID\s+CURRENT_USER)'
+    message: |
+      Procedure without AUTHID CURRENT_USER may run with definer rights,
+      potentially causing privilege escalation. Add AUTHID CURRENT_USER.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-269: Improper Privilege Management"
+
+  # Code Quality - Security Impact
+  - id: plsql-autonomous-transaction-abuse
+    pattern-regex: 'PRAGMA\s+AUTONOMOUS_TRANSACTION'
+    message: |
+      AUTONOMOUS_TRANSACTION can bypass security controls by committing
+      independently. Ensure this is intentional and properly secured.
+    languages: [generic]
+    severity: INFO
+    metadata:
+      category: security
+      confidence: LOW
+
+  # Oracle EBS Specific
+  - id: oracle-ebs-fnd-user-pkg-misuse
+    pattern-regex: 'FND_USER\.CREATE_USER'
+    message: |
+      Direct user creation via FND_USER package. Ensure proper
+      authorization checks are in place.
+    languages: [generic]
+    severity: WARNING
+    metadata:
+      category: security
+      subcategory: oracle-ebs
+
+  - id: oracle-ebs-apps-password
+    pattern-regex: 'APPS/[^@\s]+'
+    message: |
+      Hardcoded APPS schema password detected. Use secure credential
+      management for Oracle EBS.
+    languages: [generic]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: oracle-ebs
+      cwe: "CWE-798: Use of Hard-coded Credentials"

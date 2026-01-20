@@ -10,9 +10,10 @@ Quick reference guide for common AuditGH operations, from startup to advanced sc
 2. [Starting the Application](#starting-the-application)
 3. [Scanning Variations](#scanning-variations)
 4. [Organization Management](#organization-management)
-5. [Data Ingestion](#data-ingestion)
-6. [Service Management](#service-management)
-7. [Troubleshooting Quick Fixes](#troubleshooting-quick-fixes)
+5. [Repository Metadata Validation](#repository-metadata-validation)
+6. [Data Ingestion](#data-ingestion)
+7. [Service Management](#service-management)
+8. [Troubleshooting Quick Fixes](#troubleshooting-quick-fixes)
 
 ---
 
@@ -410,6 +411,74 @@ curl http://localhost:8000/organizations/ | jq
 # Or via API
 curl http://localhost:8000/organizations/sleepnumberlabs | jq
 ```
+
+---
+
+## Repository Metadata Validation
+
+**🔥 NEW:** Repository metadata (commit dates, languages, descriptions) is automatically validated and updated after every scan!
+
+### Automatic Validation (Default)
+```bash
+# Validation happens automatically after scanning!
+docker-compose run --rm scanner --target sleepnumberlabs
+
+# Output shows validation step:
+# ================================================================================
+# Validating repository metadata...
+# ================================================================================
+#   Updated metadata for sleepnumberlabs/my-repo: pushed_at, language
+#   Updated metadata for sleepnumberlabs/my-api: pushed_at, language, description
+# ✅ Metadata validation complete.
+# ================================================================================
+```
+
+### Manual Validation
+```bash
+# Validate all repositories
+docker exec auditgh_api python /app/validate_scan_metadata.py
+
+# Validate specific organization
+docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberInc
+
+# Validate specific repository
+docker exec auditgh_api python /app/validate_scan_metadata.py --org sleepnumberlabs --repo my-api
+
+# Enable verbose logging
+docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberInc -v
+```
+
+### What Gets Validated
+The system automatically updates from scan report files:
+- **Last commit date** (`pushed_at`) - From `_intel.json`
+- **Primary language** - From `_cloc.json` (most code lines)
+- **Repository description** - From `_intel.json`
+- **Default branch** - From `_intel.json`
+
+### When Validation Runs
+1. **After scan ingestion** - When findings are loaded into database
+2. **During orchestration** - As final step in scan workflow
+3. **Manual execution** - When you run the validation script
+
+### Check Validation Results
+```bash
+# View a specific repository's metadata
+docker exec auditgh_db psql -U postgres -d security_portal -c \
+  "SELECT name, pushed_at, language, description, default_branch
+   FROM repositories WHERE name = 'my-repo';"
+
+# Count repos with complete metadata by organization
+docker exec auditgh_db psql -U postgres -d security_portal -c \
+  "SELECT o.github_org,
+          COUNT(*) as total,
+          COUNT(r.pushed_at) as with_dates,
+          COUNT(r.language) as with_language
+   FROM repositories r
+   JOIN organizations o ON r.organization_id = o.id
+   GROUP BY o.github_org;"
+```
+
+**Learn More:** See [SCAN_VALIDATION.md](../SCAN_VALIDATION.md) for architecture details and troubleshooting.
 
 ---
 

@@ -16,26 +16,50 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def run_semgrep(repo_path: str, repo_name: str, report_dir: str):
-    """Run Semgrep SAST scan."""
+    """Run Semgrep SAST scan with PL/SQL support."""
     os.makedirs(report_dir, exist_ok=True)
     semgrep_bin = shutil.which('semgrep')
     output_json = os.path.join(report_dir, f"{repo_name}_semgrep.json")
     output_md = os.path.join(report_dir, f"{repo_name}_semgrep.md")
-    
+
     if not semgrep_bin:
         logger.error("Semgrep is not installed")
         return False
-        
+
     try:
         logger.info(f"Running Semgrep for {repo_name}...")
-        cmd = [semgrep_bin, "scan", "--config=auto", "--json", "--output", output_json, repo_path]
+
+        # Build config list - include PL/SQL rules if .sql files exist
+        configs = ["auto"]
+        plsql_rules_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "semgrep_plsql_rules.yml")
+
+        # Check if repository has PL/SQL files
+        has_plsql = False
+        for root, _, files in os.walk(repo_path):
+            if any(f.endswith(('.sql', '.pls', '.pkb', '.pks', '.plb')) for f in files):
+                has_plsql = True
+                break
+
+        # Add PL/SQL rules if SQL files exist and rules file exists
+        if has_plsql and os.path.exists(plsql_rules_path):
+            configs.append(plsql_rules_path)
+            logger.info(f"  + Including PL/SQL security rules")
+
+        # Build command with all configs
+        cmd = [semgrep_bin, "scan", "--json", "--output", output_json, repo_path]
+        for config in configs:
+            cmd.extend(["--config", config])
+
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         # Create MD report
         with open(output_md, 'w') as f:
             f.write(f"# Semgrep SAST Scan\n\n")
             f.write(f"**Repository:** {repo_name}\n")
-            f.write(f"**Date:** {datetime.datetime.now().isoformat()}\n\n")
+            f.write(f"**Date:** {datetime.datetime.now().isoformat()}\n")
+            if has_plsql:
+                f.write(f"**PL/SQL Rules:** Enabled\n")
+            f.write("\n")
             
             if result.returncode == 0:
                 try:

@@ -81,6 +81,7 @@ docker exec auditgh_api python ingest_reports.py
 - Backup and restore with 30-day retention
 - Session-based authentication with Redis caching
 - CORS preflight handling for cross-origin requests
+- **Automatic repository metadata validation** after every scan
 
 ---
 
@@ -98,6 +99,7 @@ docker exec auditgh_api python ingest_reports.py
 | Guide | Description |
 |-------|-------------|
 | [Multi-Tenant Setup](docs/MULTI_TENANT.md) | Add and manage multiple organizations |
+| [Scan Validation](SCAN_VALIDATION.md) | Automatic metadata validation system |
 | [Database Reset](docs/DATABASE_RESET.md) | Backup, reset, and restore data |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
 

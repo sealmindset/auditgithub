@@ -111,6 +111,17 @@ class Orchestrator:
         except subprocess.CalledProcessError as e:
             logger.error(f"Ingestion failed: {e}")
 
+        # Run metadata validation to ensure repository info is complete
+        logger.info("Validating repository metadata...")
+        validate_cmd = [sys.executable, "validate_scan_metadata.py", "--org", self.org]
+        if repo:
+            validate_cmd.extend(["--repo", repo])
+        try:
+            subprocess.run(validate_cmd, check=True)
+            logger.info("Metadata validation complete.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Metadata validation failed: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="Orchestrate security scans")
     parser.add_argument("--org", required=True, help="GitHub Organization")

@@ -1602,6 +1602,16 @@ def ingest_single_repo(repo_name: str, repo_dir: str, tenant_slug: str = None, o
 
         db.commit()
 
+        # VALIDATION: Update repository metadata from latest scan files
+        try:
+            # Import the metadata update function
+            from ingest_reports import update_repository_metadata
+
+            # Update metadata using org name and repo name
+            update_repository_metadata(db, str(repo.id), github_org, repo_name)
+        except Exception as e:
+            logger.warning(f"Could not update repository metadata for {repo_name}: {e}")
+
         logger.info(f"Ingested {findings_count} findings for {repo_name}")
         
     except Exception as e:
@@ -1818,7 +1828,7 @@ def _ingest_single_project(db, project_dir: Path, repo_name: str, org_id: str, g
 
     # API Audit (endpoints + OpenAPI spec)
     ingest_api_audit(db, repo, project_dir / "dummy")
-    
+
     # Update ScanRun stats
     scan_run.findings_count = findings_count
     scan_run.new_findings_count = findings_count
@@ -1827,7 +1837,17 @@ def _ingest_single_project(db, project_dir: Path, repo_name: str, org_id: str, g
     repo.last_scanned_at = datetime.now(timezone.utc)
 
     db.commit()
-    
+
+    # VALIDATION: Update repository metadata from latest scan files
+    try:
+        # Import the metadata update function
+        from ingest_reports import update_repository_metadata
+
+        # Update metadata using org name and repo name
+        update_repository_metadata(db, str(repo.id), github_org, repo_name)
+    except Exception as e:
+        logger.warning(f"Could not update repository metadata for {repo_name}: {e}")
+
     logger.info(f"Ingested {findings_count} findings for {repo_name}")
     return findings_count
 

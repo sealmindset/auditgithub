@@ -35,7 +35,7 @@ def get_organization_id(session, org_name):
     return str(result[0]) if result else None
 
 def ingest_repository(session, org_id, org_name, repo_name):
-    """Create repository record if it doesn't exist."""
+    """Create repository record if it doesn't exist, reading metadata from intel.json."""
     try:
         # Check if repository exists
         result = session.execute(
@@ -44,7 +44,35 @@ def ingest_repository(session, org_id, org_name, repo_name):
         ).fetchone()
 
         if result:
-            return str(result[0])
+            repo_id = str(result[0])
+            # Update existing repository with metadata from intel.json
+            repo_metadata = get_repo_metadata_from_intel(org_name, repo_name)
+            if repo_metadata:
+                session.execute(
+                    text("""
+                        UPDATE repositories
+                        SET pushed_at = :pushed_at,
+                            description = :description,
+                            default_branch = :default_branch,
+                            language = :language,
+                            updated_at = :updated_at
+                        WHERE id = :id
+                    """),
+                    {
+                        "id": repo_id,
+                        "pushed_at": repo_metadata.get("pushed_at"),
+                        "description": repo_metadata.get("description"),
+                        "default_branch": repo_metadata.get("default_branch"),
+                        "language": repo_metadata.get("language"),
+                        "updated_at": datetime.now()
+                    }
+                )
+                session.commit()
+                logger.info(f"Updated repository metadata from intel.json: {org_name}/{repo_name}")
+            return repo_id
+
+        # Read metadata from intel.json if available
+        repo_metadata = get_repo_metadata_from_intel(org_name, repo_name)
 
         # Create repository
         repo_id = str(uuid.uuid4())
@@ -52,32 +80,184 @@ def ingest_repository(session, org_id, org_name, repo_name):
             text("""
                 INSERT INTO repositories
                 (id, organization_id, name, full_name, description, is_private,
-                 url, default_branch, created_at, updated_at, last_scanned_at)
+                 url, default_branch, pushed_at, language, created_at, updated_at, last_scanned_at)
                 VALUES
                 (:id, :org_id, :name, :full_name, :description, :is_private,
-                 :url, :default_branch, :created_at, :updated_at, :last_scanned_at)
+                 :url, :default_branch, :pushed_at, :language, :created_at, :updated_at, :last_scanned_at)
             """),
             {
                 "id": repo_id,
                 "org_id": org_id,
                 "name": repo_name,
                 "full_name": f"{org_name}/{repo_name}",
-                "description": f"Repository {repo_name}",
+                "description": repo_metadata.get("description", f"Repository {repo_name}"),
                 "is_private": True,
                 "url": f"https://github.com/{org_name}/{repo_name}",
-                "default_branch": "main",
+                "default_branch": repo_metadata.get("default_branch", "main"),
+                "pushed_at": repo_metadata.get("pushed_at"),
+                "language": repo_metadata.get("language"),
                 "created_at": datetime.now(),
                 "updated_at": datetime.now(),
                 "last_scanned_at": datetime.now()
             }
         )
         session.commit()
-        logger.info(f"Created repository: {org_name}/{repo_name}")
+        logger.info(f"Created repository with metadata from intel.json: {org_name}/{repo_name}")
         return repo_id
     except Exception as e:
         session.rollback()
         logger.error(f"Error creating repository {org_name}/{repo_name}: {e}")
         raise
+
+def get_repo_metadata_from_intel(org_name, repo_name):
+    """Extract repository metadata from intel.json file."""
+    try:
+        # Try both SleepNumberInc folder and root level
+        intel_paths = [
+            REPORTS_DIR / org_name / repo_name / f"{repo_name}_intel.json",
+            REPORTS_DIR / repo_name / f"{repo_name}_intel.json",
+        ]
+
+        intel_data = None
+        for intel_path in intel_paths:
+            if intel_path.exists():
+                with open(intel_path, 'r') as f:
+                    intel_data = json.load(f)
+                break
+
+        if not intel_data:
+            logger.debug(f"No intel.json found for {org_name}/{repo_name}")
+            return {}
+
+        # Extract last commit date from contributors
+        pushed_at = None
+        if "contributors" in intel_data and "top_contributors" in intel_data["contributors"]:
+            for contributor in intel_data["contributors"]["top_contributors"]:
+                if "last_commit_at" in contributor and contributor["last_commit_at"]:
+                    commit_date = datetime.fromisoformat(contributor["last_commit_at"].replace("Z", "+00:00"))
+                    if pushed_at is None or commit_date > pushed_at:
+                        pushed_at = commit_date
+
+        # Extract primary language from cloc.json if available
+        language = None
+        cloc_paths = [
+            REPORTS_DIR / org_name / repo_name / f"{repo_name}_cloc.json",
+            REPORTS_DIR / repo_name / f"{repo_name}_cloc.json",
+        ]
+
+        for cloc_path in cloc_paths:
+            if cloc_path.exists():
+                try:
+                    with open(cloc_path, 'r') as f:
+                        cloc_data = json.load(f)
+                    # Get language with most code lines (exclude SUM and header)
+                    langs = {k: v for k, v in cloc_data.items() if k not in ['SUM', 'header'] and isinstance(v, dict) and 'code' in v}
+                    if langs:
+                        language = max(langs.items(), key=lambda x: x[1]['code'])[0]
+                    break
+                except Exception as e:
+                    logger.debug(f"Error reading cloc.json: {e}")
+
+        # Fallback to intel.json languages if cloc didn't work
+        if not language and "languages" in intel_data and intel_data["languages"]:
+            languages = intel_data["languages"]
+            if isinstance(languages, dict) and languages:
+                # Filter out non-numeric values and get max
+                numeric_langs = {k: v for k, v in languages.items() if isinstance(v, (int, float))}
+                if numeric_langs:
+                    language = max(numeric_langs.items(), key=lambda x: x[1])[0]
+            elif isinstance(languages, list) and languages:
+                # If it's a list, take the first language
+                language = languages[0]
+
+        # Extract description from repository metadata if available
+        description = None
+        if "repository" in intel_data and "description" in intel_data["repository"]:
+            description = intel_data["repository"]["description"]
+
+        # Extract default branch
+        default_branch = None
+        if "repository" in intel_data and "default_branch" in intel_data["repository"]:
+            default_branch = intel_data["repository"]["default_branch"]
+
+        return {
+            "pushed_at": pushed_at,
+            "language": language,
+            "description": description,
+            "default_branch": default_branch
+        }
+
+    except Exception as e:
+        logger.warning(f"Error reading intel.json for {org_name}/{repo_name}: {e}")
+        return {}
+
+
+def update_repository_metadata(session, repo_id, org_name, repo_name):
+    """
+    Update repository metadata from intel.json and cloc.json files.
+
+    This function should be called:
+    1. During initial report ingestion (ingest_reports.py)
+    2. After each scan completes (scan validation process)
+
+    Args:
+        session: SQLAlchemy session
+        repo_id: Repository UUID
+        org_name: Organization name (e.g., 'SleepNumberInc')
+        repo_name: Repository name
+
+    Returns:
+        bool: True if metadata was updated, False otherwise
+    """
+    try:
+        # Get metadata from files
+        metadata = get_repo_metadata_from_intel(org_name, repo_name)
+
+        if not metadata or not any(metadata.values()):
+            logger.debug(f"No metadata found for {org_name}/{repo_name}")
+            return False
+
+        # Build update query - only update fields that have values
+        update_fields = []
+        params = {"repo_id": repo_id, "updated_at": datetime.now()}
+
+        if metadata.get("pushed_at"):
+            update_fields.append("pushed_at = :pushed_at")
+            params["pushed_at"] = metadata["pushed_at"]
+
+        if metadata.get("language"):
+            update_fields.append("language = :language")
+            params["language"] = metadata["language"]
+
+        if metadata.get("description"):
+            update_fields.append("description = :description")
+            params["description"] = metadata["description"]
+
+        if metadata.get("default_branch"):
+            update_fields.append("default_branch = :default_branch")
+            params["default_branch"] = metadata["default_branch"]
+
+        if not update_fields:
+            return False
+
+        # Execute update
+        update_query = f"""
+            UPDATE repositories
+            SET {', '.join(update_fields)}, updated_at = :updated_at
+            WHERE id = :repo_id
+        """
+
+        session.execute(text(update_query), params)
+        session.commit()
+
+        logger.info(f"Updated metadata for {org_name}/{repo_name}: {', '.join([k for k in metadata.keys() if metadata[k]])}")
+        return True
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error updating metadata for {org_name}/{repo_name}: {e}")
+        return False
+
 
 def ingest_gitleaks_findings(session, repo_id, report_path):
     """Ingest findings from gitleaks JSON report."""
@@ -887,6 +1067,9 @@ def ingest_organization_reports(org_name):
                 count = ingest_openapi_specs(session, repo_id, org_id, openapi_yaml)
                 if count > 0:
                     logger.info(f"    Ingested OpenAPI spec (YAML)")
+
+            # VALIDATION: Update repository metadata from latest scan files
+            update_repository_metadata(session, repo_id, org_name, repo_name)
 
         logger.info(f"Completed {org_name}: {total_repos} repositories, {total_findings} findings")
 
