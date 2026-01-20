@@ -89,6 +89,9 @@ async def get_projects(
                 max_severity_value = severity_value
                 max_severity = finding.severity
 
+        # Check if architecture report and diagram are both present
+        has_architecture = bool(p.architecture_report and p.architecture_diagram)
+
         results.append({
             "id": str(p.id),
             "name": p.name,
@@ -103,6 +106,7 @@ async def get_projects(
             "is_archived": p.is_archived,
             "is_private": p.is_private,
             "max_severity": max_severity,
+            "has_architecture": has_architecture,
             "stats": {
                 "open_findings": open_findings,
                 "stars": p.stargazers_count or 0,
@@ -126,12 +130,25 @@ async def get_project_details(project_id: str, db: Session = Depends(get_tenant_
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Get organization information
+    organization = None
+    if project.organization_id:
+        org = db.query(models.Organization).filter(
+            models.Organization.id == project.organization_id
+        ).first()
+        if org:
+            organization = {
+                "id": str(org.id),
+                "name": org.name,
+                "github_org": org.github_org
+            }
+
     # Calculate aggregate stats
     open_findings_count = db.query(models.Finding).filter(
         models.Finding.repository_id == project.id,
         models.Finding.status == 'open'
     ).count()
-    
+
     return {
         "id": str(project.id),
         "name": project.name,
@@ -154,6 +171,7 @@ async def get_project_details(project_id: str, db: Session = Depends(get_tenant_
         "has_wiki": project.has_wiki,
         "has_pages": project.has_pages,
         "has_discussions": project.has_discussions,
+        "organization": organization,
         "stats": {
             "open_findings": open_findings_count,
             "stars": project.stargazers_count or 0,

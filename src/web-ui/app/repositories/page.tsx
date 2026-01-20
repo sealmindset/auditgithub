@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive } from "lucide-react"
+import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText } from "lucide-react"
 import Link from "next/link"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 
@@ -281,6 +281,39 @@ export default function RepositoriesPage() {
                 const valueA = sevA ? severityOrder[sevA.toLowerCase()] || 0 : 0
                 const valueB = sevB ? severityOrder[sevB.toLowerCase()] || 0 : 0
                 return valueA - valueB
+            }
+        },
+        {
+            accessorKey: "has_architecture",
+            header: ({ column }) => (
+                <DataTableColumnHeader column={column} title="Architecture" />
+            ),
+            cell: ({ row }) => {
+                const hasArchitecture = row.getValue("has_architecture") as boolean
+                if (hasArchitecture) {
+                    return (
+                        <Badge className="bg-green-500 hover:bg-green-600">
+                            <FileText className="h-3 w-3 mr-1" />
+                            Yes
+                        </Badge>
+                    )
+                } else {
+                    return (
+                        <Badge variant="secondary">
+                            <FileText className="h-3 w-3 mr-1" />
+                            No
+                        </Badge>
+                    )
+                }
+            },
+            filterFn: (row, id, value) => {
+                const hasArchitecture = row.getValue(id) as boolean
+                return value.includes(hasArchitecture ? "yes" : "no")
+            },
+            sortingFn: (rowA, rowB) => {
+                const a = rowA.getValue("has_architecture") as boolean
+                const b = rowB.getValue("has_architecture") as boolean
+                return (a === b) ? 0 : a ? -1 : 1
             }
         }
     ]

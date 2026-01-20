@@ -236,7 +236,11 @@ export default function ProjectPage() {
                     <DataTable columns={runColumns} data={scanRuns} searchKey="title" tableId="project-cicd" />
                 </TabsContent>
                 <TabsContent value="architecture" className="mt-6">
-                    <ArchitectureView projectId={params.id as string} />
+                    <ArchitectureView
+                        projectId={params.id as string}
+                        organization={project?.organization}
+                        repositoryName={project?.name}
+                    />
                 </TabsContent>
 
                 <TabsContent value="contributors" className="mt-6">
