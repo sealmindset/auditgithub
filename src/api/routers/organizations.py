@@ -625,68 +625,50 @@ async def get_organization_repositories(
 ):
     """
     Get repositories for a specific organization.
-    
-    Queries the organization's dedicated database to fetch repositories.
+
+    Uses shared database with organization_id filtering.
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    
     # Get organization
     org = db.query(models.Organization).filter(
         models.Organization.name == org_name
     ).first()
-    
+
     if not org:
         raise HTTPException(status_code=404, detail=f"Organization '{org_name}' not found")
-    
-    if not org.database_name:
-        raise HTTPException(status_code=400, detail=f"Organization '{org_name}' has no database configured")
-    
-    # Connect to org-specific database
+
     try:
-        db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/security_portal')
-        if db_url.startswith('postgres://'):
-            db_url = db_url.replace('postgres://', 'postgresql://', 1)
-        org_db_url = db_url.rsplit('/', 1)[0] + '/' + org.database_name
-        
-        engine = create_engine(org_db_url, pool_pre_ping=True, pool_size=1, max_overflow=0)
-        OrgSession = sessionmaker(bind=engine)
-        org_db = OrgSession()
-        
-        try:
-            # Query repositories
-            repos = org_db.query(models.Repository).order_by(
-                models.Repository.last_scanned_at.desc().nullslast()
-            ).offset(skip).limit(limit).all()
-            
-            result = []
-            for repo in repos:
-                # Count findings for each repo
-                finding_count = org_db.query(models.Finding).filter(
-                    models.Finding.repository_id == repo.id
-                ).count()
-                
-                result.append({
-                    "id": str(repo.id),
-                    "name": repo.name,
-                    "full_name": repo.full_name,
-                    "url": repo.url,
-                    "description": repo.description,
-                    "language": repo.language,
-                    "last_scanned_at": repo.last_scanned_at.isoformat() if repo.last_scanned_at else None,
-                    "finding_count": finding_count,
-                    "is_private": repo.is_private,
-                    "is_archived": repo.is_archived
-                })
-            
-            return result
-        finally:
-            org_db.close()
-            engine.dispose()
+        # Query repositories from shared database, filtered by organization_id
+        repos = db.query(models.Repository).filter(
+            models.Repository.organization_id == org.id
+        ).order_by(
+            models.Repository.last_scanned_at.desc().nullslast()
+        ).offset(skip).limit(limit).all()
+
+        result = []
+        for repo in repos:
+            # Count findings for each repo
+            finding_count = db.query(models.Finding).filter(
+                models.Finding.repository_id == repo.id
+            ).count()
+
+            result.append({
+                "id": str(repo.id),
+                "name": repo.name,
+                "full_name": repo.full_name,
+                "url": repo.url,
+                "description": repo.description,
+                "language": repo.language,
+                "last_scanned_at": repo.last_scanned_at.isoformat() if repo.last_scanned_at else None,
+                "finding_count": finding_count,
+                "is_private": repo.is_private,
+                "is_archived": repo.is_archived
+            })
+
+        return result
     except Exception as e:
         import logging
-        logging.error(f"Failed to query org database {org.database_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to query organization database: {str(e)}")
+        logging.error(f"Failed to query repositories for {org_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to query repositories: {str(e)}")
 
 
 @router.get("/{org_name}/findings")
@@ -700,71 +682,56 @@ async def get_organization_findings(
 ):
     """
     Get findings for a specific organization.
-    
-    Queries the organization's dedicated database to fetch findings.
+
+    Uses shared database with organization_id filtering.
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    
     # Get organization
     org = db.query(models.Organization).filter(
         models.Organization.name == org_name
     ).first()
-    
+
     if not org:
         raise HTTPException(status_code=404, detail=f"Organization '{org_name}' not found")
-    
-    if not org.database_name:
-        raise HTTPException(status_code=400, detail=f"Organization '{org_name}' has no database configured")
-    
-    # Connect to org-specific database
+
     try:
-        db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/security_portal')
-        if db_url.startswith('postgres://'):
-            db_url = db_url.replace('postgres://', 'postgresql://', 1)
-        org_db_url = db_url.rsplit('/', 1)[0] + '/' + org.database_name
-        
-        engine = create_engine(org_db_url, pool_pre_ping=True, pool_size=1, max_overflow=0)
-        OrgSession = sessionmaker(bind=engine)
-        org_db = OrgSession()
-        
-        try:
-            # Build query
-            query = org_db.query(models.Finding)
-            
-            if severity:
-                query = query.filter(models.Finding.severity == severity.lower())
-            
-            if repository_id:
-                query = query.filter(models.Finding.repository_id == repository_id)
-            
-            # Execute query with pagination
-            findings = query.order_by(
-                models.Finding.created_at.desc()
-            ).offset(skip).limit(limit).all()
-            
-            result = []
-            for finding in findings:
-                result.append({
-                    "id": str(finding.id),
-                    "repository_id": str(finding.repository_id) if finding.repository_id else None,
-                    "title": finding.title,
-                    "description": finding.description,
-                    "severity": finding.severity,
-                    "scanner_name": finding.scanner_name,
-                    "file_path": finding.file_path,
-                    "line_start": finding.line_start,
-                    "line_end": finding.line_end,
-                    "cwe_id": finding.cwe_id,
-                    "cve_id": finding.cve_id,
-                    "created_at": finding.created_at.isoformat() if finding.created_at else None
-                })
-            
-            return result
-        finally:
-            org_db.close()
-            engine.dispose()
+        # Build query - join with repositories to filter by organization
+        query = db.query(models.Finding).join(
+            models.Repository,
+            models.Finding.repository_id == models.Repository.id
+        ).filter(
+            models.Repository.organization_id == org.id
+        )
+
+        if severity:
+            query = query.filter(models.Finding.severity == severity.lower())
+
+        if repository_id:
+            query = query.filter(models.Finding.repository_id == repository_id)
+
+        # Execute query with pagination
+        findings = query.order_by(
+            models.Finding.created_at.desc()
+        ).offset(skip).limit(limit).all()
+
+        result = []
+        for finding in findings:
+            result.append({
+                "id": str(finding.id),
+                "repository_id": str(finding.repository_id) if finding.repository_id else None,
+                "title": finding.title,
+                "description": finding.description,
+                "severity": finding.severity,
+                "scanner_name": finding.scanner_name,
+                "file_path": finding.file_path,
+                "line_start": finding.line_start,
+                "line_end": finding.line_end,
+                "cwe_id": finding.cwe_id,
+                "cve_id": finding.cve_id,
+                "created_at": finding.created_at.isoformat() if finding.created_at else None
+            })
+
+        return result
     except Exception as e:
         import logging
-        logging.error(f"Failed to query org database {org.database_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to query organization database: {str(e)}")
+        logging.error(f"Failed to query findings for {org_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to query findings: {str(e)}")
