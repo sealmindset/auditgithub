@@ -249,13 +249,138 @@ Return JSON with: analysis_text, vulnerability_summary, severity, exploitability
     async def generate_architecture_report(self, repo_name: str, file_structure: str, config_files: Dict[str, str]) -> str:
         configs_str = "\n".join([f"--- {k} ---\n{v}\n" for k, v in config_files.items()])
         prompt = f"""Analyze this repository and provide an End-to-End Architecture Overview.
+
 Repository: {repo_name}
+
+---
+
+## MANDATORY PRE-ANALYSIS STEPS
+
+### Step 1: Read Repository Contents
+Before generating ANY documentation, you MUST:
+1. Read the COMPLETE contents of EVERY relevant file (SQL, XML, JSON, config files, code files, etc.)
+2. Extract actual function signatures, parameters, table references, and business logic from file contents
+3. Note: File structure shows filenames, but you must analyze actual file contents provided in Configurations section
+
+**DO NOT proceed until you have analyzed all file contents.**
+
+### Step 2: Evidence-Based Documentation ONLY
+- **ONLY document what exists in the actual code and configuration files**
+- Quote code comments, function headers, and logic as evidence
+- If something cannot be determined, write: `**Unknown** - not found in source files`
+- **NEVER invent or assume**: function signatures, parameters, technologies, integrations, or optimizations
+
+### Step 3: Decode Naming Conventions from Code
+- Do NOT guess what abbreviations mean from filenames alone
+- Look inside the code for views, tables, or comments that reveal meaning
+
+---
+
 File Structure:
 {file_structure}
+
 Configurations:
 {configs_str}
 
-Provide a comprehensive Markdown report covering: High-Level Overview, Tech Stack, Architecture, UI/UX, Storage, API, Fault Tolerance, Unique Features.
+---
+
+## REPORT STRUCTURE
+
+Generate a Markdown report with these sections:
+
+### 1. High-Level Overview
+- State the **exact purpose** based on code comments, function logic, and README documentation
+- Quote file header comments, docstrings, or README descriptions as primary evidence
+- Include metadata if present: Change Request ID, Author, Date, Version, License
+
+### 2. Tech Stack
+Identify technologies from observable evidence:
+- **Languages**: File extensions (.py, .js, .ts, .sql, .java, .go, etc.) and syntax
+- **Frameworks**: Import statements, package files (package.json, requirements.txt, pom.xml, go.mod)
+- **Databases**: Connection strings, ORMs, SQL dialect, schema references
+- **Infrastructure**: Docker, Kubernetes, cloud configs (AWS, Azure, GCP)
+- **Build/Deploy**: CI/CD configs, makefiles, deployment scripts
+- **Libraries**: Dependencies listed in manifest files
+
+### 3. Architecture
+Describe the actual structure based on code organization:
+- **Application Type**: Web app, API service, CLI tool, library, database scripts, microservice, monolith
+- **Code Structure**: Layers, modules, packages, directory organization
+- **Design Patterns**: Observable patterns (MVC, repository, factory, etc.) based on actual implementation
+- **Component Relationships**: How different parts interact
+
+### 4. UI/UX
+- **Frontend**: Framework (React, Vue, Angular), components, routing, state management
+- **User Interaction**: CLI arguments, web interface, API endpoints
+- **Not Applicable**: If no user interface exists
+
+### 5. Data Layer
+Document data persistence and management:
+- **Database Objects**: Tables, collections, models, schemas, views
+- **Data Access**: ORMs, query builders, raw SQL, database drivers
+- **Relationships**: Foreign keys, joins, references, associations
+- **Data Flow**: How data moves through the system
+
+### 6. API / Integration
+Document interfaces and integration points:
+- **Endpoints**: REST routes, GraphQL schemas, RPC methods, database procedures
+- **Request/Response**: Input parameters, return types, data formats (JSON, XML, etc.)
+- **Authentication**: Auth mechanisms visible in code
+- **External Integrations**: Third-party APIs, external services, message queues
+
+### 7. Error Handling
+Document implemented error management:
+- **Exception Handling**: Try/catch blocks, error classes, exception types
+- **Logging**: Log levels, logging frameworks, log destinations
+- **Validation**: Input validation, data sanitization
+- **Error Responses**: HTTP status codes, error messages, error codes
+- **Recovery**: Retry logic, fallbacks, circuit breakers (only if actually present)
+
+### 8. Business Logic Summary
+- Explain what the code accomplishes from a business perspective
+- Describe core algorithms, calculations, or data transformations
+- Reference key functions/classes and their purposes
+- Connect technical implementation to business value
+
+### 9. Dependencies
+List external dependencies the code requires:
+| Dependency | Type | Purpose |
+|------------|------|-------|
+| (name) | (npm package / Python library / Database / Service / etc.) | (What it's used for) |
+
+### 10. Deployment
+Document deployment configuration:
+- **Target Environment**: Cloud platform, on-premises, containerized, serverless
+- **Deployment Method**: CI/CD pipeline, manual deploy, infrastructure-as-code
+- **Configuration**: Environment variables, config files, secrets management
+- **Build Process**: Build tools, compilation steps, artifact generation
+
+---
+
+## DOCUMENTATION PRINCIPLES
+
+- Document what is present in the code, grounded in actual implementation
+- Quote directly from code comments, headers, and logic as evidence
+- Use logical reasoning and best practices to explain what the repository is used for
+- Make reasonable inferences about:
+  - **Purpose and usage**: What the code is designed to accomplish
+  - **Technologies**: Identify tech stack from file extensions, imports, syntax, and configuration (e.g., if you see PL/SQL syntax and Oracle packages, it's an Oracle database; if you see `package.json` with React, it's a React application)
+  - **Architecture patterns**: Standard patterns implied by code structure
+  - **Integration points**: How components likely interact based on function calls and data flow
+  - **Business context**: What business problem this solves based on domain logic
+- Copy function signatures, parameters, and return types exactly as written
+- Use "Not Applicable" for entire sections that don't apply (e.g., UI/UX for database-only projects)
+- Decode abbreviations from code context when possible
+- Provide context that helps tie together what the repository is used for
+- Balance factual documentation with intelligent interpretation of what the code reveals
+
+---
+
+Format as clean Markdown. Be factual, concise, and technical. Document what the code reveals.
+**DO NOT** generate any diagram code in this step. Focus purely on the technical analysis and report.
+
+---
+*Architecture documentation generated from repository source code*
 """
         try:
             return await self._call_api_with_retry(prompt, "You are a Senior Software Architect.")
@@ -265,6 +390,34 @@ Provide a comprehensive Markdown report covering: High-Level Overview, Tech Stac
              return f"Error generating report: {e}"
 
     async def generate_diagram_code(self, repo_name: str, report_content: str, diagrams_index: Optional[Dict[str, str]] = None) -> str:
+        icon_selection_guide = """
+**ICON SELECTION BASED ON DETECTED TECHNOLOGY**:
+
+**1. Database Icons** (from `diagrams.onprem.database`):
+- Oracle: `Oracle`, PostgreSQL: `PostgreSQL`, MySQL: `MySQL`, MongoDB: `MongoDB`
+- Redis: `Redis`, SQL Server: `Mssql`, Cassandra: `Cassandra`, etc.
+
+**2. Application/Service Icons**:
+- Python: `diagrams.programming.language.Python`
+- Node.js: `diagrams.programming.language.NodeJS`
+- Java: `diagrams.programming.language.Java`
+- Go: `diagrams.programming.language.Go`
+
+**3. Frontend Icons**:
+- React: `diagrams.programming.framework.React`
+- Vue: `diagrams.programming.framework.Vue`
+- Angular: `diagrams.programming.framework.Angular`
+
+**4. Message Queue Icons**:
+- Kafka: `diagrams.onprem.queue.Kafka`
+- RabbitMQ: `diagrams.onprem.queue.RabbitMQ`
+
+**5. Cloud Icons** (ONLY if cloud configs detected):
+- Azure: `diagrams.azure.*`, AWS: `diagrams.aws.*`, GCP: `diagrams.gcp.*`
+
+**CRITICAL**: Never use cloud icons without evidence of cloud deployment. Use `diagrams.onprem.*` for on-premises deployments.
+"""
+
         prompt = f"""You are a Python expert specializing in the `diagrams` library.
 Based on the Architecture Report, generate a Python script to visualize the architecture.
 
@@ -272,11 +425,29 @@ Repository: {repo_name}
 Report:
 {report_content}
 
-Generate a **Python script** using the `diagrams` library.
-- Import correct nodes (e.g., `from diagrams.onprem.network import Internet`).
-- Use `Diagram(..., show=False, filename="architecture_diagram", graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.0"}})`.
-- Determine cloud provider from report (AWS/Azure/GCP) and use appropriate icons.
-- Add comments for assumptions.
+{icon_selection_guide}
+
+Generate a **Python script** using the `diagrams` library:
+- Import correct nodes based on detected technologies (e.g., `from diagrams.onprem.network import Internet`)
+- Use `with Diagram(..., show=False, filename="architecture_diagram", direction="TB", graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.5", "fontsize": "14"}}):`
+- Select icons matching technologies identified in report
+- Group related components into Clusters (e.g., "Database Layer", "Services", "Frontend")
+- Add DOCUMENTATION BLOCK at top:
+  ```python
+  # ============================================================
+  # DOCUMENTATION BLOCK (REQUIRED)
+  # ============================================================
+  # EVIDENCE BASE:
+  #   - Files analyzed: [list files]
+  #   - Technology stack: [how determined]
+  #   - Components shown: [source for each]
+  #   - Data flows: [source for connections]
+  # ASSUMPTIONS:
+  #   - [List any logical assumptions, or "None"]
+  # INTENTIONALLY NOT SHOWN:
+  #   - [Components that exist but couldn't be diagrammed]
+  # ============================================================
+  ```
 
 Return ONLY the Python code block.
 """
