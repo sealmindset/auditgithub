@@ -589,26 +589,19 @@ Repository: {repo_name}
 
 ---
 
-## MANDATORY PRE-ANALYSIS STEPS
+## ANALYSIS INSTRUCTIONS
 
-### Step 1: Read Repository Contents
-Before generating ANY documentation, you MUST:
-1. Read the COMPLETE contents of EVERY relevant file (SQL, XML, JSON, config files, code files, etc.)
-2. Extract actual function signatures, parameters, table references, and business logic from file contents
-3. Note: File structure shows filenames, but you must analyze actual file contents provided in Configuration Files section
+### Objective: Answer Three Key Questions
+1. **What is this repository?** - State its purpose clearly and concisely
+2. **What is it used for?** - Explain its business function and capabilities
+3. **How does it fit in the bigger picture?** - Describe integration points and role in the system
 
-**DO NOT proceed until you have analyzed all file contents.**
-
-### Step 2: Evidence-Based Documentation ONLY
-- **ONLY document what exists in the actual code and configuration files**
-- Quote code comments, function headers, and logic as evidence
-- If something cannot be determined, write: `**Unknown** - not found in source files`
-- **NEVER invent or assume**: function signatures, parameters, technologies, integrations, or optimizations
-
-### Step 3: Decode Naming Conventions from Code
-- Do NOT guess what abbreviations mean from filenames alone
-- Look inside the code for views, tables, or comments that reveal meaning
-- Example: "AM" might mean "Area Manager" not "Asset Management" - verify from code references
+### Analysis Approach
+- Analyze all provided file contents, code structure, and configuration
+- Infer purpose from code structure, naming patterns, imports, and business logic
+- Make reasonable conclusions about usage and integration based on evidence
+- Focus on telling a clear story about what this repository does and why it exists
+- **Skip disclaimers** - If something isn't clear, make your best inference from context
 
 ---
 
@@ -625,9 +618,11 @@ Configuration Files:
 Generate a Markdown report with these sections:
 
 ### 1. High-Level Overview
-- State the **exact purpose** based on code comments and function logic
-- Quote file header comments, README sections, or docstrings as primary evidence
-- Include metadata if present: Version, Author, Date, Ticket/Issue ID
+**Purpose**: State what this repository is and what it does (1-2 sentences)
+
+**Business Function**: Explain the business problem it solves or capability it provides
+
+**Integration Context**: Describe how it fits in the larger system (what calls it, what it calls, data flows)
 
 ### 2. Tech Stack
 Identify technologies from observable evidence:
@@ -919,33 +914,38 @@ with Diagram(
 
 ---
 
-## DOCUMENTATION PRINCIPLES
+## DOCUMENTATION STYLE
 
-- Document what is present in the code, grounded in actual implementation
-- Quote directly from code comments, headers, and logic as evidence
-- Use logical reasoning and best practices to explain what the repository is used for
-- Make reasonable inferences about:
-  - **Purpose and usage**: What the code is designed to accomplish
-  - **Technologies**: Identify tech stack from file extensions, imports, syntax, and configuration (e.g., if you see PL/SQL syntax and Oracle packages, it's an Oracle database; if you see `package.json` with React, it's a React application)
-  - **Architecture patterns**: Standard patterns implied by code structure
-  - **Integration points**: How components likely interact based on function calls and data flow
-  - **Business context**: What business problem this solves based on domain logic
-- Copy function signatures, parameters, and return types exactly as written
-- Use "Not Applicable" for entire sections that don't apply (e.g., UI/UX for database-only projects)
-- Decode abbreviations from code context when possible
-- Provide context that helps tie together what the repository is used for
-- Balance factual documentation with intelligent interpretation of what the code reveals
+**Primary Goal**: Explain what this repository is, what it's used for, and how it fits in the bigger picture.
+
+**Writing Style**:
+- **Confident and clear** - State what the code does based on analysis
+- **Business-focused** - Explain capabilities and use cases
+- **Contextual** - Describe integration points and system role
+- **Concise** - 2-3 sentences per section, focus on key points
+
+**What to Include**:
+- Purpose inferred from code structure, naming, and business logic
+- Technologies identified from file extensions, imports, syntax, config files
+- Architecture patterns observable in code organization
+- Integration points visible in function calls, API endpoints, data flows
+- Business value and use cases
+
+**What to Skip**:
+- Limitation warnings ("Unable to determine", "Cannot verify", "Missing information")
+- Gap analysis or "Not found in source" statements
+- Exhaustive technical detail - focus on the big picture
+- Disclaimers about incomplete analysis
 
 ---
 
 ## OUTPUT FORMAT
 
-Generate a clean Markdown report with the 10 sections specified above. Document only what exists in the code.
-
-For the Architecture Diagram, include Python code with a documentation block showing:
-- Files analyzed
-- Components shown and their source
-- Any assumptions made (or "None" if fully evidenced)
+Generate a clean, professional Markdown report. Focus on clarity and business value:
+- Lead with purpose and usage (Section 1)
+- Be concise - 2-3 sentences per section
+- Use confident language based on code analysis
+- Omit sections that truly don't apply (mark as "Not Applicable")
 
 Example structure:
 ```python
