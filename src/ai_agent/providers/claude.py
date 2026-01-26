@@ -548,7 +548,8 @@ Provide a JSON response with:
         """
         Generate a text-based architecture report using Claude.
         """
-        configs_str = "\n".join([f"--- {k} ---\n{v}\n" for k, v in config_files.items()])
+        # Sort config files by key for deterministic output
+        configs_str = "\n".join([f"--- {k} ---\n{v}\n" for k, v in sorted(config_files.items())])
         
         prompt = f"""Analyze this repository and provide an End-to-End Architecture Overview.
 
@@ -690,7 +691,7 @@ Generate a clean, professional Markdown report. Focus on clarity and business va
             response = await self._call_api_with_retry(
                 model=self.model,
                 max_tokens=4000,
-                temperature=0.4,
+                temperature=0.0,  # Set to 0 for deterministic output
                 system="You are a Senior Software Architect.",
                 messages=[{"role": "user", "content": prompt}]
             )
@@ -816,7 +817,7 @@ Return ONLY the Python code block.
             response = await self._call_api_with_retry(
                 model=self.model,
                 max_tokens=4000,
-                temperature=0.2,
+                temperature=0.0,  # Set to 0 for deterministic output
                 system="You are a Python expert.",
                 messages=[{"role": "user", "content": prompt}]
             )

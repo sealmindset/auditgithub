@@ -30,26 +30,30 @@ def get_repo_structure(repo_path: str, max_depth: int = 3) -> str:
     start_level = repo_path.rstrip(os.sep).count(os.sep)
     
     for root, dirs, files in os.walk(repo_path):
+        # Sort dirs in-place to ensure deterministic traversal order
+        dirs.sort()
+
         level = root.count(os.sep) - start_level
         if level > max_depth:
             continue
-            
+
         indent = "  " * level
         basename = os.path.basename(root)
-        
+
         # Skip hidden directories and ignored patterns
         if basename.startswith('.') and basename != '.github':
             dirs[:] = []
             continue
-            
+
         if any(fnmatch.fnmatch(basename, p) for p in IGNORE_PATTERNS):
             dirs[:] = []
             continue
-            
+
         output.append(f"{indent}{basename}/")
-        
+
         subindent = "  " * (level + 1)
-        for f in files:
+        # Sort files for deterministic output
+        for f in sorted(files):
             if any(fnmatch.fnmatch(f, p) for p in IGNORE_PATTERNS):
                 continue
             output.append(f"{subindent}{f}")
@@ -62,12 +66,16 @@ def get_config_files(repo_path: str) -> Dict[str, str]:
     """
     configs = {}
     
-    for root, _, files in os.walk(repo_path):
+    for root, dirs, files in os.walk(repo_path):
+        # Sort dirs in-place to ensure deterministic traversal order
+        dirs.sort()
+
         # Limit depth for config search to avoid deep nested node_modules etc
         if root.count(os.sep) - repo_path.count(os.sep) > 3:
             continue
-            
-        for f in files:
+
+        # Sort files for deterministic output
+        for f in sorted(files):
             # Check if file matches any config pattern
             matched = False
             for pattern in CONFIG_FILES:
