@@ -568,7 +568,8 @@ Provide a JSON response with exactly these fields:
     ) -> str:
         """Build the architecture analysis prompt."""
         configs_str = ""
-        for name, content in config_files.items():
+        # Sort config files by key for deterministic output
+        for name, content in sorted(config_files.items()):
             configs_str += f"\n--- {name} ---\n{content}\n"
             
         index_str = ""
@@ -973,7 +974,8 @@ Format as clean, factual Markdown focused on what the code reveals.
         Generate a text-based architecture report.
         """
         configs_str = ""
-        for name, content in config_files.items():
+        # Sort config files by key for deterministic output
+        for name, content in sorted(config_files.items()):
             configs_str += f"\n--- {name} ---\n{content}\n"
 
         prompt = f"""You are a Senior Software Architect. Analyze this repository and provide an End-to-End Architecture Overview.
@@ -1158,15 +1160,17 @@ Return ONLY the Python code block.
             # There are ~1000 nodes. That's a lot of tokens.
             # Let's try to extract potential node names from the code and look them up.
             import re
-            potential_nodes = set(re.findall(r'\b([A-Z][a-zA-Z0-9]*)\b', code))
+            # Sort for deterministic order
+            potential_nodes = sorted(set(re.findall(r'\b([A-Z][a-zA-Z0-9]*)\b', code)))
             found_nodes = {}
             for node in potential_nodes:
                 if node in diagrams_index:
                     found_nodes[node] = diagrams_index[node]
-            
+
             if found_nodes:
                 index_context = "\n**Available Node Imports (Found in Index):**\n"
-                for node, path in found_nodes.items():
+                # Sort dictionary items for deterministic order
+                for node, path in sorted(found_nodes.items()):
                     index_context += f"- {node}: `from {path.rsplit('.', 1)[0]} import {node}`\n"
             
             # Also add a general instruction

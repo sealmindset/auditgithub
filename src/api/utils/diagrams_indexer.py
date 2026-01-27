@@ -29,7 +29,9 @@ def get_diagrams_index() -> Dict[str, str]:
     # Helper to recursively walk packages
     def walk_package(package):
         if hasattr(package, "__path__"):
-            for _, name, is_pkg in pkgutil.iter_modules(package.__path__):
+            # Sort modules for deterministic order
+            modules = sorted(pkgutil.iter_modules(package.__path__), key=lambda x: x[1])
+            for _, name, is_pkg in modules:
                 full_name = f"{package.__name__}.{name}"
                 try:
                     module = importlib.import_module(full_name)
@@ -68,7 +70,8 @@ def search_diagram_node(index: Dict[str, str], query: str) -> List[str]:
     """
     matches = []
     query_lower = query.lower()
-    for name, path in index.items():
+    # Sort for deterministic order
+    for name, path in sorted(index.items()):
         if query_lower in name.lower():
             matches.append(path)
     return matches

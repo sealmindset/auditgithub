@@ -133,8 +133,9 @@ def apply_known_corrections(code: str) -> Tuple[str, List[str]]:
     """
     changes = []
     corrected = code
-    
-    for wrong_path, correct_path in KNOWN_IMPORT_CORRECTIONS.items():
+
+    # Sort for deterministic order
+    for wrong_path, correct_path in sorted(KNOWN_IMPORT_CORRECTIONS.items()):
         # Extract module and class from paths
         wrong_parts = wrong_path.rsplit('.', 1)
         correct_parts = correct_path.rsplit('.', 1)
@@ -184,7 +185,7 @@ def parse_error_for_import_issue(error: str) -> Optional[Tuple[str, str]]:
 
 
 def find_correct_import(
-    class_name: str, 
+    class_name: str,
     diagrams_index: Dict[str, str],
     context_hint: Optional[str] = None
 ) -> Optional[str]:
@@ -194,27 +195,29 @@ def find_correct_import(
     """
     if class_name in diagrams_index:
         return diagrams_index[class_name]
-    
-    # Try case-insensitive search
-    for name, path in diagrams_index.items():
+
+    # Try case-insensitive search (sort for deterministic order)
+    for name, path in sorted(diagrams_index.items()):
         if name.lower() == class_name.lower():
             return path
-    
-    # Try partial match for common patterns
+
+    # Try partial match for common patterns (sort for deterministic order)
     partial_matches = []
-    for name, path in diagrams_index.items():
+    for name, path in sorted(diagrams_index.items()):
         if class_name.lower() in name.lower():
             partial_matches.append((name, path))
-    
+
     if partial_matches:
+        # Sort partial matches for deterministic order
+        partial_matches.sort()
         # If we have a context hint, prefer matches from that provider
         if context_hint:
             for name, path in partial_matches:
                 if context_hint.lower() in path.lower():
                     return path
-        # Otherwise return first match
+        # Otherwise return first match (now deterministic after sorting)
         return partial_matches[0][1]
-    
+
     return None
 
 

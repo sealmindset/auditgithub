@@ -247,7 +247,8 @@ Return JSON with: analysis_text, vulnerability_summary, severity, exploitability
             }
 
     async def generate_architecture_report(self, repo_name: str, file_structure: str, config_files: Dict[str, str]) -> str:
-        configs_str = "\n".join([f"--- {k} ---\n{v}\n" for k, v in config_files.items()])
+        # Sort config files by key for deterministic output
+        configs_str = "\n".join([f"--- {k} ---\n{v}\n" for k, v in sorted(config_files.items())])
         prompt = f"""Analyze this repository and provide an End-to-End Architecture Overview.
 
 Repository: {repo_name}

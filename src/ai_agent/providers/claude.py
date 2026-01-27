@@ -923,7 +923,8 @@ Return ONLY the Python code block.
         index_context = ""
         if diagrams_index:
             # Extract potential node names from the code and look them up
-            potential_nodes = set(re.findall(r'\b([A-Z][a-zA-Z0-9]*)\b', code))
+            # Sort for deterministic order
+            potential_nodes = sorted(set(re.findall(r'\b([A-Z][a-zA-Z0-9]*)\b', code)))
             found_nodes = {}
             for node in potential_nodes:
                 if node in diagrams_index:
@@ -931,7 +932,8 @@ Return ONLY the Python code block.
 
             if found_nodes:
                 index_context = "\n**Available Node Imports (Found in Index):**\n"
-                for node, path in found_nodes.items():
+                # Sort dictionary items for deterministic order
+                for node, path in sorted(found_nodes.items()):
                     index_context += f"- {node}: `from {path.rsplit('.', 1)[0]} import {node}`\n"
 
             # Also add a general instruction
