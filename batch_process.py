@@ -270,15 +270,24 @@ async def batch_process(
 
 def main():
     """Main entry point."""
-    # Pre-process sys.argv to handle --delay=N format
+    # Pre-process sys.argv to handle special cases
     processed_args = []
-    for arg in sys.argv[1:]:
+    known_flags = {'--skip-if-exists', '--delay', '--max-retries'}
+
+    for i, arg in enumerate(sys.argv[1:], 1):
         if arg.startswith('--delay='):
             # Split --delay=60 into --delay 60
             processed_args.extend(['--delay', arg.split('=', 1)[1]])
         elif arg.startswith('--max-retries='):
             # Split --max-retries=N into --max-retries N
             processed_args.extend(['--max-retries', arg.split('=', 1)[1]])
+        elif arg.startswith('-') and not any(arg.startswith(flag) for flag in known_flags):
+            # Argument starts with - but is not a known flag - must be the pattern
+            # Use special -- separator to tell argparse this is a positional arg
+            if i == 1:  # Only if it's the first argument (pattern position)
+                processed_args.extend(['--', arg])
+            else:
+                processed_args.append(arg)
         else:
             processed_args.append(arg)
 
