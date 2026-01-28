@@ -1,0 +1,56 @@
+get:
+  tags:
+    - Findings
+  summary: List findings
+  description: |
+    Retrieve a paginated list of security findings with advanced filtering.
+
+    Supports filtering by:
+    - Severity (critical, high, medium, low, info)
+    - Status (open, in_progress, resolved, false_positive, risk_accepted)
+    - Repository
+    - Scanner
+    - CWE/CVE identifiers
+  operationId: listFindings
+  parameters:
+    - $ref: '../../components/parameters.yaml#/Skip'
+    - $ref: '../../components/parameters.yaml#/Limit'
+    - $ref: '../../components/parameters.yaml#/Severity'
+    - $ref: '../../components/parameters.yaml#/Status'
+    - name: repository_id
+      in: query
+      description: Filter by repository UUID
+      schema:
+        type: string
+        format: uuid
+    - name: scanner_name
+      in: query
+      description: Filter by scanner name
+      schema:
+        type: string
+        enum: [gitleaks, semgrep, grype, trivy]
+    - name: cwe_id
+      in: query
+      description: Filter by CWE identifier
+      schema:
+        type: string
+        example: "CWE-798"
+    - name: cve_id
+      in: query
+      description: Filter by CVE identifier
+      schema:
+        type: string
+        example: "CVE-2024-1234"
+  responses:
+    '200':
+      description: Findings retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../../components/schemas.yaml#/Finding'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

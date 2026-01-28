@@ -1,0 +1,35 @@
+get:
+  tags:
+    - Scheduler
+  summary: List scheduled jobs
+  description: List all scheduled background jobs
+  operationId: listScheduledJobs
+  responses:
+    '200':
+      description: Jobs retrieved
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+
+post:
+  tags:
+    - Scheduler
+  summary: Schedule new job
+  description: Schedule a new background job
+  operationId: scheduleJob
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+  responses:
+    '200':
+      $ref: '../../components/responses.yaml#/Success'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

@@ -1,0 +1,49 @@
+get:
+  tags:
+    - Scans
+  summary: List scans
+  description: |
+    Retrieve a paginated list of security scans.
+
+    Returns scans ordered by start time (most recent first).
+  operationId: listScans
+  parameters:
+    - $ref: '../../components/parameters.yaml#/Skip'
+    - $ref: '../../components/parameters.yaml#/Limit'
+    - name: organization_id
+      in: query
+      description: Filter by organization UUID
+      schema:
+        type: string
+        format: uuid
+    - name: repository_id
+      in: query
+      description: Filter by repository UUID
+      schema:
+        type: string
+        format: uuid
+    - name: status
+      in: query
+      description: Filter by scan status
+      schema:
+        type: string
+        enum: [pending, running, completed, failed]
+    - name: scan_type
+      in: query
+      description: Filter by scan type
+      schema:
+        type: string
+        enum: [full, incremental, secrets, dependencies]
+  responses:
+    '200':
+      description: Scans retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../../components/schemas.yaml#/Scan'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

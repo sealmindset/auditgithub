@@ -1,0 +1,25 @@
+get:
+  tags:
+    - GitHub Integration
+  summary: Get repository GitHub metadata
+  description: |
+    Retrieve cached GitHub metadata for a repository.
+
+    Returns information synced from GitHub API including stars, forks,
+    last push time, and other repository statistics.
+  operationId: getRepositoryGitHubMetadata
+  parameters:
+    - $ref: '../../components/parameters.yaml#/RepoName'
+  responses:
+    '200':
+      description: Metadata retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/RepositoryMetadata'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

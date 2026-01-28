@@ -1,0 +1,50 @@
+post:
+  tags:
+    - Organizations
+  summary: Sync repository metadata
+  description: |
+    Synchronize existing repositories with latest GitHub metadata.
+
+    Updates repository information such as:
+    - Stars, forks, issues counts
+    - Last push timestamp
+    - Repository description
+    - Topics and language
+
+    **Note:** Does not create new repositories. Use POST /organizations/{org_name}/import for that.
+  operationId: syncRepositories
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+  responses:
+    '200':
+      description: Repositories synced successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: true
+              message:
+                type: string
+                example: "Synced 42 repositories for 'sleepnumber'"
+              total:
+                type: integer
+                example: 42
+              synced:
+                type: integer
+                example: 40
+              failed:
+                type: integer
+                example: 2
+    '400':
+      description: Missing GitHub credentials
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

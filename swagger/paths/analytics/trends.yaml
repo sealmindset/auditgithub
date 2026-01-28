@@ -1,0 +1,28 @@
+get:
+  tags:
+    - Analytics
+  summary: Get trend data
+  description: Retrieve time-series trend data for metrics
+  operationId: getTrendData
+  parameters:
+    - name: metric
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: [findings, scans, remediation_time]
+    - name: period
+      in: query
+      schema:
+        type: string
+        enum: [day, week, month, quarter, year]
+        default: "month"
+  responses:
+    '200':
+      description: Trend data retrieved
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/TrendData'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

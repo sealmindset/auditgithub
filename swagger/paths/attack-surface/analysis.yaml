@@ -1,0 +1,21 @@
+get:
+  tags:
+    - Attack Surface
+  summary: Get attack surface analysis
+  description: Retrieve attack surface mapping for an organization
+  operationId: getAttackSurfaceAnalysis
+  parameters:
+    - name: organization_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+  responses:
+    '200':
+      description: Attack surface analysis retrieved
+      content:
+        application/json:
+          schema:
+            type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

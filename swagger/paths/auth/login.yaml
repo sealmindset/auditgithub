@@ -1,0 +1,46 @@
+post:
+  tags:
+    - Authentication
+  summary: User login
+  description: |
+    Authenticate user and obtain JWT tokens.
+
+    Returns an access token for API authentication and a refresh token
+    for obtaining new access tokens.
+
+    **Token Lifetimes:**
+    - Access token: 1 hour
+    - Refresh token: 30 days
+  operationId: login
+  security: []  # No authentication required for login
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/schemas.yaml#/LoginRequest'
+        example:
+          username: "admin@sleepnumber.com"
+          password: "********"
+  responses:
+    '200':
+      description: Login successful
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/LoginResponse'
+          example:
+            access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            token_type: "bearer"
+            expires_in: 3600
+    '401':
+      description: Invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+          example:
+            detail: "Invalid username or password"
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

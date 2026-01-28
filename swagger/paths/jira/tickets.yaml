@@ -1,0 +1,49 @@
+get:
+  tags:
+    - Jira Integration
+  summary: List Jira tickets
+  description: List Jira tickets linked to findings
+  operationId: listJiraTickets
+  responses:
+    '200':
+      description: Tickets retrieved
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+
+post:
+  tags:
+    - Jira Integration
+  summary: Create Jira ticket
+  description: Create a Jira ticket for a finding
+  operationId: createJiraTicket
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - finding_id
+          properties:
+            finding_id:
+              type: string
+              format: uuid
+            project_key:
+              type: string
+            issue_type:
+              type: string
+  responses:
+    '200':
+      description: Ticket created successfully
+      content:
+        application/json:
+          schema:
+            type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

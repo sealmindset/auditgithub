@@ -1,0 +1,15 @@
+get:
+  tags:
+    - Analytics
+  summary: Get dashboard metrics
+  description: Retrieve aggregated metrics for dashboard display
+  operationId: getDashboardMetrics
+  responses:
+    '200':
+      description: Dashboard metrics retrieved
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/DashboardMetrics'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

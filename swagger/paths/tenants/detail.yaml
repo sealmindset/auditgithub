@@ -1,0 +1,16 @@
+get:
+  tags:
+    - Tenants
+  summary: Get tenant details
+  operationId: getTenant
+  parameters:
+    - $ref: '../../components/parameters.yaml#/TenantId'
+  responses:
+    '200':
+      description: Tenant details retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'

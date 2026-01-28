@@ -1,0 +1,96 @@
+post:
+  tags:
+    - Organizations
+    - Scans
+  summary: Start organization scan
+  description: |
+    Initiate a security scan for all or specific repositories in an organization.
+
+    Scan types:
+    - **full**: Complete security scan with all scanners
+    - **incremental**: Scan only changed files since last scan
+    - **secrets**: Secret detection only (Gitleaks)
+    - **dependencies**: Dependency vulnerability scan (Grype, Trivy)
+
+    The scan runs asynchronously. Use GET /scans/{scan_id}/status to check progress.
+  operationId: startOrganizationScan
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+    - $ref: '../../components/parameters.yaml#/ScanType'
+    - name: repos
+      in: query
+      description: Specific repository names to scan (optional)
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      example: ["webapp-frontend", "api-backend"]
+  responses:
+    '200':
+      description: Scan started successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              scan_id:
+                type: string
+                format: uuid
+                example: "850e8400-e29b-41d4-a716-446655440003"
+              status:
+                type: string
+                example: "pending"
+              message:
+                type: string
+                example: "Scan started for 'sleepnumber'"
+    '400':
+      $ref: '../../components/responses.yaml#/BadRequest'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
+
+get:
+  tags:
+    - Organizations
+    - Scans
+  summary: Get scan status
+  description: |
+    Retrieve current scan status for an organization.
+
+    Returns information about the latest scan including progress, findings count,
+    and any errors encountered.
+  operationId: getOrganizationScanStatus
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+  responses:
+    '200':
+      description: Scan status retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              organization:
+                type: string
+                example: "sleepnumber"
+              scan_status:
+                type: string
+                enum: [idle, pending, running, completed, failed]
+                example: "running"
+              last_scan_at:
+                type: string
+                format: date-time
+                example: "2024-01-20T10:30:00Z"
+              total_repos:
+                type: integer
+                example: 42
+              total_findings:
+                type: integer
+                example: 156
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

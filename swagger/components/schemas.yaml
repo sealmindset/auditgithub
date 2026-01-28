@@ -1,0 +1,715 @@
+# Common Schemas
+
+Error:
+  type: object
+  required:
+    - detail
+  properties:
+    detail:
+      type: string
+      description: Error message
+      example: "Resource not found"
+
+ValidationError:
+  type: object
+  properties:
+    detail:
+      type: array
+      items:
+        type: object
+        properties:
+          loc:
+            type: array
+            items:
+              type: string
+          msg:
+            type: string
+          type:
+            type: string
+
+# Organization Schemas
+
+Organization:
+  type: object
+  required:
+    - id
+    - name
+    - github_org
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique organization identifier
+      example: "550e8400-e29b-41d4-a716-446655440000"
+    api_id:
+      type: integer
+      description: Sequential API ID for organization
+      example: 1
+    name:
+      type: string
+      description: Internal organization name (lowercase, alphanumeric)
+      pattern: '^[a-z0-9]+$'
+      example: "sleepnumber"
+    display_name:
+      type: string
+      description: Human-readable display name
+      example: "Sleep Number"
+    github_org:
+      type: string
+      description: GitHub organization name
+      example: "sleepnumber"
+    database_name:
+      type: string
+      description: Database name for organization
+      example: "org_sleepnumber"
+    is_active:
+      type: boolean
+      description: Whether organization is active
+      default: true
+    is_default:
+      type: boolean
+      description: Whether this is the default organization
+      default: false
+    total_repos:
+      type: integer
+      description: Total number of repositories
+      example: 42
+    total_findings:
+      type: integer
+      description: Total number of security findings
+      example: 156
+    created_at:
+      type: string
+      format: date-time
+      description: Creation timestamp
+      example: "2024-01-15T10:30:00Z"
+    updated_at:
+      type: string
+      format: date-time
+      description: Last update timestamp
+      example: "2024-01-20T14:45:00Z"
+
+CreateOrganizationRequest:
+  type: object
+  required:
+    - name
+    - github_org
+    - github_token
+  properties:
+    name:
+      type: string
+      pattern: '^[a-z0-9]+$'
+      description: Internal name (lowercase, alphanumeric)
+      example: "sleepnumber"
+    github_org:
+      type: string
+      description: GitHub organization name
+      example: "sleepnumber"
+    github_token:
+      type: string
+      format: password
+      description: GitHub personal access token
+      example: "ghp_xxxxxxxxxxxxxxxxxxxx"
+    display_name:
+      type: string
+      description: Human-readable display name
+      example: "Sleep Number"
+    create_database:
+      type: boolean
+      description: Create isolated database
+      default: true
+    set_as_default:
+      type: boolean
+      description: Set as default organization
+      default: false
+
+UpdateOrganizationRequest:
+  type: object
+  properties:
+    display_name:
+      type: string
+      description: New display name
+      example: "Sleep Number Corporation"
+    is_active:
+      type: boolean
+      description: Active status
+    is_default:
+      type: boolean
+      description: Default organization status
+
+UpdateCredentialsRequest:
+  type: object
+  required:
+    - github_token
+  properties:
+    github_token:
+      type: string
+      format: password
+      description: GitHub personal access token
+      example: "ghp_xxxxxxxxxxxxxxxxxxxx"
+    github_org:
+      type: string
+      description: GitHub organization name (optional)
+      example: "sleepnumber"
+
+ImportResult:
+  type: object
+  properties:
+    success:
+      type: boolean
+      description: Whether operation succeeded
+      example: true
+    message:
+      type: string
+      description: Result message
+      example: "Imported 42 repositories from 'sleepnumber'"
+    total:
+      type: integer
+      description: Total repositories processed
+      example: 42
+    created:
+      type: integer
+      description: Number of repositories created
+      example: 35
+    updated:
+      type: integer
+      description: Number of repositories updated
+      example: 7
+    failed:
+      type: integer
+      description: Number of failures
+      example: 0
+
+# Repository Schemas
+
+Repository:
+  type: object
+  required:
+    - id
+    - name
+    - organization_id
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique repository identifier
+      example: "650e8400-e29b-41d4-a716-446655440001"
+    name:
+      type: string
+      description: Repository name
+      example: "webapp-frontend"
+    full_name:
+      type: string
+      description: Full repository name (org/repo)
+      example: "sleepnumber/webapp-frontend"
+    organization_id:
+      type: string
+      format: uuid
+      description: Parent organization ID
+    url:
+      type: string
+      format: uri
+      description: GitHub repository URL
+      example: "https://github.com/sleepnumber/webapp-frontend"
+    description:
+      type: string
+      description: Repository description
+      example: "Frontend web application"
+    default_branch:
+      type: string
+      description: Default branch name
+      default: "main"
+      example: "main"
+    language:
+      type: string
+      description: Primary programming language
+      example: "TypeScript"
+    is_private:
+      type: boolean
+      description: Whether repository is private
+      example: true
+    is_archived:
+      type: boolean
+      description: Whether repository is archived
+      example: false
+    is_fork:
+      type: boolean
+      description: Whether repository is a fork
+      example: false
+    stargazers_count:
+      type: integer
+      description: Number of stars
+      example: 42
+    forks_count:
+      type: integer
+      description: Number of forks
+      example: 5
+    open_issues_count:
+      type: integer
+      description: Number of open issues
+      example: 8
+    size_kb:
+      type: integer
+      description: Repository size in kilobytes
+      example: 15420
+    topics:
+      type: array
+      items:
+        type: string
+      description: Repository topics/tags
+      example: ["typescript", "react", "frontend"]
+    license_name:
+      type: string
+      description: Software license
+      example: "MIT"
+    pushed_at:
+      type: string
+      format: date-time
+      description: Last push timestamp
+    github_created_at:
+      type: string
+      format: date-time
+      description: GitHub creation timestamp
+    github_updated_at:
+      type: string
+      format: date-time
+      description: GitHub last update timestamp
+    last_scanned_at:
+      type: string
+      format: date-time
+      description: Last security scan timestamp
+    finding_count:
+      type: integer
+      description: Number of security findings
+      example: 12
+
+# Finding Schemas
+
+Finding:
+  type: object
+  required:
+    - id
+    - repository_id
+    - title
+    - severity
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique finding identifier
+    repository_id:
+      type: string
+      format: uuid
+      description: Repository containing the finding
+    title:
+      type: string
+      description: Finding title
+      example: "Hardcoded AWS Access Key"
+    description:
+      type: string
+      description: Detailed description
+      example: "AWS access key found in configuration file"
+    severity:
+      type: string
+      enum: [critical, high, medium, low, info]
+      description: Severity level
+      example: "high"
+    scanner_name:
+      type: string
+      description: Scanner that detected the finding
+      example: "gitleaks"
+    file_path:
+      type: string
+      description: File path where finding was detected
+      example: "src/config/aws.ts"
+    line_start:
+      type: integer
+      description: Starting line number
+      example: 42
+    line_end:
+      type: integer
+      description: Ending line number
+      example: 42
+    cwe_id:
+      type: string
+      description: CWE identifier
+      example: "CWE-798"
+    cve_id:
+      type: string
+      description: CVE identifier
+      example: "CVE-2024-1234"
+    status:
+      type: string
+      enum: [open, in_progress, resolved, false_positive, risk_accepted]
+      description: Finding status
+      default: "open"
+      example: "open"
+    remediation:
+      type: string
+      description: Remediation guidance
+      example: "Remove hardcoded credentials and use environment variables"
+    created_at:
+      type: string
+      format: date-time
+      description: Detection timestamp
+    updated_at:
+      type: string
+      format: date-time
+      description: Last update timestamp
+
+FindingStatistics:
+  type: object
+  properties:
+    total:
+      type: integer
+      description: Total findings
+      example: 156
+    by_severity:
+      type: object
+      properties:
+        critical:
+          type: integer
+          example: 12
+        high:
+          type: integer
+          example: 34
+        medium:
+          type: integer
+          example: 56
+        low:
+          type: integer
+          example: 42
+        info:
+          type: integer
+          example: 12
+    by_status:
+      type: object
+      properties:
+        open:
+          type: integer
+          example: 98
+        in_progress:
+          type: integer
+          example: 23
+        resolved:
+          type: integer
+          example: 35
+    by_scanner:
+      type: object
+      additionalProperties:
+        type: integer
+      example:
+        gitleaks: 45
+        semgrep: 67
+        grype: 34
+        trivy: 10
+
+# Scan Schemas
+
+Scan:
+  type: object
+  required:
+    - id
+    - organization_id
+    - status
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Unique scan identifier
+    organization_id:
+      type: string
+      format: uuid
+      description: Organization being scanned
+    repository_id:
+      type: string
+      format: uuid
+      description: Specific repository (if applicable)
+    status:
+      type: string
+      enum: [pending, running, completed, failed]
+      description: Scan status
+      example: "running"
+    scan_type:
+      type: string
+      enum: [full, incremental, secrets, dependencies]
+      description: Type of scan
+      default: "full"
+    progress:
+      type: integer
+      minimum: 0
+      maximum: 100
+      description: Scan progress percentage
+      example: 45
+    started_at:
+      type: string
+      format: date-time
+      description: Scan start timestamp
+    completed_at:
+      type: string
+      format: date-time
+      description: Scan completion timestamp
+    findings_count:
+      type: integer
+      description: Number of findings detected
+      example: 12
+    error_message:
+      type: string
+      description: Error message if scan failed
+
+# Authentication Schemas
+
+LoginRequest:
+  type: object
+  required:
+    - username
+    - password
+  properties:
+    username:
+      type: string
+      description: Username or email
+      example: "admin@sleepnumber.com"
+    password:
+      type: string
+      format: password
+      description: User password
+      example: "********"
+
+LoginResponse:
+  type: object
+  required:
+    - access_token
+    - token_type
+  properties:
+    access_token:
+      type: string
+      description: JWT access token
+      example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    refresh_token:
+      type: string
+      description: JWT refresh token
+      example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    token_type:
+      type: string
+      description: Token type
+      default: "bearer"
+      example: "bearer"
+    expires_in:
+      type: integer
+      description: Token expiration time in seconds
+      example: 3600
+
+User:
+  type: object
+  required:
+    - id
+    - username
+    - email
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: User identifier
+    username:
+      type: string
+      description: Username
+      example: "jdoe"
+    email:
+      type: string
+      format: email
+      description: Email address
+      example: "jdoe@sleepnumber.com"
+    full_name:
+      type: string
+      description: Full name
+      example: "John Doe"
+    is_active:
+      type: boolean
+      description: Account active status
+      default: true
+    roles:
+      type: array
+      items:
+        type: string
+      description: User roles
+      example: ["admin", "security_analyst"]
+    created_at:
+      type: string
+      format: date-time
+
+# GitHub Integration Schemas
+
+RepositoryMetadata:
+  type: object
+  properties:
+    id:
+      type: string
+      format: uuid
+    name:
+      type: string
+      example: "webapp-frontend"
+    full_name:
+      type: string
+      example: "sleepnumber/webapp-frontend"
+    description:
+      type: string
+    url:
+      type: string
+      format: uri
+    default_branch:
+      type: string
+      default: "main"
+    language:
+      type: string
+    pushed_at:
+      type: string
+      format: date-time
+    github_created_at:
+      type: string
+      format: date-time
+    github_updated_at:
+      type: string
+      format: date-time
+    stargazers_count:
+      type: integer
+      default: 0
+    watchers_count:
+      type: integer
+      default: 0
+    forks_count:
+      type: integer
+      default: 0
+    open_issues_count:
+      type: integer
+      default: 0
+    size_kb:
+      type: integer
+      default: 0
+    is_fork:
+      type: boolean
+      default: false
+    is_archived:
+      type: boolean
+      default: false
+    is_private:
+      type: boolean
+      default: true
+    visibility:
+      type: string
+      enum: [public, private, internal]
+    topics:
+      type: array
+      items:
+        type: string
+    license_name:
+      type: string
+
+SyncResult:
+  type: object
+  properties:
+    success:
+      type: boolean
+      example: true
+    message:
+      type: string
+      example: "Synced 42 repositories"
+    repos_synced:
+      type: integer
+      example: 42
+    files_synced:
+      type: integer
+      example: 0
+
+# Analytics Schemas
+
+DashboardMetrics:
+  type: object
+  properties:
+    total_organizations:
+      type: integer
+      example: 3
+    total_repositories:
+      type: integer
+      example: 125
+    total_findings:
+      type: integer
+      example: 456
+    critical_findings:
+      type: integer
+      example: 23
+    high_findings:
+      type: integer
+      example: 89
+    scan_success_rate:
+      type: number
+      format: float
+      example: 95.5
+    avg_remediation_time_days:
+      type: number
+      format: float
+      example: 7.5
+    findings_by_category:
+      type: object
+      additionalProperties:
+        type: integer
+
+TrendData:
+  type: object
+  properties:
+    period:
+      type: string
+      enum: [day, week, month, quarter, year]
+      example: "month"
+    data_points:
+      type: array
+      items:
+        type: object
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+          value:
+            type: number
+
+# AI Schemas
+
+ArchitectureGenerateRequest:
+  type: object
+  required:
+    - repository_id
+  properties:
+    repository_id:
+      type: string
+      format: uuid
+      description: Repository to analyze
+    force_regenerate:
+      type: boolean
+      description: Force regeneration even if exists
+      default: false
+
+ArchitectureResponse:
+  type: object
+  properties:
+    repository_id:
+      type: string
+      format: uuid
+    architecture:
+      type: object
+      description: Generated architecture documentation
+    components:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          type:
+            type: string
+          description:
+            type: string
+    threat_model:
+      type: object
+      description: AI-generated threat model
+    generated_at:
+      type: string
+      format: date-time

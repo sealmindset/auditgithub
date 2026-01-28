@@ -1,0 +1,137 @@
+# Common Parameter Definitions
+
+OrgName:
+  name: org_name
+  in: path
+  required: true
+  description: Organization name (case-insensitive)
+  schema:
+    type: string
+    pattern: '^[a-zA-Z0-9]+$'
+    example: "sleepnumber"
+
+RepoId:
+  name: repo_id
+  in: path
+  required: true
+  description: Repository UUID
+  schema:
+    type: string
+    format: uuid
+    example: "650e8400-e29b-41d4-a716-446655440001"
+
+RepoName:
+  name: repo_name
+  in: path
+  required: true
+  description: Repository name
+  schema:
+    type: string
+    example: "webapp-frontend"
+
+FindingId:
+  name: finding_id
+  in: path
+  required: true
+  description: Finding UUID
+  schema:
+    type: string
+    format: uuid
+
+ScanId:
+  name: scan_id
+  in: path
+  required: true
+  description: Scan UUID
+  schema:
+    type: string
+    format: uuid
+
+TenantId:
+  name: tenant_id
+  in: path
+  required: true
+  description: Tenant UUID
+  schema:
+    type: string
+    format: uuid
+
+Skip:
+  name: skip
+  in: query
+  required: false
+  description: Number of records to skip for pagination
+  schema:
+    type: integer
+    minimum: 0
+    default: 0
+    example: 0
+
+Limit:
+  name: limit
+  in: query
+  required: false
+  description: Maximum number of records to return
+  schema:
+    type: integer
+    minimum: 1
+    maximum: 1000
+    default: 100
+    example: 100
+
+IncludeInactive:
+  name: include_inactive
+  in: query
+  required: false
+  description: Include inactive/archived items
+  schema:
+    type: boolean
+    default: false
+
+Severity:
+  name: severity
+  in: query
+  required: false
+  description: Filter by severity level
+  schema:
+    type: string
+    enum: [critical, high, medium, low, info]
+    example: "high"
+
+Status:
+  name: status
+  in: query
+  required: false
+  description: Filter by status
+  schema:
+    type: string
+    enum: [open, in_progress, resolved, false_positive, risk_accepted]
+    example: "open"
+
+ScanType:
+  name: scan_type
+  in: query
+  required: false
+  description: Type of scan to perform
+  schema:
+    type: string
+    enum: [full, incremental, secrets, dependencies]
+    default: "full"
+
+ForceRegenerate:
+  name: force_regenerate
+  in: query
+  required: false
+  description: Force regeneration even if data exists
+  schema:
+    type: boolean
+    default: false
+
+Confirm:
+  name: confirm
+  in: query
+  required: false
+  description: Skip confirmation prompts
+  schema:
+    type: boolean
+    default: false

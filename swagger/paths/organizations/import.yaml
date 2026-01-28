@@ -1,0 +1,70 @@
+post:
+  tags:
+    - Organizations
+  summary: Import repositories from GitHub
+  description: |
+    Import all repositories from the organization's GitHub account.
+
+    This operation will:
+    1. Fetch all repositories from GitHub API
+    2. Create or update repository records in database
+    3. Import repository metadata (stars, forks, language, etc.)
+
+    **Note:** Requires valid GitHub credentials for the organization.
+  operationId: importRepositories
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+    - $ref: '../../components/parameters.yaml#/Confirm'
+  responses:
+    '200':
+      description: Repositories imported successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/ImportResult'
+          example:
+            success: true
+            message: "Imported 42 repositories from 'sleepnumber'"
+            total: 42
+            created: 35
+            updated: 7
+            failed: 0
+    '400':
+      description: Bad request - missing credentials
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+          example:
+            detail: "GitHub token not configured for 'sleepnumber'. Use PUT /organizations/{org_name}/credentials"
+    '401':
+      description: Invalid GitHub token
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+          example:
+            detail: "Invalid GitHub token"
+    '404':
+      description: Organization or GitHub org not found
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+          examples:
+            org_not_found:
+              value:
+                detail: "Organization 'sleepnumber' not found"
+            github_org_not_found:
+              value:
+                detail: "GitHub organization 'sleepnumber' not found"
+    '502':
+      description: GitHub API error
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+          example:
+            detail: "GitHub API error: ..."
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

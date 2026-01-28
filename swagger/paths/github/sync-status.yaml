@@ -1,0 +1,63 @@
+get:
+  tags:
+    - GitHub Integration
+  summary: Get sync status
+  description: |
+    Get current synchronization status for repositories and files.
+
+    Returns statistics about:
+    - Repositories with synced metadata
+    - Files with commit data
+    - Findings with file metadata
+  operationId: getGitHubSyncStatus
+  responses:
+    '200':
+      description: Sync status retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              repositories:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 125
+                  with_github_metadata:
+                    type: integer
+                    example: 120
+                  percent_synced:
+                    type: number
+                    format: float
+                    example: 96.0
+              files:
+                type: object
+                properties:
+                  total_with_findings:
+                    type: integer
+                    example: 456
+                  with_commit_data:
+                    type: integer
+                    example: 390
+                  percent_synced:
+                    type: number
+                    format: float
+                    example: 85.5
+              findings:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 1234
+                  with_file_commit_data:
+                    type: integer
+                    example: 980
+                  percent_with_file_data:
+                    type: number
+                    format: float
+                    example: 79.4
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

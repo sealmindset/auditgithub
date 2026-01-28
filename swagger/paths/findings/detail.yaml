@@ -1,0 +1,72 @@
+get:
+  tags:
+    - Findings
+  summary: Get finding details
+  description: |
+    Retrieve detailed information about a specific security finding including
+    full context, remediation guidance, and history.
+  operationId: getFinding
+  parameters:
+    - $ref: '../../components/parameters.yaml#/FindingId'
+  responses:
+    '200':
+      description: Finding details retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Finding'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
+
+patch:
+  tags:
+    - Findings
+  summary: Update finding
+  description: |
+    Update finding properties such as status, assignee, or custom metadata.
+
+    Common use cases:
+    - Mark finding as false positive
+    - Accept risk
+    - Assign to team member
+    - Update remediation notes
+  operationId: updateFinding
+  parameters:
+    - $ref: '../../components/parameters.yaml#/FindingId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [open, in_progress, resolved, false_positive, risk_accepted]
+            assignee_id:
+              type: string
+              format: uuid
+            notes:
+              type: string
+            custom_metadata:
+              type: object
+        example:
+          status: "false_positive"
+          notes: "This is a test API key, not production"
+  responses:
+    '200':
+      description: Finding updated successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Finding'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

@@ -49,4 +49,5 @@ echo ""
 
 # Run the Python batch processor inside Docker
 # Pass all arguments directly to the Python script
-docker-compose exec -T api python batch_process.py "$@"
+# Note: Remove -T flag to allow interactive input (confirmation prompt)
+docker-compose exec api python batch_process.py "$@"

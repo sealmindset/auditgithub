@@ -1,0 +1,31 @@
+post:
+  tags:
+    - AI
+  summary: Generate architecture documentation
+  description: |
+    Generate AI-powered architecture documentation for a repository.
+
+    Uses Claude AI to analyze codebase and generate:
+    - Architecture overview
+    - Component diagrams
+    - Data flow
+    - Threat model
+    - Security recommendations
+  operationId: generateArchitecture
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/schemas.yaml#/ArchitectureGenerateRequest'
+  responses:
+    '200':
+      description: Architecture generated successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/ArchitectureResponse'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

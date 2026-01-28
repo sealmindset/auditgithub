@@ -1,0 +1,17 @@
+post:
+  tags:
+    - Cribl Integration
+  summary: Forward logs to Cribl
+  description: Forward security logs to Cribl Stream
+  operationId: forwardToCribl
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+  responses:
+    '200':
+      $ref: '../../components/responses.yaml#/Success'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

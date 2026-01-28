@@ -1,0 +1,30 @@
+post:
+  tags:
+    - Repositories
+    - Scans
+  summary: Scan repository
+  description: |
+    Initiate a security scan for a specific repository.
+
+    The scan runs asynchronously and includes:
+    - Secret detection (Gitleaks)
+    - SAST analysis (Semgrep)
+    - Dependency vulnerabilities (Grype, Trivy)
+    - License compliance
+  operationId: scanRepository
+  parameters:
+    - $ref: '../../components/parameters.yaml#/RepoId'
+    - $ref: '../../components/parameters.yaml#/ScanType'
+  responses:
+    '200':
+      description: Scan started successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Scan'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

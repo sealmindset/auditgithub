@@ -1,0 +1,25 @@
+get:
+  tags:
+    - Organizations
+  summary: List configured organizations
+  description: |
+    List organizations that have complete credentials configured.
+
+    Returns organization names that have GitHub tokens stored in the secrets manager.
+    Useful for determining which organizations are ready for scanning.
+  operationId: listConfiguredOrganizations
+  responses:
+    '200':
+      description: Configured organizations retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              configured_organizations:
+                type: array
+                items:
+                  type: string
+                example: ["sleepnumber", "sleepnumberlabs"]
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

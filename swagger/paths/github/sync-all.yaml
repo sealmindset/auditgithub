@@ -1,0 +1,27 @@
+post:
+  tags:
+    - GitHub Integration
+  summary: Sync all repositories
+  description: |
+    Synchronize all repositories from GitHub API in the background.
+
+    This is a long-running operation that syncs metadata for all repositories
+    across all organizations. The operation runs asynchronously.
+
+    Use GET /github/sync-status to check progress.
+  operationId: syncAllRepositories
+  responses:
+    '200':
+      description: Sync started successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/SyncResult'
+          example:
+            success: true
+            message: "Started syncing 125 repositories in background"
+            repos_synced: 0
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

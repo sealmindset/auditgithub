@@ -1,0 +1,38 @@
+post:
+  tags:
+    - Authentication
+  summary: Refresh access token
+  description: |
+    Obtain a new access token using a refresh token.
+
+    Send the refresh token to get a new access token without requiring
+    the user to log in again.
+  operationId: refreshToken
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - refresh_token
+          properties:
+            refresh_token:
+              type: string
+              description: Valid refresh token
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  responses:
+    '200':
+      description: Token refreshed successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/LoginResponse'
+    '401':
+      description: Invalid or expired refresh token
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
