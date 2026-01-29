@@ -33,20 +33,22 @@ def normalize_package_name(name: str) -> List[str]:
     return list(set(variants))
 
 def search_dependencies(
-    db: Session, 
-    package_name: str, 
+    db: Session,
+    package_name: str,
     version_spec: Optional[str] = None,
-    use_fuzzy: bool = True
+    use_fuzzy: bool = True,
+    organization_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Search for repositories containing a specific dependency.
-    
+
     Args:
         db: Database session
         package_name: Name of the package to search for
         version_spec: Optional version string to match (exact match)
         use_fuzzy: Enable fuzzy matching (default: True)
-        
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
     Returns:
         List of dictionaries containing repository and dependency details.
     """
@@ -54,21 +56,25 @@ def search_dependencies(
         # Use PostgreSQL trigram similarity for fuzzy matching
         # Similarity threshold of 0.3 gives ~90% certainty
         variants = normalize_package_name(package_name)
-        
+
         # Build OR conditions for all variants
         conditions = []
         for variant in variants:
             conditions.append(models.Dependency.name.ilike(f"%{variant}%"))
-        
+
         query = db.query(models.Dependency).join(models.Repository).filter(or_(*conditions))
     else:
         # Exact partial match
         query = db.query(models.Dependency).join(models.Repository)
         query = query.filter(models.Dependency.name.ilike(f"%{package_name}%"))
-    
+
+    # Filter by organization if provided (multi-tenant)
+    if organization_id:
+        query = query.filter(models.Repository.organization_id == organization_id)
+
     if version_spec:
         query = query.filter(models.Dependency.version == version_spec)
-        
+
     dependencies = query.all()
     
     results = []
@@ -86,29 +92,31 @@ def search_dependencies(
     return results
 
 def search_findings(
-    db: Session, 
+    db: Session,
     query: str,
     severity_filter: Optional[str] = None,
-    finding_types: Optional[List[str]] = None
+    finding_types: Optional[List[str]] = None,
+    organization_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Search security findings by CVE, CWE, package name, title, or description.
-    
+
     Args:
         db: Database session
         query: Search query (CVE ID, CWE ID, package name, keyword)
         severity_filter: Optional severity filter (Critical, High, Medium, Low)
         finding_types: Optional list of finding types to filter
-        
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
     Returns:
         List of dictionaries containing finding and repository details.
     """
     # Check if query is a CVE or CWE ID
     is_cve = query.upper().startswith("CVE-")
     is_cwe = query.upper().startswith("CWE-")
-    
+
     base_query = db.query(models.Finding).join(models.Repository)
-    
+
     if is_cve:
         # Exact CVE match
         base_query = base_query.filter(models.Finding.cve_id.ilike(f"%{query}%"))
@@ -119,22 +127,26 @@ def search_findings(
         # Fuzzy search across multiple fields
         variants = normalize_package_name(query)
         conditions = []
-        
+
         for variant in variants:
             conditions.extend([
                 models.Finding.package_name.ilike(f"%{variant}%"),
                 models.Finding.title.ilike(f"%{variant}%"),
                 models.Finding.description.ilike(f"%{variant}%")
             ])
-        
+
         base_query = base_query.filter(or_(*conditions))
-    
+
+    # Filter by organization if provided (multi-tenant)
+    if organization_id:
+        base_query = base_query.filter(models.Repository.organization_id == organization_id)
+
     if severity_filter:
         base_query = base_query.filter(models.Finding.severity.ilike(severity_filter))
-    
+
     if finding_types:
         base_query = base_query.filter(models.Finding.finding_type.in_(finding_types))
-    
+
     findings = base_query.all()
     
     results = []
@@ -157,38 +169,46 @@ def search_findings(
     return results
 
 def search_languages(
-    db: Session, 
+    db: Session,
     language_name: str,
-    use_fuzzy: bool = True
+    use_fuzzy: bool = True,
+    organization_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Search repositories by programming language.
-    
+
     Args:
         db: Database session
         language_name: Name of the programming language
         use_fuzzy: Enable fuzzy matching (default: True)
-        
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
     Returns:
         List of dictionaries containing repository details.
     """
     if use_fuzzy:
         variants = normalize_package_name(language_name)
-        
+
         # Search in both language_stats and repositories.language
-        lang_stats_repos = db.query(models.Repository).join(models.LanguageStat).filter(
+        lang_stats_query = db.query(models.Repository).join(models.LanguageStat).filter(
             or_(*[models.LanguageStat.name.ilike(f"%{v}%") for v in variants])
-        ).distinct().all()
-        
-        repo_lang_repos = db.query(models.Repository).filter(
+        )
+        if organization_id:
+            lang_stats_query = lang_stats_query.filter(models.Repository.organization_id == organization_id)
+        lang_stats_repos = lang_stats_query.distinct().all()
+
+        repo_lang_query = db.query(models.Repository).filter(
             or_(*[models.Repository.language.ilike(f"%{v}%") for v in variants])
-        ).all()
-        
+        )
+        if organization_id:
+            repo_lang_query = repo_lang_query.filter(models.Repository.organization_id == organization_id)
+        repo_lang_repos = repo_lang_query.all()
+
         # Combine and deduplicate
         all_repos = {r.id: r for r in lang_stats_repos + repo_lang_repos}
         repos = list(all_repos.values())
     else:
-        repos = db.query(models.Repository).filter(
+        query = db.query(models.Repository).filter(
             or_(
                 models.Repository.language.ilike(f"%{language_name}%"),
                 models.Repository.id.in_(
@@ -197,7 +217,10 @@ def search_languages(
                     )
                 )
             )
-        ).all()
+        )
+        if organization_id:
+            query = query.filter(models.Repository.organization_id == organization_id)
+        repos = query.all()
     
     results = []
     for repo in repos:
@@ -212,15 +235,24 @@ def search_languages(
     return results
 
 def search_repositories_by_technology(
-    db: Session, 
-    technology: str
+    db: Session,
+    technology: str,
+    organization_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Search for repositories based on primary language or description.
     Enhanced with fuzzy matching.
+
+    Args:
+        db: Database session
+        technology: Technology keyword to search for
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
+    Returns:
+        List of dictionaries containing repository details.
     """
     variants = normalize_package_name(technology)
-    
+
     query = db.query(models.Repository).filter(
         or_(*[
             models.Repository.language.ilike(f"%{v}%") for v in variants
@@ -228,11 +260,15 @@ def search_repositories_by_technology(
             models.Repository.description.ilike(f"%{v}%") for v in variants
         ])
     )
-    
+
+    # Filter by organization if provided (multi-tenant)
+    if organization_id:
+        query = query.filter(models.Repository.organization_id == organization_id)
+
     repos = query.all()
     return [{
-        "repository": r.name, 
-        "repository_id": str(r.id), 
+        "repository": r.name,
+        "repository_id": str(r.id),
         "language": r.language,
         "description": r.description,
         "source": "technology"
@@ -242,33 +278,35 @@ def search_all_sources(
     db: Session,
     query: str,
     scopes: Optional[List[str]] = None,
-    severity_filter: Optional[str] = None
+    severity_filter: Optional[str] = None,
+    organization_id: Optional[str] = None
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Unified search across all available data sources.
-    
+
     Args:
         db: Database session
         query: Search query
         scopes: Optional list of scopes to search (dependencies, findings, languages, all)
         severity_filter: Optional severity filter for findings
-        
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
     Returns:
         Dictionary with results grouped by source
     """
     if scopes is None or "all" in scopes:
         scopes = ["dependencies", "findings", "languages"]
-    
+
     results = {}
-    
+
     if "dependencies" in scopes:
-        results["dependencies"] = search_dependencies(db, query, use_fuzzy=True)
-    
+        results["dependencies"] = search_dependencies(db, query, use_fuzzy=True, organization_id=organization_id)
+
     if "findings" in scopes:
-        results["findings"] = search_findings(db, query, severity_filter=severity_filter)
-    
+        results["findings"] = search_findings(db, query, severity_filter=severity_filter, organization_id=organization_id)
+
     if "languages" in scopes:
-        results["languages"] = search_languages(db, query, use_fuzzy=True)
+        results["languages"] = search_languages(db, query, use_fuzzy=True, organization_id=organization_id)
     
     # Aggregate all repositories
     all_repos = {}

@@ -267,12 +267,12 @@ class ReasoningEngine:
     ) -> Dict[str, Any]:
         """
         Analyze a zero-day query with comprehensive database search.
-        
+
         This uses an enhanced "Tool Use" pattern:
         1. Ask LLM to determine the search strategy across multiple sources
         2. Execute the tools (DB queries) with fuzzy matching
         3. Pass results back to LLM to generate the final answer
-        
+
         Args:
             query: User's natural language query
             db_session: Database session
@@ -280,11 +280,28 @@ class ReasoningEngine:
         """
         try:
             logger.info(f"Analyzing zero-day query: {query} (scope: {scope})")
-            
+
+            # Get the current organization ID for multi-tenant filtering
+            from ...api.database import get_request_org_id
+            from sqlalchemy import text
+            organization_id = get_request_org_id()
+
+            # Fall back to default organization if no context is set
+            if not organization_id:
+                try:
+                    result = db_session.execute(text("SELECT id FROM organizations WHERE is_default = true LIMIT 1"))
+                    row = result.fetchone()
+                    if row:
+                        organization_id = str(row[0])
+                except Exception:
+                    pass
+
+            logger.info(f"Zero-day analysis scoped to organization: {organization_id}")
+
             # Import here to avoid circular dependency
             from .tools.db_tools import (
-                search_dependencies, 
-                search_findings, 
+                search_dependencies,
+                search_findings,
                 search_languages,
                 search_repositories_by_technology,
                 search_all_sources
@@ -369,49 +386,54 @@ class ReasoningEngine:
                 try:
                     if tool_name == "search_dependencies":
                         results = search_dependencies(
-                            db_session, 
-                            package_name=args.get("package_name"), 
+                            db_session,
+                            package_name=args.get("package_name"),
                             version_spec=args.get("version_spec"),
-                            use_fuzzy=True
+                            use_fuzzy=True,
+                            organization_id=organization_id
                         )
                         execution_results.append(f"Dependencies: Found {len(results)} repos using '{args.get('package_name')}'")
                         affected_repos.extend(results)
                         all_details.extend(results)
-                        
+
                     elif tool_name == "search_findings":
                         results = search_findings(
                             db_session,
                             query=args.get("query"),
-                            severity_filter=args.get("severity_filter")
+                            severity_filter=args.get("severity_filter"),
+                            organization_id=organization_id
                         )
                         execution_results.append(f"Findings: Found {len(results)} security findings matching '{args.get('query')}'")
                         affected_repos.extend(results)
                         all_details.extend(results)
-                    
+
                     elif tool_name == "search_languages":
                         results = search_languages(
                             db_session,
                             language_name=args.get("language"),
-                            use_fuzzy=True
+                            use_fuzzy=True,
+                            organization_id=organization_id
                         )
                         execution_results.append(f"Languages: Found {len(results)} repos using '{args.get('language')}'")
                         affected_repos.extend(results)
                         all_details.extend(results)
-                        
+
                     elif tool_name == "search_technology":
                         results = search_repositories_by_technology(
                             db_session,
-                            technology=args.get("keyword")
+                            technology=args.get("keyword"),
+                            organization_id=organization_id
                         )
                         execution_results.append(f"Technology: Found {len(results)} repos matching '{args.get('keyword')}'")
                         affected_repos.extend(results)
                         all_details.extend(results)
-                    
+
                     elif tool_name == "search_all_sources":
                         all_results = search_all_sources(
                             db_session,
                             query=args.get("query"),
-                            scopes=args.get("scopes") or scope
+                            scopes=args.get("scopes") or scope,
+                            organization_id=organization_id
                         )
                         # Extract aggregated results
                         agg_repos = all_results.get("aggregated_repositories", [])
