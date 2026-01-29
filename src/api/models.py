@@ -1030,3 +1030,192 @@ class CriblConfig(Base):
     def __repr__(self):
         return f"<CriblConfig(enabled={self.enabled}, ingest_url='{self.ingest_url}')>"
 
+
+
+# =============================================================================
+# CI/CD TRACKING - Deployment and Pipeline History
+# =============================================================================
+
+class DeploymentTarget(Base):
+    """
+    Deployment environments and targets (production, staging, etc.).
+    Multi-tenant: Scoped to organization.
+    """
+    __tablename__ = "deployment_targets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    
+    # Multi-tenant: Organization scope
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    
+    name = Column(String(255), nullable=False)  # prod, staging, dev, qa
+    type = Column(String(50), nullable=False)  # production, staging, development, test
+    url = Column(String(512))  # deployment URL
+    cloud_provider = Column(String(50))  # aws, gcp, azure, on-premise
+    region = Column(String(100))  # cloud region
+    metadata = Column(JSONB)  # additional environment metadata
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    organization = relationship("Organization", backref="deployment_targets")
+
+    __table_args__ = (
+        UniqueConstraint('organization_id', 'name', name='uq_deployment_target_org_name'),
+    )
+
+    def __repr__(self):
+        return f"<DeploymentTarget(name='{self.name}', type='{self.type}')>"
+
+
+class CICDPipeline(Base):
+    """
+    CI/CD pipeline configurations from various platforms (GitHub Actions, GitLab CI, etc.).
+    """
+    __tablename__ = "cicd_pipelines"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    
+    # Foreign keys
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"))
+    
+    platform = Column(String(50), nullable=False)  # github_actions, gitlab_ci, jenkins, circleci
+    name = Column(String(255), nullable=False)  # workflow name
+    file_path = Column(String(512))  # path to workflow file
+    branch = Column(String(255))  # primary branch
+    is_active = Column(Boolean, default=True)
+    config = Column(JSONB)  # pipeline configuration details
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_run_at = Column(DateTime)
+
+    # Relationships
+    repository = relationship("Repository", backref="cicd_pipelines")
+
+    __table_args__ = (
+        UniqueConstraint('repository_id', 'platform', 'name', name='uq_cicd_pipeline_repo_platform_name'),
+    )
+
+    def __repr__(self):
+        return f"<CICDPipeline(name='{self.name}', platform='{self.platform}')>"
+
+
+class WorkflowRun(Base):
+    """
+    Individual workflow/pipeline execution runs (GitHub Actions specific, but adaptable).
+    """
+    __tablename__ = "workflow_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    
+    # Foreign keys
+    pipeline_id = Column(UUID(as_uuid=True), ForeignKey("cicd_pipelines.id", ondelete="CASCADE"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"))
+    
+    run_id = Column(BigInteger)  # External platform run ID
+    run_number = Column(Integer)
+    workflow_name = Column(String(255))
+    event = Column(String(50))  # push, pull_request, workflow_dispatch
+    status = Column(String(50))  # queued, in_progress, completed, cancelled, failed
+    conclusion = Column(String(50))  # success, failure, cancelled, skipped, timed_out
+    branch = Column(String(255))
+    commit_sha = Column(String(40))
+    commit_message = Column(Text)
+    actor = Column(String(255))  # user who triggered the run
+    html_url = Column(String(512))  # link to workflow run
+    
+    # Timing
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    duration_seconds = Column(Integer)
+    
+    metadata = Column(JSONB)  # additional workflow run data
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    pipeline = relationship("CICDPipeline", backref="workflow_runs")
+    repository = relationship("Repository", backref="workflow_runs")
+
+    def __repr__(self):
+        return f"<WorkflowRun(workflow_name='{self.workflow_name}', status='{self.status}')>"
+
+
+class Deployment(Base):
+    """
+    Deployment events to specific environments.
+    Tracks when and where code is deployed.
+    """
+    __tablename__ = "deployments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    
+    # Foreign keys
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"))
+    target_id = Column(UUID(as_uuid=True), ForeignKey("deployment_targets.id", ondelete="SET NULL"))
+    workflow_run_id = Column(UUID(as_uuid=True), ForeignKey("workflow_runs.id", ondelete="SET NULL"))
+    
+    deployment_id = Column(BigInteger)  # External platform deployment ID
+    environment = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False)  # queued, in_progress, success, failure, error, cancelled
+    commit_sha = Column(String(40), nullable=False)
+    commit_message = Column(Text)
+    ref = Column(String(255))  # branch or tag
+    deployer = Column(String(255))  # user or service that triggered deployment
+    deployment_url = Column(String(512))  # URL where deployment is accessible
+    log_url = Column(String(512))  # URL to deployment logs
+    
+    # Timing
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    duration_seconds = Column(Integer)
+    
+    error_message = Column(Text)
+    metadata = Column(JSONB)  # additional deployment metadata
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    repository = relationship("Repository", backref="deployments")
+    target = relationship("DeploymentTarget", backref="deployments")
+    workflow_run = relationship("WorkflowRun", backref="deployments")
+
+    def __repr__(self):
+        return f"<Deployment(environment='{self.environment}', status='{self.status}', commit='{self.commit_sha[:8]}')>"
+
+
+class DeploymentArtifact(Base):
+    """
+    Artifacts produced by deployments (Docker images, zip files, etc.).
+    """
+    __tablename__ = "deployment_artifacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    
+    # Foreign keys
+    deployment_id = Column(UUID(as_uuid=True), ForeignKey("deployments.id", ondelete="CASCADE"))
+    
+    artifact_type = Column(String(50))  # docker_image, zip, tar, binary
+    artifact_name = Column(String(255))
+    artifact_version = Column(String(100))
+    artifact_url = Column(String(512))
+    artifact_hash = Column(String(128))  # SHA256 or similar
+    size_bytes = Column(BigInteger)
+    metadata = Column(JSONB)
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+
+    # Relationships
+    deployment = relationship("Deployment", backref="artifacts")
+
+    def __repr__(self):
+        return f"<DeploymentArtifact(name='{self.artifact_name}', type='{self.artifact_type}')>"

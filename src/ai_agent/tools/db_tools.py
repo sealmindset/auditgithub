@@ -332,3 +332,225 @@ def search_all_sources(
     results["aggregated_repositories"] = list(all_repos.values())
     
     return results
+
+def search_deployments(
+    db: Session,
+    repository_name: Optional[str] = None,
+    environment: Optional[str] = None,
+    commit_sha: Optional[str] = None,
+    status: Optional[str] = None,
+    days_back: int = 90,
+    organization_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Search deployment history.
+
+    Args:
+        db: Database session
+        repository_name: Repository name to filter
+        environment: Environment name (prod, staging, dev, etc.)
+        commit_sha: Specific commit SHA
+        status: Deployment status (success, failure, etc.)
+        days_back: How many days back to search
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
+    Returns:
+        List of dictionaries containing deployment details.
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import and_
+    
+    # Build base query
+    query = db.query(models.Deployment).join(models.Repository)
+    
+    # Apply filters
+    conditions = []
+    
+    if repository_name:
+        variants = normalize_package_name(repository_name)
+        repo_conditions = [models.Repository.name.ilike(f"%{v}%") for v in variants]
+        conditions.append(or_(*repo_conditions))
+    
+    if environment:
+        conditions.append(models.Deployment.environment.ilike(f"%{environment}%"))
+    
+    if commit_sha:
+        conditions.append(models.Deployment.commit_sha.startswith(commit_sha))
+    
+    if status:
+        conditions.append(models.Deployment.status.ilike(f"%{status}%"))
+    
+    # Date filter
+    cutoff = datetime.utcnow() - timedelta(days=days_back)
+    conditions.append(models.Deployment.started_at >= cutoff)
+    
+    # Multi-tenant filter
+    if organization_id:
+        conditions.append(models.Repository.organization_id == organization_id)
+    
+    if conditions:
+        query = query.filter(and_(*conditions))
+    
+    # Order by most recent first
+    query = query.order_by(models.Deployment.started_at.desc())
+    
+    deployments = query.limit(100).all()
+    
+    results = []
+    for deployment in deployments:
+        results.append({
+            "repository": deployment.repository.name,
+            "repository_id": str(deployment.repository.id),
+            "deployment_id": str(deployment.id),
+            "environment": deployment.environment,
+            "status": deployment.status,
+            "commit_sha": deployment.commit_sha,
+            "commit_message": deployment.commit_message,
+            "deployer": deployment.deployer,
+            "deployment_url": deployment.deployment_url,
+            "started_at": deployment.started_at.isoformat() if deployment.started_at else None,
+            "completed_at": deployment.completed_at.isoformat() if deployment.completed_at else None,
+            "duration_seconds": deployment.duration_seconds,
+            "source": "deployments"
+        })
+    
+    return results
+
+
+def search_workflow_runs(
+    db: Session,
+    repository_name: Optional[str] = None,
+    workflow_name: Optional[str] = None,
+    branch: Optional[str] = None,
+    status: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    days_back: int = 30,
+    organization_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Search CI/CD workflow runs.
+
+    Args:
+        db: Database session
+        repository_name: Repository name to filter
+        workflow_name: Workflow/pipeline name
+        branch: Branch name
+        status: Workflow status (queued, in_progress, completed)
+        conclusion: Workflow conclusion (success, failure, cancelled)
+        days_back: How many days back to search
+        organization_id: Optional organization ID to filter results (multi-tenant)
+
+    Returns:
+        List of dictionaries containing workflow run details.
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import and_
+    
+    # Build base query
+    query = db.query(models.WorkflowRun).join(models.Repository)
+    
+    # Apply filters
+    conditions = []
+    
+    if repository_name:
+        variants = normalize_package_name(repository_name)
+        repo_conditions = [models.Repository.name.ilike(f"%{v}%") for v in variants]
+        conditions.append(or_(*repo_conditions))
+    
+    if workflow_name:
+        conditions.append(models.WorkflowRun.workflow_name.ilike(f"%{workflow_name}%"))
+    
+    if branch:
+        conditions.append(models.WorkflowRun.branch.ilike(f"%{branch}%"))
+    
+    if status:
+        conditions.append(models.WorkflowRun.status.ilike(f"%{status}%"))
+    
+    if conclusion:
+        conditions.append(models.WorkflowRun.conclusion.ilike(f"%{conclusion}%"))
+    
+    # Date filter
+    cutoff = datetime.utcnow() - timedelta(days=days_back)
+    conditions.append(models.WorkflowRun.started_at >= cutoff)
+    
+    # Multi-tenant filter
+    if organization_id:
+        conditions.append(models.Repository.organization_id == organization_id)
+    
+    if conditions:
+        query = query.filter(and_(*conditions))
+    
+    # Order by most recent first
+    query = query.order_by(models.WorkflowRun.started_at.desc())
+    
+    workflow_runs = query.limit(100).all()
+    
+    results = []
+    for run in workflow_runs:
+        results.append({
+            "repository": run.repository.name,
+            "repository_id": str(run.repository.id),
+            "run_id": str(run.id),
+            "workflow_name": run.workflow_name,
+            "status": run.status,
+            "conclusion": run.conclusion,
+            "branch": run.branch,
+            "commit_sha": run.commit_sha,
+            "actor": run.actor,
+            "html_url": run.html_url,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            "duration_seconds": run.duration_seconds,
+            "source": "workflow_runs"
+        })
+    
+    return results
+
+
+def get_repository_deployment_status(
+    db: Session,
+    repository_id: str,
+    environment: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get the current deployment status for a repository.
+
+    Args:
+        db: Database session
+        repository_id: Repository UUID
+        environment: Optional environment filter
+
+    Returns:
+        Dictionary with deployment status information
+    """
+    from sqlalchemy import desc
+    
+    # Get most recent successful deployment per environment
+    query = db.query(models.Deployment).filter(
+        models.Deployment.repository_id == repository_id,
+        models.Deployment.status == 'success'
+    )
+    
+    if environment:
+        query = query.filter(models.Deployment.environment == environment)
+    
+    query = query.order_by(desc(models.Deployment.completed_at))
+    
+    # Get all environments with their latest deployment
+    deployments_by_env = {}
+    for deployment in query.all():
+        env = deployment.environment
+        if env not in deployments_by_env:
+            deployments_by_env[env] = {
+                "environment": env,
+                "commit_sha": deployment.commit_sha,
+                "deployed_at": deployment.completed_at.isoformat() if deployment.completed_at else None,
+                "deployer": deployment.deployer,
+                "deployment_url": deployment.deployment_url
+            }
+    
+    return {
+        "repository_id": repository_id,
+        "environments": list(deployments_by_env.values()),
+        "total_environments": len(deployments_by_env)
+    }

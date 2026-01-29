@@ -460,27 +460,68 @@ class ReasoningEngine:
                         unique_repos[repo_id]["matched_sources"].extend(repo.get("matched_sources", []))
                         unique_repos[repo_id]["matched_sources"] = list(set(unique_repos[repo_id]["matched_sources"]))
 
+            # ENHANCEMENT: Fetch deployment information for affected repositories
+            from .tools.db_tools import get_repository_deployment_status
+            deployment_info = {}
+
+            for repo_id, repo_data in unique_repos.items():
+                try:
+                    deploy_status = get_repository_deployment_status(db_session, repo_id)
+                    if deploy_status and deploy_status.get("total_environments", 0) > 0:
+                        deployment_info[repo_id] = deploy_status["environments"]
+                        # Add deployment flag to repo data
+                        repo_data["has_deployments"] = True
+                        repo_data["deployment_count"] = len(deploy_status["environments"])
+                except Exception as e:
+                    logger.warning(f"Could not fetch deployment info for {repo_id}: {e}")
+                    repo_data["has_deployments"] = False
+
             # Step 3: Synthesize Answer with AI
-            # Format repository list with last updated dates
+            # Format repository list with last updated dates AND deployment info
             repo_list_items = []
+            deployed_repos = []  # Track repos that are deployed
+
             for r in unique_repos.values():
                 repo_name = r.get('repository')
+                repo_id = r.get('repository_id')
                 source = r.get('source', 'unknown')
                 last_updated = r.get('last_updated')
+                has_deployments = r.get('has_deployments', False)
+
+                # Build repo line
+                repo_line = f"- **{repo_name}** ({source} match"
 
                 if last_updated:
                     from datetime import datetime
                     try:
-                        # Parse ISO format and display as readable date
                         dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
                         date_str = dt.strftime('%Y-%m-%d')
-                        repo_list_items.append(f"- **{repo_name}** ({source} match, last updated: {date_str})")
+                        repo_line += f", last updated: {date_str}"
                     except:
-                        repo_list_items.append(f"- **{repo_name}** ({source} match)")
-                else:
-                    repo_list_items.append(f"- **{repo_name}** ({source} match)")
+                        pass
+
+                # Add deployment information if available
+                if has_deployments and repo_id in deployment_info:
+                    envs = deployment_info[repo_id]
+                    env_names = [e.get("environment") for e in envs]
+                    repo_line += f", **DEPLOYED to: {', '.join(env_names)}**"
+                    deployed_repos.append({
+                        "repository": repo_name,
+                        "environments": env_names,
+                        "deployment_details": envs
+                    })
+
+                repo_line += ")"
+                repo_list_items.append(repo_line)
 
             repo_list_str = "\n".join(repo_list_items)
+
+            # Create deployment summary
+            deployment_summary = ""
+            if deployed_repos:
+                deployment_summary = f"\n\n**CRITICAL: {len(deployed_repos)} repositories are currently deployed:**\n"
+                for dr in deployed_repos:
+                    deployment_summary += f"  - {dr['repository']}: {', '.join(dr['environments'])}\n"
 
             # Include sample details for context
             detail_summary = []
@@ -494,24 +535,26 @@ class ReasoningEngine:
             
             synthesis_prompt = f"""
             User Query: "{query}"
-            
+
             Search Strategy Executed:
             {json.dumps(plan.get('tools', []), indent=2)}
-            
+
             Execution Results:
             {chr(10).join(execution_results)}
-            
+
             Identified Repositories ({len(unique_repos)} total):
             {repo_list_str}
-            
+            {deployment_summary}
+
             Sample Match Details:
             {detail_str}
-            
+
             Please provide a comprehensive final answer:
             1. **Summary**: Briefly explain what the query is about (vulnerability, technology, etc.)
             2. **Affected Repositories**: List the repositories and explain WHY each matched (based on dependencies, findings, language, etc.). Include the last updated date when available to help assess maintenance status and prioritization.
-            3. **Risk Assessment**: Evaluate the severity and potential impact. Consider repository activity - recently updated repositories may be actively maintained while stale repositories might pose higher risk.
-            4. **Remediation Steps**: Provide 2-3 specific, actionable mitigation or remediation recommendations
+            3. **Deployment Impact**: CRITICAL - Identify which repositories are currently deployed to production/staging environments. These require immediate attention as they present active security risk. Prioritize remediation based on deployment status (production > staging > development).
+            4. **Risk Assessment**: Evaluate the severity and potential impact. Consider repository activity - recently updated repositories may be actively maintained while stale repositories might pose higher risk. **Deployed repositories have HIGHER risk** regardless of update status.
+            5. **Remediation Steps**: Provide 2-3 specific, actionable mitigation or remediation recommendations. For deployed repositories, include emergency response steps.
 
             Format your response in clean Markdown with proper headings and bullet points.
             """
