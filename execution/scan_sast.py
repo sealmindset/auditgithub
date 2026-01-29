@@ -28,9 +28,15 @@ def run_semgrep(repo_path: str, repo_name: str, report_dir: str):
 
     try:
         logger.info(f"Running Semgrep for {repo_name}...")
+        logger.info(f"  + Including Struts2 security rules (p/struts)")
+        logger.info(f"  + Including ASP.NET security rules (p/csharp)")
 
         # Build config list - include PL/SQL rules if .sql files exist
-        configs = ["auto"]
+        configs = [
+            "auto",
+            "p/struts",      # Struts2 vulnerability detection
+            "p/csharp"       # ASP.NET/C# vulnerability detection
+        ]
         plsql_rules_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "semgrep_plsql_rules.yml")
 
         # Check if repository has PL/SQL files
@@ -57,6 +63,8 @@ def run_semgrep(repo_path: str, repo_name: str, report_dir: str):
             f.write(f"# Semgrep SAST Scan\n\n")
             f.write(f"**Repository:** {repo_name}\n")
             f.write(f"**Date:** {datetime.datetime.now().isoformat()}\n")
+            f.write(f"**Struts2 Rules:** Enabled\n")
+            f.write(f"**ASP.NET Rules:** Enabled\n")
             if has_plsql:
                 f.write(f"**PL/SQL Rules:** Enabled\n")
             f.write("\n")
