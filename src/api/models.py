@@ -1053,7 +1053,7 @@ class DeploymentTarget(Base):
     url = Column(String(512))  # deployment URL
     cloud_provider = Column(String(50))  # aws, gcp, azure, on-premise
     region = Column(String(100))  # cloud region
-    metadata = Column(JSONB)  # additional environment metadata
+    extra_data = Column(JSONB)  # additional environment metadata
     
     # Timestamps
     created_at = Column(DateTime, server_default=func.now())
@@ -1132,9 +1132,9 @@ class WorkflowRun(Base):
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
     duration_seconds = Column(Integer)
-    
-    metadata = Column(JSONB)  # additional workflow run data
-    
+
+    extra_data = Column(JSONB)  # additional workflow run data
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -1175,10 +1175,10 @@ class Deployment(Base):
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
     duration_seconds = Column(Integer)
-    
+
     error_message = Column(Text)
-    metadata = Column(JSONB)  # additional deployment metadata
-    
+    extra_data = Column(JSONB)  # additional deployment metadata
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -1209,8 +1209,8 @@ class DeploymentArtifact(Base):
     artifact_url = Column(String(512))
     artifact_hash = Column(String(128))  # SHA256 or similar
     size_bytes = Column(BigInteger)
-    metadata = Column(JSONB)
-    
+    extra_data = Column(JSONB)
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now())
 

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS deployment_targets (
     url VARCHAR(512), -- deployment URL if applicable
     cloud_provider VARCHAR(50), -- aws, gcp, azure, on-premise
     region VARCHAR(100), -- cloud region
-    metadata JSONB, -- additional environment metadata
+    extra_data JSONB, -- additional environment extra_data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(organization_id, name)
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
     duration_seconds INTEGER,
-    metadata JSONB, -- additional workflow run data
+    extra_data JSONB, -- additional workflow run data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     completed_at TIMESTAMP,
     duration_seconds INTEGER,
     error_message TEXT,
-    metadata JSONB, -- additional deployment metadata
+    extra_data JSONB, -- additional deployment extra_data
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS deployment_artifacts (
     artifact_url VARCHAR(512),
     artifact_hash VARCHAR(128), -- SHA256 or similar
     size_bytes BIGINT,
-    metadata JSONB,
+    extra_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

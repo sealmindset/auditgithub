@@ -256,7 +256,7 @@ class GitHubActionsService:
                         html_url=run_data.get("html_url"),
                         started_at=self._parse_github_datetime(run_data.get("run_started_at")),
                         completed_at=self._parse_github_datetime(run_data.get("updated_at")),
-                        metadata=run_data
+                        extra_data=run_data
                     )
 
                     # Calculate duration if both times exist
@@ -292,7 +292,7 @@ class GitHubActionsService:
                         log_url=status_info.get("log_url"),
                         started_at=self._parse_github_datetime(deploy_data.get("created_at")),
                         completed_at=self._parse_github_datetime(status_info.get("updated_at")),
-                        metadata=deploy_data
+                        extra_data=deploy_data
                     )
 
                     # Calculate duration if both times exist
