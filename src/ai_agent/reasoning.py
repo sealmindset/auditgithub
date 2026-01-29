@@ -282,7 +282,7 @@ class ReasoningEngine:
             logger.info(f"Analyzing zero-day query: {query} (scope: {scope})")
 
             # Get the current organization ID for multi-tenant filtering
-            from ...api.database import get_request_org_id
+            from ..api.database import get_request_org_id
             from sqlalchemy import text
             organization_id = get_request_org_id()
 
