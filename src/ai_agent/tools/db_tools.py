@@ -86,9 +86,10 @@ def search_dependencies(
             "version": dep.version,
             "package_manager": dep.package_manager,
             "locations": dep.locations,
+            "last_updated": dep.repository.pushed_at.isoformat() if dep.repository.pushed_at else None,
             "source": "dependencies"
         })
-        
+
     return results
 
 def search_findings(
@@ -163,9 +164,10 @@ def search_findings(
             "package_version": finding.package_version,
             "scanner": finding.scanner_name,
             "status": finding.status,
+            "last_updated": finding.repository.pushed_at.isoformat() if finding.repository.pushed_at else None,
             "source": "findings"
         })
-    
+
     return results
 
 def search_languages(
@@ -229,9 +231,10 @@ def search_languages(
             "repository_id": str(repo.id),
             "language": repo.language,
             "description": repo.description,
+            "last_updated": repo.pushed_at.isoformat() if repo.pushed_at else None,
             "source": "languages"
         })
-    
+
     return results
 
 def search_repositories_by_technology(
@@ -271,6 +274,7 @@ def search_repositories_by_technology(
         "repository_id": str(r.id),
         "language": r.language,
         "description": r.description,
+        "last_updated": r.pushed_at.isoformat() if r.pushed_at else None,
         "source": "technology"
     } for r in repos]
 

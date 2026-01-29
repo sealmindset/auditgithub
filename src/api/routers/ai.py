@@ -644,15 +644,23 @@ async def export_zda_pdf(request: dict):
         story.append(Spacer(1, 8))
 
         if repos:
-            table_data = [['Repository', 'Reason', 'Source']]
+            table_data = [['Repository', 'Last Updated', 'Source']]
             for repo in repos:
+                last_updated = repo.get('last_updated', 'N/A')
+                if last_updated and last_updated != 'N/A':
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                        last_updated = dt.strftime('%Y-%m-%d')
+                    except:
+                        pass
                 table_data.append([
-                    repo.get('repository', '')[:30],
-                    repo.get('reason', 'Context match')[:40],
-                    repo.get('source', '-')[:20]
+                    repo.get('repository', '')[:35],
+                    last_updated[:15],
+                    repo.get('source', '-')[:15]
                 ])
 
-            table = Table(table_data, colWidths=[2.5*inch, 2.5*inch, 1.5*inch])
+            table = Table(table_data, colWidths=[2.8*inch, 2.0*inch, 1.7*inch])
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -719,13 +727,21 @@ async def export_zda_docx(request: dict):
             table.style = 'Table Grid'
             header_cells = table.rows[0].cells
             header_cells[0].text = 'Repository'
-            header_cells[1].text = 'Reason'
+            header_cells[1].text = 'Last Updated'
             header_cells[2].text = 'Source'
 
             for repo in repos:
                 row_cells = table.add_row().cells
                 row_cells[0].text = repo.get('repository', '')
-                row_cells[1].text = repo.get('reason', 'Context match')
+                last_updated = repo.get('last_updated', 'N/A')
+                if last_updated and last_updated != 'N/A':
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                        last_updated = dt.strftime('%Y-%m-%d')
+                    except:
+                        pass
+                row_cells[1].text = last_updated
                 row_cells[2].text = repo.get('source', '-')
         else:
             doc.add_paragraph('No affected repositories found.')

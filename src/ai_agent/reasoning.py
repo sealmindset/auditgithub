@@ -461,11 +461,27 @@ class ReasoningEngine:
                         unique_repos[repo_id]["matched_sources"] = list(set(unique_repos[repo_id]["matched_sources"]))
 
             # Step 3: Synthesize Answer with AI
-            repo_list_str = "\n".join([
-                f"- **{r.get('repository')}** ({r.get('source', 'unknown')} match)" 
-                for r in unique_repos.values()
-            ])
-            
+            # Format repository list with last updated dates
+            repo_list_items = []
+            for r in unique_repos.values():
+                repo_name = r.get('repository')
+                source = r.get('source', 'unknown')
+                last_updated = r.get('last_updated')
+
+                if last_updated:
+                    from datetime import datetime
+                    try:
+                        # Parse ISO format and display as readable date
+                        dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                        date_str = dt.strftime('%Y-%m-%d')
+                        repo_list_items.append(f"- **{repo_name}** ({source} match, last updated: {date_str})")
+                    except:
+                        repo_list_items.append(f"- **{repo_name}** ({source} match)")
+                else:
+                    repo_list_items.append(f"- **{repo_name}** ({source} match)")
+
+            repo_list_str = "\n".join(repo_list_items)
+
             # Include sample details for context
             detail_summary = []
             for detail in all_details[:10]:  # Limit to first 10 for token efficiency
@@ -493,10 +509,10 @@ class ReasoningEngine:
             
             Please provide a comprehensive final answer:
             1. **Summary**: Briefly explain what the query is about (vulnerability, technology, etc.)
-            2. **Affected Repositories**: List the repositories and explain WHY each matched (based on dependencies, findings, language, etc.)
-            3. **Risk Assessment**: Evaluate the severity and potential impact
+            2. **Affected Repositories**: List the repositories and explain WHY each matched (based on dependencies, findings, language, etc.). Include the last updated date when available to help assess maintenance status and prioritization.
+            3. **Risk Assessment**: Evaluate the severity and potential impact. Consider repository activity - recently updated repositories may be actively maintained while stale repositories might pose higher risk.
             4. **Remediation Steps**: Provide 2-3 specific, actionable mitigation or remediation recommendations
-            
+
             Format your response in clean Markdown with proper headings and bullet points.
             """
             
