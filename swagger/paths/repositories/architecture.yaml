@@ -1,0 +1,41 @@
+get:
+  tags:
+    - Repositories
+    - AI
+  summary: Get repository architecture
+  description: |
+    Retrieve AI-generated architecture documentation for a repository.
+
+    Returns comprehensive architecture analysis including:
+    - System components and their relationships
+    - Technology stack
+    - Data flow diagrams
+    - Threat model
+    - Security recommendations
+  operationId: getRepositoryArchitecture
+  parameters:
+    - $ref: '../../components/parameters.yaml#/RepoId'
+  responses:
+    '200':
+      description: Architecture documentation retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/ArchitectureResponse'
+    '404':
+      description: Repository or architecture not found
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+          examples:
+            repo_not_found:
+              value:
+                detail: "Repository not found"
+            arch_not_generated:
+              value:
+                detail: "Architecture not yet generated. Use POST /ai/architecture/generate"
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

@@ -1,0 +1,39 @@
+get:
+  tags:
+    - Organizations
+    - Repositories
+  summary: Get organization repositories
+  description: |
+    Retrieve all repositories for a specific organization with pagination support.
+
+    Repositories are returned with finding counts and last scan timestamps.
+    Sorted by last scanned date (most recent first).
+  operationId: getOrganizationRepositories
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+    - $ref: '../../components/parameters.yaml#/Skip'
+    - $ref: '../../components/parameters.yaml#/Limit'
+  responses:
+    '200':
+      description: Repositories retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../../components/schemas.yaml#/Repository'
+          example:
+            - id: "650e8400-e29b-41d4-a716-446655440001"
+              name: "webapp-frontend"
+              full_name: "sleepnumber/webapp-frontend"
+              url: "https://github.com/sleepnumber/webapp-frontend"
+              description: "Frontend web application"
+              language: "TypeScript"
+              last_scanned_at: "2024-01-20T10:30:00Z"
+              finding_count: 12
+              is_private: true
+              is_archived: false
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

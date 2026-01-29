@@ -1,0 +1,43 @@
+get:
+  tags:
+    - Repositories
+  summary: List repositories
+  description: |
+    Retrieve a paginated list of all repositories across all organizations.
+
+    Supports filtering and pagination.
+    Ordered by last scan timestamp (most recent first).
+  operationId: listRepositories
+  parameters:
+    - $ref: '../../components/parameters.yaml#/Skip'
+    - $ref: '../../components/parameters.yaml#/Limit'
+    - name: organization_id
+      in: query
+      description: Filter by organization UUID
+      schema:
+        type: string
+        format: uuid
+    - name: language
+      in: query
+      description: Filter by programming language
+      schema:
+        type: string
+        example: "TypeScript"
+    - name: is_archived
+      in: query
+      description: Filter by archived status
+      schema:
+        type: boolean
+  responses:
+    '200':
+      description: Repositories retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../../components/schemas.yaml#/Repository'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

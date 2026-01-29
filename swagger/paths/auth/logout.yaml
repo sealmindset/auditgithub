@@ -1,0 +1,17 @@
+post:
+  tags:
+    - Authentication
+  summary: User logout
+  description: |
+    Invalidate current access and refresh tokens.
+
+    After logout, the tokens will be blacklisted and cannot be used
+    for authentication.
+  operationId: logout
+  responses:
+    '200':
+      $ref: '../../components/responses.yaml#/Success'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

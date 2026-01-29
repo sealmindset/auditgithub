@@ -1,0 +1,62 @@
+get:
+  tags:
+    - Findings
+    - Analytics
+  summary: Get finding statistics
+  description: |
+    Retrieve aggregated statistics about findings across the system.
+
+    Returns counts grouped by:
+    - Severity level
+    - Status
+    - Scanner
+    - Organization (if applicable)
+  operationId: getFindingStatistics
+  parameters:
+    - name: organization_id
+      in: query
+      description: Filter by organization UUID
+      schema:
+        type: string
+        format: uuid
+    - name: repository_id
+      in: query
+      description: Filter by repository UUID
+      schema:
+        type: string
+        format: uuid
+    - name: time_range
+      in: query
+      description: Time range for statistics
+      schema:
+        type: string
+        enum: [day, week, month, quarter, year, all]
+        default: "all"
+  responses:
+    '200':
+      description: Statistics retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/FindingStatistics'
+          example:
+            total: 156
+            by_severity:
+              critical: 12
+              high: 34
+              medium: 56
+              low: 42
+              info: 12
+            by_status:
+              open: 98
+              in_progress: 23
+              resolved: 35
+            by_scanner:
+              gitleaks: 45
+              semgrep: 67
+              grype: 34
+              trivy: 10
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

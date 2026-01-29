@@ -1,0 +1,17 @@
+get:
+  tags:
+    - Contributors
+  summary: List contributors
+  description: Retrieve contributor profiles and activity
+  operationId: listContributors
+  responses:
+    '200':
+      description: Contributors retrieved
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

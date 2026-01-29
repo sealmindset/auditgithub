@@ -1,0 +1,15 @@
+get:
+  tags:
+    - SLA
+  summary: Get SLA metrics
+  description: Retrieve service level agreement metrics and compliance
+  operationId: getSLAMetrics
+  responses:
+    '200':
+      description: SLA metrics retrieved
+      content:
+        application/json:
+          schema:
+            type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

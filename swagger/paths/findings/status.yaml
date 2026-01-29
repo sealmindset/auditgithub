@@ -1,0 +1,40 @@
+patch:
+  tags:
+    - Findings
+  summary: Update finding status
+  description: |
+    Update only the status of a finding.
+
+    Convenience endpoint for status changes without full update payload.
+  operationId: updateFindingStatus
+  parameters:
+    - $ref: '../../components/parameters.yaml#/FindingId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - status
+          properties:
+            status:
+              type: string
+              enum: [open, in_progress, resolved, false_positive, risk_accepted]
+              example: "resolved"
+            resolution_notes:
+              type: string
+              example: "Fixed in PR #123"
+  responses:
+    '200':
+      description: Finding status updated successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Finding'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

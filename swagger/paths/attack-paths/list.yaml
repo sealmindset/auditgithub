@@ -1,0 +1,17 @@
+get:
+  tags:
+    - Attack Paths
+  summary: List attack paths
+  description: Retrieve identified attack paths in the system
+  operationId: listAttackPaths
+  responses:
+    '200':
+      description: Attack paths retrieved
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

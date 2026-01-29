@@ -1,0 +1,28 @@
+get:
+  tags:
+    - Authentication
+  summary: Get current user
+  description: |
+    Retrieve information about the currently authenticated user.
+
+    Returns user profile, roles, and permissions.
+  operationId: getCurrentUser
+  responses:
+    '200':
+      description: User information retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/User'
+          example:
+            id: "950e8400-e29b-41d4-a716-446655440004"
+            username: "jdoe"
+            email: "jdoe@sleepnumber.com"
+            full_name: "John Doe"
+            is_active: true
+            roles: ["admin", "security_analyst"]
+            created_at: "2024-01-01T00:00:00Z"
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

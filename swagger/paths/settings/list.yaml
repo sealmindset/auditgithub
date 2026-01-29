@@ -1,0 +1,33 @@
+get:
+  tags:
+    - Settings
+  summary: Get settings
+  description: Retrieve system settings and configuration
+  operationId: getSettings
+  responses:
+    '200':
+      description: Settings retrieved
+      content:
+        application/json:
+          schema:
+            type: object
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+
+patch:
+  tags:
+    - Settings
+  summary: Update settings
+  description: Update system settings
+  operationId: updateSettings
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+  responses:
+    '200':
+      $ref: '../../components/responses.yaml#/Success'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

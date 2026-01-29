@@ -1,0 +1,50 @@
+get:
+  tags:
+    - Scans
+  summary: Get scan details
+  description: |
+    Retrieve detailed information about a specific scan including
+    progress, results, and any errors encountered.
+  operationId: getScan
+  parameters:
+    - $ref: '../../components/parameters.yaml#/ScanId'
+  responses:
+    '200':
+      description: Scan details retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Scan'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
+
+delete:
+  tags:
+    - Scans
+  summary: Cancel scan
+  description: |
+    Cancel a running scan.
+
+    **Note:** Only pending or running scans can be cancelled.
+  operationId: cancelScan
+  parameters:
+    - $ref: '../../components/parameters.yaml#/ScanId'
+  responses:
+    '200':
+      $ref: '../../components/responses.yaml#/Success'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '400':
+      description: Cannot cancel completed scan
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

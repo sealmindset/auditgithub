@@ -1,0 +1,112 @@
+get:
+  tags:
+    - Organizations
+  summary: Get organization details
+  description: |
+    Retrieve detailed information about a specific organization by name.
+    Includes repository and finding counts.
+  operationId: getOrganization
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+  responses:
+    '200':
+      description: Organization details retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Organization'
+          example:
+            id: "550e8400-e29b-41d4-a716-446655440000"
+            api_id: 1
+            name: "sleepnumber"
+            display_name: "Sleep Number"
+            github_org: "sleepnumber"
+            database_name: "org_sleepnumber"
+            is_active: true
+            is_default: true
+            total_repos: 42
+            total_findings: 156
+            created_at: "2024-01-15T10:30:00Z"
+            updated_at: "2024-01-20T14:45:00Z"
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
+
+patch:
+  tags:
+    - Organizations
+  summary: Update organization
+  description: |
+    Update organization properties including display name, active status, and default status.
+
+    Only provided fields will be updated (partial update).
+  operationId: updateOrganization
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/schemas.yaml#/UpdateOrganizationRequest'
+        example:
+          display_name: "Sleep Number Corporation"
+          is_active: true
+  responses:
+    '200':
+      description: Organization updated successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Organization'
+    '400':
+      $ref: '../../components/responses.yaml#/BadRequest'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
+
+delete:
+  tags:
+    - Organizations
+  summary: Delete organization
+  description: |
+    Delete an organization and optionally its database.
+
+    **Warning:** This is a destructive operation. Use with caution.
+  operationId: deleteOrganization
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+    - name: drop_database
+      in: query
+      description: Also drop the organization's database
+      schema:
+        type: boolean
+        default: false
+  responses:
+    '200':
+      description: Organization deleted successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: true
+              message:
+                type: string
+                example: "Organization 'sleepnumber' deleted"
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '403':
+      $ref: '../../components/responses.yaml#/Forbidden'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: AuditGH Security Portal API
+  description: |
+    Comprehensive API for GitHub organization security auditing, vulnerability scanning,
+    and threat assessment. The AuditGH platform provides multi-organization support with
+    isolated data, automated security scanning, and AI-powered threat analysis.
+
+    ## Features
+    - Multi-organization GitHub repository management
+    - Automated security scanning (Gitleaks, Semgrep, Grype, Trivy)
+    - Vulnerability tracking and remediation workflows
+    - AI-powered architecture analysis and threat assessment
+    - Attack surface mapping and path analysis
+    - SLA tracking and compliance reporting
+    - Integration with Jira, Cribl, and other tools
+
+    ## Authentication
+    All API endpoints require JWT authentication via Bearer token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+
+    Obtain tokens via POST /api/auth/login endpoint.
+
+    ## Rate Limiting
+    API requests are rate-limited per user. See response headers for current limits.
+
+    ## Pagination
+    List endpoints support pagination via `skip` and `limit` query parameters:
+    - `skip`: Number of records to skip (default: 0)
+    - `limit`: Number of records to return (default: 100, max: 1000)
+
+  version: 2.0.0
+  contact:
+    name: AuditGH Support
+    email: support@auditgh.local
+  license:
+    name: Proprietary
+    url: https://auditgh.local/license
+
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+  - url: https://api.auditgh.local/api
+    description: Production server
+
+tags:
+  - name: Organizations
+    description: Multi-organization management and configuration
+  - name: Repositories
+    description: GitHub repository management and metadata
+  - name: Findings
+    description: Security findings and vulnerability management
+  - name: Scans
+    description: Security scan orchestration and status
+  - name: GitHub Integration
+    description: GitHub API synchronization and metadata
+  - name: Authentication
+    description: User authentication and session management
+  - name: Tenants
+    description: Multi-tenant organization management
+  - name: Secrets
+    description: Secret detection and management
+  - name: Attack Surface
+    description: Attack surface mapping and analysis
+  - name: Attack Paths
+    description: Attack path visualization and remediation
+  - name: Analytics
+    description: Security metrics and analytics
+  - name: SLA
+    description: Service level agreement tracking
+  - name: Contributors
+    description: Contributor profile and activity analysis
+  - name: AI
+    description: AI-powered analysis and architecture generation
+  - name: Jira Integration
+    description: Jira ticket creation and synchronization
+  - name: Cribl Integration
+    description: Cribl Stream log forwarding
+  - name: Settings
+    description: System settings and configuration
+  - name: Scheduler
+    description: Background task scheduling
+  - name: Feedback
+    description: User feedback and feature requests
+  - name: API Audit
+    description: API usage auditing and logging
+  - name: Projects
+    description: Project management and grouping
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /api/auth/login
+
+  schemas:
+    $ref: './components/schemas.yaml'
+
+  responses:
+    $ref: './components/responses.yaml'
+
+  parameters:
+    $ref: './components/parameters.yaml'
+
+paths:
+  # Core API - Organizations
+  /organizations:
+    $ref: './paths/organizations/list.yaml'
+  /organizations/{org_name}:
+    $ref: './paths/organizations/detail.yaml'
+  /organizations/{org_name}/import:
+    $ref: './paths/organizations/import.yaml'
+  /organizations/{org_name}/sync-repos:
+    $ref: './paths/organizations/sync-repos.yaml'
+  /organizations/{org_name}/repositories:
+    $ref: './paths/organizations/repositories.yaml'
+  /organizations/{org_name}/findings:
+    $ref: './paths/organizations/findings.yaml'
+  /organizations/{org_name}/credentials:
+    $ref: './paths/organizations/credentials.yaml'
+  /organizations/{org_name}/scan:
+    $ref: './paths/organizations/scan.yaml'
+  /organizations/{org_name}/select:
+    $ref: './paths/organizations/select.yaml'
+  /organizations/current:
+    $ref: './paths/organizations/current.yaml'
+  /organizations/configured:
+    $ref: './paths/organizations/configured.yaml'
+
+  # Core API - Repositories
+  /repositories:
+    $ref: './paths/repositories/list.yaml'
+  /repositories/{repo_id}:
+    $ref: './paths/repositories/detail.yaml'
+  /repositories/{repo_id}/scan:
+    $ref: './paths/repositories/scan.yaml'
+  /repositories/{repo_id}/architecture:
+    $ref: './paths/repositories/architecture.yaml'
+
+  # Core API - Findings
+  /findings:
+    $ref: './paths/findings/list.yaml'
+  /findings/{finding_id}:
+    $ref: './paths/findings/detail.yaml'
+  /findings/{finding_id}/status:
+    $ref: './paths/findings/status.yaml'
+  /findings/statistics:
+    $ref: './paths/findings/statistics.yaml'
+
+  # Core API - Scans
+  /scans:
+    $ref: './paths/scans/list.yaml'
+  /scans/{scan_id}:
+    $ref: './paths/scans/detail.yaml'
+  /scans/{scan_id}/status:
+    $ref: './paths/scans/status.yaml'
+
+  # GitHub Integration
+  /github/repos/{repo_name}/metadata:
+    $ref: './paths/github/repo-metadata.yaml'
+  /github/repos/{repo_name}/sync:
+    $ref: './paths/github/repo-sync.yaml'
+  /github/sync-all:
+    $ref: './paths/github/sync-all.yaml'
+  /github/sync-status:
+    $ref: './paths/github/sync-status.yaml'
+
+  # Authentication
+  /auth/login:
+    $ref: './paths/auth/login.yaml'
+  /auth/logout:
+    $ref: './paths/auth/logout.yaml'
+  /auth/refresh:
+    $ref: './paths/auth/refresh.yaml'
+  /auth/me:
+    $ref: './paths/auth/me.yaml'
+
+  # Tenants
+  /tenants:
+    $ref: './paths/tenants/list.yaml'
+  /tenants/{tenant_id}:
+    $ref: './paths/tenants/detail.yaml'
+
+  # Security Features
+  /secrets:
+    $ref: './paths/secrets/list.yaml'
+  /attack-surface:
+    $ref: './paths/attack-surface/analysis.yaml'
+  /attack-paths:
+    $ref: './paths/attack-paths/list.yaml'
+
+  # Analytics
+  /analytics/dashboard:
+    $ref: './paths/analytics/dashboard.yaml'
+  /analytics/trends:
+    $ref: './paths/analytics/trends.yaml'
+
+  # SLA
+  /sla/metrics:
+    $ref: './paths/sla/metrics.yaml'
+
+  # Contributors
+  /contributors:
+    $ref: './paths/contributors/list.yaml'
+
+  # AI
+  /ai/architecture/generate:
+    $ref: './paths/ai/architecture-generate.yaml'
+
+  # Integrations
+  /jira/tickets:
+    $ref: './paths/jira/tickets.yaml'
+  /cribl/forward:
+    $ref: './paths/cribl/forward.yaml'
+
+  # System
+  /settings:
+    $ref: './paths/settings/list.yaml'
+  /scheduler/jobs:
+    $ref: './paths/scheduler/jobs.yaml'
+  /feedback:
+    $ref: './paths/feedback/submit.yaml'

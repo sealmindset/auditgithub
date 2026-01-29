@@ -1,0 +1,57 @@
+get:
+  tags:
+    - Repositories
+  summary: Get repository details
+  description: |
+    Retrieve detailed information about a specific repository including
+    metadata, scan history, and finding counts.
+  operationId: getRepository
+  parameters:
+    - $ref: '../../components/parameters.yaml#/RepoId'
+  responses:
+    '200':
+      description: Repository details retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Repository'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
+
+patch:
+  tags:
+    - Repositories
+  summary: Update repository
+  description: |
+    Update repository properties such as description or custom metadata.
+  operationId: updateRepository
+  parameters:
+    - $ref: '../../components/parameters.yaml#/RepoId'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            description:
+              type: string
+            custom_metadata:
+              type: object
+  responses:
+    '200':
+      description: Repository updated successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Repository'
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

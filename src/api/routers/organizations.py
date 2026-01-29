@@ -613,6 +613,347 @@ async def list_configured_organizations():
 
 
 # =============================================================================
+# Repository Import/Sync Endpoints
+# =============================================================================
+
+@router.post("/{org_name}/import")
+async def import_repositories(
+    org_name: str,
+    confirm: bool = Query(False, description="Set to true to skip confirmation"),
+    db: Session = Depends(get_tenant_db)
+):
+    """
+    Import all repositories from GitHub for an organization.
+
+    Fetches repositories from the GitHub API and creates them in the database.
+    Requires valid GitHub credentials for the organization.
+
+    Args:
+        org_name: Organization name
+        confirm: Skip confirmation prompt if true
+    """
+    import requests
+    from datetime import datetime
+
+    # Get organization
+    org = db.query(models.Organization).filter(
+        models.Organization.name.ilike(org_name)
+    ).first()
+
+    if not org:
+        raise HTTPException(status_code=404, detail=f"Organization '{org_name}' not found")
+
+    # Get GitHub credentials
+    try:
+        from secrets_manager import get_secrets_manager
+        manager = get_secrets_manager()
+        github_token = await manager.get_secret(f"{org_name.lower()}/github_token")
+        github_org = org.github_org
+
+        if not github_token:
+            raise HTTPException(
+                status_code=400,
+                detail=f"GitHub token not configured for '{org_name}'. Use PUT /organizations/{org_name}/credentials"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve credentials: {str(e)}")
+
+    # Fetch repos from GitHub API
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "AuditGH/1.0"
+    }
+
+    repos = []
+    page = 1
+    per_page = 100
+
+    try:
+        while True:
+            url = f"https://api.github.com/orgs/{github_org}/repos"
+            params = {
+                "type": "all",
+                "per_page": per_page,
+                "page": page,
+                "sort": "updated",
+                "direction": "desc"
+            }
+
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+            page_repos = response.json()
+
+            if not page_repos:
+                break
+
+            repos.extend(page_repos)
+
+            if len(page_repos) < per_page:
+                break
+
+            page += 1
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"GitHub organization '{github_org}' not found")
+        elif e.response.status_code == 401:
+            raise HTTPException(status_code=401, detail="Invalid GitHub token")
+        else:
+            raise HTTPException(status_code=502, detail=f"GitHub API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch repositories: {str(e)}")
+
+    if len(repos) == 0:
+        return {
+            "success": True,
+            "message": f"No repositories found in GitHub organization '{github_org}'",
+            "total": 0,
+            "created": 0,
+            "updated": 0,
+            "failed": 0
+        }
+
+    # Import repositories
+    created_count = 0
+    updated_count = 0
+    failed_count = 0
+
+    def parse_github_datetime(dt_str):
+        if not dt_str:
+            return None
+        try:
+            return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        except Exception:
+            return None
+
+    for github_repo in repos:
+        repo_name = github_repo['name']
+        try:
+            # Check if repository already exists
+            existing_repo = db.query(models.Repository).filter(
+                models.Repository.organization_id == org.id,
+                models.Repository.name == repo_name
+            ).first()
+
+            if existing_repo:
+                # Update existing repository
+                existing_repo.full_name = github_repo.get('full_name')
+                existing_repo.url = github_repo.get('html_url')
+                existing_repo.description = github_repo.get('description')
+                existing_repo.default_branch = github_repo.get('default_branch', 'main')
+                existing_repo.language = github_repo.get('language')
+                existing_repo.pushed_at = parse_github_datetime(github_repo.get('pushed_at'))
+                existing_repo.github_created_at = parse_github_datetime(github_repo.get('created_at'))
+                existing_repo.github_updated_at = parse_github_datetime(github_repo.get('updated_at'))
+                existing_repo.stargazers_count = github_repo.get('stargazers_count', 0)
+                existing_repo.watchers_count = github_repo.get('watchers_count', 0)
+                existing_repo.forks_count = github_repo.get('forks_count', 0)
+                existing_repo.open_issues_count = github_repo.get('open_issues_count', 0)
+                existing_repo.size_kb = github_repo.get('size', 0)
+                existing_repo.is_fork = github_repo.get('fork', False)
+                existing_repo.is_archived = github_repo.get('archived', False)
+                existing_repo.is_disabled = github_repo.get('disabled', False)
+                existing_repo.is_private = github_repo.get('private', True)
+                existing_repo.visibility = github_repo.get('visibility')
+                existing_repo.topics = github_repo.get('topics', [])
+                existing_repo.has_wiki = github_repo.get('has_wiki', False)
+                existing_repo.has_pages = github_repo.get('has_pages', False)
+                existing_repo.has_discussions = github_repo.get('has_discussions', False)
+
+                # License
+                license_info = github_repo.get('license')
+                if license_info and isinstance(license_info, dict):
+                    existing_repo.license_name = license_info.get('spdx_id') or license_info.get('name')
+
+                updated_count += 1
+            else:
+                # Create new repository
+                new_repo = models.Repository(
+                    organization_id=org.id,
+                    name=repo_name,
+                    full_name=github_repo.get('full_name'),
+                    url=github_repo.get('html_url'),
+                    description=github_repo.get('description'),
+                    default_branch=github_repo.get('default_branch', 'main'),
+                    language=github_repo.get('language'),
+                    pushed_at=parse_github_datetime(github_repo.get('pushed_at')),
+                    github_created_at=parse_github_datetime(github_repo.get('created_at')),
+                    github_updated_at=parse_github_datetime(github_repo.get('updated_at')),
+                    stargazers_count=github_repo.get('stargazers_count', 0),
+                    watchers_count=github_repo.get('watchers_count', 0),
+                    forks_count=github_repo.get('forks_count', 0),
+                    open_issues_count=github_repo.get('open_issues_count', 0),
+                    size_kb=github_repo.get('size', 0),
+                    is_fork=github_repo.get('fork', False),
+                    is_archived=github_repo.get('archived', False),
+                    is_disabled=github_repo.get('disabled', False),
+                    is_private=github_repo.get('private', True),
+                    visibility=github_repo.get('visibility'),
+                    topics=github_repo.get('topics', []),
+                    has_wiki=github_repo.get('has_wiki', False),
+                    has_pages=github_repo.get('has_pages', False),
+                    has_discussions=github_repo.get('has_discussions', False)
+                )
+
+                # License
+                license_info = github_repo.get('license')
+                if license_info and isinstance(license_info, dict):
+                    new_repo.license_name = license_info.get('spdx_id') or license_info.get('name')
+
+                db.add(new_repo)
+                created_count += 1
+
+            db.commit()
+
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Failed to import repository {repo_name}: {e}")
+            db.rollback()
+
+    return {
+        "success": True,
+        "message": f"Imported {created_count + updated_count} repositories from '{github_org}'",
+        "total": len(repos),
+        "created": created_count,
+        "updated": updated_count,
+        "failed": failed_count
+    }
+
+
+@router.post("/{org_name}/sync-repos")
+async def sync_repositories(
+    org_name: str,
+    db: Session = Depends(get_tenant_db)
+):
+    """
+    Sync existing repositories with GitHub metadata.
+
+    Updates all repositories for an organization with latest data from GitHub API.
+    Does not create new repositories - use POST /organizations/{org_name}/import instead.
+
+    Args:
+        org_name: Organization name
+    """
+    import requests
+    from datetime import datetime
+
+    # Get organization
+    org = db.query(models.Organization).filter(
+        models.Organization.name.ilike(org_name)
+    ).first()
+
+    if not org:
+        raise HTTPException(status_code=404, detail=f"Organization '{org_name}' not found")
+
+    # Get existing repositories
+    repos = db.query(models.Repository).filter(
+        models.Repository.organization_id == org.id
+    ).all()
+
+    if len(repos) == 0:
+        return {
+            "success": True,
+            "message": f"No repositories to sync for '{org_name}'",
+            "total": 0,
+            "synced": 0,
+            "failed": 0
+        }
+
+    # Get GitHub credentials
+    try:
+        from secrets_manager import get_secrets_manager
+        manager = get_secrets_manager()
+        github_token = await manager.get_secret(f"{org_name.lower()}/github_token")
+        github_org = org.github_org
+
+        if not github_token:
+            raise HTTPException(
+                status_code=400,
+                detail=f"GitHub token not configured for '{org_name}'"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve credentials: {str(e)}")
+
+    # Sync each repository
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "AuditGH/1.0"
+    }
+
+    synced_count = 0
+    failed_count = 0
+
+    def parse_github_datetime(dt_str):
+        if not dt_str:
+            return None
+        try:
+            return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        except Exception:
+            return None
+
+    for repo in repos:
+        try:
+            url = f"https://api.github.com/repos/{github_org}/{repo.name}"
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            github_repo = response.json()
+
+            # Update repository metadata
+            repo.full_name = github_repo.get('full_name')
+            repo.url = github_repo.get('html_url')
+            repo.description = github_repo.get('description')
+            repo.default_branch = github_repo.get('default_branch', 'main')
+            repo.language = github_repo.get('language')
+            repo.pushed_at = parse_github_datetime(github_repo.get('pushed_at'))
+            repo.github_created_at = parse_github_datetime(github_repo.get('created_at'))
+            repo.github_updated_at = parse_github_datetime(github_repo.get('updated_at'))
+            repo.stargazers_count = github_repo.get('stargazers_count', 0)
+            repo.watchers_count = github_repo.get('watchers_count', 0)
+            repo.forks_count = github_repo.get('forks_count', 0)
+            repo.open_issues_count = github_repo.get('open_issues_count', 0)
+            repo.size_kb = github_repo.get('size', 0)
+            repo.is_fork = github_repo.get('fork', False)
+            repo.is_archived = github_repo.get('archived', False)
+            repo.is_disabled = github_repo.get('disabled', False)
+            repo.is_private = github_repo.get('private', True)
+            repo.visibility = github_repo.get('visibility')
+            repo.topics = github_repo.get('topics', [])
+            repo.has_wiki = github_repo.get('has_wiki', False)
+            repo.has_pages = github_repo.get('has_pages', False)
+            repo.has_discussions = github_repo.get('has_discussions', False)
+
+            # License
+            license_info = github_repo.get('license')
+            if license_info and isinstance(license_info, dict):
+                repo.license_name = license_info.get('spdx_id') or license_info.get('name')
+
+            db.commit()
+            synced_count += 1
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"Repository {repo.name} not found on GitHub (may have been deleted)")
+            else:
+                logger.error(f"Failed to sync repository {repo.name}: {e}")
+            failed_count += 1
+            db.rollback()
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Failed to sync repository {repo.name}: {e}")
+            db.rollback()
+
+    return {
+        "success": True,
+        "message": f"Synced {synced_count} repositories for '{org_name}'",
+        "total": len(repos),
+        "synced": synced_count,
+        "failed": failed_count
+    }
+
+
+# =============================================================================
 # Organization Data Endpoints
 # =============================================================================
 

@@ -1,0 +1,51 @@
+get:
+  tags:
+    - Scans
+  summary: Get scan status
+  description: |
+    Get real-time status updates for a specific scan.
+
+    Useful for polling scan progress.
+  operationId: getScanStatus
+  parameters:
+    - $ref: '../../components/parameters.yaml#/ScanId'
+  responses:
+    '200':
+      description: Scan status retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              scan_id:
+                type: string
+                format: uuid
+              status:
+                type: string
+                enum: [pending, running, completed, failed]
+                example: "running"
+              progress:
+                type: integer
+                minimum: 0
+                maximum: 100
+                example: 45
+              current_step:
+                type: string
+                example: "Running Semgrep analysis"
+              findings_count:
+                type: integer
+                example: 12
+              started_at:
+                type: string
+                format: date-time
+              completed_at:
+                type: string
+                format: date-time
+              error_message:
+                type: string
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

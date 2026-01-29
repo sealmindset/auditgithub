@@ -1,0 +1,38 @@
+post:
+  tags:
+    - GitHub Integration
+  summary: Sync repository from GitHub
+  description: |
+    Fetch and update repository metadata from GitHub API.
+
+    Updates information such as:
+    - Stars, forks, watchers
+    - Open issues count
+    - Last push timestamp
+    - Repository description and topics
+  operationId: syncRepositoryFromGitHub
+  parameters:
+    - $ref: '../../components/parameters.yaml#/RepoName'
+  responses:
+    '200':
+      description: Repository synced successfully
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/SyncResult'
+          example:
+            success: true
+            message: "Synced metadata for webapp-frontend"
+            repos_synced: 1
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '502':
+      description: Failed to fetch from GitHub API
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas.yaml#/Error'
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'

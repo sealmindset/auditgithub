@@ -1,0 +1,27 @@
+get:
+  tags:
+    - Tenants
+  summary: List tenants
+  description: List all registered tenants in multi-tenant mode
+  operationId: listTenants
+  responses:
+    '200':
+      description: Tenants retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                slug:
+                  type: string
+                name:
+                  type: string
+                is_active:
+                  type: boolean
+    '401':
+      $ref: '../../components/responses.yaml#/Unauthorized'

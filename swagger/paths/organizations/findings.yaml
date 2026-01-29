@@ -1,0 +1,52 @@
+get:
+  tags:
+    - Organizations
+    - Findings
+  summary: Get organization findings
+  description: |
+    Retrieve all security findings for a specific organization with filtering and pagination.
+
+    Supports filtering by:
+    - Severity level (critical, high, medium, low, info)
+    - Repository ID
+    - Status
+
+    Results are sorted by creation date (most recent first).
+  operationId: getOrganizationFindings
+  parameters:
+    - $ref: '../../components/parameters.yaml#/OrgName'
+    - $ref: '../../components/parameters.yaml#/Skip'
+    - $ref: '../../components/parameters.yaml#/Limit'
+    - $ref: '../../components/parameters.yaml#/Severity'
+    - name: repository_id
+      in: query
+      description: Filter by repository UUID
+      schema:
+        type: string
+        format: uuid
+  responses:
+    '200':
+      description: Findings retrieved successfully
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../../components/schemas.yaml#/Finding'
+          example:
+            - id: "750e8400-e29b-41d4-a716-446655440002"
+              repository_id: "650e8400-e29b-41d4-a716-446655440001"
+              title: "Hardcoded AWS Access Key"
+              description: "AWS access key found in configuration file"
+              severity: "high"
+              scanner_name: "gitleaks"
+              file_path: "src/config/aws.ts"
+              line_start: 42
+              line_end: 42
+              cwe_id: "CWE-798"
+              status: "open"
+              created_at: "2024-01-20T10:30:00Z"
+    '404':
+      $ref: '../../components/responses.yaml#/NotFound'
+    '500':
+      $ref: '../../components/responses.yaml#/InternalServerError'
