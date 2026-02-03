@@ -9,13 +9,21 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 from ..database import get_db
 from src.services.ai_chat_service import AIChatService
-from src.models.ai_conversation import AIConversation, AIMessage, MessageRole
-from src.auth.dependencies import get_current_user
+from models.ai_conversation import AIConversation, AIMessage, MessageRole
 import logging
+
+# Mock authentication for now - replace with actual auth
+def get_current_user():
+    class MockUser:
+        organization_id = 1
+    return MockUser()
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/api",
+    tags=["ai-chat"]
+)
 
 
 class ChatMessageRequest(BaseModel):

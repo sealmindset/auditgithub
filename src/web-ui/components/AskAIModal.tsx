@@ -224,9 +224,9 @@ export function AskAIModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0">
+      <DialogContent className="max-w-4xl h-[85vh] max-h-[85vh] flex flex-col p-0 overflow-hidden">
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 text-white">
               <Brain className="w-6 h-6" />
@@ -271,7 +271,7 @@ export function AskAIModal({
         </DialogHeader>
 
         {/* Messages Area */}
-        <ScrollArea ref={scrollAreaRef} className="flex-1 px-6 py-4">
+        <ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0 px-6 py-4 overflow-y-auto">
           <div className="space-y-6">
             {messages.map((message) => (
               <div
@@ -447,7 +447,7 @@ export function AskAIModal({
         </ScrollArea>
 
         {/* Input Area */}
-        <div className="px-6 py-4 border-t bg-gray-50">
+        <div className="px-6 py-4 border-t bg-gray-50 flex-shrink-0">
           <div className="flex gap-2">
             <Textarea
               ref={textareaRef}
