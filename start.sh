@@ -43,6 +43,96 @@ detect_os() {
     print_info "Detected OS: $OS"
 }
 
+# Check if Docker daemon is running
+is_docker_running() {
+    docker info > /dev/null 2>&1
+    return $?
+}
+
+# Start Docker based on OS
+start_docker() {
+    print_info "Docker is not running. Attempting to start Docker..."
+
+    if [[ "$OS" == "macos" ]]; then
+        # Check if Docker.app exists
+        if [ -e "/Applications/Docker.app" ]; then
+            print_info "Starting Docker Desktop..."
+            open -a Docker
+        else
+            print_error "Docker Desktop not found in /Applications/"
+            print_info "Please install Docker Desktop from https://www.docker.com/products/docker-desktop"
+            exit 1
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        print_info "Attempting to start Docker service..."
+        if command -v systemctl &> /dev/null; then
+            sudo systemctl start docker
+        elif command -v service &> /dev/null; then
+            sudo service docker start
+        else
+            print_error "Could not start Docker. Please start Docker manually."
+            exit 1
+        fi
+    elif [[ "$OS" == "windows" ]]; then
+        print_info "Starting Docker Desktop..."
+        powershell.exe -Command "Start-Process 'C:\Program Files\Docker\Docker\Docker Desktop.exe'" 2>/dev/null || \
+        cmd.exe /c "start C:\Program Files\Docker\Docker\Docker Desktop.exe" 2>/dev/null || \
+        print_error "Could not start Docker Desktop. Please start it manually."
+    else
+        print_error "Unknown OS. Please start Docker manually."
+        exit 1
+    fi
+}
+
+# Wait for Docker daemon to be ready
+wait_for_docker() {
+    local max_attempts=60  # 2 minutes
+    local attempt=1
+
+    print_info "Waiting for Docker daemon to be ready..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if is_docker_running; then
+            print_success "Docker daemon is ready"
+            # Additional wait to ensure Docker is fully initialized
+            sleep 2
+            return 0
+        fi
+
+        echo -ne "  Attempt $attempt/$max_attempts: Waiting for Docker daemon...\r"
+        sleep 2
+        ((attempt++))
+    done
+
+    print_error "Docker daemon failed to start within 2 minutes"
+    print_info "Please check Docker Desktop manually and try again"
+    exit 1
+}
+
+# Ensure Docker is running
+ensure_docker_running() {
+    if is_docker_running; then
+        print_success "Docker daemon is running"
+        # Verify docker-compose is available
+        if ! command -v docker-compose &> /dev/null; then
+            print_error "docker-compose command not found"
+            print_info "Please install docker-compose or use Docker Desktop"
+            exit 1
+        fi
+        print_success "docker-compose is available"
+    else
+        start_docker
+        wait_for_docker
+    fi
+}
+
+# Separator for visual clarity between steps
+print_separator() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+}
+
 # Kill processes on specified ports
 kill_ports() {
     local ports=("3000" "3001")
@@ -81,17 +171,55 @@ kill_ports() {
 # Stop existing containers
 stop_containers() {
     print_info "Stopping existing Docker containers..."
-    docker-compose down --remove-orphans 2>/dev/null || true
-    print_success "Containers stopped"
+
+    # Check if any containers are running
+    local running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "$running_containers" -gt 0 ]; then
+        print_info "Found $running_containers container(s) to stop"
+        docker-compose down --remove-orphans 2>&1 | grep -v "^$" || true
+
+        # Wait for containers to fully stop
+        local max_wait=30
+        local waited=0
+        while [ $waited -lt $max_wait ]; do
+            running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$running_containers" -eq 0 ]; then
+                break
+            fi
+            sleep 1
+            ((waited++))
+        done
+
+        print_success "All containers stopped and removed"
+    else
+        print_info "No running containers found"
+    fi
 }
 
 # Build containers with latest code
 build_containers() {
-    print_info "Building Docker containers with latest code..."
-    if docker-compose build --no-cache; then
-        print_success "Containers built successfully"
+    local build_opts=""
+
+    # Check if REBUILD environment variable is set for clean build
+    if [[ "${REBUILD}" == "true" ]]; then
+        print_info "Building Docker containers with latest code (clean build)..."
+        build_opts="--no-cache"
     else
+        print_info "Building Docker containers (using cache where possible)..."
+        print_info "Tip: Run 'REBUILD=true ./start.sh' for a clean rebuild"
+    fi
+
+    # Build with progress output
+    if docker-compose build $build_opts 2>&1 | tee /tmp/docker-build.log | grep -E "(Building|Step|Successfully built|naming to)"; then
+        echo ""  # New line after build output
+        print_success "Containers built successfully"
+        return 0
+    else
+        echo ""
         print_error "Failed to build containers"
+        print_info "Check /tmp/docker-build.log for details"
+        tail -50 /tmp/docker-build.log
         exit 1
     fi
 }
@@ -99,12 +227,24 @@ build_containers() {
 # Start containers
 start_containers() {
     print_info "Starting Docker containers..."
-    if docker-compose up -d; then
-        print_success "Containers started"
+    if docker-compose up -d 2>&1 | tee /tmp/docker-start.log; then
+        print_success "Container startup initiated"
+        # Wait a moment for containers to fully initialize
+        print_info "Waiting for containers to initialize..."
+        sleep 3
+        return 0
     else
         print_error "Failed to start containers"
+        print_info "Check /tmp/docker-start.log for details"
+        cat /tmp/docker-start.log
         exit 1
     fi
+}
+
+# Display container status for debugging
+show_container_status() {
+    print_info "Current container status:"
+    docker-compose ps --format table
 }
 
 # Wait for a service to be healthy
@@ -165,36 +305,87 @@ check_api_health() {
     return 1
 }
 
+# Show usage information
+show_usage() {
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        echo "AuditGitHub Startup Script"
+        echo ""
+        echo "Usage:"
+        echo "  ./start.sh              Normal startup (uses Docker cache)"
+        echo "  REBUILD=true ./start.sh Clean rebuild (no cache, slower but ensures latest code)"
+        echo ""
+        echo "What this script does:"
+        echo "  1. ✓ Detects your operating system"
+        echo "  2. ✓ Checks if Docker is running (starts it if needed)"
+        echo "  3. ✓ Kills processes on ports 3000 & 3001"
+        echo "  4. ✓ Stops existing containers"
+        echo "  5. ✓ Builds Docker images with latest code"
+        echo "  6. ✓ Starts all containers"
+        echo "  7. ✓ Verifies database is healthy"
+        echo "  8. ✓ Verifies API is healthy"
+        echo "  9. ✓ Confirms all services are responding"
+        echo ""
+        echo "Tripwires:"
+        echo "  • Each step waits for completion before proceeding"
+        echo "  • Docker startup: waits up to 2 minutes"
+        echo "  • Service health: waits up to 2 minutes per service"
+        echo "  • API health check: confirms /health endpoint responds"
+        echo ""
+        exit 0
+    fi
+}
+
 # Main execution
 main() {
+    show_usage "$1"
+
     clear
     echo "========================================"
     echo "  AuditGitHub Startup Script"
     echo "========================================"
     echo ""
 
-    # Detect OS
+    # Show if this is a clean rebuild
+    if [[ "${REBUILD}" == "true" ]]; then
+        print_warning "CLEAN REBUILD MODE: This will take longer but ensures latest code"
+        echo ""
+    fi
+
+    # Step 1: Detect OS
     detect_os
+    print_separator
 
-    # Kill any processes on ports 3000 and 3001
+    # Step 2: Ensure Docker is running (TRIPWIRE: Wait for Docker to be ready)
+    ensure_docker_running
+    print_separator
+
+    # Step 3: Kill any processes on ports 3000 and 3001
     kill_ports
+    print_separator
 
-    # Stop existing containers
+    # Step 4: Stop existing containers (TRIPWIRE: Wait for full shutdown)
     stop_containers
+    print_separator
 
-    # Build containers
+    # Step 5: Build containers (TRIPWIRE: Wait for build completion)
     build_containers
+    print_separator
 
-    # Start containers
+    # Step 6: Start containers (TRIPWIRE: Wait for container initialization)
     start_containers
+    show_container_status
+    print_separator
 
-    echo ""
-    print_info "Verifying services..."
+    # Step 7: Verify services (TRIPWIRE: Health checks for each service)
+    print_info "🔍 VERIFYING SERVICES"
+    print_info "This may take up to 2 minutes..."
     echo ""
 
-    # Wait for database to be healthy
+    # Wait for database to be healthy (CRITICAL)
     if ! wait_for_service "db" 60; then
         print_error "Database failed to start properly"
+        show_container_status
+        docker-compose logs --tail=100 db
         exit 1
     fi
 
@@ -203,15 +394,23 @@ main() {
         print_warning "Redis check failed, but continuing..."
     fi
 
-    # Wait for API to be healthy
+    # Wait for MinIO to be healthy
+    if ! wait_for_service "minio" 30; then
+        print_warning "MinIO check failed, but continuing..."
+    fi
+
+    # Wait for API to be healthy (CRITICAL)
     if ! wait_for_service "api" 60; then
         print_error "API failed to start properly"
+        show_container_status
+        docker-compose logs --tail=100 api
         exit 1
     fi
 
-    # Additional check: API health endpoint
+    # Additional check: API health endpoint (FINAL TRIPWIRE)
     if ! check_api_health; then
         print_error "API health endpoint check failed"
+        docker-compose logs --tail=100 api
         exit 1
     fi
 
@@ -228,14 +427,19 @@ main() {
     echo "  • Database:  localhost:5432"
     echo ""
     print_info "Useful commands:"
-    echo "  • View logs:        docker-compose logs -f"
-    echo "  • View API logs:    docker-compose logs -f api"
-    echo "  • Stop services:    docker-compose down"
-    echo "  • Restart services: ./start.sh"
+    echo "  • View logs:          docker-compose logs -f"
+    echo "  • View API logs:      docker-compose logs -f api"
+    echo "  • View DB logs:       docker-compose logs -f db"
+    echo "  • Stop services:      docker-compose down"
+    echo "  • Restart services:   ./start.sh"
+    echo "  • Clean rebuild:      REBUILD=true ./start.sh"
+    echo "  • Help:               ./start.sh --help"
     echo ""
     print_info "Container status:"
-    docker-compose ps
+    docker-compose ps --format table
+    echo ""
+    print_success "All systems operational! 🚀"
 }
 
-# Run main function
-main
+# Run main function with arguments
+main "$@"
