@@ -115,7 +115,7 @@ export function AskAIModal({
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/projects/${projectId}/repositories/${repositoryId}/ai-chat`, {
+      const response = await fetch(`http://localhost:8000/api/projects/${projectId}/repositories/${repositoryId}/ai-chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
