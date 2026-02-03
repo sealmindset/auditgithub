@@ -6,11 +6,12 @@ Handles AI conversations using Claude API with RAG context
 import logging
 import os
 import uuid
+from uuid import UUID
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-import anthropic
 from .ai_rag_service import AIRAGService
+from .llm_provider import get_llm_provider
 from models.ai_conversation import (
     AIConversation,
     AIMessage,
@@ -30,7 +31,9 @@ class AIChatService:
     def __init__(self, db: Session):
         self.db = db
         self.rag_service = AIRAGService(db)
-        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+        # Use LLM provider abstraction (supports Anthropic, Azure AI Foundry, AWS Bedrock, OpenAI)
+        self.llm_provider = get_llm_provider()
 
         # System prompt for security architecture focus
         self.system_prompt = """You are an expert security architect and zero-trust architecture specialist. Your role is to help users understand and improve the security posture of their software projects.
@@ -69,7 +72,7 @@ Remember: Your goal is to help improve security, not just describe problems. Be 
     async def process_message(
         self,
         project_id: int,
-        repository_id: int,
+        repository_id: UUID,
         organization_id: int,
         conversation_id: Optional[str],
         user_message: str,
@@ -180,7 +183,7 @@ Remember: Your goal is to help improve security, not just describe problems. Be 
     async def _create_conversation(
         self,
         project_id: int,
-        repository_id: int,
+        repository_id: UUID,
         organization_id: int,
         first_message: str,
         focus: str,
@@ -355,17 +358,16 @@ Please analyze the question and provide a detailed, accurate response based on t
         })
 
         try:
-            # Call Claude API
-            response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4096,
-                temperature=0.3,  # Lower temperature for more focused, accurate responses
+            # Call LLM API (using configured provider)
+            result = self.llm_provider.create_message(
+                messages=messages,
                 system=self.system_prompt,
-                messages=messages
+                max_tokens=4096,
+                temperature=0.3  # Lower temperature for more focused, accurate responses
             )
 
-            content = response.content[0].text
-            tokens_used = response.usage.input_tokens + response.usage.output_tokens
+            content = result["content"]
+            tokens_used = result["tokens_used"]
 
             # Check if response indicates need for clarification
             needs_clarification = "need clarification" in content.lower() or "unclear" in content.lower()
@@ -389,8 +391,8 @@ Please analyze the question and provide a detailed, accurate response based on t
                 "context_used": list(context.keys()),
             }
 
-        except anthropic.APIError as e:
-            logger.error(f"Claude API error: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"LLM API error: {e}", exc_info=True)
             raise
 
     def _format_context(self, context: Dict[str, Any]) -> str:

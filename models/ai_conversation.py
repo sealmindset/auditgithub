@@ -6,9 +6,11 @@ Manages conversation history for the Ask AI feature
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 from src.api.database import Base
 import enum
+import uuid
 
 
 class MessageRole(str, enum.Enum):
@@ -35,9 +37,9 @@ class AIConversation(Base):
     conversation_id = Column(String(100), unique=True, index=True, nullable=False)
 
     # Context
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    repository_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    project_id = Column(Integer, nullable=False)  # No FK - projects table doesn't exist
+    repository_id = Column(PGUUID(as_uuid=True), ForeignKey("repositories.id"), nullable=False)
+    organization_id = Column(PGUUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
 
     # Conversation metadata
     title = Column(String(500))  # Auto-generated from first user message

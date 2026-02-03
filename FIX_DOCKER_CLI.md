@@ -2,7 +2,32 @@
 
 If Docker Desktop GUI is running but CLI commands fail, here's how to fix it:
 
-## Quick Fix (Most Common)
+## Most Common Issue: Docker Engine Not Running
+
+**Symptom**: Docker Desktop GUI shows it's running, but `docker ps` says "Cannot connect to Docker daemon"
+
+**Cause**: Docker Desktop GUI started but the engine/daemon didn't start
+
+**Fix**: Run the automatic fix script:
+```bash
+./fix-docker.sh
+```
+
+This will:
+1. Completely quit Docker Desktop
+2. Clean up stale sockets
+3. Restart Docker Desktop
+4. Wait for the daemon to be ready
+5. Verify it's working
+
+**Or do it manually**:
+1. **Quit** Docker Desktop (Cmd+Q or Quit from menu bar)
+2. Wait 10 seconds
+3. **Start** Docker Desktop again from Applications
+4. Wait until you see "Docker Desktop is running" in the menu bar
+5. Try: `docker ps`
+
+## Other Common Fixes
 
 ### Option 1: Restart Terminal
 1. Close your terminal completely

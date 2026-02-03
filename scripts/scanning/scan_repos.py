@@ -37,11 +37,14 @@ from functools import lru_cache
 try:
     from src.api.database import SessionLocal
     from src.api import models
+    from src.knowledge_base import KnowledgeBase
     from sqlalchemy import func
     DATABASE_AVAILABLE = True
 except ImportError as e:
     DATABASE_AVAILABLE = False
     logging.debug(f"Database not available: {e}")
+    # Define KnowledgeBase as None if not available
+    KnowledgeBase = None
 
 # =============================================================================
 # DOE Self-Annealing: AI Model Configuration

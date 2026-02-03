@@ -6,6 +6,7 @@ Handles AI conversation endpoints
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
+from uuid import UUID
 from pydantic import BaseModel, Field
 from ..database import get_db
 from src.services.ai_chat_service import AIChatService
@@ -15,7 +16,8 @@ import logging
 # Mock authentication for now - replace with actual auth
 def get_current_user():
     class MockUser:
-        organization_id = 1
+        # Using sleepnumberlabs organization UUID from database
+        organization_id = UUID('b8afdd8e-56e0-4dce-8331-d7964c707fc8')
     return MockUser()
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ class MessageHistoryResponse(BaseModel):
 )
 async def send_ai_message(
     project_id: int,
-    repository_id: int,
+    repository_id: UUID,
     request: ChatMessageRequest,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -146,7 +148,7 @@ async def send_ai_message(
 )
 async def get_conversations(
     project_id: int,
-    repository_id: int,
+    repository_id: UUID,
     limit: int = 20,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -194,7 +196,7 @@ async def get_conversations(
 )
 async def get_conversation_messages(
     project_id: int,
-    repository_id: int,
+    repository_id: UUID,
     conversation_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -272,7 +274,7 @@ async def get_conversation_messages(
 )
 async def delete_conversation(
     project_id: int,
-    repository_id: int,
+    repository_id: UUID,
     conversation_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -318,7 +320,7 @@ async def delete_conversation(
 )
 async def get_ai_context_summary(
     project_id: int,
-    repository_id: int,
+    repository_id: UUID,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):

@@ -194,4 +194,4 @@ VOLUME ["/app/vulnerability_reports"]
 ENV PYTHONUNBUFFERED=1
 
 # Entrypoint
-ENTRYPOINT ["python", "scan_repos.py"]
+ENTRYPOINT ["python", "scripts/scanning/scan_repos.py"]

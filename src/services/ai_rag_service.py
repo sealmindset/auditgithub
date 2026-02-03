@@ -5,6 +5,7 @@ Retrieves and prepares context for AI conversations
 
 import logging
 from typing import List, Dict, Any, Optional
+from uuid import UUID
 from sqlalchemy.orm import Session
 from src.api.models import Repository, ScanRun, Finding
 import json
@@ -21,7 +22,7 @@ class AIRAGService:
     async def gather_context(
         self,
         project_id: int,
-        repository_id: int,
+        repository_id: UUID,
         focus: str = "security_architecture",
         max_tokens: int = 50000
     ) -> Dict[str, Any]:
@@ -58,7 +59,7 @@ class AIRAGService:
 
         return context
 
-    async def _get_repository_context(self, repository_id: int) -> Dict[str, Any]:
+    async def _get_repository_context(self, repository_id: UUID) -> Dict[str, Any]:
         """Get repository basic information"""
         repo = self.db.query(Repository).filter(Repository.id == repository_id).first()
         if not repo:
@@ -69,30 +70,24 @@ class AIRAGService:
             "full_name": repo.full_name,
             "description": repo.description,
             "language": repo.language,
-            "size": repo.size,
+            "size_kb": repo.size_kb,
             "default_branch": repo.default_branch,
             "topics": repo.topics or [],
-            "created_at": repo.created_at.isoformat() if repo.created_at else None,
-            "updated_at": repo.updated_at.isoformat() if repo.updated_at else None,
+            "created_at": repo.github_created_at.isoformat() if repo.github_created_at else None,
+            "updated_at": repo.github_updated_at.isoformat() if repo.github_updated_at else None,
             "is_private": repo.is_private,
             "is_fork": repo.is_fork,
         }
 
-    async def _get_technical_overview(self, project_id: int, repository_id: int) -> Optional[str]:
+    async def _get_technical_overview(self, project_id: int, repository_id: UUID) -> Optional[str]:
         """Get AI-generated technical overview from system architecture report"""
-        # This would query the technical overview from the architecture report
-        # For now, returning placeholder
-        from models.project import Project
-
-        project = self.db.query(Project).filter(Project.id == project_id).first()
-        if project and hasattr(project, 'architecture_report'):
-            # Assuming there's an architecture report linked to the project
-            # You would retrieve the technical_overview field here
-            pass
-
+        # Get architecture report from repository
+        repo = self.db.query(Repository).filter(Repository.id == repository_id).first()
+        if repo and repo.architecture_report:
+            return repo.architecture_report
         return None
 
-    async def _get_scan_results(self, repository_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    async def _get_scan_results(self, repository_id: UUID, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent scan results"""
         scans = (
             self.db.query(ScanRun)
@@ -118,7 +113,7 @@ class AIRAGService:
 
         return results
 
-    async def _get_vulnerabilities(self, repository_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+    async def _get_vulnerabilities(self, repository_id: UUID, limit: int = 50) -> List[Dict[str, Any]]:
         """Get vulnerabilities found in repository (findings with CVE/CWE)"""
         vulnerabilities = (
             self.db.query(Finding)
@@ -147,7 +142,7 @@ class AIRAGService:
 
         return results
 
-    async def _get_findings(self, repository_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+    async def _get_findings(self, repository_id: UUID, limit: int = 100) -> List[Dict[str, Any]]:
         """Get security findings"""
         findings = (
             self.db.query(Finding)
@@ -174,7 +169,7 @@ class AIRAGService:
 
         return results
 
-    async def _get_security_metrics(self, repository_id: int) -> Dict[str, Any]:
+    async def _get_security_metrics(self, repository_id: UUID) -> Dict[str, Any]:
         """Calculate security metrics for the repository"""
         # Count findings by severity
         finding_counts = {}
@@ -198,7 +193,6 @@ class AIRAGService:
         security_score = max(0, min(100, security_score))
 
         return {
-            "vulnerability_counts": vuln_counts,
             "finding_counts": finding_counts,
             "total_critical": total_critical,
             "total_high": total_high,
@@ -207,7 +201,7 @@ class AIRAGService:
             "security_score": round(security_score, 1),
         }
 
-    async def _get_architecture_patterns(self, repository_id: int) -> Dict[str, Any]:
+    async def _get_architecture_patterns(self, repository_id: UUID) -> Dict[str, Any]:
         """Identify architecture patterns from scans and findings"""
         # This would analyze findings to identify common patterns
         # For now, returning placeholder structure
@@ -219,14 +213,14 @@ class AIRAGService:
             "api_security": self._analyze_api_security(repository_id),
         }
 
-    def _analyze_auth_patterns(self, repository_id: int) -> Dict[str, Any]:
+    def _analyze_auth_patterns(self, repository_id: UUID) -> Dict[str, Any]:
         """Analyze authentication patterns"""
         # Look for authentication-related findings
         auth_findings = (
             self.db.query(Finding)
             .filter(
                 Finding.repository_id == repository_id,
-                Finding.category.in_(["authentication", "session_management"])
+                Finding.finding_type.in_(["authentication", "session_management"])
             )
             .all()
         )
@@ -238,13 +232,13 @@ class AIRAGService:
             "concerns": [f.title for f in auth_findings[:5]],
         }
 
-    def _analyze_authz_patterns(self, repository_id: int) -> Dict[str, Any]:
+    def _analyze_authz_patterns(self, repository_id: UUID) -> Dict[str, Any]:
         """Analyze authorization patterns"""
         authz_findings = (
             self.db.query(Finding)
             .filter(
                 Finding.repository_id == repository_id,
-                Finding.category.in_(["authorization", "access_control"])
+                Finding.finding_type.in_(["authorization", "access_control"])
             )
             .all()
         )
@@ -255,13 +249,13 @@ class AIRAGService:
             "concerns": [f.title for f in authz_findings[:5]],
         }
 
-    def _analyze_encryption_patterns(self, repository_id: int) -> Dict[str, Any]:
+    def _analyze_encryption_patterns(self, repository_id: UUID) -> Dict[str, Any]:
         """Analyze encryption usage"""
         crypto_findings = (
             self.db.query(Finding)
             .filter(
                 Finding.repository_id == repository_id,
-                Finding.category.in_(["cryptography", "encryption"])
+                Finding.finding_type.in_(["cryptography", "encryption"])
             )
             .all()
         )
@@ -272,13 +266,13 @@ class AIRAGService:
             "concerns": [f.title for f in crypto_findings[:5]],
         }
 
-    def _analyze_input_validation(self, repository_id: int) -> Dict[str, Any]:
+    def _analyze_input_validation(self, repository_id: UUID) -> Dict[str, Any]:
         """Analyze input validation patterns"""
         validation_findings = (
             self.db.query(Finding)
             .filter(
                 Finding.repository_id == repository_id,
-                Finding.category.in_(["input_validation", "injection"])
+                Finding.finding_type.in_(["input_validation", "injection"])
             )
             .all()
         )
@@ -289,13 +283,13 @@ class AIRAGService:
             "concerns": [f.title for f in validation_findings[:5]],
         }
 
-    def _analyze_api_security(self, repository_id: int) -> Dict[str, Any]:
+    def _analyze_api_security(self, repository_id: UUID) -> Dict[str, Any]:
         """Analyze API security patterns"""
         api_findings = (
             self.db.query(Finding)
             .filter(
                 Finding.repository_id == repository_id,
-                Finding.category.in_(["api_security", "web_service"])
+                Finding.finding_type.in_(["api_security", "web_service"])
             )
             .all()
         )
@@ -305,7 +299,7 @@ class AIRAGService:
             "concerns": [f.title for f in api_findings[:5]],
         }
 
-    async def _analyze_zero_trust(self, repository_id: int) -> Dict[str, Any]:
+    async def _analyze_zero_trust(self, repository_id: UUID) -> Dict[str, Any]:
         """Analyze zero-trust architecture principles"""
         return {
             "principle_verification": {
@@ -322,7 +316,7 @@ class AIRAGService:
             "gaps": self._identify_zero_trust_gaps(repository_id),
         }
 
-    def _check_always_verify(self, repository_id: int) -> Dict[str, Any]:
+    def _check_always_verify(self, repository_id: UUID) -> Dict[str, Any]:
         """Check if 'always verify' principle is implemented"""
         # Look for authentication/authorization on all endpoints
         auth_coverage = self._estimate_auth_coverage(repository_id)
@@ -333,14 +327,14 @@ class AIRAGService:
             "concerns": []
         }
 
-    def _check_least_privilege(self, repository_id: int) -> Dict[str, Any]:
+    def _check_least_privilege(self, repository_id: UUID) -> Dict[str, Any]:
         """Check if least privilege principle is implemented"""
         # Look for overly permissive access controls
         authz_findings = (
             self.db.query(Finding)
             .filter(
                 Finding.repository_id == repository_id,
-                Finding.category == "authorization"
+                Finding.finding_type == "authorization"
             )
             .all()
         )
@@ -350,7 +344,7 @@ class AIRAGService:
             "concerns": [f.title for f in authz_findings[:3]]
         }
 
-    def _check_assume_breach(self, repository_id: int) -> Dict[str, Any]:
+    def _check_assume_breach(self, repository_id: UUID) -> Dict[str, Any]:
         """Check if 'assume breach' principle is considered"""
         # Look for logging, monitoring, encryption in transit
         return {
@@ -360,13 +354,13 @@ class AIRAGService:
             "concerns": []
         }
 
-    def _estimate_auth_coverage(self, repository_id: int) -> float:
+    def _estimate_auth_coverage(self, repository_id: UUID) -> float:
         """Estimate percentage of endpoints with authentication"""
         # This would require analyzing the codebase
         # For now, returning a placeholder
         return 0.5
 
-    def _identify_zero_trust_gaps(self, repository_id: int) -> List[str]:
+    def _identify_zero_trust_gaps(self, repository_id: UUID) -> List[str]:
         """Identify gaps in zero-trust implementation"""
         gaps = []
 
@@ -384,7 +378,7 @@ class AIRAGService:
 
         return gaps
 
-    async def _get_critical_vulnerabilities(self, repository_id: int) -> List[Dict[str, Any]]:
+    async def _get_critical_vulnerabilities(self, repository_id: UUID) -> List[Dict[str, Any]]:
         """Get critical and high severity vulnerabilities (findings with CVE/CWE)"""
         vulns = (
             self.db.query(Finding)
@@ -444,7 +438,7 @@ class AIRAGService:
     async def search_relevant_content(
         self,
         query: str,
-        repository_id: int,
+        repository_id: UUID,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
