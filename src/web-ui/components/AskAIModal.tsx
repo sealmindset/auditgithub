@@ -129,7 +129,9 @@ export function AskAIModal({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get AI response');
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error('API Error:', errorData);
+        throw new Error(errorData.detail || `API Error: ${response.status}`);
       }
 
       const data = await response.json();

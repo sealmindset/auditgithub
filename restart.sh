@@ -2,7 +2,6 @@
 
 # AuditGitHub Container Restart Script
 # Quickly restarts just the AuditGitHub containers without touching Docker Desktop
-# Note: This script has been simplified. Use ./restart.sh instead (they're identical now)
 
 set -e
 

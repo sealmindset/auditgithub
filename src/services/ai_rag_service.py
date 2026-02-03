@@ -6,10 +6,7 @@ Retrieves and prepares context for AI conversations
 import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from models.repository import Repository
-from models.scan import Scan
-from models.vulnerability import Vulnerability
-from models.finding import Finding
+from src.api.models import Repository, ScanRun, Finding
 import json
 
 logger = logging.getLogger(__name__)
@@ -98,9 +95,9 @@ class AIRAGService:
     async def _get_scan_results(self, repository_id: int, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent scan results"""
         scans = (
-            self.db.query(Scan)
-            .filter(Scan.repository_id == repository_id)
-            .order_by(Scan.created_at.desc())
+            self.db.query(ScanRun)
+            .filter(ScanRun.repository_id == repository_id)
+            .order_by(ScanRun.created_at.desc())
             .limit(limit)
             .all()
         )
@@ -108,27 +105,28 @@ class AIRAGService:
         results = []
         for scan in scans:
             results.append({
-                "id": scan.id,
+                "id": str(scan.id),
                 "scan_type": scan.scan_type,
                 "status": scan.status,
                 "findings_count": scan.findings_count,
-                "critical_count": scan.critical_count,
-                "high_count": scan.high_count,
-                "medium_count": scan.medium_count,
-                "low_count": scan.low_count,
+                "new_findings_count": scan.new_findings_count,
+                "resolved_findings_count": scan.resolved_findings_count,
                 "started_at": scan.started_at.isoformat() if scan.started_at else None,
                 "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-                "summary": scan.summary,
+                "duration_seconds": scan.duration_seconds,
             })
 
         return results
 
     async def _get_vulnerabilities(self, repository_id: int, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get vulnerabilities found in repository"""
+        """Get vulnerabilities found in repository (findings with CVE/CWE)"""
         vulnerabilities = (
-            self.db.query(Vulnerability)
-            .filter(Vulnerability.repository_id == repository_id)
-            .order_by(Vulnerability.severity.desc(), Vulnerability.created_at.desc())
+            self.db.query(Finding)
+            .filter(
+                Finding.repository_id == repository_id,
+                (Finding.cve_id.isnot(None)) | (Finding.cwe_id.isnot(None))
+            )
+            .order_by(Finding.severity.desc(), Finding.created_at.desc())
             .limit(limit)
             .all()
         )
@@ -136,17 +134,15 @@ class AIRAGService:
         results = []
         for vuln in vulnerabilities:
             results.append({
-                "id": vuln.id,
+                "id": str(vuln.id),
                 "title": vuln.title,
                 "severity": vuln.severity,
                 "cve_id": vuln.cve_id,
                 "cwe_id": vuln.cwe_id,
                 "description": vuln.description[:500] if vuln.description else None,  # Truncate
-                "affected_component": vuln.affected_component,
+                "package_name": vuln.package_name,
+                "package_version": vuln.package_version,
                 "fixed_version": vuln.fixed_version,
-                "is_exploitable": vuln.is_exploitable,
-                "has_public_exploit": vuln.has_public_exploit,
-                "cvss_score": vuln.cvss_score,
             })
 
         return results
@@ -164,28 +160,22 @@ class AIRAGService:
         results = []
         for finding in findings:
             results.append({
-                "id": finding.id,
+                "id": str(finding.id),
                 "title": finding.title,
                 "severity": finding.severity,
-                "category": finding.category,
+                "finding_type": finding.finding_type,
+                "scanner_name": finding.scanner_name,
                 "description": finding.description[:300] if finding.description else None,  # Truncate
                 "file_path": finding.file_path,
-                "line_number": finding.line_number,
+                "line_start": finding.line_start,
                 "cwe_id": finding.cwe_id,
-                "owasp_category": finding.owasp_category,
+                "cve_id": finding.cve_id,
             })
 
         return results
 
     async def _get_security_metrics(self, repository_id: int) -> Dict[str, Any]:
         """Calculate security metrics for the repository"""
-        # Count vulnerabilities by severity
-        vuln_counts = {}
-        vulns = self.db.query(Vulnerability).filter(Vulnerability.repository_id == repository_id).all()
-        for vuln in vulns:
-            severity = vuln.severity or "unknown"
-            vuln_counts[severity] = vuln_counts.get(severity, 0) + 1
-
         # Count findings by severity
         finding_counts = {}
         findings = self.db.query(Finding).filter(Finding.repository_id == repository_id).all()
@@ -194,10 +184,10 @@ class AIRAGService:
             finding_counts[severity] = finding_counts.get(severity, 0) + 1
 
         # Calculate security score (0-100, higher is better)
-        total_critical = vuln_counts.get("critical", 0) + finding_counts.get("critical", 0)
-        total_high = vuln_counts.get("high", 0) + finding_counts.get("high", 0)
-        total_medium = vuln_counts.get("medium", 0) + finding_counts.get("medium", 0)
-        total_low = vuln_counts.get("low", 0) + finding_counts.get("low", 0)
+        total_critical = finding_counts.get("critical", 0)
+        total_high = finding_counts.get("high", 0)
+        total_medium = finding_counts.get("medium", 0)
+        total_low = finding_counts.get("low", 0)
 
         # Simple scoring: deduct points for issues
         security_score = 100
@@ -383,26 +373,27 @@ class AIRAGService:
         # Check for common gaps
         findings = self.db.query(Finding).filter(Finding.repository_id == repository_id).all()
 
-        if any("authentication" in f.category.lower() for f in findings):
+        if any(f.finding_type and "authentication" in f.finding_type.lower() for f in findings):
             gaps.append("Authentication weaknesses detected")
 
-        if any("authorization" in f.category.lower() for f in findings):
+        if any(f.finding_type and "authorization" in f.finding_type.lower() for f in findings):
             gaps.append("Authorization gaps detected")
 
-        if any("encryption" in f.category.lower() for f in findings):
+        if any(f.finding_type and "encryption" in f.finding_type.lower() for f in findings):
             gaps.append("Encryption weaknesses detected")
 
         return gaps
 
     async def _get_critical_vulnerabilities(self, repository_id: int) -> List[Dict[str, Any]]:
-        """Get critical and high severity vulnerabilities"""
+        """Get critical and high severity vulnerabilities (findings with CVE/CWE)"""
         vulns = (
-            self.db.query(Vulnerability)
+            self.db.query(Finding)
             .filter(
-                Vulnerability.repository_id == repository_id,
-                Vulnerability.severity.in_(["critical", "high"])
+                Finding.repository_id == repository_id,
+                Finding.severity.in_(["critical", "high"]),
+                (Finding.cve_id.isnot(None)) | (Finding.cwe_id.isnot(None))
             )
-            .order_by(Vulnerability.cvss_score.desc())
+            .order_by(Finding.severity.desc())
             .limit(20)
             .all()
         )
@@ -410,17 +401,15 @@ class AIRAGService:
         results = []
         for vuln in vulns:
             results.append({
-                "id": vuln.id,
+                "id": str(vuln.id),
                 "title": vuln.title,
                 "severity": vuln.severity,
                 "cve_id": vuln.cve_id,
                 "cwe_id": vuln.cwe_id,
                 "description": vuln.description,
-                "affected_component": vuln.affected_component,
-                "cvss_score": vuln.cvss_score,
-                "is_exploitable": vuln.is_exploitable,
-                "has_public_exploit": vuln.has_public_exploit,
-                "remediation": vuln.remediation,
+                "package_name": vuln.package_name,
+                "package_version": vuln.package_version,
+                "fixed_version": vuln.fixed_version,
             })
 
         return results
@@ -478,19 +467,20 @@ class AIRAGService:
         for finding in findings:
             results.append({
                 "type": "finding",
-                "id": finding.id,
+                "id": str(finding.id),
                 "title": finding.title,
                 "content": finding.description,
                 "severity": finding.severity,
                 "file_path": finding.file_path,
             })
 
-        # Search in vulnerabilities
+        # Search in vulnerabilities (findings with CVE/CWE)
         vulns = (
-            self.db.query(Vulnerability)
+            self.db.query(Finding)
             .filter(
-                Vulnerability.repository_id == repository_id,
-                Vulnerability.title.ilike(f"%{query}%") | Vulnerability.description.ilike(f"%{query}%")
+                Finding.repository_id == repository_id,
+                (Finding.cve_id.isnot(None)) | (Finding.cwe_id.isnot(None)),
+                (Finding.title.ilike(f"%{query}%") | Finding.description.ilike(f"%{query}%"))
             )
             .limit(limit)
             .all()
@@ -499,7 +489,7 @@ class AIRAGService:
         for vuln in vulns:
             results.append({
                 "type": "vulnerability",
-                "id": vuln.id,
+                "id": str(vuln.id),
                 "title": vuln.title,
                 "content": vuln.description,
                 "severity": vuln.severity,

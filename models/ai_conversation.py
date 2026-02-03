@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, Enum as SQLEnum
 from sqlalchemy.orm import relationship
-from database import Base
+from src.api.database import Base
 import enum
 
 
@@ -53,9 +53,7 @@ class AIConversation(Base):
     last_message_at = Column(DateTime)
 
     # Relationships
-    project = relationship("Project", back_populates="ai_conversations")
-    repository = relationship("Repository", back_populates="ai_conversations")
-    organization = relationship("Organization", back_populates="ai_conversations")
+    # Note: back_populates not used to avoid circular dependencies
     messages = relationship("AIMessage", back_populates="conversation", cascade="all, delete-orphan")
 
 
