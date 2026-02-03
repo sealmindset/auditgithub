@@ -1,0 +1,100 @@
+{
+  "family": "auditgithub-prod-scanner",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "2048",
+  "memory": "4096",
+  "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+  "taskRoleArn": "${TASK_ROLE_ARN}",
+  "containerDefinitions": [
+    {
+      "name": "scanner",
+      "image": "${API_IMAGE}",
+      "essential": true,
+      "command": ["python", "-m", "celery", "-A", "app.celery_app", "worker", "--loglevel=info"],
+      "environment": [
+        {
+          "name": "ENVIRONMENT",
+          "value": "production"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "value": "INFO"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "${DB_HOST}"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "auditgithub"
+        },
+        {
+          "name": "REDIS_HOST",
+          "value": "${REDIS_HOST}"
+        },
+        {
+          "name": "REDIS_PORT",
+          "value": "6379"
+        },
+        {
+          "name": "S3_REPORTS_BUCKET",
+          "value": "${REPORTS_BUCKET}"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "${AWS_REGION}"
+        },
+        {
+          "name": "CELERY_BROKER_URL",
+          "value": "redis://${REDIS_HOST}:6379/0"
+        },
+        {
+          "name": "CELERY_RESULT_BACKEND",
+          "value": "redis://${REDIS_HOST}:6379/0"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DB_USER",
+          "valueFrom": "${SECRETS_PREFIX}/db/username"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "${SECRETS_PREFIX}/db/password"
+        },
+        {
+          "name": "REDIS_PASSWORD",
+          "valueFrom": "${SECRETS_PREFIX}/redis/password"
+        },
+        {
+          "name": "GITHUB_TOKEN",
+          "valueFrom": "${SECRETS_PREFIX}/github/token"
+        },
+        {
+          "name": "SECRET_KEY",
+          "valueFrom": "${SECRETS_PREFIX}/app/secret-key"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/auditgithub-prod/scanner",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "ulimits": [
+        {
+          "name": "nofile",
+          "softLimit": 65536,
+          "hardLimit": 65536
+        }
+      ]
+    }
+  ]
+}
