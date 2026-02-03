@@ -49,6 +49,47 @@ is_docker_running() {
     return $?
 }
 
+# Check if Docker socket exists
+check_docker_socket() {
+    local socket_paths=(
+        "/var/run/docker.sock"
+        "$HOME/.docker/run/docker.sock"
+        "/Users/$USER/.docker/run/docker.sock"
+    )
+
+    for socket in "${socket_paths[@]}"; do
+        if [ -S "$socket" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Verify Docker is fully operational
+verify_docker_operational() {
+    # Check 1: Docker info works
+    if ! docker info > /dev/null 2>&1; then
+        return 1
+    fi
+
+    # Check 2: Socket exists
+    if ! check_docker_socket; then
+        print_warning "Docker socket not found in standard locations"
+    fi
+
+    # Check 3: Docker-compose can communicate with Docker
+    if ! docker-compose version > /dev/null 2>&1; then
+        return 1
+    fi
+
+    # Check 4: Can list containers
+    if ! docker ps > /dev/null 2>&1; then
+        return 1
+    fi
+
+    return 0
+}
+
 # Start Docker based on OS
 start_docker() {
     print_info "Docker is not running. Attempting to start Docker..."
@@ -89,14 +130,19 @@ wait_for_docker() {
     local max_attempts=60  # 2 minutes
     local attempt=1
 
-    print_info "Waiting for Docker daemon to be ready..."
+    print_info "Waiting for Docker daemon to be fully operational..."
 
     while [ $attempt -le $max_attempts ]; do
-        if is_docker_running; then
-            print_success "Docker daemon is ready"
-            # Additional wait to ensure Docker is fully initialized
-            sleep 2
-            return 0
+        if verify_docker_operational; then
+            print_success "Docker daemon is fully operational"
+            # Additional wait to ensure Docker is stable
+            print_info "Verifying Docker stability..."
+            sleep 5
+            # Double-check it's still working
+            if verify_docker_operational; then
+                print_success "Docker stability confirmed"
+                return 0
+            fi
         fi
 
         echo -ne "  Attempt $attempt/$max_attempts: Waiting for Docker daemon...\r"
@@ -104,26 +150,43 @@ wait_for_docker() {
         ((attempt++))
     done
 
-    print_error "Docker daemon failed to start within 2 minutes"
-    print_info "Please check Docker Desktop manually and try again"
+    print_error "Docker daemon failed to become fully operational within 2 minutes"
+    print_info "Troubleshooting steps:"
+    print_info "  1. Quit Docker Desktop completely"
+    print_info "  2. Wait 10 seconds"
+    print_info "  3. Start Docker Desktop manually"
+    print_info "  4. Wait for it to show 'Docker Desktop is running'"
+    print_info "  5. Run this script again"
     exit 1
 }
 
 # Ensure Docker is running
 ensure_docker_running() {
-    if is_docker_running; then
-        print_success "Docker daemon is running"
-        # Verify docker-compose is available
-        if ! command -v docker-compose &> /dev/null; then
-            print_error "docker-compose command not found"
-            print_info "Please install docker-compose or use Docker Desktop"
-            exit 1
-        fi
-        print_success "docker-compose is available"
+    # First check if docker-compose is available
+    if ! command -v docker-compose &> /dev/null; then
+        print_error "docker-compose command not found"
+        print_info "Please install docker-compose or use Docker Desktop"
+        exit 1
+    fi
+    print_success "docker-compose is available"
+
+    # Check if Docker is fully operational
+    if verify_docker_operational; then
+        print_success "Docker daemon is fully operational"
     else
+        print_info "Docker is not fully operational"
         start_docker
         wait_for_docker
     fi
+
+    # Final verification before proceeding
+    print_info "Final Docker verification..."
+    if ! verify_docker_operational; then
+        print_error "Docker failed final verification check"
+        print_info "Docker Desktop may need to be restarted manually"
+        exit 1
+    fi
+    print_success "Docker is ready for operations"
 }
 
 # Separator for visual clarity between steps
@@ -172,26 +235,40 @@ kill_ports() {
 stop_containers() {
     print_info "Stopping existing Docker containers..."
 
+    # Verify Docker is operational before attempting to stop
+    if ! verify_docker_operational; then
+        print_warning "Docker not operational, skipping container stop"
+        return 0
+    fi
+
     # Check if any containers are running
     local running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
 
     if [ "$running_containers" -gt 0 ]; then
         print_info "Found $running_containers container(s) to stop"
-        docker-compose down --remove-orphans 2>&1 | grep -v "^$" || true
 
-        # Wait for containers to fully stop
-        local max_wait=30
-        local waited=0
-        while [ $waited -lt $max_wait ]; do
-            running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
+        # Attempt to stop containers
+        if docker-compose down --remove-orphans 2>&1 | tee /tmp/docker-stop.log | grep -v "^$"; then
+            # Wait for containers to fully stop
+            local max_wait=30
+            local waited=0
+            while [ $waited -lt $max_wait ]; do
+                running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$running_containers" -eq 0 ]; then
+                    break
+                fi
+                sleep 1
+                ((waited++))
+            done
+
             if [ "$running_containers" -eq 0 ]; then
-                break
+                print_success "All containers stopped and removed"
+            else
+                print_warning "$running_containers container(s) still running, but continuing..."
             fi
-            sleep 1
-            ((waited++))
-        done
-
-        print_success "All containers stopped and removed"
+        else
+            print_warning "Container stop command had issues, but continuing..."
+        fi
     else
         print_info "No running containers found"
     fi
@@ -200,6 +277,12 @@ stop_containers() {
 # Build containers with latest code
 build_containers() {
     local build_opts=""
+
+    # Verify Docker is operational before building
+    if ! verify_docker_operational; then
+        print_error "Docker is not operational before build"
+        wait_for_docker
+    fi
 
     # Check if REBUILD environment variable is set for clean build
     if [[ "${REBUILD}" == "true" ]]; then
@@ -211,34 +294,70 @@ build_containers() {
     fi
 
     # Build with progress output
-    if docker-compose build $build_opts 2>&1 | tee /tmp/docker-build.log | grep -E "(Building|Step|Successfully built|naming to)"; then
-        echo ""  # New line after build output
+    docker-compose build $build_opts 2>&1 | tee /tmp/docker-build.log | grep -E "(Building|Step|Successfully built|naming to)" || true
+    local build_result=${PIPESTATUS[0]}
+
+    echo ""  # New line after build output
+
+    # Check if build succeeded
+    if [ $build_result -eq 0 ] && ! grep -q "Cannot connect to the Docker daemon" /tmp/docker-build.log; then
         print_success "Containers built successfully"
         return 0
     else
-        echo ""
         print_error "Failed to build containers"
-        print_info "Check /tmp/docker-build.log for details"
+        print_info "Check /tmp/docker-build.log for details:"
         tail -50 /tmp/docker-build.log
         exit 1
     fi
 }
 
-# Start containers
+# Start containers with retry logic
 start_containers() {
+    local max_attempts=3
+    local attempt=1
+
     print_info "Starting Docker containers..."
-    if docker-compose up -d 2>&1 | tee /tmp/docker-start.log; then
-        print_success "Container startup initiated"
-        # Wait a moment for containers to fully initialize
-        print_info "Waiting for containers to initialize..."
-        sleep 3
-        return 0
-    else
-        print_error "Failed to start containers"
-        print_info "Check /tmp/docker-start.log for details"
-        cat /tmp/docker-start.log
-        exit 1
-    fi
+
+    while [ $attempt -le $max_attempts ]; do
+        if [ $attempt -gt 1 ]; then
+            print_warning "Retry attempt $attempt/$max_attempts after 5 seconds..."
+            sleep 5
+
+            # Re-verify Docker is operational
+            if ! verify_docker_operational; then
+                print_error "Docker is no longer operational"
+                print_info "Waiting for Docker to recover..."
+                wait_for_docker
+            fi
+        fi
+
+        # Attempt to start containers
+        if docker-compose up -d 2>&1 | tee /tmp/docker-start.log; then
+            local exit_code=${PIPESTATUS[0]}
+
+            # Check if the command actually succeeded (docker-compose returns 0 even with warnings)
+            if [ $exit_code -eq 0 ] && ! grep -q "Cannot connect to the Docker daemon" /tmp/docker-start.log; then
+                print_success "Container startup initiated"
+                # Wait for containers to fully initialize
+                print_info "Waiting for containers to initialize..."
+                sleep 5
+                return 0
+            fi
+        fi
+
+        print_warning "Container startup attempt $attempt failed"
+        ((attempt++))
+    done
+
+    print_error "Failed to start containers after $max_attempts attempts"
+    print_info "Check /tmp/docker-start.log for details:"
+    tail -30 /tmp/docker-start.log
+    echo ""
+    print_info "Troubleshooting:"
+    print_info "  1. Restart Docker Desktop"
+    print_info "  2. Run: docker-compose down"
+    print_info "  3. Run this script again"
+    exit 1
 }
 
 # Display container status for debugging
