@@ -10,14 +10,19 @@ Implements:
 - /auth/revoke - Revoke current user's token
 """
 
-from fastapi import APIRouter, Request, HTTPException, Depends, status
+from fastapi import APIRouter, Request, HTTPException, Depends, status, Form
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 from src.auth.providers import oauth
 from src.auth.tokens import rotate_refresh_token, revoke_token, generate_access_token
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
+from src.auth.break_glass import verify_break_glass_password
+from src.auth.invitations import accept_invitation, get_invitation_by_token
+from src.api.database import SessionLocal
+from src.api.models import AuthAuditLog
 from loguru import logger
+from datetime import datetime
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -57,10 +62,135 @@ async def login(provider: str, request: Request):
     )
 
 
+@router.post("/break-glass/login")
+async def break_glass_login(
+    email: str = Form(...),
+    password: str = Form(...),
+    request: Request = None
+):
+    """
+    Break glass login with local password.
+
+    Emergency authentication for ravance@gmail.com when Entra ID is unavailable.
+    All break glass access is prominently logged and audited.
+
+    Args:
+        email: User email (must be ravance@gmail.com)
+        password: Local password
+        request: FastAPI request object
+
+    Returns:
+        RedirectResponse to homepage (/) with 303 See Other status
+
+    Raises:
+        HTTPException 403: If email is not ravance@gmail.com
+        HTTPException 401: If credentials are invalid
+
+    Security:
+        - Only allowed for ravance@gmail.com
+        - All attempts audited in auth_audit_log
+        - Break glass flag set in session
+        - Warning banner displayed in UI
+    """
+    # Only allow ravance@gmail.com
+    if email != "ravance@gmail.com":
+        # Audit failed attempt
+        db = SessionLocal()
+        try:
+            audit_log = AuthAuditLog(
+                email=email,
+                event_type='login',
+                auth_method='break_glass',
+                success=False,
+                failure_reason='Break glass access denied (not authorized email)',
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get('user-agent'),
+                is_break_glass=True
+            )
+            db.add(audit_log)
+            db.commit()
+        finally:
+            db.close()
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Break glass access denied"
+        )
+
+    # Verify password
+    db = SessionLocal()
+    try:
+        user = verify_break_glass_password(db, email, password)
+
+        if not user:
+            # Audit failed attempt
+            audit_log = AuthAuditLog(
+                email=email,
+                event_type='login',
+                auth_method='break_glass',
+                success=False,
+                failure_reason='Invalid credentials',
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get('user-agent'),
+                is_break_glass=True
+            )
+            db.add(audit_log)
+            db.commit()
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
+
+        # Store in session with break glass flag
+        request.session['user'] = {
+            'provider': 'local',
+            'email': user.email,
+            'name': user.full_name,
+            'sub': str(user.id),
+            'role': user.role,
+            'access_type': user.access_type,
+            'is_break_glass': True
+        }
+
+        # Update last login
+        user.last_login_at = datetime.utcnow()
+        db.commit()
+
+        # Audit successful login
+        audit_log = AuthAuditLog(
+            user_id=user.id,
+            email=user.email,
+            event_type='login',
+            auth_method='break_glass',
+            success=True,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get('user-agent'),
+            is_break_glass=True
+        )
+        db.add(audit_log)
+        db.commit()
+
+        logger.warning(
+            f"BREAK GLASS LOGIN: {user.email} from {request.client.host if request.client else 'unknown'}"
+        )
+
+        return RedirectResponse(url='/', status_code=303)
+
+    finally:
+        db.close()
+
+
 @router.get("/callback/{provider}", name="callback")
 async def callback(provider: str, request: Request):
     """
     Handle OAuth callback and exchange authorization code for tokens.
+
+    Enhanced to support RBAC invitation system:
+    - Checks if user exists in database
+    - If not, checks for pending invitation
+    - Creates user account if invitation valid
+    - Stores role and access_type in session
 
     Args:
         provider: Identity provider name ("entra" or "okta")
@@ -72,12 +202,13 @@ async def callback(provider: str, request: Request):
     Raises:
         HTTPException 400 if provider is invalid or email not verified
         HTTPException 401 if authentication fails
+        HTTPException 403 if no invitation found
 
     Security:
     - Validates email_verified claim before trusting email (RESEARCH.md "Pitfalls #3")
-    - Stores minimal session data (user info + access_token only)
+    - Stores session data with RBAC fields (role, access_type)
     - Uses 303 redirect to prevent browser re-POST on refresh
-    - Does not store refresh_token (session-based auth, not needed yet)
+    - Requires invitation for new users
     """
     # Validate provider against whitelist
     if provider not in ["entra", "okta"]:
@@ -106,19 +237,85 @@ async def callback(provider: str, request: Request):
                 detail="Email not verified"
             )
 
-        # Store minimal session data for authorization
-        request.session['user'] = {
-            'provider': provider,
-            'email': user_info['email'],
-            'name': user_info.get('name', ''),
-            'sub': user_info['sub']  # Subject claim (unique user ID)
-        }
+        # Check if user exists in database
+        db = SessionLocal()
+        try:
+            from src.api.models import User as DBUser
 
-        # Store access token for API calls
-        request.session['access_token'] = token['access_token']
+            user = db.query(DBUser).filter(DBUser.email == user_info['email']).first()
 
-        # Redirect to homepage with 303 See Other (POST-redirect-GET pattern)
-        return RedirectResponse(url='/', status_code=303)
+            if not user:
+                # User doesn't exist - check for invitation
+                invite_token = request.session.get('invite_token')
+
+                if not invite_token:
+                    # No invitation - reject
+                    logger.warning(f"Login rejected: no invitation for {user_info['email']}")
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No invitation found. Please contact administrator."
+                    )
+
+                # Accept invitation and create user
+                try:
+                    user = accept_invitation(db, invite_token, user_info)
+
+                    # Clear invitation token from session
+                    request.session.pop('invite_token', None)
+
+                    logger.info(f"User created via invitation: {user.email}")
+
+                except ValueError as e:
+                    logger.warning(f"Invitation acceptance failed: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=str(e)
+                    )
+
+            # Update last login
+            user.last_login_at = datetime.utcnow()
+            db.commit()
+
+            # Audit log successful login
+            audit_log = AuthAuditLog(
+                user_id=user.id,
+                email=user.email,
+                event_type='login',
+                auth_method='entra' if provider == 'entra' else 'oauth',
+                success=True,
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get('user-agent'),
+                is_break_glass=False
+            )
+            db.add(audit_log)
+            db.commit()
+
+            # Store session data with RBAC fields
+            request.session['user'] = {
+                'provider': provider,
+                'email': user.email,
+                'name': user.full_name,
+                'sub': user_info['sub'],  # Entra ID subject
+                'role': user.role,
+                'access_type': user.access_type,
+                'user_id': str(user.id),
+                'is_break_glass': False
+            }
+
+            # Store access token for API calls
+            request.session['access_token'] = token['access_token']
+
+            logger.info(f"Login successful: {user.email} (role={user.role})")
+
+            # Redirect to homepage with 303 See Other (POST-redirect-GET pattern)
+            return RedirectResponse(url='/', status_code=303)
+
+        finally:
+            db.close()
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
 
     except Exception as e:
         logger.bind(router="auth", endpoint="callback").exception(f"Authentication failed for provider {provider}: {str(e)}")

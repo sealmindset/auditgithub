@@ -12,6 +12,10 @@ import { Loader2, CheckCircle2, XCircle, Database, Send } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import AuthConfigTab from "@/components/AuthConfigTab"
+import dynamic from "next/dynamic"
+
+// Dynamically import My Devices page
+const MyDevicesPage = dynamic(() => import("./devices/page"), { ssr: false })
 
 const API_BASE = "http://localhost:8000"
 
@@ -306,6 +310,7 @@ export default function SettingsPage() {
                     <TabsTrigger value="auth">Authentication & Authorization</TabsTrigger>
                     <TabsTrigger value="integrations">Integrations</TabsTrigger>
                     <TabsTrigger value="cribl">Cribl</TabsTrigger>
+                    <TabsTrigger value="devices">My Devices</TabsTrigger>
                     <TabsTrigger value="notifications">Notifications</TabsTrigger>
                 </TabsList>
 
@@ -692,6 +697,10 @@ export default function SettingsPage() {
                             </Button>
                         </CardFooter>
                     </Card>
+                </TabsContent>
+
+                <TabsContent value="devices" className="space-y-4">
+                    <MyDevicesPage />
                 </TabsContent>
 
                 <TabsContent value="notifications" className="space-y-4">

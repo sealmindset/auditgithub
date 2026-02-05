@@ -245,3 +245,311 @@ async def get_current_user_with_bypass(request: Request) -> User:
 # Most endpoints will use cookies (browser-based auth)
 # API clients can explicitly use get_current_user_from_token
 get_current_user = get_current_user_with_bypass
+
+
+# =========================================================================
+# RBAC (Role-Based Access Control) Functions
+# =========================================================================
+
+from sqlalchemy.orm import Session
+from src.api.database import SessionLocal
+from src.api.models import User as DBUser, UserRepositoryAccess
+from uuid import UUID
+from typing import Callable
+
+
+def get_db_user(request: Request) -> DBUser:
+    """
+    Get full database User model with RBAC fields.
+
+    Fetches the complete User record from the database based on the
+    authenticated user's email from the session/token.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        DBUser: Full User model from database with role, access_type, etc.
+
+    Raises:
+        HTTPException 401: If user not found in database
+        HTTPException 403: If user is inactive
+
+    Usage:
+        @router.get("/admin/users")
+        async def list_users(db_user: DBUser = Depends(get_db_user)):
+            # db_user has role, access_type, and all RBAC fields
+            return {"role": db_user.role}
+    """
+    import os
+    from fastapi import HTTPException
+
+    # Check if auth is disabled (dev mode)
+    auth_disabled = os.getenv("AUTH_DISABLED", "false").lower() == "true"
+    if auth_disabled:
+        # Return mock super admin for dev mode
+        logger.debug("AUTH_DISABLED is true, returning mock super admin")
+        return DBUser(
+            email="dev@localhost",
+            username="devuser",
+            full_name="Dev User",
+            role="super_admin",
+            access_type="both",
+            auth_provider="local",
+            is_active=True
+        )
+
+    # Get authenticated user from session/token
+    user_data = request.session.get('user')
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    # Fetch full user from database
+    db = SessionLocal()
+    try:
+        db_user = db.query(DBUser).filter(DBUser.email == user_data.get('email')).first()
+
+        if not db_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found in database"
+            )
+
+        if not db_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive"
+            )
+
+        # Store break glass flag in request state
+        request.state.is_break_glass = user_data.get('is_break_glass', False)
+
+        return db_user
+
+    finally:
+        db.close()
+
+
+def require_role(*allowed_roles: str) -> Callable:
+    """
+    Dependency factory to require specific role(s).
+
+    Args:
+        *allowed_roles: One or more role names (e.g., 'admin', 'manager')
+
+    Returns:
+        Dependency function that checks user role
+
+    Raises:
+        HTTPException 403: If user role not in allowed_roles
+
+    Usage:
+        @router.post("/findings/{id}/delete")
+        async def delete_finding(
+            finding_id: UUID,
+            user: DBUser = Depends(require_role('analyst', 'admin', 'super_admin'))
+        ):
+            # Only analysts, admins, and super admins can access
+            pass
+    """
+    def role_checker(
+        request: Request,
+        db_user: DBUser = Depends(get_db_user)
+    ) -> DBUser:
+        if db_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Required role: {', '.join(allowed_roles)}. Your role: {db_user.role}"
+            )
+        return db_user
+
+    return role_checker
+
+
+def require_admin(request: Request, db_user: DBUser = Depends(get_db_user)) -> DBUser:
+    """
+    Dependency to require admin or super_admin role.
+
+    Args:
+        request: FastAPI request
+        db_user: Database user from get_db_user
+
+    Returns:
+        DBUser if user is admin or super_admin
+
+    Raises:
+        HTTPException 403: If user is not admin/super_admin
+
+    Usage:
+        @router.post("/invitations")
+        async def send_invitation(
+            body: InvitationRequest,
+            admin_user: DBUser = Depends(require_admin)
+        ):
+            # Only admins can send invitations
+            pass
+    """
+    if db_user.role not in ['admin', 'super_admin']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Admin access required. Your role: {db_user.role}"
+        )
+    return db_user
+
+
+def require_super_admin(request: Request, db_user: DBUser = Depends(get_db_user)) -> DBUser:
+    """
+    Dependency to require super_admin role only.
+
+    Args:
+        request: FastAPI request
+        db_user: Database user from get_db_user
+
+    Returns:
+        DBUser if user is super_admin
+
+    Raises:
+        HTTPException 403: If user is not super_admin
+
+    Usage:
+        @router.patch("/users/{id}/role")
+        async def change_user_role(
+            user_id: UUID,
+            body: UpdateRoleRequest,
+            super_admin: DBUser = Depends(require_super_admin)
+        ):
+            # Only super admins can change roles
+            pass
+    """
+    if db_user.role != 'super_admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Super Admin access required. Your role: {db_user.role}"
+        )
+    return db_user
+
+
+def check_repository_access(repository_id: UUID, action: str) -> Callable:
+    """
+    Dependency factory to check repository-level access.
+
+    Verifies user has access to specific repository and can perform action.
+
+    Args:
+        repository_id: Repository UUID to check access for
+        action: Action being performed (view, scan, manage_findings, etc.)
+
+    Returns:
+        Dependency function that checks access
+
+    Raises:
+        HTTPException 403: If user lacks repository access or permission
+
+    Usage:
+        @router.post("/scans")
+        async def trigger_scan(
+            body: ScanRequest,
+            user: DBUser = Depends(get_db_user),
+            has_access: bool = Depends(check_repository_access(body.repository_id, 'run_scan'))
+        ):
+            # User can only trigger scan if they have access
+            pass
+
+    Permissions Matrix:
+        - super_admin, admin: All actions on all repositories
+        - manager: manage_findings, run_scan, view
+        - analyst: submit_jira, mark_exception, delete_finding, run_scan, view
+        - developer: run_scan, view_details, view
+        - user: view only
+    """
+    def access_checker(
+        request: Request,
+        db_user: DBUser = Depends(get_db_user)
+    ) -> bool:
+        # Super Admin and Admin - full access to all repositories
+        if db_user.role in ['super_admin', 'admin']:
+            return True
+
+        # Check if user has access to this repository
+        db = SessionLocal()
+        try:
+            access = db.query(UserRepositoryAccess).filter(
+                UserRepositoryAccess.user_id == db_user.id,
+                UserRepositoryAccess.repository_id == repository_id
+            ).first()
+
+            if not access:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"No access to repository {repository_id}"
+                )
+
+            # Check access type (UI vs API)
+            request_path = request.url.path
+            if request_path.startswith('/api/'):
+                # API request
+                if db_user.access_type == 'ui_only':
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="API access not permitted. Your access type: ui_only"
+                    )
+            else:
+                # UI request
+                if db_user.access_type == 'api_only':
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="UI access not permitted. Your access type: api_only"
+                    )
+
+            # Check role-based action permissions
+            if not can_perform_action(db_user.role, action):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Insufficient permissions for action '{action}'. Your role: {db_user.role}"
+                )
+
+            return True
+
+        finally:
+            db.close()
+
+    return access_checker
+
+
+def can_perform_action(role: str, action: str) -> bool:
+    """
+    Check if role can perform action.
+
+    Permission matrix:
+        - super_admin, admin: All actions
+        - manager: manage_findings, run_scan, view, view_details
+        - analyst: submit_jira, mark_exception, delete_finding, run_scan, view, view_details
+        - developer: run_scan, view_details, view
+        - user: view only
+
+    Args:
+        role: User role (super_admin, admin, manager, analyst, developer, user)
+        action: Action to check (view, run_scan, delete_finding, etc.)
+
+    Returns:
+        True if role can perform action, False otherwise
+
+    Usage:
+        if can_perform_action(user.role, 'delete_finding'):
+            # User can delete findings
+            pass
+    """
+    permissions = {
+        'super_admin': ['*'],  # Wildcard: all actions
+        'admin': ['*'],  # Wildcard: all actions
+        'manager': ['manage_findings', 'run_scan', 'view', 'view_details'],
+        'analyst': ['submit_jira', 'mark_exception', 'delete_finding', 'run_scan', 'view', 'view_details'],
+        'developer': ['run_scan', 'view_details', 'view'],
+        'user': ['view']
+    }
+
+    role_perms = permissions.get(role, [])
+    return '*' in role_perms or action in role_perms

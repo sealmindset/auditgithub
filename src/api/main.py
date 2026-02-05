@@ -128,7 +128,7 @@ from . import models
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -141,6 +141,9 @@ else:
 
 # Include routers
 app.include_router(auth.router)  # Authentication endpoints
+app.include_router(device_flow.router)  # Device flow authentication (OAuth 2.0 RFC 8628)
+app.include_router(invitations.router)  # User invitation management (RBAC)
+app.include_router(users.router)  # User management (RBAC)
 app.include_router(tenants.router)  # Tenant management (always available)
 app.include_router(repositories.router)
 app.include_router(jira.router)

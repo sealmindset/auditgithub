@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func, text
 from .database import Base
+import uuid
 
 
 # =============================================================================
@@ -413,14 +414,126 @@ class User(Base):
     username = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=False)
     full_name = Column(String)
-    role = Column(String)
+
+    # RBAC fields
+    role = Column(String, nullable=False, default='user')  # super_admin, admin, manager, analyst, developer, user
+    access_type = Column(String, nullable=False, default='both')  # ui_only, api_only, both
+
+    # Break glass authentication (only for ravance@gmail.com)
+    local_password_hash = Column(String, nullable=True)  # bcrypt hash
+
+    # Entra ID fields
+    entra_id_object_id = Column(String, unique=True, nullable=True)  # Azure AD Object ID
+    entra_id_upn = Column(String, nullable=True)  # User Principal Name
+    auth_provider = Column(String, default='entra')  # entra, local, google
+
+    # Status
+    is_invited = Column(Boolean, default=False)
+    first_login_at = Column(DateTime, nullable=True)
+
+    # Legacy fields
     github_username = Column(String)
     jira_username = Column(String)
     is_active = Column(Boolean, default=True)
     last_login_at = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     assigned_findings = relationship("Finding", back_populates="assignee")
+
+
+# =============================================================================
+# USER INVITATIONS - Email-based user invitation system
+# =============================================================================
+
+class UserInvitation(Base):
+    """Email invitation system for onboarding new users."""
+    __tablename__ = "user_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(Integer, Sequence('user_invitations_api_id_seq'), unique=True)
+    email = Column(String, nullable=False, index=True)
+    invite_token = Column(String(64), unique=True, nullable=False, index=True)  # cryptographic token
+
+    # Invitation metadata
+    invited_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    invited_role = Column(String, nullable=False, default='user')  # Initial role
+    invited_access_type = Column(String, nullable=False, default='ui_only')
+
+    # Status
+    status = Column(String, default='pending')  # pending, accepted, expired, revoked
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)  # 7 days from creation
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    inviter = relationship("User", foreign_keys=[invited_by])
+
+
+# =============================================================================
+# USER REPOSITORY ACCESS - Repository-level permissions
+# =============================================================================
+
+class UserRepositoryAccess(Base):
+    """Maps users to repositories they can access."""
+    __tablename__ = "user_repository_access"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(Integer, Sequence('user_repository_access_api_id_seq'), unique=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    repository_id = Column(UUID(as_uuid=True), ForeignKey('repositories.id', ondelete='CASCADE'), nullable=False, index=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False)
+
+    # Assigned by
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    repository = relationship("Repository")
+    assigner = relationship("User", foreign_keys=[assigned_by])
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'repository_id', name='uq_user_repo_access'),
+    )
+
+
+# =============================================================================
+# AUTH AUDIT LOG - Authentication event logging
+# =============================================================================
+
+class AuthAuditLog(Base):
+    """Audit log for authentication events."""
+    __tablename__ = "auth_audit_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(Integer, Sequence('auth_audit_log_api_id_seq'), unique=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)  # Null for failed logins
+    email = Column(String, nullable=False, index=True)
+
+    # Event details
+    event_type = Column(String, nullable=False)  # login, logout, invite_sent, invite_accepted, role_changed, etc.
+    auth_method = Column(String)  # entra, local, device_flow
+    success = Column(Boolean, default=True)
+    failure_reason = Column(String, nullable=True)
+
+    # Context
+    ip_address = Column(String(45))
+    user_agent = Column(String(500))
+
+    # Break glass indicator
+    is_break_glass = Column(Boolean, default=False)
+
+    # Extra data (JSON for flexibility)
+    extra_data = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+
 
 class FindingHistory(Base):
     __tablename__ = "finding_history"
@@ -832,6 +945,112 @@ class Tenant(Base):
     
     def __repr__(self):
         return f"<Tenant(slug='{self.slug}', github_org='{self.github_org}', active={self.is_active})>"
+
+
+# =============================================================================
+# DEVICE FLOW AUTHENTICATION - OAuth 2.0 Device Authorization Grant (RFC 8628)
+# =============================================================================
+
+class DeviceFlowRequest(Base):
+    """
+    Temporary device flow requests for CLI/device authentication.
+    Stores device codes and user codes with 10-minute expiration.
+    Status lifecycle: pending -> approved/denied/expired -> consumed
+    """
+    __tablename__ = "device_flow_requests"
+
+    # Primary Key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(Integer, Sequence('device_flow_requests_api_id_seq'), unique=True)
+
+    # Device Flow Codes
+    device_code = Column(String(128), unique=True, nullable=False, index=True)  # 128-char cryptographic code
+    user_code = Column(String(9), unique=True, nullable=False, index=True)  # 8-char code (ABCD-1234 format with dash)
+
+    # Client Information
+    client_id = Column(String(255), nullable=False)
+    client_name = Column(String(255), nullable=False)
+    scopes = Column(JSONB, default=list)
+
+    # Status Tracking
+    status = Column(String(20), default='pending', index=True)  # pending, approved, denied, expired, consumed
+
+    # Multi-tenant Scope
+    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False)
+
+    # User Info (populated after approval)
+    user_sub = Column(String(255), nullable=True)
+    user_email = Column(String(255), nullable=True)
+    user_name = Column(String(255), nullable=True)
+    provider = Column(String(50), nullable=True)  # entra, okta
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)  # 10 minutes from creation
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Polling Tracking (rate limiting)
+    last_poll_at = Column(DateTime(timezone=True), nullable=True)
+    poll_count = Column(Integer, default=0)
+
+    # Relationships
+    organization = relationship("Organization", backref="device_flow_requests")
+
+    def __repr__(self):
+        return f"<DeviceFlowRequest(user_code='{self.user_code}', status='{self.status}')>"
+
+
+class DeviceAuthorization(Base):
+    """
+    Persistent device authorization records.
+    Tracks approved devices and their tokens for revocation management.
+    Users can view/rename/revoke these in the "My Devices" UI.
+    """
+    __tablename__ = "device_authorizations"
+
+    # Primary Key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_id = Column(Integer, Sequence('device_authorizations_api_id_seq'), unique=True)
+
+    # Multi-tenant Scope
+    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # User Identity
+    user_sub = Column(String(255), nullable=False, index=True)  # Subject claim from ID token
+    user_email = Column(String(255), nullable=False)
+    user_name = Column(String(255), nullable=False)
+    provider = Column(String(50), nullable=False)  # entra, okta
+
+    # Device Information
+    device_name = Column(String(255), nullable=False)  # User-friendly name (editable)
+    client_id = Column(String(255), nullable=False)
+    client_name = Column(String(255), nullable=False)
+
+    # Token Tracking (for revocation)
+    current_refresh_token_jti = Column(String(255), nullable=True)  # Latest refresh token JTI
+
+    # Metadata
+    user_agent = Column(String(500), nullable=True)
+    ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6
+
+    # Status
+    is_active = Column(Boolean, default=True, index=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), server_default=func.now())
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_by = Column(String(255), nullable=True)  # User email/sub who revoked
+    revoked_reason = Column(Text, nullable=True)
+
+    # Usage Statistics
+    token_refresh_count = Column(Integer, default=0)
+
+    # Relationships
+    organization = relationship("Organization", backref="device_authorizations")
+
+    def __repr__(self):
+        return f"<DeviceAuthorization(device_name='{self.device_name}', user_email='{self.user_email}', active={self.is_active})>"
 
 
 # =============================================================================
