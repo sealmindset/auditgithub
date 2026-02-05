@@ -1217,7 +1217,7 @@ class CriblConfig(Base):
     __tablename__ = "cribl_config"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    api_id = Column(BigInteger, unique=True, nullable=False, autoincrement=True)
+    api_id = Column(Integer, Sequence('cribl_config_api_id_seq'), unique=True)
     
     # Connection settings
     ingest_url = Column(String(500))

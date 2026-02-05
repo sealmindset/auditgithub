@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from src.api.models import User, UserInvitation
+from src.auth.email_service import email_service
 
 
 def create_invitation(
@@ -79,8 +80,22 @@ def create_invitation(
         f"(role={role}, access={access_type})"
     )
 
-    # TODO: Send email (implement email service)
-    # send_invitation_email(email, invite_token)
+    # Send invitation email
+    try:
+        email_sent = email_service.send_invitation_email(
+            recipient_email=email,
+            invite_token=invite_token,
+            inviter_name=invited_by_user.full_name or invited_by_user.email,
+            role=role,
+            access_type=access_type,
+            expires_in_days=7
+        )
+
+        if not email_sent:
+            logger.warning(f"Failed to send invitation email to {email}, but invitation was created")
+    except Exception as e:
+        logger.error(f"Error sending invitation email to {email}: {e}")
+        # Don't fail the invitation creation if email fails
 
     return invitation
 

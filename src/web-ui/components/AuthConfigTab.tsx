@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Loader2, CheckCircle2, XCircle, Plus, Trash2, Users, Key, Shield } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
     Select,
     SelectContent,
@@ -351,6 +352,28 @@ export default function AuthConfigTab() {
 
     return (
         <div className="space-y-6">
+            {/* New Admin Panel Alert */}
+            <Alert className="border-blue-200 bg-blue-50">
+                <Shield className="h-5 w-5 text-blue-600" />
+                <AlertTitle className="text-blue-900 font-semibold">
+                    Enhanced User & Role Management Available
+                </AlertTitle>
+                <AlertDescription className="text-blue-800">
+                    <p className="mb-2">
+                        A new comprehensive admin panel is now available with advanced user management,
+                        invitation system, and role-based access control (RBAC).
+                    </p>
+                    <Button
+                        onClick={() => window.location.href = '/admin/users'}
+                        variant="outline"
+                        className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                    >
+                        <Users className="h-4 w-4 mr-2" />
+                        Go to Admin Panel
+                    </Button>
+                </AlertDescription>
+            </Alert>
+
             {/* OIDC Providers Section */}
             <Card>
                 <CardHeader>

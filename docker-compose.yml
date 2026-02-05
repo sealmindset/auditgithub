@@ -85,6 +85,15 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_URL=redis://redis:6379/0
+      # SMTP configuration (override host to use mailhog container)
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@auditgithub.local}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
+      - APP_URL=${APP_URL:-http://localhost:3000}
     depends_on:
       db:
         condition: service_started
@@ -230,6 +239,22 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
+
+  # =============================================================================
+  # MailHog Service - Email Testing SMTP Server
+  # =============================================================================
+  # Lightweight SMTP server for testing email invitations in development.
+  # Catches all outgoing emails and displays them in a web UI.
+  # Web UI available at http://localhost:8025
+  # SMTP server runs on port 1025 (non-privileged port)
+  # =============================================================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: auditgh_mailhog
+    ports:
+      - "1025:1025"   # SMTP server
+      - "8025:8025"   # Web UI
     restart: unless-stopped
 
 volumes:

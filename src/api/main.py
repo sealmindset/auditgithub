@@ -251,6 +251,10 @@ app.add_middleware(OrganizationContextMiddleware)
 from src.auth.middleware import SessionActivityMiddleware, SecurityHeadersMiddleware
 app.add_middleware(SessionActivityMiddleware)
 
+# Add authentication middleware (enforces AUTH_REQUIRED setting)
+from src.api.middleware.auth import AuthenticationMiddleware
+app.add_middleware(AuthenticationMiddleware)
+
 # Add security headers middleware (CSP, HSTS, X-Frame-Options, etc.)
 app.add_middleware(
     SecurityHeadersMiddleware,
