@@ -1,0 +1,10 @@
+
+Robots.txt: The Unintentional Roadmap for API Discovery
+(Saved responses are view only)
+Site owners frequently use robots.txt files to tell search engines not to index raw data, internal paths, or sensitive endpoints. Ironically, by listing out exactly what they want to hide, they inadvertently create a roadmap that you can use to discover hidden APIs.
+Here is how you can use robots.txt files to find hidden API endpoints:
+• Look for API Path Markers: Search for Disallow directives targeting API-specific paths. Entries like Disallow: /api/ or Disallow: /v2/internal/ provide an immediate target list for reconnaissance and reveal where backend or internal programmatic interfaces are located.
+• Identify Parameter Blocking: Look for rules that block specific URL parameters. Directives such as Disallow: /*?token= or Disallow: /*?api_key= not only reveal the existence of an API but also expose the exact query parameters the application uses for authentication or session management.
+• Check for Hidden/Admin Directories: Look for custom blocked directories (e.g., Disallow: /private/, Disallow: /__mesa/, or Disallow: /staging/) that could house unlinked administrative endpoints or test environments.
+• Cross-Reference with Sitemaps: Crawl the robots.txt file alongside the sitemap.xml file. Sometimes site owners block URLs in robots.txt but accidentally leave them exposed in their XML sitemaps, sending mixed signals and revealing the hidden URLs anyway.
+Why this works: The robots.txt file operates on a principle of voluntary compliance; it is simply a text file that asks polite bots (like Googlebot) to ignore certain paths. It acts like a "Please Don't Enter" sign rather than an actual locked door. Because it has no power to enforce access restrictions, researchers and malicious actors routinely ignore the rules and use the file as a direct guide to find sensitive or undocumented programmatic areas. Relying on it to hide APIs is a form of "security through obscurity," which is highly ineffective against targeted reconnaissance.
