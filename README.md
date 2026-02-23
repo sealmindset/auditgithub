@@ -1,5 +1,8 @@
 # AuditGH: GitHub Repository Security Scanner
 
+AuditGitHub ensures that the applications we build and the third-party dependencies we leverage are secure by design, preventing hackers from disrupting services or stealing from our openly accessible customer platforms. By automating our security scanning and using AI agents to instantly validate only real threats, it removes the friction of manual security checks—saving costly engineering hours while safeguarding our revenue from devastating breaches
+
+
 A modular, AI-powered security scanning platform for GitHub organizations. Scan repositories for secrets, vulnerabilities, and misconfigurations with multi-tenant support.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
