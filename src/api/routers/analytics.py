@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_, case, desc
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from loguru import logger
 from ..dependencies import get_tenant_db
 from ..database import  get_request_org_id
@@ -29,82 +29,96 @@ router = APIRouter(
 # =============================================================================
 
 class HeroMetricsResponse(BaseModel):
-    repositories: int
-    criticalFindings: int
-    underInvestigation: int
-    aiAnalysesToday: int
-    trends: Dict[str, Dict[str, Any]]
+    repositories: int = Field(..., description="Total number of repositories")
+    criticalFindings: int = Field(..., description="Count of open critical severity findings")
+    underInvestigation: int = Field(..., description="Count of findings currently under investigation")
+    aiAnalysesToday: int = Field(..., description="Number of AI analyses performed today")
+    trends: Dict[str, Dict[str, Any]] = Field(..., description="Trend data for each metric (value and label)")
 
 
 class RepoRiskItem(BaseModel):
-    id: str
-    name: str
-    riskScore: int
-    riskLevel: str
-    criticalFindings: int
-    highFindings: int
-    secretsCount: int
-    isArchived: bool
-    isAbandoned: bool
+    id: str = Field(..., description="Repository UUID")
+    name: str = Field(..., description="Repository name")
+    riskScore: int = Field(..., description="Calculated risk score (0-100)")
+    riskLevel: str = Field(..., description="Risk level category (low, medium, high, critical)")
+    criticalFindings: int = Field(..., description="Count of open critical findings")
+    highFindings: int = Field(..., description="Count of open high findings")
+    secretsCount: int = Field(..., description="Count of exposed secrets detected")
+    isArchived: bool = Field(..., description="Whether the repository is archived")
+    isAbandoned: bool = Field(..., description="Whether the repository has had no activity for 1+ year")
 
 
 class AIInsightItem(BaseModel):
-    id: str
-    type: str
-    title: str
-    description: str
-    timestamp: datetime
-    severity: Optional[str] = None
-    link: Optional[str] = None
-    repoName: Optional[str] = None
+    id: str = Field(..., description="Insight identifier")
+    type: str = Field(..., description="Insight type (finding, remediation, analysis, alert)")
+    title: str = Field(..., description="Insight title/headline")
+    description: str = Field(..., description="Detailed description of the insight")
+    timestamp: datetime = Field(..., description="When the insight was generated")
+    severity: Optional[str] = Field(None, description="Severity level if applicable")
+    link: Optional[str] = Field(None, description="Link to related resource")
+    repoName: Optional[str] = Field(None, description="Associated repository name")
 
 
 class ThreatRadarResponse(BaseModel):
-    critical: int
-    high: int
-    medium: int
-    secrets: int
-    abandoned: int
-    staleContributors: int
-    overallScore: int  # 0-100 (higher = better security posture)
+    critical: int = Field(..., description="Count of open critical findings")
+    high: int = Field(..., description="Count of open high findings")
+    medium: int = Field(..., description="Count of open medium findings")
+    secrets: int = Field(..., description="Count of exposed secrets (TruffleHog findings)")
+    abandoned: int = Field(..., description="Count of abandoned repositories (no push in 1+ year)")
+    staleContributors: int = Field(..., description="Count of contributors with no commits in 90+ days")
+    overallScore: int = Field(..., description="Overall security posture score (0-100, higher is better)")
 
 
 class ImmediateActionItem(BaseModel):
-    title: str
-    count: int
-    description: str
-    severity: str
-    link: str
+    title: str = Field(..., description="Action item title")
+    count: int = Field(..., description="Number of affected items")
+    description: str = Field(..., description="Description of why action is needed")
+    severity: str = Field(..., description="Severity level of the action (critical, high, medium)")
+    link: str = Field(..., description="URL path to the relevant findings or resources")
 
 
 class TrendItem(BaseModel):
-    label: str
-    value: str
-    direction: str  # "up", "down", "neutral"
-    isGood: bool
+    label: str = Field(..., description="Trend metric label")
+    value: str = Field(..., description="Human-readable trend value")
+    direction: str = Field(..., description="Trend direction (up, down, neutral)")
+    isGood: bool = Field(..., description="Whether this trend direction is positive")
 
 
 class PostureData(BaseModel):
-    grade: str
-    score: int
-    summary: str
+    grade: str = Field(..., description="Letter grade (A through F)")
+    score: int = Field(..., description="Numeric security posture score (0-100)")
+    summary: str = Field(..., description="Human-readable security posture summary")
 
 
 class ExecutiveSummaryResponse(BaseModel):
-    immediateActions: List[ImmediateActionItem]
-    trends: List[TrendItem]
-    posture: PostureData
+    immediateActions: List[ImmediateActionItem] = Field(..., description="Top priority action items requiring attention")
+    trends: List[TrendItem] = Field(..., description="Weekly trend metrics")
+    posture: PostureData = Field(..., description="Overall security posture assessment")
 
 
 class ComponentFeedback(BaseModel):
-    component_id: str
-    component_name: str
-    vote: str  # "up" or "down"
-    timestamp: str
+    component_id: str = Field(..., description="Dashboard component identifier")
+    component_name: str = Field(..., description="Human-readable component name")
+    vote: str = Field(..., description="Feedback vote (up or down)")
+    timestamp: str = Field(..., description="ISO 8601 timestamp of the feedback")
 
-@router.get("/summary", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/summary",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get dashboard summary metrics",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_summary_metrics(db: Session = Depends(get_tenant_db)):
-    """Get high-level summary metrics for the dashboard."""
+    """
+    Get high-level summary metrics for the dashboard.
+
+    Returns total open findings, critical findings count, repositories scanned,
+    and mean-time-to-remediation. Requires reports:read permission.
+    """
     org_id = get_request_org_id()
 
     # Efficient counting using func.count()
@@ -136,9 +150,23 @@ async def get_summary_metrics(db: Session = Depends(get_tenant_db)):
         "mttr_days": mttr_days
     }
 
-@router.get("/severity-distribution", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/severity-distribution",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get findings count by severity with trends",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_severity_distribution(db: Session = Depends(get_tenant_db)):
-    """Get count of findings by severity with trend data."""
+    """
+    Get count of findings by severity with trend data.
+
+    Returns current severity counts compared to the previous week for
+    trend analysis. Requires reports:read permission.
+    """
     now = datetime.utcnow()
     week_ago = now - timedelta(days=7)
     two_weeks_ago = now - timedelta(days=14)
@@ -190,9 +218,23 @@ async def get_severity_distribution(db: Session = Depends(get_tenant_db)):
     return response
 
 
-@router.get("/severity-trend", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/severity-trend",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get findings trend over repository lifetime",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_severity_trend(db: Session = Depends(get_tenant_db)):
-    """Get trend data for all findings over the lifetime of repos."""
+    """
+    Get trend data for all findings over the lifetime of repos.
+
+    Returns a timeline of cumulative and open findings counts from the
+    earliest repository creation date to now. Requires reports:read permission.
+    """
     now = datetime.utcnow()
     org_id = get_request_org_id()
 
@@ -281,9 +323,23 @@ async def get_severity_trend(db: Session = Depends(get_tenant_db)):
         "totalDays": total_days
     }
 
-@router.get("/repo-growth", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/repo-growth",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get repository growth over time",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_repo_growth(db: Session = Depends(get_tenant_db)):
-    """Get repository growth over the lifetime of the GitHub organization."""
+    """
+    Get repository growth over the lifetime of the GitHub organization.
+
+    Returns yearly timeline of cumulative and new repository counts.
+    Requires reports:read permission.
+    """
     now = datetime.utcnow()
     org_id = get_request_org_id()
 
@@ -378,9 +434,23 @@ async def get_repo_growth(db: Session = Depends(get_tenant_db)):
     }
 
 
-@router.get("/trends", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/trends",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get finding trends over recent days",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_finding_trends(days: int = 7, db: Session = Depends(get_tenant_db)):
-    """Get finding trends over the last N days."""
+    """
+    Get finding trends over the last N days.
+
+    Returns daily finding counts for the specified lookback period.
+    Requires reports:read permission.
+    """
     # This is a simplified implementation. 
     # In a real system, you'd likely have a separate 'snapshots' table 
     # or use time-series queries on the history table.
@@ -402,9 +472,23 @@ async def get_finding_trends(days: int = 7, db: Session = Depends(get_tenant_db)
         
     return list(reversed(trends))
 
-@router.get("/recent-findings", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/recent-findings",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get recent critical and high findings",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_recent_findings(limit: int = 5, db: Session = Depends(get_tenant_db)):
-    """Get recent critical/high findings."""
+    """
+    Get recent critical/high findings.
+
+    Returns the most recent open findings with critical or high severity,
+    ordered by creation date. Requires reports:read permission.
+    """
     # Apply org filter
     base_query = apply_org_filter(db.query(models.Finding), models.Finding)
     findings = base_query.join(models.Repository).filter(
@@ -426,9 +510,24 @@ async def get_recent_findings(limit: int = 5, db: Session = Depends(get_tenant_d
 # Hollywood Dashboard Endpoints
 # =============================================================================
 
-@router.get("/hero-metrics", response_model=HeroMetricsResponse, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/hero-metrics",
+    response_model=HeroMetricsResponse,
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get hero metrics for the dashboard",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_hero_metrics(db: Session = Depends(get_tenant_db)):
-    """Get hero metrics for the Hollywood dashboard with trend data."""
+    """
+    Get hero metrics for the Hollywood dashboard with trend data.
+
+    Returns key metrics (repositories, critical findings, investigations,
+    AI analyses) along with weekly/daily trend comparisons. Requires reports:read permission.
+    """
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = now - timedelta(days=7)
@@ -523,12 +622,27 @@ async def get_hero_metrics(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.get("/risk-heatmap", response_model=List[RepoRiskItem], dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/risk-heatmap",
+    response_model=List[RepoRiskItem],
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get repository risk data for heatmap",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_risk_heatmap(
     limit: int = Query(50, le=100),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get repository risk data for the heatmap visualization."""
+    """
+    Get repository risk data for the heatmap visualization.
+
+    Returns per-repository risk scores based on findings severity, secrets
+    exposure, and activity status. Requires reports:read permission.
+    """
     now = datetime.utcnow()
     one_year_ago = now - timedelta(days=365)
 
@@ -610,12 +724,27 @@ async def get_risk_heatmap(
     return results[:limit]
 
 
-@router.get("/ai-insights", response_model=List[AIInsightItem], dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/ai-insights",
+    response_model=List[AIInsightItem],
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get recent AI activity insights",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_ai_insights(
     limit: int = Query(10, le=50),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get recent AI activity for the insights panel."""
+    """
+    Get recent AI activity for the insights panel.
+
+    Returns AI-generated insights including recent findings, remediations,
+    and security alerts. Requires reports:read permission.
+    """
     insights = []
     now = datetime.utcnow()
 
@@ -704,9 +833,25 @@ async def get_ai_insights(
     return insights[:limit]
 
 
-@router.get("/threat-radar", response_model=ThreatRadarResponse, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/threat-radar",
+    response_model=ThreatRadarResponse,
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get threat radar data for visualization",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_threat_radar(db: Session = Depends(get_tenant_db)):
-    """Get threat radar data for the animated visualization."""
+    """
+    Get threat radar data for the animated visualization.
+
+    Returns counts of threats by category (critical, high, medium, secrets,
+    abandoned repos, stale contributors) and an overall security score.
+    Requires reports:read permission.
+    """
     now = datetime.utcnow()
     one_year_ago = now - timedelta(days=365)
     ninety_days_ago = now - timedelta(days=90)
@@ -803,9 +948,24 @@ async def get_threat_radar(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.get("/executive-summary", response_model=ExecutiveSummaryResponse, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/executive-summary",
+    response_model=ExecutiveSummaryResponse,
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get executive summary with actions and trends",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_executive_summary(db: Session = Depends(get_tenant_db)):
-    """Get executive summary data for the 'What Matters Now' cards."""
+    """
+    Get executive summary data for the 'What Matters Now' cards.
+
+    Returns immediate action items, weekly trends, and overall security
+    posture grade. Requires reports:read permission.
+    """
     now = datetime.utcnow()
     week_ago = now - timedelta(days=7)
     two_weeks_ago = now - timedelta(days=14)
@@ -1078,9 +1238,23 @@ async def get_executive_summary(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.get("/recent-scans", dependencies=[Depends(require_permissions("scans:read"))])
+@router.get(
+    "/recent-scans",
+    dependencies=[Depends(require_permissions("scans:read"))],
+    summary="Get recent scan runs",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - scans:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_recent_scans(limit: int = 10, db: Session = Depends(get_tenant_db)):
-    """Get recent scan runs across all repositories."""
+    """
+    Get recent scan runs across all repositories.
+
+    Returns scan details including status, findings count, and duration.
+    Requires scans:read permission.
+    """
     query = db.query(models.ScanRun).options(
         joinedload(models.ScanRun.repository)
     )
@@ -1108,9 +1282,23 @@ async def get_recent_scans(limit: int = 10, db: Session = Depends(get_tenant_db)
     ]
 
 
-@router.get("/finding-trends", dependencies=[Depends(require_permissions("reports:read"))])
+@router.get(
+    "/finding-trends",
+    dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get finding counts by severity over time",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - reports:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_finding_trends(days: int = 30, db: Session = Depends(get_tenant_db)):
-    """Get finding counts by severity over time for trend charts."""
+    """
+    Get finding counts by severity over time for trend charts.
+
+    Returns a timeline with per-severity breakdowns over the specified
+    number of days. Requires reports:read permission.
+    """
     now = datetime.utcnow()
     start_date = now - timedelta(days=days)
 

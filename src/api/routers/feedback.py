@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 import json
 import os
@@ -15,10 +15,11 @@ router = APIRouter(
 
 
 class ComponentFeedback(BaseModel):
-    component_id: str
-    component_name: str
-    vote: str  # "up" or "down"
-    timestamp: str
+    """Request model for submitting feedback on a dashboard component."""
+    component_id: str = Field(..., description="Unique identifier of the dashboard component")
+    component_name: str = Field(..., description="Display name of the dashboard component")
+    vote: str = Field(..., description="Vote direction: 'up' or 'down'")
+    timestamp: str = Field(..., description="ISO-8601 timestamp when the vote was cast")
 
 
 # Simple file-based storage for feedback (no DB migration needed)
@@ -44,9 +45,22 @@ def save_feedback(feedback_list: list):
         json.dump(feedback_list, f, indent=2)
 
 
-@router.post("/component", dependencies=[Depends(require_permissions("projects:write"))])
+@router.post(
+    "/component",
+    dependencies=[Depends(require_permissions("projects:write"))],
+    summary="Submit component feedback",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing projects:write permission"},
+        500: {"description": "Failed to persist feedback to storage"},
+    },
+)
 async def submit_component_feedback(feedback: ComponentFeedback):
-    """Submit feedback for a dashboard component."""
+    """Record an up or down vote for a dashboard component.
+
+    Requires the **projects:write** permission. Feedback is appended to a
+    JSON file on disk and used to compute component satisfaction scores.
+    """
     feedback_list = load_feedback()
 
     feedback_entry = {
@@ -63,9 +77,21 @@ async def submit_component_feedback(feedback: ComponentFeedback):
     return {"status": "success", "message": "Feedback recorded"}
 
 
-@router.get("/component/summary", dependencies=[Depends(require_permissions("projects:read"))])
+@router.get(
+    "/component/summary",
+    dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Get component feedback summary",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing projects:read permission"},
+    },
+)
 async def get_feedback_summary():
-    """Get summary of all component feedback."""
+    """Return aggregated feedback scores for all dashboard components.
+
+    Requires the **projects:read** permission. Groups votes by component and
+    calculates up-vote count, down-vote count, total votes, and a percentage score.
+    """
     feedback_list = load_feedback()
 
     # Aggregate by component
@@ -94,7 +120,19 @@ async def get_feedback_summary():
     return list(summary.values())
 
 
-@router.get("/component/raw", dependencies=[Depends(require_permissions("projects:read"))])
+@router.get(
+    "/component/raw",
+    dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Get raw feedback entries",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing projects:read permission"},
+    },
+)
 async def get_raw_feedback():
-    """Get all raw feedback entries for analysis."""
+    """Return all individual feedback entries for detailed analysis.
+
+    Requires the **projects:read** permission. Returns the complete list of
+    feedback records including component ID, vote direction, and timestamps.
+    """
     return load_feedback()

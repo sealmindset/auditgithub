@@ -41,24 +41,24 @@ class CriblConfigUpdate(BaseModel):
 
 class CriblConfigResponse(BaseModel):
     """Response model for Cribl configuration."""
-    id: str
-    ingest_url: Optional[str]
-    auth_token_set: bool
-    verify_ssl: bool
-    enabled: bool
-    log_levels: List[str]
-    include_app_context: bool
-    include_security_audit: bool
-    minio_fallback: bool
-    minio_endpoint: Optional[str]
-    minio_bucket: Optional[str]
-    minio_access_key_set: bool
-    minio_secret_key_set: bool
-    last_test_at: Optional[datetime]
-    last_test_status: Optional[str]
-    last_test_message: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    id: str = Field(..., description="Unique configuration record identifier")
+    ingest_url: Optional[str] = Field(None, description="Cribl HTTP/S ingest endpoint URL")
+    auth_token_set: bool = Field(..., description="Whether an authentication token has been configured")
+    verify_ssl: bool = Field(..., description="Whether SSL certificate verification is enabled")
+    enabled: bool = Field(..., description="Whether Cribl log forwarding is currently enabled")
+    log_levels: List[str] = Field(..., description="Log levels being forwarded to Cribl")
+    include_app_context: bool = Field(..., description="Whether application context is included in logs")
+    include_security_audit: bool = Field(..., description="Whether security audit fields are included in logs")
+    minio_fallback: bool = Field(..., description="Whether MinIO fallback storage is enabled")
+    minio_endpoint: Optional[str] = Field(None, description="MinIO S3 API endpoint URL")
+    minio_bucket: Optional[str] = Field(None, description="MinIO bucket name for fallback storage")
+    minio_access_key_set: bool = Field(..., description="Whether a MinIO access key has been configured")
+    minio_secret_key_set: bool = Field(..., description="Whether a MinIO secret key has been configured")
+    last_test_at: Optional[datetime] = Field(None, description="When the last connection test was performed")
+    last_test_status: Optional[str] = Field(None, description="Result of the last connection test (SUCCESS, FAILED, PENDING)")
+    last_test_message: Optional[str] = Field(None, description="Detailed message from the last connection test")
+    created_at: datetime = Field(..., description="When the configuration was created")
+    updated_at: datetime = Field(..., description="When the configuration was last updated")
 
     class Config:
         from_attributes = True
@@ -73,20 +73,20 @@ class CriblTestRequest(BaseModel):
 
 class CriblTestResponse(BaseModel):
     """Response model for Cribl connection test."""
-    success: bool
-    message: str
-    response_time_ms: Optional[int]
-    status_code: Optional[int]
-    details: Optional[dict]
+    success: bool = Field(..., description="Whether the connection test succeeded")
+    message: str = Field(..., description="Human-readable result message")
+    response_time_ms: Optional[int] = Field(None, description="Round-trip response time in milliseconds")
+    status_code: Optional[int] = Field(None, description="HTTP status code returned by the endpoint")
+    details: Optional[dict] = Field(None, description="Additional diagnostic details")
 
 
 class CriblStatusResponse(BaseModel):
     """Response model for Cribl logging status."""
-    enabled: bool
-    cribl_configured: bool
-    minio_configured: bool
-    last_test_status: Optional[str]
-    last_test_at: Optional[datetime]
+    enabled: bool = Field(..., description="Whether Cribl log forwarding is enabled")
+    cribl_configured: bool = Field(..., description="Whether Cribl ingest URL and auth token are set")
+    minio_configured: bool = Field(..., description="Whether MinIO endpoint is configured")
+    last_test_status: Optional[str] = Field(None, description="Result of the last connection test")
+    last_test_at: Optional[datetime] = Field(None, description="Timestamp of the last connection test")
 
 
 def get_or_create_config(db: Session) -> models.CriblConfig:
@@ -112,9 +112,22 @@ def get_or_create_config(db: Session) -> models.CriblConfig:
     return config
 
 
-@router.get("/config", response_model=CriblConfigResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/config",
+    response_model=CriblConfigResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get Cribl configuration",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 def get_config(db: Session = Depends(get_tenant_db)):
-    """Get current Cribl configuration."""
+    """Retrieve the current Cribl Stream integration configuration.
+
+    Requires the **admin:manage** permission. Sensitive fields such as
+    auth tokens and secret keys are returned as boolean flags only.
+    """
     config = get_or_create_config(db)
     
     return CriblConfigResponse(
@@ -139,9 +152,22 @@ def get_config(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.post("/config", response_model=CriblConfigResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/config",
+    response_model=CriblConfigResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Update Cribl configuration",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 def update_config(update: CriblConfigUpdate, db: Session = Depends(get_tenant_db)):
-    """Update Cribl configuration."""
+    """Update the Cribl Stream integration configuration.
+
+    Requires the **admin:manage** permission. Only fields included in the
+    request body are modified; omitted fields retain their current values.
+    """
     config = get_or_create_config(db)
     
     if update.ingest_url is not None:
@@ -195,13 +221,23 @@ def update_config(update: CriblConfigUpdate, db: Session = Depends(get_tenant_db
     )
 
 
-@router.post("/test", response_model=CriblTestResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/test",
+    response_model=CriblTestResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Test Cribl connection",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def test_connection(request: CriblTestRequest, db: Session = Depends(get_tenant_db)):
     """
     Test connection to Cribl Stream endpoint.
-    
-    Sends a test log entry to verify connectivity and authentication.
-    Uses provided values or falls back to saved configuration.
+
+    Requires the **admin:manage** permission. Sends a test log entry to verify
+    connectivity and authentication. Uses provided override values or falls
+    back to the saved configuration.
     """
     config = get_or_create_config(db)
     
@@ -317,12 +353,22 @@ async def test_connection(request: CriblTestRequest, db: Session = Depends(get_t
         )
 
 
-@router.post("/test-minio", response_model=CriblTestResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/test-minio",
+    response_model=CriblTestResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Test MinIO connection",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def test_minio_connection(db: Session = Depends(get_tenant_db)):
     """
-    Test connection to MinIO storage.
-    
-    Verifies that MinIO is accessible and the bucket exists or can be created.
+    Test connection to MinIO fallback storage.
+
+    Requires the **admin:manage** permission. Verifies that MinIO is
+    accessible by performing a health check against the configured endpoint.
     """
     config = get_or_create_config(db)
     
@@ -369,9 +415,22 @@ async def test_minio_connection(db: Session = Depends(get_tenant_db)):
         )
 
 
-@router.get("/status", response_model=CriblStatusResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/status",
+    response_model=CriblStatusResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get Cribl logging status",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 def get_status(db: Session = Depends(get_tenant_db)):
-    """Get current Cribl logging status."""
+    """Return a high-level overview of the Cribl logging integration status.
+
+    Requires the **admin:manage** permission. Reports whether Cribl and MinIO
+    are configured and the result of the most recent connection test.
+    """
     config = get_or_create_config(db)
     
     return CriblStatusResponse(
@@ -383,9 +442,21 @@ def get_status(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.post("/toggle", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/toggle",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Toggle Cribl log forwarding",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 def toggle_cribl(enabled: bool, db: Session = Depends(get_tenant_db)):
-    """Enable or disable Cribl log forwarding."""
+    """Enable or disable Cribl log forwarding globally.
+
+    Requires the **admin:manage** permission. When disabled, no logs are
+    sent to the Cribl ingest endpoint.
+    """
     config = get_or_create_config(db)
     config.enabled = enabled
     config.updated_at = datetime.utcnow()
@@ -400,26 +471,36 @@ def toggle_cribl(enabled: bool, db: Session = Depends(get_tenant_db)):
 
 class LogForwardRequest(BaseModel):
     """Request model for forwarding a log entry."""
-    timestamp: str
-    level: str
-    message: str
-    source: Optional[str] = None
-    host: Optional[str] = None
-    module: Optional[str] = None
-    function: Optional[str] = None
-    line: Optional[int] = None
-    app_context: Optional[dict] = None
-    security_audit: Optional[dict] = None
-    extra: Optional[dict] = None
+    timestamp: str = Field(..., description="ISO-8601 timestamp of the log event")
+    level: str = Field(..., description="Log level (e.g. INFO, WARNING, ERROR, CRITICAL)")
+    message: str = Field(..., description="Log message text")
+    source: Optional[str] = Field(None, description="Source of the log entry (e.g. web-ui, api)")
+    host: Optional[str] = Field(None, description="Hostname that generated the log")
+    module: Optional[str] = Field(None, description="Python module name that produced the log")
+    function: Optional[str] = Field(None, description="Function name that produced the log")
+    line: Optional[int] = Field(None, description="Source code line number")
+    app_context: Optional[dict] = Field(None, description="Application context fields (org_id, user_id, request_id)")
+    security_audit: Optional[dict] = Field(None, description="Security audit fields (action, resource, outcome)")
+    extra: Optional[dict] = Field(None, description="Additional custom fields")
 
 
-@router.post("/forward", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/forward",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Forward a log entry to Cribl",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        500: {"description": "Internal error during log forwarding"},
+    },
+)
 async def forward_log(log_entry: LogForwardRequest, db: Session = Depends(get_tenant_db)):
     """
     Forward a log entry to Cribl Stream.
-    
-    This endpoint is called by the Next.js log proxy to forward client-side logs
-    to Cribl with the authentication token added server-side.
+
+    Requires the **admin:manage** permission. Called by the Next.js log proxy
+    to forward client-side logs to Cribl with the authentication token added
+    server-side. Returns an error status if Cribl is not enabled or configured.
     """
     config = get_or_create_config(db)
     

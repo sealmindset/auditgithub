@@ -5,7 +5,7 @@ Endpoints for admins to manage user invitations.
 Allows sending, listing, and revoking invitations.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -31,9 +31,9 @@ router = APIRouter(prefix="/api/invitations", tags=["invitations"])
 
 class SendInvitationRequest(BaseModel):
     """Request body for sending invitation."""
-    email: EmailStr
-    role: str = 'user'
-    access_type: str = 'ui_only'
+    email: EmailStr = Field(..., description="Email address to send the invitation to")
+    role: str = Field('user', description="Role to assign to the invited user (user, developer, analyst, manager, admin)")
+    access_type: str = Field('ui_only', description="Access type for the invited user (ui_only, api_only, both)")
 
     class Config:
         schema_extra = {
@@ -47,15 +47,15 @@ class SendInvitationRequest(BaseModel):
 
 class InvitationResponse(BaseModel):
     """Response model for invitation."""
-    id: str
-    email: str
-    role: str
-    access_type: str
-    status: str
-    invited_by_email: str
-    created_at: datetime
-    expires_at: datetime
-    accepted_at: Optional[datetime] = None
+    id: str = Field(..., description="Unique invitation identifier (UUID)")
+    email: str = Field(..., description="Invited user's email address")
+    role: str = Field(..., description="Role assigned to the invitation")
+    access_type: str = Field(..., description="Access type assigned to the invitation")
+    status: str = Field(..., description="Invitation status (pending, accepted, revoked, expired)")
+    invited_by_email: str = Field(..., description="Email of the admin who sent the invitation")
+    created_at: datetime = Field(..., description="When the invitation was created")
+    expires_at: datetime = Field(..., description="When the invitation expires")
+    accepted_at: Optional[datetime] = Field(None, description="When the invitation was accepted, if applicable")
 
     class Config:
         schema_extra = {
@@ -75,28 +75,38 @@ class InvitationResponse(BaseModel):
 
 class SendInvitationResponse(BaseModel):
     """Response for sending invitation."""
-    message: str
-    invitation_id: str
-    expires_at: datetime
-    invitation_link: str
+    message: str = Field(..., description="Success message")
+    invitation_id: str = Field(..., description="Unique ID of the created invitation")
+    expires_at: datetime = Field(..., description="Expiration timestamp for the invitation")
+    invitation_link: str = Field(..., description="URL link for the invitee to accept the invitation")
 
 
 class ValidateInvitationResponse(BaseModel):
     """Response for validating invitation token."""
-    valid: bool
-    email: Optional[str] = None
-    role: Optional[str] = None
-    access_type: Optional[str] = None
-    expires_at: Optional[datetime] = None
-    invited_by_email: Optional[str] = None
-    message: Optional[str] = None
+    valid: bool = Field(..., description="Whether the invitation token is valid and still pending")
+    email: Optional[str] = Field(None, description="Invited email address (if valid)")
+    role: Optional[str] = Field(None, description="Role assigned to the invitation (if valid)")
+    access_type: Optional[str] = Field(None, description="Access type assigned (if valid)")
+    expires_at: Optional[datetime] = Field(None, description="Expiration timestamp (if valid)")
+    invited_by_email: Optional[str] = Field(None, description="Email of the admin who sent the invitation (if valid)")
+    message: Optional[str] = Field(None, description="Status message when the invitation is invalid or expired")
 
 
 # =========================================================================
 # Endpoints
 # =========================================================================
 
-@router.post("", response_model=SendInvitationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=SendInvitationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Send a user invitation",
+    responses={
+        400: {"description": "Invalid role/access type, or user already exists"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+    },
+)
 async def send_invitation(
     body: SendInvitationRequest,
     current_user: User = Depends(require_admin),
@@ -172,7 +182,15 @@ async def send_invitation(
         )
 
 
-@router.get("", response_model=List[InvitationResponse])
+@router.get(
+    "",
+    response_model=List[InvitationResponse],
+    summary="List all pending invitations",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+    },
+)
 async def list_invitations(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
@@ -207,7 +225,17 @@ async def list_invitations(
     ]
 
 
-@router.delete("/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{invitation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a pending invitation",
+    responses={
+        400: {"description": "Invitation cannot be revoked (already accepted or expired)"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+        404: {"description": "Invitation not found"},
+    },
+)
 async def revoke_invitation(
     invitation_id: UUID,
     current_user: User = Depends(require_admin),
@@ -244,7 +272,14 @@ async def revoke_invitation(
         )
 
 
-@router.get("/validate/{token}", response_model=ValidateInvitationResponse)
+@router.get(
+    "/validate/{token}",
+    response_model=ValidateInvitationResponse,
+    summary="Validate an invitation token",
+    responses={
+        500: {"description": "Internal server error"},
+    },
+)
 async def validate_invitation(
     token: str,
     db: Session = Depends(get_db)

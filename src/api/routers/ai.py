@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from io import BytesIO
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from loguru import logger
@@ -85,9 +85,22 @@ router = APIRouter(
     tags=["ai"]
 )
 
-@router.get("/config", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/config",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get current AI provider configuration",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+    },
+)
 async def get_ai_config():
-    """Get current AI configuration."""
+    """
+    Get current AI configuration.
+
+    Returns the active AI provider, model names, and connection settings.
+    Requires findings:read permission.
+    """
     return {
         "provider": settings.AI_PROVIDER,
         "model": settings.AI_MODEL,
@@ -140,23 +153,40 @@ except Exception as e:
     logger.warning(f"Failed to initialize diagrams index: {e}")
 
 class RemediationRequest(BaseModel):
-    vuln_type: str
-    description: str
-    context: str
-    language: str
-    finding_id: Optional[str] = None
+    vuln_type: str = Field(..., description="Vulnerability type (e.g. SQL Injection, XSS)")
+    description: str = Field(..., description="Description of the vulnerability")
+    context: str = Field(..., description="Code context surrounding the vulnerability")
+    language: str = Field(..., description="Programming language of the affected code")
+    finding_id: Optional[str] = Field(None, description="Finding UUID to persist the remediation against")
 
 class RemediationResponse(BaseModel):
-    remediation: str
-    diff: str
-    remediation_id: Optional[str] = None
+    remediation: str = Field(..., description="AI-generated remediation guidance text")
+    diff: str = Field(..., description="Suggested code diff to fix the vulnerability")
+    remediation_id: Optional[str] = Field(None, description="UUID of the persisted remediation record")
 
-@router.post("/remediate", response_model=RemediationResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/remediate",
+    response_model=RemediationResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Generate AI remediation for a vulnerability",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "AI generation failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def generate_remediation(
     request: RemediationRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """Generate remediation for a vulnerability."""
+    """
+    Generate remediation for a vulnerability.
+
+    Uses AI to produce remediation guidance and a suggested code diff.
+    Optionally persists the result to the database if finding_id is provided.
+    Requires findings:write permission.
+    """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
     
@@ -207,24 +237,40 @@ async def generate_remediation(
         raise HTTPException(status_code=500, detail=str(e))
 
 class TriageRequest(BaseModel):
-    title: str
-    description: str
-    severity: str
-    scanner: str
-    finding_id: Optional[str] = None
+    title: str = Field(..., description="Finding title")
+    description: str = Field(..., description="Finding description")
+    severity: str = Field(..., description="Severity level (critical, high, medium, low, info)")
+    scanner: str = Field(..., description="Scanner that detected the finding")
+    finding_id: Optional[str] = Field(None, description="Finding UUID to append triage results to")
 
 class TriageResponse(BaseModel):
-    priority: str
-    confidence: float
-    reasoning: str
-    false_positive_probability: float
+    priority: str = Field(..., description="Triage priority level (Critical, High, Medium, Low)")
+    confidence: float = Field(..., description="AI confidence score (0.0-1.0)")
+    reasoning: str = Field(..., description="Human-readable triage reasoning")
+    false_positive_probability: float = Field(..., description="Probability that this is a false positive (0.0-1.0)")
 
-@router.post("/triage", response_model=TriageResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/triage",
+    response_model=TriageResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="AI-triage a security finding",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "AI triage failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def triage_finding(
     request: TriageRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """Analyze and triage a finding."""
+    """
+    Analyze and triage a finding.
+
+    Uses AI to determine priority, confidence, and false positive probability.
+    Optionally appends analysis to the finding description. Requires findings:write permission.
+    """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
         
@@ -284,15 +330,31 @@ async def triage_finding(
         raise HTTPException(status_code=500, detail=str(e))
 
 class AnalyzeFindingRequest(BaseModel):
-    finding_id: str
-    prompt: Optional[str] = None
+    finding_id: str = Field(..., description="Finding UUID to analyze")
+    prompt: Optional[str] = Field(None, description="Optional custom analysis prompt")
 
-@router.post("/analyze-finding", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/analyze-finding",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Analyze a specific finding using AI",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Finding not found"},
+        500: {"description": "AI analysis failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def analyze_finding_endpoint(
     request: AnalyzeFindingRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """Analyze a specific finding using AI."""
+    """
+    Analyze a specific finding using AI.
+
+    Performs deep security analysis on the finding and appends the result
+    to the finding description. Requires findings:write permission.
+    """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
 
@@ -361,16 +423,31 @@ async def analyze_finding_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 class AnalyzeComponentRequest(BaseModel):
-    package_name: str
-    version: str
-    package_manager: str
+    package_name: str = Field(..., description="Package/library name to analyze")
+    version: str = Field(..., description="Package version string")
+    package_manager: str = Field(..., description="Package manager (npm, pip, maven, etc.)")
 
-@router.post("/analyze-component", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/analyze-component",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Analyze a software component for vulnerabilities",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "AI analysis failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def analyze_component_endpoint(
     request: AnalyzeComponentRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """Analyze a software component using AI, with caching."""
+    """
+    Analyze a software component using AI, with caching.
+
+    Returns cached analysis if available, otherwise calls AI provider.
+    Results are cached in the database. Requires findings:write permission.
+    """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
 
@@ -430,9 +507,20 @@ async def analyze_component_endpoint(
         logger.error(f"Error analyzing component: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/remediate/{remediation_id}")
+@router.delete(
+    "/remediate/{remediation_id}",
+    summary="Delete a remediation suggestion",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        404: {"description": "Remediation not found"},
+    },
+)
 def delete_remediation(remediation_id: str, db: Session = Depends(get_tenant_db)):
-    """Delete a remediation suggestion."""
+    """
+    Delete a remediation suggestion.
+
+    Removes a previously generated remediation record from the database.
+    """
     try:
         uuid_obj = uuid.UUID(remediation_id)
     except ValueError:
@@ -447,16 +535,27 @@ def delete_remediation(remediation_id: str, db: Session = Depends(get_tenant_db)
     return {"status": "success", "message": "Remediation deleted"}
 
 class ZeroDayRequest(BaseModel):
-    query: str
-    scope: Optional[List[str]] = None  # ["dependencies", "findings", "languages", "all"]
+    query: str = Field(..., description="Natural language query about vulnerabilities or technologies")
+    scope: Optional[List[str]] = Field(None, description="Data sources to search (dependencies, findings, languages, all)")
 
 class ZeroDayResponse(BaseModel):
-    answer: str
-    affected_repositories: List[Dict[str, Any]]
-    plan: Optional[Dict[str, Any]] = None
-    execution_summary: Optional[List[str]] = None
+    answer: str = Field(..., description="AI-generated analysis answer")
+    affected_repositories: List[Dict[str, Any]] = Field(..., description="List of repositories affected by the vulnerability")
+    plan: Optional[Dict[str, Any]] = Field(None, description="Search plan generated by the AI agent")
+    execution_summary: Optional[List[str]] = Field(None, description="Summary of search operations executed")
 
-@router.post("/zero-day", response_model=ZeroDayResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/zero-day",
+    response_model=ZeroDayResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Analyze a zero-day vulnerability across repositories",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "Analysis failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def analyze_zero_day(
     request: ZeroDayRequest,
     db: Session = Depends(get_tenant_db)
@@ -493,10 +592,21 @@ async def analyze_zero_day(
         logger.error(f"Error in zero-day analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/zero-day/prompt", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/zero-day/prompt",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get the zero-day analysis prompt template",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+    },
+)
 async def get_zero_day_prompt():
     """
     Get the current zero-day analysis planning prompt template.
+
+    Returns the AI prompt used for generating search plans during
+    zero-day analysis. Requires findings:read permission.
     """
     # Return the prompt template used in analyze_zero_day
     prompt_template = """You are a Senior Security Analyst Agent analyzing Zero Day vulnerabilities.
@@ -539,16 +649,29 @@ IMPORTANT: Return ONLY the JSON object, no markdown formatting."""
     return {"prompt": prompt_template}
 
 class ValidateZDAPromptRequest(BaseModel):
-    prompt: str
-    test_query: Optional[str] = "Find all repositories using React"
+    prompt: str = Field(..., description="Prompt template to validate")
+    test_query: Optional[str] = Field("Find all repositories using React", description="Sample query to test the prompt with")
 
-@router.post("/zero-day/prompt/validate", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/zero-day/prompt/validate",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Validate a zero-day analysis prompt",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "AI provider does not support prompt execution"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def validate_zero_day_prompt(
     request: ValidateZDAPromptRequest,
     db: Session = Depends(get_tenant_db)
 ):
     """
     Validate a zero-day analysis prompt by testing it with a sample query.
+
+    Formats the prompt template with a test query and sends it to the AI
+    provider to verify it produces valid output. Requires findings:write permission.
     """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
@@ -596,9 +719,23 @@ async def validate_zero_day_prompt(
 
 
 # Zero Day Analysis Export Endpoints
-@router.post("/zero-day/export/pdf", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/zero-day/export/pdf",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Export zero-day analysis as PDF",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "PDF generation failed or reportlab not installed"},
+    },
+)
 async def export_zda_pdf(request: dict):
-    """Export Zero Day Analysis as PDF."""
+    """
+    Export Zero Day Analysis as PDF.
+
+    Generates a downloadable PDF report containing the analysis, affected
+    repositories, and metadata. Requires findings:write permission.
+    """
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
@@ -693,9 +830,23 @@ async def export_zda_pdf(request: dict):
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
-@router.post("/zero-day/export/docx", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/zero-day/export/docx",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Export zero-day analysis as DOCX",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "DOCX generation failed or python-docx not installed"},
+    },
+)
 async def export_zda_docx(request: dict):
-    """Export Zero Day Analysis as DOCX."""
+    """
+    Export Zero Day Analysis as DOCX.
+
+    Generates a downloadable Word document containing the analysis, affected
+    repositories, and metadata. Requires findings:write permission.
+    """
     try:
         from docx import Document
         from docx.shared import Inches, Pt
@@ -764,9 +915,23 @@ async def export_zda_docx(request: dict):
 
 
 # Zero Day Analysis - Repository List Export Endpoints
-@router.post("/zero-day/export/repos/pdf", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/zero-day/export/repos/pdf",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Export affected repositories list as PDF",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "PDF generation failed or reportlab not installed"},
+    },
+)
 async def export_zda_repos_pdf(request: dict):
-    """Export Zero Day Analysis affected repositories as PDF."""
+    """
+    Export Zero Day Analysis affected repositories as PDF.
+
+    Generates a downloadable PDF with a table of affected repositories.
+    Requires findings:write permission.
+    """
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
@@ -851,9 +1016,23 @@ async def export_zda_repos_pdf(request: dict):
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
-@router.post("/zero-day/export/repos/docx", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/zero-day/export/repos/docx",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Export affected repositories list as DOCX",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "DOCX generation failed or python-docx not installed"},
+    },
+)
 async def export_zda_repos_docx(request: dict):
-    """Export Zero Day Analysis affected repositories as DOCX."""
+    """
+    Export Zero Day Analysis affected repositories as DOCX.
+
+    Generates a downloadable Word document with a table of affected repositories.
+    Requires findings:write permission.
+    """
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
@@ -942,23 +1121,39 @@ import os
 import tempfile
 
 class ArchitectureRequest(BaseModel):
-    project_id: str
+    project_id: str = Field(..., description="Repository UUID or name to analyze")
 
 class ArchitectureUpdateRequest(BaseModel):
-    report: str
-    diagram: Optional[str] = None
+    report: str = Field(..., description="Architecture report markdown text")
+    diagram: Optional[str] = Field(None, description="Python diagrams-as-code source for the architecture diagram")
 
 class PromptRequest(BaseModel):
-    project_id: str
-    prompt: Optional[str] = None
+    project_id: str = Field(..., description="Repository UUID or name")
+    prompt: Optional[str] = Field(None, description="Custom architecture prompt to execute")
 
-@router.post("/architecture/prompt", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture/prompt",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Get the architecture analysis prompt for a project",
+    responses={
+        400: {"description": "Repository URL is missing"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project not found"},
+        500: {"description": "Prompt generation failed"},
+    },
+)
 async def get_architecture_prompt(
     request: ArchitectureRequest,
     db: Session = Depends(get_tenant_db),
     settings: settings = Depends(lambda: settings)
 ):
-    """Get the constructed architecture prompt for a project."""
+    """
+    Get the constructed architecture prompt for a project.
+
+    Clones the repository, analyzes its structure, and builds a prompt
+    for AI architecture generation. Requires findings:write permission.
+    """
     try:
         p_uuid = uuid.UUID(request.project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -998,12 +1193,27 @@ async def get_architecture_prompt(
         logger.error(f"Error building prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/architecture/validate", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture/validate",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Execute a custom architecture prompt",
+    responses={
+        400: {"description": "Prompt is required"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "Prompt execution failed"},
+    },
+)
 async def validate_architecture_prompt(
     request: PromptRequest,
     settings: settings = Depends(lambda: settings)
 ):
-    """Execute a custom architecture prompt."""
+    """
+    Execute a custom architecture prompt.
+
+    Sends a custom prompt to the AI provider and returns the response.
+    Used for testing and validating prompts. Requires findings:write permission.
+    """
     if not request.prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
@@ -1018,16 +1228,33 @@ async def validate_architecture_prompt(
         raise HTTPException(status_code=500, detail=str(e))
 
 class RefineRequest(BaseModel):
-    project_id: str
-    code: str
+    project_id: str = Field(..., description="Repository UUID or name")
+    code: str = Field(..., description="Diagram Python code to refine")
 
-@router.post("/architecture/refine", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture/refine",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Refine diagram code with correct cloud provider icons",
+    responses={
+        400: {"description": "Code is required"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project not found"},
+        500: {"description": "Refinement failed"},
+        503: {"description": "AI provider does not support diagram code fixing"},
+    },
+)
 async def refine_architecture_diagram(
     request: RefineRequest,
     db: Session = Depends(get_tenant_db),
     settings: settings = Depends(lambda: settings)
 ):
-    """Refine diagram code to use correct cloud provider icons."""
+    """
+    Refine diagram code to use correct cloud provider icons.
+
+    Uses AI to fix import paths and ensure the correct cloud provider icons
+    are used based on the architecture report. Requires findings:write permission.
+    """
     if not request.code:
         raise HTTPException(status_code=400, detail="Code is required")
 
@@ -1066,13 +1293,28 @@ async def refine_architecture_diagram(
         raise HTTPException(status_code=500, detail=str(e))
 
 class ArchitectureResponse(BaseModel):
-    report: str
-    diagram: Optional[str] = None # Python code
-    image: Optional[str] = None # Base64 PNG
+    report: str = Field(..., description="Architecture overview report in markdown")
+    diagram: Optional[str] = Field(None, description="Python diagrams-as-code source")
+    image: Optional[str] = Field(None, description="Base64-encoded PNG image of the architecture diagram")
 
-@router.get("/architecture/{project_id}", response_model=ArchitectureResponse, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/architecture/{project_id}",
+    response_model=ArchitectureResponse,
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get saved architecture overview for a project",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+        404: {"description": "Project not found"},
+    },
+)
 async def get_architecture(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get saved architecture overview for a project."""
+    """
+    Get saved architecture overview for a project.
+
+    Returns the stored architecture report, diagram code, and generated
+    PNG image. Requires findings:read permission.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -1113,9 +1355,22 @@ async def get_architecture(project_id: str, db: Session = Depends(get_tenant_db)
         image=image_b64
     )
 
-@router.put("/architecture/{project_id}", response_model=ArchitectureResponse)
+@router.put(
+    "/architecture/{project_id}",
+    response_model=ArchitectureResponse,
+    summary="Update architecture overview after user edits",
+    responses={
+        404: {"description": "Project not found"},
+        500: {"description": "Diagram generation or AI fix failed"},
+    },
+)
 async def update_architecture(project_id: str, request: ArchitectureUpdateRequest, db: Session = Depends(get_tenant_db)):
-    """Update architecture overview (e.g. after user edits)."""
+    """
+    Update architecture overview (e.g. after user edits).
+
+    Saves the updated report and diagram code, then attempts to regenerate
+    the architecture diagram image.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -1225,9 +1480,28 @@ def execute_diagram_code(code: str, use_self_annealing: bool = True, report_cont
         with open(png_path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
 
-@router.post("/architecture", response_model=ArchitectureResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture",
+    response_model=ArchitectureResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Generate an architecture overview for a project",
+    responses={
+        400: {"description": "Repository URL is missing"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project not found"},
+        500: {"description": "Architecture generation failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def generate_architecture(request: ArchitectureRequest, db: Session = Depends(get_tenant_db)):
-    """Generate an architecture overview for a project."""
+    """
+    Generate an architecture overview for a project.
+
+    Clones the repository, analyzes its structure, and uses AI to generate
+    an architecture report with a diagrams-as-code visualization.
+    Requires findings:write permission.
+    """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
         
@@ -1322,25 +1596,41 @@ async def generate_architecture(request: ArchitectureRequest, db: Session = Depe
             cleanup_repo(repo_path)
 
 class VersionCreateRequest(BaseModel):
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, description="Optional description for this version snapshot")
 
 class VersionResponse(BaseModel):
-    id: str
-    version_number: int
-    created_at: str
-    description: Optional[str] = None
-    
-class VersionDetailResponse(VersionResponse):
-    report: str
-    diagram: Optional[str] = None
+    id: str = Field(..., description="Version UUID")
+    version_number: int = Field(..., description="Sequential version number")
+    created_at: str = Field(..., description="ISO 8601 creation timestamp")
+    description: Optional[str] = Field(None, description="Version description")
 
-@router.post("/architecture/{project_id}/versions", response_model=VersionResponse, dependencies=[Depends(require_permissions("findings:write"))])
+class VersionDetailResponse(VersionResponse):
+    report: str = Field(..., description="Architecture report content for this version")
+    diagram: Optional[str] = Field(None, description="Diagram code for this version")
+
+@router.post(
+    "/architecture/{project_id}/versions",
+    response_model=VersionResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Save current architecture as a new version",
+    responses={
+        400: {"description": "No architecture report to save"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project not found"},
+    },
+)
 async def create_architecture_version(
     project_id: str, 
     request: VersionCreateRequest, 
     db: Session = Depends(get_tenant_db)
 ):
-    """Save current architecture state as a new version."""
+    """
+    Save current architecture state as a new version.
+
+    Creates a snapshot of the current architecture report and diagram code
+    with an auto-incremented version number. Requires findings:write permission.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -1377,9 +1667,24 @@ async def create_architecture_version(
         description=new_version.description
     )
 
-@router.get("/architecture/{project_id}/versions", response_model=List[VersionResponse], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/architecture/{project_id}/versions",
+    response_model=List[VersionResponse],
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="List all architecture versions for a project",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+        404: {"description": "Project not found"},
+    },
+)
 async def list_architecture_versions(project_id: str, db: Session = Depends(get_tenant_db)):
-    """List all architecture versions for a project."""
+    """
+    List all architecture versions for a project.
+
+    Returns version metadata sorted by version number descending.
+    Requires findings:read permission.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -1403,9 +1708,25 @@ async def list_architecture_versions(project_id: str, db: Session = Depends(get_
         ) for v in versions
     ]
 
-@router.get("/architecture/{project_id}/versions/{version_id}", response_model=VersionDetailResponse, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/architecture/{project_id}/versions/{version_id}",
+    response_model=VersionDetailResponse,
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get a specific architecture version",
+    responses={
+        400: {"description": "Invalid version ID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+        404: {"description": "Version not found"},
+    },
+)
 async def get_architecture_version(project_id: str, version_id: str, db: Session = Depends(get_tenant_db)):
-    """Get details of a specific architecture version."""
+    """
+    Get details of a specific architecture version.
+
+    Returns the full report and diagram code for the given version.
+    Requires findings:read permission.
+    """
     try:
         v_uuid = uuid.UUID(version_id)
         version = db.query(models.ArchitectureVersion).filter(models.ArchitectureVersion.id == v_uuid).first()
@@ -1424,9 +1745,24 @@ async def get_architecture_version(project_id: str, version_id: str, db: Session
         diagram=version.diagram_code
     )
 
-@router.post("/architecture/{project_id}/restore/{version_id}", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture/{project_id}/restore/{version_id}",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Restore a previous architecture version",
+    responses={
+        400: {"description": "Invalid version ID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project or version not found"},
+    },
+)
 async def restore_architecture_version(project_id: str, version_id: str, db: Session = Depends(get_tenant_db)):
-    """Restore a previous architecture version."""
+    """
+    Restore a previous architecture version.
+
+    Overwrites the current architecture report and diagram code with the
+    contents of the specified version. Requires findings:write permission.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -1457,22 +1793,35 @@ async def restore_architecture_version(project_id: str, version_id: str, db: Ses
 # Architecture Preprocessing Endpoint
 
 class PreprocessRequest(BaseModel):
-    project_id: str
-    force_refresh: bool = False  # If True, re-preprocess even if cached
+    project_id: str = Field(..., description="Repository UUID or name to preprocess")
+    force_refresh: bool = Field(False, description="If true, re-preprocess even if cached data exists")
 
 class PreprocessedArchitectureResponse(BaseModel):
-    project_name: str
-    project_type: str
-    cloud_provider: Optional[str] = None
-    components: List[Dict[str, Any]]
-    api_summary: Dict[str, Any]
-    data_layer: Dict[str, Any]
-    external_integrations: List[Dict[str, str]]
-    tech_stack: Dict[str, List[str]]
-    confidence_notes: List[str]
-    cached: bool = False
+    project_name: str = Field(..., description="Detected project name")
+    project_type: str = Field(..., description="Detected project type (web-api, cli, library, etc.)")
+    cloud_provider: Optional[str] = Field(None, description="Detected cloud provider (aws, gcp, azure)")
+    components: List[Dict[str, Any]] = Field(..., description="Extracted architecture components")
+    api_summary: Dict[str, Any] = Field(..., description="Summary of API routes and endpoints")
+    data_layer: Dict[str, Any] = Field(..., description="Data layer details (databases, caches, etc.)")
+    external_integrations: List[Dict[str, str]] = Field(..., description="External service integrations detected")
+    tech_stack: Dict[str, List[str]] = Field(..., description="Technology stack by category")
+    confidence_notes: List[str] = Field(..., description="Notes about detection confidence and assumptions")
+    cached: bool = Field(False, description="Whether the response was served from cache")
 
-@router.post("/architecture/preprocess", response_model=PreprocessedArchitectureResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture/preprocess",
+    response_model=PreprocessedArchitectureResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Preprocess repository for architecture extraction",
+    responses={
+        400: {"description": "Repository URL is missing"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project not found"},
+        500: {"description": "Preprocessing failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def preprocess_architecture(
     request: PreprocessRequest,
     db: Session = Depends(get_tenant_db)
@@ -1566,7 +1915,20 @@ async def preprocess_architecture(
             cleanup_repo(repo_path)
 
 
-@router.post("/architecture/generate-from-preprocessed", response_model=ArchitectureResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/architecture/generate-from-preprocessed",
+    response_model=ArchitectureResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Generate architecture diagram from preprocessed data",
+    responses={
+        400: {"description": "No preprocessed data found"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Project not found"},
+        500: {"description": "Diagram generation failed"},
+        503: {"description": "AI Agent not initialized"},
+    },
+)
 async def generate_architecture_from_preprocessed(
     request: ArchitectureRequest,
     db: Session = Depends(get_tenant_db)
@@ -1737,29 +2099,39 @@ IMPORTANT: Only use icons that exist in the diagrams library. When in doubt, use
 
 class DeduplicateRequest(BaseModel):
     """Request to find duplicate findings."""
-    repository_id: Optional[str] = None  # Scope to single repo
-    limit: int = 100  # Max findings to analyze
-    similarity_threshold: float = 0.8  # 0-1 similarity score
+    repository_id: Optional[str] = Field(None, description="Scope deduplication to a single repository UUID")
+    limit: int = Field(100, description="Maximum number of findings to analyze")
+    similarity_threshold: float = Field(0.8, description="Similarity threshold (0.0-1.0) for grouping duplicates")
 
 
 class DuplicateGroup(BaseModel):
     """A group of duplicate findings."""
-    group_id: str
-    primary_finding_id: str
-    primary_title: str
-    member_count: int
-    member_ids: List[str]
-    similarity_reason: str
+    group_id: str = Field(..., description="Unique group identifier")
+    primary_finding_id: str = Field(..., description="UUID of the primary finding in the group")
+    primary_title: str = Field(..., description="Title of the primary finding")
+    member_count: int = Field(..., description="Number of findings in the duplicate group")
+    member_ids: List[str] = Field(..., description="UUIDs of all findings in the group")
+    similarity_reason: str = Field(..., description="Explanation of why these findings are grouped")
 
 
 class DeduplicateResponse(BaseModel):
     """Response after deduplication analysis."""
-    groups_found: int
-    duplicate_groups: List[DuplicateGroup]
-    total_findings_analyzed: int
+    groups_found: int = Field(..., description="Number of duplicate groups detected")
+    duplicate_groups: List[DuplicateGroup] = Field(..., description="Identified duplicate groups")
+    total_findings_analyzed: int = Field(..., description="Total findings that were analyzed")
 
 
-@router.post("/deduplicate", response_model=DeduplicateResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/deduplicate",
+    response_model=DeduplicateResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Find duplicate findings using AI",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "Deduplication analysis failed"},
+    },
+)
 def find_duplicate_findings(
     request: DeduplicateRequest,
     db: Session = Depends(get_tenant_db)
@@ -1834,12 +2206,26 @@ def find_duplicate_findings(
     )
 
 
-@router.get("/duplicate-groups", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/duplicate-groups",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get all duplicate finding groups",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_duplicate_groups(
     limit: int = 20,
     db: Session = Depends(get_tenant_db)
 ):
-    """Get all duplicate groups."""
+    """
+    Get all duplicate groups.
+
+    Returns duplicate finding groups with member counts, ordered by group
+    size descending. Requires findings:read permission.
+    """
     from sqlalchemy import func as sql_func
     
     # Get groups with counts
@@ -1864,13 +2250,27 @@ def get_duplicate_groups(
     } for g in groups]
 
 
-@router.post("/merge-duplicates/{group_id}", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/merge-duplicates/{group_id}",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Perform bulk action on a duplicate group",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        404: {"description": "Duplicate group not found"},
+    },
+)
 def merge_duplicate_group(
     group_id: str,
     action: str = "resolve_non_primary",  # resolve_non_primary, keep_all
     db: Session = Depends(get_tenant_db)
 ):
-    """Perform bulk action on a duplicate group."""
+    """
+    Perform bulk action on a duplicate group.
+
+    Resolves non-primary findings as duplicates, or keeps all findings
+    depending on the action parameter. Requires findings:write permission.
+    """
     findings = db.query(models.Finding).filter(
         models.Finding.duplicate_group_id == group_id
     ).all()
@@ -1899,28 +2299,38 @@ def merge_duplicate_group(
 
 class AutoTriageRequest(BaseModel):
     """Request to auto-triage findings."""
-    finding_ids: Optional[List[str]] = None  # Specific IDs, or None for batch
-    limit: int = 50  # Max to triage if no specific IDs
+    finding_ids: Optional[List[str]] = Field(None, description="Specific finding UUIDs to triage, or null for batch mode")
+    limit: int = Field(50, description="Maximum findings to triage in batch mode")
 
 
 class TriageResult(BaseModel):
     """Single triage result."""
-    finding_id: str
-    recommendation: str  # true_positive, false_positive, needs_review
-    confidence: float
-    reasoning: str
+    finding_id: str = Field(..., description="Finding UUID")
+    recommendation: str = Field(..., description="Triage recommendation (true_positive, false_positive, needs_review)")
+    confidence: float = Field(..., description="Confidence score for the recommendation (0.0-1.0)")
+    reasoning: str = Field(..., description="Human-readable reasoning for the recommendation")
 
 
 class AutoTriageResponse(BaseModel):
     """Response after auto-triage."""
-    triaged_count: int
-    results: List[TriageResult]
-    true_positive_count: int
-    false_positive_count: int
-    needs_review_count: int
+    triaged_count: int = Field(..., description="Total number of findings triaged")
+    results: List[TriageResult] = Field(..., description="Per-finding triage results")
+    true_positive_count: int = Field(..., description="Number classified as true positive")
+    false_positive_count: int = Field(..., description="Number classified as false positive")
+    needs_review_count: int = Field(..., description="Number requiring manual review")
 
 
-@router.post("/auto-triage", response_model=AutoTriageResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/auto-triage",
+    response_model=AutoTriageResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Auto-triage findings using AI and heuristics",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "Auto-triage failed"},
+    },
+)
 def auto_triage_findings(
     request: AutoTriageRequest,
     db: Session = Depends(get_tenant_db)
@@ -2007,9 +2417,23 @@ def auto_triage_findings(
     )
 
 
-@router.get("/triage-stats", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/triage-stats",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get AI triage recommendation statistics",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_triage_stats(db: Session = Depends(get_tenant_db)):
-    """Get statistics on AI triage recommendations."""
+    """
+    Get statistics on AI triage recommendations.
+
+    Returns counts and average confidence by recommendation type
+    (true_positive, false_positive, needs_review). Requires findings:read permission.
+    """
     from sqlalchemy import func as sql_func
     
     stats = db.query(
@@ -2041,27 +2465,37 @@ def get_triage_stats(db: Session = Depends(get_tenant_db)):
 
 class FPPattern(BaseModel):
     """A false positive pattern."""
-    pattern_type: str  # title, file_path, scanner_rule
-    pattern_value: str
-    scanner_name: Optional[str]
-    match_count: int
-    confidence: float
-    auto_dismiss: bool
+    pattern_type: str = Field(..., description="Pattern type (title, file_path, scanner_rule)")
+    pattern_value: str = Field(..., description="Pattern value used for matching")
+    scanner_name: Optional[str] = Field(None, description="Scanner name if pattern is scanner-specific")
+    match_count: int = Field(..., description="Number of resolved FPs matching this pattern")
+    confidence: float = Field(..., description="Pattern confidence score (0.0-1.0)")
+    auto_dismiss: bool = Field(..., description="Whether this pattern should auto-dismiss future matches")
 
 
 class LearnFPRequest(BaseModel):
     """Request to learn from dismissed findings."""
-    days: int = 30  # Look back period
-    min_occurrences: int = 3  # Minimum times seen to create pattern
+    days: int = Field(30, description="Lookback period in days for analyzing resolved false positives")
+    min_occurrences: int = Field(3, description="Minimum times a pattern must appear to be learned")
 
 
 class LearnFPResponse(BaseModel):
     """Response after learning FP patterns."""
-    patterns_learned: int
-    patterns: List[FPPattern]
+    patterns_learned: int = Field(..., description="Number of new patterns identified")
+    patterns: List[FPPattern] = Field(..., description="Learned false positive patterns")
 
 
-@router.post("/learn-false-positives", response_model=LearnFPResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/learn-false-positives",
+    response_model=LearnFPResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Learn false positive patterns from resolved findings",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "Pattern learning failed"},
+    },
+)
 def learn_false_positive_patterns(
     request: LearnFPRequest,
     db: Session = Depends(get_tenant_db)
@@ -2133,7 +2567,16 @@ def learn_false_positive_patterns(
     )
 
 
-@router.get("/fp-suggestions", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get(
+    "/fp-suggestions",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get false positive dismissal suggestions",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_fp_suggestions(
     limit: int = 20,
     db: Session = Depends(get_tenant_db)
@@ -2186,12 +2629,26 @@ def get_fp_suggestions(
     }
 
 
-@router.post("/apply-fp-suggestions", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/apply-fp-suggestions",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Apply false positive suggestions to dismiss findings",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:write required"},
+        500: {"description": "Internal server error"},
+    },
+)
 def apply_fp_suggestions(
     finding_ids: List[str],
     db: Session = Depends(get_tenant_db)
 ):
-    """Apply false positive suggestions to findings."""
+    """
+    Apply false positive suggestions to findings.
+
+    Marks the specified findings as resolved with a false_positive resolution.
+    Requires findings:write permission.
+    """
     count = 0
     for fid in finding_ids:
         try:

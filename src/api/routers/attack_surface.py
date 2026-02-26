@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case, desc, asc
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 from loguru import logger
 import json
@@ -50,149 +50,149 @@ def get_ai_agent():
 
 class SecretFinding(BaseModel):
     """A hardcoded secret or sensitive data finding."""
-    id: str
-    title: str
-    severity: str
-    scanner_name: str
-    repo_name: str
-    repository_id: str
-    file_path: Optional[str]
-    line_start: Optional[int]
-    code_snippet: Optional[str]
-    secret_type: str  # Extracted from title
-    first_seen_at: Optional[datetime]
-    last_seen_at: Optional[datetime]
-    file_last_commit_at: Optional[datetime]
-    file_last_commit_author: Optional[str]
-    is_archived: bool
+    id: str = Field(..., description="Unique finding identifier")
+    title: str = Field(..., description="Title of the secret finding")
+    severity: str = Field(..., description="Severity level (critical, high, medium, low)")
+    scanner_name: str = Field(..., description="Scanner that detected the secret (e.g. trufflehog)")
+    repo_name: str = Field(..., description="Repository name where the secret was found")
+    repository_id: str = Field(..., description="UUID of the repository")
+    file_path: Optional[str] = Field(None, description="File path containing the secret")
+    line_start: Optional[int] = Field(None, description="Line number where the secret starts")
+    code_snippet: Optional[str] = Field(None, description="Truncated code snippet around the secret")
+    secret_type: str = Field(..., description="Type of secret extracted from the title")
+    first_seen_at: Optional[datetime] = Field(None, description="When the secret was first detected")
+    last_seen_at: Optional[datetime] = Field(None, description="When the secret was last seen")
+    file_last_commit_at: Optional[datetime] = Field(None, description="Last commit date for the file")
+    file_last_commit_author: Optional[str] = Field(None, description="Author of the last commit to the file")
+    is_archived: bool = Field(..., description="Whether the repository is archived")
 
     model_config = {"from_attributes": True}
 
 
 class HardcodedAsset(BaseModel):
     """A hardcoded IP, hostname, or URL finding."""
-    id: str
-    title: str
-    severity: str
-    scanner_name: str
-    repo_name: str
-    repository_id: str
-    file_path: Optional[str]
-    line_start: Optional[int]
-    code_snippet: Optional[str]
-    asset_type: str  # 'ip', 'hostname', 'url', 'http_link'
-    first_seen_at: Optional[datetime]
+    id: str = Field(..., description="Unique finding identifier")
+    title: str = Field(..., description="Title of the hardcoded asset finding")
+    severity: str = Field(..., description="Severity level (critical, high, medium, low)")
+    scanner_name: str = Field(..., description="Scanner that detected the asset")
+    repo_name: str = Field(..., description="Repository name where the asset was found")
+    repository_id: str = Field(..., description="UUID of the repository")
+    file_path: Optional[str] = Field(None, description="File path containing the hardcoded asset")
+    line_start: Optional[int] = Field(None, description="Line number where the asset starts")
+    code_snippet: Optional[str] = Field(None, description="Code snippet around the hardcoded asset")
+    asset_type: str = Field(..., description="Type of hardcoded asset: ip, hostname, url, or http_link")
+    first_seen_at: Optional[datetime] = Field(None, description="When the asset was first detected")
 
     model_config = {"from_attributes": True}
 
 
 class SecretsReport(BaseModel):
     """Aggregated secrets/hardcoded assets report."""
-    total_secrets: int
-    total_hardcoded_assets: int
-    secrets_by_type: dict
-    secrets_by_severity: dict
-    secrets_by_repo: List[dict]
-    top_affected_repos: List[dict]
-    recent_secrets: List[SecretFinding]
+    total_secrets: int = Field(..., description="Total number of secret findings")
+    total_hardcoded_assets: int = Field(..., description="Total number of hardcoded asset findings")
+    secrets_by_type: dict = Field(..., description="Count of secrets grouped by type")
+    secrets_by_severity: dict = Field(..., description="Count of secrets grouped by severity")
+    secrets_by_repo: List[dict] = Field(..., description="Secret counts per repository")
+    top_affected_repos: List[dict] = Field(..., description="Top repositories by secret count")
+    recent_secrets: List[SecretFinding] = Field(..., description="Most recently discovered secrets")
 
 
 class AbandonedRepo(BaseModel):
     """A potentially abandoned repository."""
-    id: str
-    name: str
-    url: Optional[str]
-    description: Optional[str]
-    language: Optional[str]
-    pushed_at: Optional[datetime]
-    github_created_at: Optional[datetime]
-    is_archived: bool
-    visibility: Optional[str]
-    days_since_push: Optional[int]
-    abandonment_score: int  # 0-100
-    abandonment_reasons: List[str]
-    open_findings_count: int
-    critical_findings_count: int
-    contributor_count: int
-    active_contributors_count: int  # Active in last year
+    id: str = Field(..., description="UUID of the repository")
+    name: str = Field(..., description="Repository name")
+    url: Optional[str] = Field(None, description="Repository URL")
+    description: Optional[str] = Field(None, description="Repository description")
+    language: Optional[str] = Field(None, description="Primary programming language")
+    pushed_at: Optional[datetime] = Field(None, description="Last push date")
+    github_created_at: Optional[datetime] = Field(None, description="GitHub creation date")
+    is_archived: bool = Field(..., description="Whether the repository is archived")
+    visibility: Optional[str] = Field(None, description="Repository visibility (public, private, internal)")
+    days_since_push: Optional[int] = Field(None, description="Number of days since last push")
+    abandonment_score: int = Field(..., description="Abandonment risk score from 0 to 100")
+    abandonment_reasons: List[str] = Field(..., description="Reasons contributing to the abandonment score")
+    open_findings_count: int = Field(..., description="Number of open security findings")
+    critical_findings_count: int = Field(..., description="Number of critical severity findings")
+    contributor_count: int = Field(..., description="Total number of contributors")
+    active_contributors_count: int = Field(..., description="Contributors active in the last year")
 
     model_config = {"from_attributes": True}
 
 
 class StaleContributor(BaseModel):
     """A contributor with no recent activity (deduplicated across repos)."""
-    id: str
-    name: str
-    email: Optional[str]
-    github_username: Optional[str]
-    total_repos: int  # Number of repos they contributed to
-    repo_names: List[str]  # List of repo names
-    total_commits: int  # Total commits across all repos
-    last_commit_at: Optional[datetime]
-    days_since_last_commit: Optional[int]
-    files_with_findings: int
-    critical_files_count: int
-    risk_score: int
-    merged_identities: int = 1  # Number of identities merged (>1 means duplicates found)
-    all_emails: Optional[List[str]] = None  # All emails if multiple identities merged
+    id: str = Field(..., description="Unique contributor identifier")
+    name: str = Field(..., description="Contributor display name")
+    email: Optional[str] = Field(None, description="Primary email address")
+    github_username: Optional[str] = Field(None, description="GitHub username")
+    total_repos: int = Field(..., description="Number of repos they contributed to")
+    repo_names: List[str] = Field(..., description="List of repository names")
+    total_commits: int = Field(..., description="Total commits across all repos")
+    last_commit_at: Optional[datetime] = Field(None, description="Date of last commit to any repo")
+    days_since_last_commit: Optional[int] = Field(None, description="Days since last commit")
+    files_with_findings: int = Field(..., description="Number of files with security findings")
+    critical_files_count: int = Field(..., description="Number of files with critical findings")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    merged_identities: int = Field(1, description="Number of identities merged (>1 means duplicates found)")
+    all_emails: Optional[List[str]] = Field(None, description="All email addresses if multiple identities merged")
 
     model_config = {"from_attributes": True}
 
 
 class PublicExposure(BaseModel):
     """A publicly exposed repository."""
-    id: str
-    name: str
-    url: Optional[str]
-    description: Optional[str]
-    visibility: str
-    is_archived: bool
-    pushed_at: Optional[datetime]
-    open_findings_count: int
-    critical_findings_count: int
-    secrets_count: int
-    exposure_risk: str  # 'critical', 'high', 'medium', 'low'
-    risk_factors: List[str]
+    id: str = Field(..., description="UUID of the repository")
+    name: str = Field(..., description="Repository name")
+    url: Optional[str] = Field(None, description="Repository URL")
+    description: Optional[str] = Field(None, description="Repository description")
+    visibility: str = Field(..., description="Repository visibility level")
+    is_archived: bool = Field(..., description="Whether the repository is archived")
+    pushed_at: Optional[datetime] = Field(None, description="Last push date")
+    open_findings_count: int = Field(..., description="Number of open security findings")
+    critical_findings_count: int = Field(..., description="Number of critical findings")
+    secrets_count: int = Field(..., description="Number of exposed secrets")
+    exposure_risk: str = Field(..., description="Overall exposure risk: critical, high, medium, or low")
+    risk_factors: List[str] = Field(..., description="List of risk factors contributing to exposure")
 
     model_config = {"from_attributes": True}
 
 
 class HighRiskRepo(BaseModel):
     """A high-risk repository based on attack surface analysis."""
-    id: str
-    name: str
-    url: Optional[str]
-    description: Optional[str]
-    visibility: str
-    is_archived: bool
-    is_abandoned: bool
-    last_commit_date: Optional[datetime]
-    days_since_activity: Optional[int]
-    open_findings_count: int
-    critical_findings_count: int
-    high_findings_count: int
-    secrets_count: int
-    risk_score: int  # 0-100
-    risk_level: str  # 'critical', 'high', 'medium', 'low'
-    risk_factors: List[str]
-    primary_language: Optional[str]
-    contributors_count: int
+    id: str = Field(..., description="UUID of the repository")
+    name: str = Field(..., description="Repository name")
+    url: Optional[str] = Field(None, description="Repository URL")
+    description: Optional[str] = Field(None, description="Repository description")
+    visibility: str = Field(..., description="Repository visibility (public, private, internal)")
+    is_archived: bool = Field(..., description="Whether the repository is archived")
+    is_abandoned: bool = Field(..., description="Whether the repository is considered abandoned")
+    last_commit_date: Optional[datetime] = Field(None, description="Date of the last commit")
+    days_since_activity: Optional[int] = Field(None, description="Days since last activity")
+    open_findings_count: int = Field(..., description="Total open findings count")
+    critical_findings_count: int = Field(..., description="Number of critical findings")
+    high_findings_count: int = Field(..., description="Number of high severity findings")
+    secrets_count: int = Field(..., description="Number of detected secrets")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    risk_level: str = Field(..., description="Risk level: critical, high, medium, or low")
+    risk_factors: List[str] = Field(..., description="List of contributing risk factors")
+    primary_language: Optional[str] = Field(None, description="Primary programming language")
+    contributors_count: int = Field(..., description="Number of contributors")
 
     model_config = {"from_attributes": True}
 
 
 class AttackSurfaceSummary(BaseModel):
     """Overall attack surface summary."""
-    total_repos: int
-    public_repos: int
-    archived_repos: int
-    abandoned_repos: int
-    total_findings: int
-    total_secrets: int
-    total_hardcoded_assets: int
-    stale_contributors: int
-    high_risk_repos: int
-    active_investigations: int = 0  # Findings under triage or incident response
+    total_repos: int = Field(..., description="Total number of repositories")
+    public_repos: int = Field(..., description="Number of public repositories")
+    archived_repos: int = Field(..., description="Number of archived repositories")
+    abandoned_repos: int = Field(..., description="Number of abandoned repositories (no push in 1+ year)")
+    total_findings: int = Field(..., description="Total open security findings")
+    total_secrets: int = Field(..., description="Total secrets from TruffleHog scans")
+    total_hardcoded_assets: int = Field(..., description="Total hardcoded assets from Semgrep scans")
+    stale_contributors: int = Field(..., description="Contributors with no recent activity (90+ days)")
+    high_risk_repos: int = Field(..., description="Number of repositories classified as high risk")
+    active_investigations: int = Field(0, description="Findings currently under triage or incident response")
 
 
 # =============================================================================
@@ -201,17 +201,17 @@ class AttackSurfaceSummary(BaseModel):
 
 class IRFinding(BaseModel):
     """A finding currently under investigation."""
-    id: str
-    title: str
-    severity: str
-    investigation_status: str
-    investigation_started_at: Optional[datetime]
-    scanner_name: Optional[str]
-    repo_name: str
-    repository_id: Optional[str]
-    file_path: Optional[str]
-    journal_count: int = 0
-    last_journal_at: Optional[datetime]
+    id: str = Field(..., description="Finding UUID")
+    title: str = Field(..., description="Finding title")
+    severity: str = Field(..., description="Severity level (critical, high, medium, low)")
+    investigation_status: str = Field(..., description="Current investigation status (triage, incident_response)")
+    investigation_started_at: Optional[datetime] = Field(None, description="When the investigation was started")
+    scanner_name: Optional[str] = Field(None, description="Scanner that detected the finding")
+    repo_name: str = Field(..., description="Repository name")
+    repository_id: Optional[str] = Field(None, description="UUID of the repository")
+    file_path: Optional[str] = Field(None, description="File path of the finding")
+    journal_count: int = Field(0, description="Number of journal entries for this investigation")
+    last_journal_at: Optional[datetime] = Field(None, description="Timestamp of the last journal entry")
 
     model_config = {"from_attributes": True}
 
@@ -527,7 +527,9 @@ def merge_contributor_group(group: List[Dict]) -> Dict:
 # 1. HARDCODED SECRETS & ASSETS REPORT
 # =============================================================================
 
-@router.get("/secrets", response_model=SecretsReport, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/secrets", response_model=SecretsReport, dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get hardcoded secrets and sensitive data report",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}, 500: {"description": "Internal server error"}})
 def get_secrets_report(
     db: Session = Depends(get_tenant_db),
     severity: Optional[str] = None,
@@ -653,13 +655,19 @@ def get_secrets_report(
     )
 
 
-@router.get("/secrets/by-type/{secret_type}", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/secrets/by-type/{secret_type}", dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get secrets filtered by type",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets_by_type(
     secret_type: str,
     db: Session = Depends(get_tenant_db),
     limit: int = Query(default=100, le=500)
 ):
-    """Get all secrets of a specific type (e.g., 'AWS', 'PrivateKey', 'SQLServer')."""
+    """
+    Get all secrets of a specific type (e.g., 'AWS', 'PrivateKey', 'SQLServer').
+    Returns findings with file commit metadata and severity ordering.
+    Requires findings:read permission.
+    """
     findings = db.query(
         models.Finding,
         models.Repository.name.label('repo_name'),
@@ -764,7 +772,9 @@ def calculate_abandonment_score(
     return min(score, 100), reasons
 
 
-@router.get("/abandoned", response_model=List[AbandonedRepo], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/abandoned", response_model=List[AbandonedRepo], dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get repositories with high abandonment risk",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_abandoned_repos(
     db: Session = Depends(get_tenant_db),
     min_score: int = Query(default=30, ge=0, le=100),
@@ -868,7 +878,9 @@ def get_abandoned_repos(
 # 3. STALE CONTRIBUTOR DETECTION
 # =============================================================================
 
-@router.get("/stale-contributors", response_model=List[StaleContributor], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/stale-contributors", response_model=List[StaleContributor], dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get inactive contributors across the organization",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_stale_contributors(
     db: Session = Depends(get_tenant_db),
     min_days_inactive: int = Query(default=90, description="Minimum days since last commit to ANY repo"),
@@ -1028,7 +1040,9 @@ def get_stale_contributors(
 # 4. PUBLIC EXPOSURE DETECTION
 # =============================================================================
 
-@router.get("/public-exposure", response_model=List[PublicExposure], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/public-exposure", response_model=List[PublicExposure], dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get public repositories with exposure risks",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_public_exposures(
     db: Session = Depends(get_tenant_db),
     include_archived: bool = False,
@@ -1126,7 +1140,9 @@ def get_public_exposures(
 # HIGH RISK REPOS
 # =============================================================================
 
-@router.get("/high-risk-repos", response_model=List[HighRiskRepo], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/high-risk-repos", response_model=List[HighRiskRepo], dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get high-risk repositories by attack surface analysis",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_high_risk_repos(
     db: Session = Depends(get_tenant_db),
     limit: int = Query(200, ge=1, le=200),
@@ -1314,10 +1330,14 @@ def get_high_risk_repos(
 # ATTACK SURFACE SUMMARY
 # =============================================================================
 
-@router.get("/summary", response_model=AttackSurfaceSummary, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/summary", response_model=AttackSurfaceSummary, dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get overall attack surface summary",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
     """
-    Get overall attack surface summary for executive dashboard.
+    Get overall attack surface summary for the executive dashboard.
+    Aggregates repository counts, findings, secrets, stale contributors, and risk metrics.
+    Requires findings:read permission.
     """
     now = datetime.utcnow()
     one_year_ago = now - timedelta(days=365)
@@ -1484,13 +1504,17 @@ def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
 # INCIDENT RESPONSE FINDINGS
 # =============================================================================
 
-@router.get("/incident-response", response_model=List[IRFinding], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/incident-response", response_model=List[IRFinding], dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get findings under active investigation",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_ir_findings(
     limit: int = Query(200, description="Maximum number of findings to return"),
     db: Session = Depends(get_tenant_db)
 ):
     """
     Get all findings currently under investigation (triage or incident_response status).
+    Includes journal entry counts and last journal dates for each finding.
+    Requires findings:read permission.
     """
     # Query findings with active investigation status
     findings = db.query(models.Finding).join(

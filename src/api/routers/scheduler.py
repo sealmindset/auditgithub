@@ -8,7 +8,7 @@ Provides REST API for:
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -22,55 +22,72 @@ router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
 class JobTriggerRequest(BaseModel):
     """Request to trigger a job."""
-    job_name: str
+    job_name: str = Field(..., description="Name of the scheduled job to trigger (e.g. annealing, scan, backup)")
 
 
 class JobStatusResponse(BaseModel):
     """Response for job status."""
-    description: str
-    cron: str
-    enabled: bool
-    last_run: Optional[str]
-    last_status: str
-    last_error: Optional[str]
-    run_count: int
-    error_count: int
+    description: str = Field(..., description="Human-readable description of the job")
+    cron: str = Field(..., description="Cron expression defining the schedule")
+    enabled: bool = Field(..., description="Whether the job is enabled")
+    last_run: Optional[str] = Field(None, description="ISO-8601 timestamp of the last execution")
+    last_status: str = Field(..., description="Status of the last run (success, error, pending)")
+    last_error: Optional[str] = Field(None, description="Error message from the last failed run")
+    run_count: int = Field(..., description="Total number of successful runs")
+    error_count: int = Field(..., description="Total number of failed runs")
 
 
 class SchedulerStatusResponse(BaseModel):
     """Response for scheduler status."""
-    enabled: bool
-    running: bool
-    jobs: Dict[str, JobStatusResponse]
+    enabled: bool = Field(..., description="Whether the scheduler is enabled in configuration")
+    running: bool = Field(..., description="Whether the scheduler is currently running")
+    jobs: Dict[str, JobStatusResponse] = Field(..., description="Map of job names to their current status")
 
 
 class TriggerResponse(BaseModel):
     """Response for job trigger."""
-    status: str
-    job_name: str
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    status: str = Field(..., description="Outcome of the trigger (success, error)")
+    job_name: str = Field(..., description="Name of the triggered job")
+    result: Optional[Dict[str, Any]] = Field(None, description="Result payload returned by the job")
+    error: Optional[str] = Field(None, description="Error message if the job failed")
 
 
-@router.get("/status", response_model=SchedulerStatusResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/status",
+    response_model=SchedulerStatusResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get scheduler status",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def get_scheduler_status():
     """
     Get the current scheduler status and all job information.
-    
-    Returns:
-        Scheduler status including all configured jobs
+
+    Requires the **admin:manage** permission. Returns whether the scheduler
+    is enabled and running, along with status details for every configured job.
     """
     scheduler = get_scheduler()
     return scheduler.get_status()
 
 
-@router.get("/jobs", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/jobs",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="List all scheduled jobs",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def list_jobs():
     """
-    List all configured scheduled jobs.
-    
-    Returns:
-        List of job names and their configurations
+    List all configured scheduled jobs with their current configurations.
+
+    Requires the **admin:manage** permission. Returns each job's name,
+    schedule, and run history in a flat list format.
     """
     scheduler = get_scheduler()
     status = scheduler.get_status()
@@ -88,16 +105,22 @@ async def list_jobs():
     }
 
 
-@router.get("/jobs/{job_name}", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/jobs/{job_name}",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get status for a specific job",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        404: {"description": "Job not found"},
+    },
+)
 async def get_job_status(job_name: str):
     """
-    Get status for a specific job.
-    
-    Args:
-        job_name: Name of the job (annealing, scan, backup)
-    
-    Returns:
-        Job status and configuration
+    Get detailed status for a specific scheduled job.
+
+    Requires the **admin:manage** permission. Returns the job's schedule,
+    run counts, last execution status, and any error messages.
     """
     scheduler = get_scheduler()
     status = scheduler.get_status()
@@ -111,16 +134,24 @@ async def get_job_status(job_name: str):
     }
 
 
-@router.post("/jobs/{job_name}/trigger", response_model=TriggerResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/jobs/{job_name}/trigger",
+    response_model=TriggerResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Manually trigger a job",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        404: {"description": "Job not found"},
+        500: {"description": "Internal error during job execution"},
+    },
+)
 async def trigger_job(job_name: str):
     """
-    Manually trigger a scheduled job.
-    
-    Args:
-        job_name: Name of the job to trigger (annealing, scan, backup)
-    
-    Returns:
-        Result of the job execution
+    Manually trigger a scheduled job outside of its normal cron schedule.
+
+    Requires the **admin:manage** permission. Executes the job immediately
+    and returns its result or error status.
     """
     scheduler = get_scheduler()
     
@@ -146,13 +177,22 @@ async def trigger_job(job_name: str):
         )
 
 
-@router.post("/start", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/start",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Start the scheduler",
+    responses={
+        400: {"description": "Scheduler is disabled in configuration"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def start_scheduler():
     """
-    Start the scheduler if it's not running.
-    
-    Returns:
-        Scheduler status after starting
+    Start the scheduler if it is not already running.
+
+    Requires the **admin:manage** permission. Returns an error if the
+    scheduler is disabled via SCHEDULER_ENABLED in the environment.
     """
     scheduler = get_scheduler()
     
@@ -166,26 +206,42 @@ async def start_scheduler():
     return {"status": "started", "scheduler": scheduler.get_status()}
 
 
-@router.post("/stop", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/stop",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Stop the scheduler",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def stop_scheduler():
     """
-    Stop the scheduler.
-    
-    Returns:
-        Scheduler status after stopping
+    Stop the running scheduler and all scheduled jobs.
+
+    Requires the **admin:manage** permission. Returns the updated scheduler
+    status after shutdown.
     """
     scheduler = get_scheduler()
     await scheduler.stop()
     return {"status": "stopped", "scheduler": scheduler.get_status()}
 
 
-@router.get("/next-runs", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/next-runs",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get next scheduled run times",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 async def get_next_runs():
     """
     Get the next scheduled run time for each enabled job.
-    
-    Returns:
-        List of jobs with their next run times
+
+    Requires the **admin:manage** permission. Returns an empty list if the
+    scheduler is not currently running.
     """
     scheduler = get_scheduler()
     

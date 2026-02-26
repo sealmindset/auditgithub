@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 import uuid
@@ -17,15 +17,22 @@ router = APIRouter(
 )
 
 class ScanRequest(BaseModel):
-    repo_name: str
-    scan_type: str = "full"  # full, incremental, validation
-    scanners: Optional[List[str]] = None # List of scanners to run (e.g. ['syft', 'trivy'])
-    finding_ids: Optional[List[str]] = None  # For validation scans
+    repo_name: str = Field(..., description="Repository name to scan", examples=["my-service"])
+    scan_type: str = Field("full", description="Scan type: full, incremental, or validation", examples=["full"])
+    scanners: Optional[List[str]] = Field(None, description="Specific scanners to run (e.g., ['syft', 'trivy'])")
+    finding_ids: Optional[List[str]] = Field(None, description="Finding IDs to re-validate (for validation scans)")
 
 class ScanResponse(BaseModel):
-    scan_id: str
-    status: str
-    message: str
+    scan_id: str = Field(..., description="UUID of the created scan run")
+    status: str = Field(..., description="Initial scan status (queued)")
+    message: str = Field(..., description="Human-readable status message")
+
+class ScanStatusResponse(BaseModel):
+    scan_id: str = Field(..., description="Scan run UUID")
+    status: str = Field(..., description="Current status: queued, running, completed, failed")
+    findings_count: Optional[int] = Field(None, description="Number of findings discovered")
+    created_at: Optional[datetime] = Field(None, description="Scan creation timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Scan completion timestamp")
 
 def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: List[str] = None, finding_ids: List[str] = None):
     """
@@ -104,13 +111,19 @@ def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: 
     finally:
         db.close()
 
-@router.post("/", dependencies=[Depends(require_permissions("scans:execute"))], response_model=ScanResponse)
+@router.post("/", dependencies=[Depends(require_permissions("scans:execute"))], response_model=ScanResponse, summary="Trigger a security scan", responses={404: {"description": "Repository not found"}, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}})
 async def trigger_scan(
-    request: ScanRequest, 
+    request: ScanRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_tenant_db)
 ):
-    """Trigger a new security scan."""
+    """Trigger a new security scan for a repository.
+
+    Queues a background scan job that runs the configured security scanners
+    (Gitleaks, Semgrep, Grype, Trivy, etc.) and ingests results into the findings database.
+
+    **Required permissions:** `scans:execute`
+    """
     # Verify repo exists
     repo = db.query(models.Repository).filter(models.Repository.name == request.repo_name).first()
     if not repo:
@@ -145,13 +158,19 @@ async def trigger_scan(
         message=f"{request.scan_type.capitalize()} scan initiated for {request.repo_name}"
     )
 
-@router.get("/{scan_id}", dependencies=[Depends(require_permissions("scans:read"))])
+@router.get("/{scan_id}", dependencies=[Depends(require_permissions("scans:read"))], response_model=ScanStatusResponse, summary="Get scan status", responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 404: {"description": "Scan not found"}})
 async def get_scan_status(
     scan_id: str,
     db: Session = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get the status of a scan."""
+    """Get the current status of a scan run.
+
+    Returns the scan's progress status, findings count (when complete),
+    and timestamps. Use this to poll for scan completion after triggering a scan.
+
+    **Required permissions:** `scans:read`
+    """
     # TODO Phase 4: Filter by user's tenant_id
     scan = db.query(models.ScanRun).filter(models.ScanRun.id == scan_id).first()
     if not scan:

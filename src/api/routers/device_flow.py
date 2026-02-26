@@ -18,7 +18,7 @@ Endpoints:
 from fastapi import APIRouter, Request, HTTPException, Depends, status, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -40,60 +40,60 @@ router = APIRouter(prefix="/auth/device", tags=["device-flow"])
 # =============================================================================
 
 class DeviceCodeRequest(BaseModel):
-    """Request body for /auth/device/code"""
-    client_id: str
-    client_name: str
-    scopes: Optional[List[str]] = []
+    """Request body for initiating the device authorization flow."""
+    client_id: str = Field(..., description="Application client identifier", examples=["auditgh-cli"])
+    client_name: str = Field(..., description="Human-readable application name", examples=["AuditGH CLI"])
+    scopes: Optional[List[str]] = Field([], description="Requested OAuth scopes")
 
 
 class DeviceCodeResponse(BaseModel):
-    """Response body for /auth/device/code"""
-    device_code: str
-    user_code: str
-    verification_uri: str
-    verification_uri_complete: str
-    expires_in: int  # seconds
-    interval: int  # polling interval in seconds
+    """Codes and URLs returned to the device for user verification."""
+    device_code: str = Field(..., description="Long device code for token polling (128 chars)")
+    user_code: str = Field(..., description="Short user code for manual entry (ABCD-1234 format)")
+    verification_uri: str = Field(..., description="URL where the user enters the code")
+    verification_uri_complete: str = Field(..., description="URL with code pre-filled")
+    expires_in: int = Field(..., description="Code validity in seconds (default 600)")
+    interval: int = Field(..., description="Recommended polling interval in seconds")
 
 
 class DeviceTokenRequest(BaseModel):
-    """Request body for /auth/device/token"""
-    grant_type: str  # Must be "urn:ietf:params:oauth:grant-type:device_code"
-    device_code: str
-    client_id: str
+    """Request body for polling the device token endpoint."""
+    grant_type: str = Field(..., description="Must be 'urn:ietf:params:oauth:grant-type:device_code'")
+    device_code: str = Field(..., description="Device code from POST /auth/device/code")
+    client_id: str = Field(..., description="Application client identifier")
 
 
 class DeviceTokenResponse(BaseModel):
-    """Response body for /auth/device/token (success)"""
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
+    """Token response returned after user approval."""
+    access_token: str = Field(..., description="Short-lived JWT access token")
+    refresh_token: str = Field(..., description="Long-lived refresh token for token rotation")
+    token_type: str = Field("bearer", description="Token type, always 'bearer'")
+    expires_in: int = Field(..., description="Access token lifetime in seconds")
 
 
 class DeviceAuthorizationResponse(BaseModel):
-    """Response body for device authorization records"""
-    id: UUID
-    device_name: str
-    client_name: str
-    created_at: datetime
-    last_used_at: datetime
-    is_active: bool
-    provider: str
-    user_agent: Optional[str]
-    token_refresh_count: int
+    """Device authorization record for the management UI."""
+    id: UUID = Field(..., description="Device authorization UUID")
+    device_name: str = Field(..., description="User-assigned device name")
+    client_name: str = Field(..., description="Application that requested access")
+    created_at: datetime = Field(..., description="When the device was authorized")
+    last_used_at: datetime = Field(..., description="Last API call using this device's token")
+    is_active: bool = Field(..., description="Whether the device authorization is active")
+    provider: str = Field(..., description="Identity provider used for authorization")
+    user_agent: Optional[str] = Field(None, description="User-Agent from the authorizing browser")
+    token_refresh_count: int = Field(..., description="Number of token refreshes performed")
 
 
 class RenameDeviceRequest(BaseModel):
-    """Request body for renaming a device"""
-    device_name: str
+    """Request body for renaming a device."""
+    device_name: str = Field(..., description="New device name", examples=["My Laptop"])
 
 
 # =============================================================================
 # DEVICE FLOW INITIATION
 # =============================================================================
 
-@router.post("/code", response_model=DeviceCodeResponse)
+@router.post("/code", response_model=DeviceCodeResponse, summary="Initiate device authorization flow", responses={500: {"description": "No organization configured"}})
 async def request_device_code(
     request: Request,
     body: DeviceCodeRequest,
@@ -165,7 +165,7 @@ async def request_device_code(
 # TOKEN POLLING
 # =============================================================================
 
-@router.post("/token")
+@router.post("/token", response_model=DeviceTokenResponse, summary="Poll for device token", responses={400: {"description": "authorization_pending, slow_down, access_denied, or expired_token (RFC 8628)"}})
 async def poll_device_token(
     body: DeviceTokenRequest,
     db: Session = Depends(get_db)
@@ -227,7 +227,7 @@ async def poll_device_token(
 # USER VERIFICATION FLOW
 # =============================================================================
 
-@router.get("/verify", response_class=HTMLResponse)
+@router.get("/verify", response_class=HTMLResponse, summary="Device verification page (HTML)")
 async def device_verification_page(
     user_code: Optional[str] = None
 ):
@@ -314,7 +314,7 @@ async def device_verification_page(
     return HTMLResponse(content=html_content)
 
 
-@router.post("/verify-code")
+@router.post("/verify-code", summary="Validate user code and redirect to OIDC", responses={404: {"description": "Invalid code"}, 400: {"description": "Expired or already-processed code"}})
 async def verify_user_code(
     request: Request,
     user_code: str = Form(...),
@@ -386,7 +386,7 @@ async def verify_user_code(
     return RedirectResponse(url=f'/auth/login/{provider}', status_code=303)
 
 
-@router.get("/approve-ui", response_class=HTMLResponse)
+@router.get("/approve-ui", response_class=HTMLResponse, summary="Show device approval dialog (HTML)", responses={400: {"description": "No device flow in progress"}, 401: {"description": "Not authenticated"}})
 async def show_approval_page(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -509,7 +509,7 @@ async def show_approval_page(
     return HTMLResponse(content=html_content)
 
 
-@router.post("/approve")
+@router.post("/approve", summary="Approve or deny device authorization", responses={400: {"description": "No device flow in progress or invalid action"}, 401: {"description": "Not authenticated"}})
 async def approve_device(
     request: Request,
     action: str = Form(...),  # "approve" or "deny"
@@ -613,7 +613,7 @@ async def approve_device(
 # DEVICE MANAGEMENT
 # =============================================================================
 
-@router.get("/authorizations", response_model=List[DeviceAuthorizationResponse])
+@router.get("/authorizations", response_model=List[DeviceAuthorizationResponse], summary="List authorized devices", responses={401: {"description": "Not authenticated"}})
 async def list_my_devices(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -656,7 +656,7 @@ async def list_my_devices(
     ]
 
 
-@router.delete("/authorizations/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/authorizations/{device_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Revoke device authorization", responses={400: {"description": "Device already revoked"}, 401: {"description": "Not authenticated"}, 404: {"description": "Device not found"}})
 async def revoke_device(
     device_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -725,7 +725,7 @@ async def revoke_device(
     return None
 
 
-@router.patch("/authorizations/{device_id}", response_model=DeviceAuthorizationResponse)
+@router.patch("/authorizations/{device_id}", response_model=DeviceAuthorizationResponse, summary="Rename device", responses={401: {"description": "Not authenticated"}, 404: {"description": "Device not found"}})
 async def rename_device(
     device_id: UUID,
     body: RenameDeviceRequest,

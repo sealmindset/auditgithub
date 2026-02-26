@@ -4,7 +4,7 @@ User Management API
 Endpoints for admins to manage users, roles, and repository access.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -24,17 +24,17 @@ router = APIRouter(prefix="/api/users", tags=["user-management"])
 
 class UserResponse(BaseModel):
     """Response model for user."""
-    id: str
-    email: str
-    username: str
-    full_name: Optional[str]
-    role: str
-    access_type: str
-    auth_provider: str
-    is_active: bool
-    is_invited: bool
-    last_login_at: Optional[datetime]
-    created_at: datetime
+    id: str = Field(..., description="Unique user identifier (UUID)")
+    email: str = Field(..., description="User email address")
+    username: str = Field(..., description="Username")
+    full_name: Optional[str] = Field(None, description="Full display name")
+    role: str = Field(..., description="User role (user, developer, analyst, manager, admin, super_admin)")
+    access_type: str = Field(..., description="Access type (ui_only, api_only, both)")
+    auth_provider: str = Field(..., description="Authentication provider (entra, github, local)")
+    is_active: bool = Field(..., description="Whether the user account is active")
+    is_invited: bool = Field(..., description="Whether the user was created via invitation")
+    last_login_at: Optional[datetime] = Field(None, description="Timestamp of last login")
+    created_at: datetime = Field(..., description="Account creation timestamp")
 
     class Config:
         schema_extra = {
@@ -56,7 +56,7 @@ class UserResponse(BaseModel):
 
 class UpdateRoleRequest(BaseModel):
     """Request body for updating user role."""
-    role: str
+    role: str = Field(..., description="New role to assign (user, developer, analyst, manager, admin, super_admin)")
 
     class Config:
         schema_extra = {
@@ -68,7 +68,7 @@ class UpdateRoleRequest(BaseModel):
 
 class UpdateAccessTypeRequest(BaseModel):
     """Request body for updating user access type."""
-    access_type: str
+    access_type: str = Field(..., description="New access type (ui_only, api_only, both)")
 
     class Config:
         schema_extra = {
@@ -80,7 +80,7 @@ class UpdateAccessTypeRequest(BaseModel):
 
 class AssignRepositoryRequest(BaseModel):
     """Request body for assigning repository to user."""
-    repository_id: UUID
+    repository_id: UUID = Field(..., description="UUID of the repository to assign")
 
     class Config:
         schema_extra = {
@@ -92,11 +92,11 @@ class AssignRepositoryRequest(BaseModel):
 
 class UserRepositoryResponse(BaseModel):
     """Response model for user repository assignment."""
-    repository_id: str
-    repository_name: str
-    organization_name: str
-    assigned_at: datetime
-    assigned_by_email: str
+    repository_id: str = Field(..., description="UUID of the assigned repository")
+    repository_name: str = Field(..., description="Name of the assigned repository")
+    organization_name: str = Field(..., description="Organization the repository belongs to")
+    assigned_at: datetime = Field(..., description="Timestamp when the repository was assigned")
+    assigned_by_email: str = Field(..., description="Email of the admin who assigned the repository")
 
     class Config:
         schema_extra = {
@@ -114,7 +114,15 @@ class UserRepositoryResponse(BaseModel):
 # Endpoints
 # =========================================================================
 
-@router.get("", response_model=List[UserResponse])
+@router.get(
+    "",
+    response_model=List[UserResponse],
+    summary="List all users",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+    },
+)
 async def list_users(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -158,7 +166,16 @@ async def list_users(
     ]
 
 
-@router.get("/{user_id}", response_model=UserResponse)
+@router.get(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Get user details by ID",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Cannot view other users' details without admin role"},
+        404: {"description": "User not found"},
+    },
+)
 async def get_user(
     user_id: UUID,
     current_user: User = Depends(get_db_user),
@@ -211,7 +228,17 @@ async def get_user(
     )
 
 
-@router.patch("/{user_id}/role", response_model=UserResponse)
+@router.patch(
+    "/{user_id}/role",
+    response_model=UserResponse,
+    summary="Update user role",
+    responses={
+        400: {"description": "Invalid role value"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions to modify this user's role"},
+        404: {"description": "User not found"},
+    },
+)
 async def update_user_role(
     user_id: UUID,
     body: UpdateRoleRequest,
@@ -309,7 +336,17 @@ async def update_user_role(
     )
 
 
-@router.patch("/{user_id}/access-type", response_model=UserResponse)
+@router.patch(
+    "/{user_id}/access-type",
+    response_model=UserResponse,
+    summary="Update user access type",
+    responses={
+        400: {"description": "Invalid access type value"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+        404: {"description": "User not found"},
+    },
+)
 async def update_user_access_type(
     user_id: UUID,
     body: UpdateAccessTypeRequest,
@@ -373,7 +410,17 @@ async def update_user_access_type(
     )
 
 
-@router.post("/{user_id}/repositories", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{user_id}/repositories",
+    status_code=status.HTTP_201_CREATED,
+    summary="Assign repository to user",
+    responses={
+        400: {"description": "Repository already assigned to this user"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+        404: {"description": "User or repository not found"},
+    },
+)
 async def assign_repository(
     user_id: UUID,
     body: AssignRepositoryRequest,
@@ -442,7 +489,16 @@ async def assign_repository(
     return {"message": "Repository assigned successfully"}
 
 
-@router.delete("/{user_id}/repositories/{repository_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{user_id}/repositories/{repository_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unassign repository from user",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - admin role required"},
+        404: {"description": "Repository assignment not found"},
+    },
+)
 async def unassign_repository(
     user_id: UUID,
     repository_id: UUID,
@@ -487,7 +543,15 @@ async def unassign_repository(
     return None  # 204 No Content
 
 
-@router.get("/{user_id}/repositories", response_model=List[UserRepositoryResponse])
+@router.get(
+    "/{user_id}/repositories",
+    response_model=List[UserRepositoryResponse],
+    summary="List repositories assigned to a user",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Cannot view other users' repositories without admin role"},
+    },
+)
 async def list_user_repositories(
     user_id: UUID,
     current_user: User = Depends(get_db_user),

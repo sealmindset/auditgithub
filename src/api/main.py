@@ -92,10 +92,86 @@ class OrganizationContextMiddleware(BaseHTTPMiddleware):
             logger.debug(f"Failed to resolve org name '{org_name}': {e}")
         return None
 
+# =============================================================================
+# OpenAPI tag metadata — provides descriptions for each tag group in /docs
+# =============================================================================
+tags_metadata = [
+    {"name": "authentication", "description": "User login, logout, token refresh, and OAuth 2.0 flows"},
+    {"name": "device-flow", "description": "OAuth 2.0 Device Authorization Grant (RFC 8628) for CLI/headless authentication"},
+    {"name": "user-management", "description": "User CRUD, profile management, and service account operations"},
+    {"name": "invitations", "description": "Email-based user invitation management with RBAC-scoped access"},
+    {"name": "api-keys", "description": "Programmatic API key management with tool scoping, repository scoping, and rate limiting"},
+    {"name": "organizations", "description": "Multi-organization management, GitHub credentials, and repository import"},
+    {"name": "Tenants", "description": "Multi-tenant organization provisioning and isolated database management"},
+    {"name": "repositories", "description": "GitHub repository management, metadata, and scan history"},
+    {"name": "findings", "description": "Security findings: listing, filtering, status updates, comments, and statistics"},
+    {"name": "scans", "description": "Security scan orchestration, status tracking, and result retrieval"},
+    {"name": "schedules", "description": "Scan schedule management with cron expressions and AI-powered recommendations"},
+    {"name": "analytics", "description": "Security metrics, hero dashboards, threat radar, executive summaries, and trend analysis"},
+    {"name": "ai", "description": "AI-powered architecture analysis, remediation guidance, triage, and zero-day assessment"},
+    {"name": "ai-chat", "description": "Interactive AI assistant for security analysis conversations"},
+    {"name": "api-audit", "description": "API endpoint discovery, OpenAPI analysis, and Swagger documentation extraction"},
+    {"name": "attack-surface", "description": "Attack surface mapping: exposed secrets, abandoned repos, stale contributors, and risk scoring"},
+    {"name": "attack-paths", "description": "Attack path visualization and remediation priority analysis"},
+    {"name": "Contributor Profiles", "description": "Git contributor activity analysis, risk scoring, and commit pattern detection"},
+    {"name": "secrets", "description": "Detected secrets management, credential lifecycle, and remediation tracking"},
+    {"name": "sla", "description": "Service level agreement tracking, compliance metrics, and violation reporting"},
+    {"name": "projects", "description": "Project grouping, tagging, cross-repository management, and aggregate statistics"},
+    {"name": "github", "description": "GitHub API synchronization for repository metadata, files, and contributor data"},
+    {"name": "git-sync", "description": "Git push operations for README generation and architecture diagram sync"},
+    {"name": "settings", "description": "System configuration key-value pairs and tool integration settings"},
+    {"name": "scheduler", "description": "Background job scheduling, APScheduler management, and cron status"},
+    {"name": "cribl", "description": "Cribl Stream log forwarding configuration, testing, and status monitoring"},
+    {"name": "integrations", "description": "Third-party integrations including Jira ticket creation and synchronization"},
+    {"name": "feedback", "description": "User feedback submission for features, bugs, and platform improvement"},
+]
+
 app = FastAPI(
-    title="AuditGitHub Security Platform",
-    description="API for managing security scans, findings, and remediation workflows.",
-    version="1.0.0"
+    title="AuditGH Security Portal API",
+    description="""
+Comprehensive API for GitHub organization security auditing, vulnerability scanning,
+and threat assessment. The AuditGH platform provides multi-organization support with
+isolated data, automated security scanning, and AI-powered threat analysis.
+
+## Features
+- Multi-organization GitHub repository management
+- Automated security scanning (Gitleaks, Semgrep, Grype, Trivy, Bandit, Checkov)
+- Vulnerability tracking and remediation workflows
+- AI-powered architecture analysis and threat assessment
+- Attack surface mapping and path analysis
+- SLA tracking and compliance reporting
+
+## Authentication
+Most API endpoints require authentication via one of:
+- **Session cookie** (browser-based, set during OAuth login)
+- **Bearer token** (`Authorization: Bearer <jwt>`)
+- **API key** (`X-API-Key: agh_...`)
+
+Obtain tokens via `POST /auth/break-glass/login` or the OAuth 2.0 Device Flow.
+
+## Rate Limiting
+API requests are rate-limited per user. Check response headers:
+- `X-RateLimit-Limit`: Maximum requests per window
+- `X-RateLimit-Remaining`: Remaining requests
+- `X-RateLimit-Reset`: Window reset timestamp
+
+## Pagination
+List endpoints support `skip` and `limit` query parameters:
+- `skip`: Records to skip (default: 0)
+- `limit`: Records to return (default: 100, max: 1000)
+    """,
+    version="2.0.0",
+    contact={"name": "AuditGH Support", "email": "support@auditgh.local"},
+    license_info={"name": "GPL-3.0", "url": "https://www.gnu.org/licenses/gpl-3.0.html"},
+    openapi_tags=tags_metadata,
+    swagger_ui_parameters={
+        "docExpansion": "none",
+        "filter": True,
+        "persistAuthorization": True,
+        "tryItOutEnabled": True,
+        "displayRequestDuration": True,
+        "defaultModelsExpandDepth": 2,
+    },
 )
 
 # Add rate limiting
@@ -128,7 +204,7 @@ from . import models
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -168,6 +244,66 @@ app.include_router(schedules.router)
 app.include_router(cribl.router)
 app.include_router(git_sync.router)
 app.include_router(ai_chat.router)
+app.include_router(api_keys.router)  # API key management
+
+
+# =============================================================================
+# Custom OpenAPI schema — adds security schemes and server info
+# =============================================================================
+from fastapi.openapi.utils import get_openapi
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+
+    # Add security schemes
+    openapi_schema.setdefault("components", {})
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT token obtained from POST /auth/break-glass/login, POST /auth/refresh, or OAuth 2.0 Device Flow",
+        },
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API key obtained from POST /api/api-keys (format: agh_xxxx...)",
+        },
+        "SessionAuth": {
+            "type": "apiKey",
+            "in": "cookie",
+            "name": "session",
+            "description": "Session cookie set during OAuth login callback",
+        },
+    }
+
+    # Apply security globally (any one of these methods)
+    openapi_schema["security"] = [
+        {"BearerAuth": []},
+        {"ApiKeyAuth": []},
+        {"SessionAuth": []},
+    ]
+
+    # Add servers
+    openapi_schema["servers"] = [
+        {"url": "http://localhost:8000", "description": "Local development"},
+        {"url": "https://api.auditgh.local", "description": "Production"},
+    ]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 
 # Startup event to initialize secrets from environment
@@ -270,18 +406,29 @@ if MULTI_TENANT_ENABLED:
 from src.api.middleware.logging import RequestLoggingMiddleware
 app.add_middleware(RequestLoggingMiddleware)
 
-@app.get("/")
+@app.get("/", summary="API root", tags=["default"], include_in_schema=False)
 async def root():
+    """Return API welcome message and links."""
     return {
-        "message": "Welcome to AuditGitHub Security Platform API",
+        "message": "Welcome to AuditGH Security Portal API",
         "docs": "/docs",
-        "version": "1.0.0",
+        "redoc": "/redoc",
+        "version": "2.0.0",
         "multi_tenant": MULTI_TENANT_ENABLED
     }
 
-@app.get("/health")
+@app.get(
+    "/health",
+    summary="Health check",
+    tags=["default"],
+    response_model=None,
+    responses={
+        200: {"description": "All systems healthy"},
+        503: {"description": "One or more dependencies unhealthy"},
+    },
+)
 async def health_check():
-    """Health check endpoint with dependency status logging."""
+    """Health check endpoint reporting database, Redis, and overall system status."""
     from datetime import datetime
     from sqlalchemy import text
     from .database import SessionLocal

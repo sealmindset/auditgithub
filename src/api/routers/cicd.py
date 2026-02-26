@@ -6,7 +6,7 @@ Provides endpoints for managing and querying CI/CD deployments, workflow runs, a
 import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -28,58 +28,58 @@ router = APIRouter(
 # =============================================================================
 
 class DeploymentResponse(BaseModel):
-    id: str
-    repository_name: str
-    environment: str
-    status: str
-    commit_sha: str
-    commit_message: Optional[str]
-    deployer: Optional[str]
-    deployment_url: Optional[str]
-    started_at: Optional[str]
-    completed_at: Optional[str]
-    duration_seconds: Optional[int]
+    id: str = Field(..., description="Deployment UUID")
+    repository_name: str = Field(..., description="Name of the repository")
+    environment: str = Field(..., description="Deployment environment (e.g. production, staging)")
+    status: str = Field(..., description="Deployment status (success, failure, in_progress)")
+    commit_sha: str = Field(..., description="Git commit SHA deployed")
+    commit_message: Optional[str] = Field(None, description="Commit message for the deployment")
+    deployer: Optional[str] = Field(None, description="Username who triggered the deployment")
+    deployment_url: Optional[str] = Field(None, description="URL of the deployment")
+    started_at: Optional[str] = Field(None, description="ISO 8601 timestamp when deployment started")
+    completed_at: Optional[str] = Field(None, description="ISO 8601 timestamp when deployment completed")
+    duration_seconds: Optional[int] = Field(None, description="Duration of the deployment in seconds")
 
 
 class WorkflowRunResponse(BaseModel):
-    id: str
-    repository_name: str
-    workflow_name: str
-    status: str
-    conclusion: Optional[str]
-    branch: Optional[str]
-    commit_sha: str
-    actor: Optional[str]
-    html_url: Optional[str]
-    started_at: Optional[str]
-    completed_at: Optional[str]
-    duration_seconds: Optional[int]
+    id: str = Field(..., description="Workflow run UUID")
+    repository_name: str = Field(..., description="Name of the repository")
+    workflow_name: str = Field(..., description="Name of the CI/CD workflow")
+    status: str = Field(..., description="Run status (queued, in_progress, completed)")
+    conclusion: Optional[str] = Field(None, description="Run conclusion (success, failure, cancelled)")
+    branch: Optional[str] = Field(None, description="Git branch the workflow ran on")
+    commit_sha: str = Field(..., description="Git commit SHA that triggered the run")
+    actor: Optional[str] = Field(None, description="GitHub username who triggered the run")
+    html_url: Optional[str] = Field(None, description="URL to view the run on GitHub")
+    started_at: Optional[str] = Field(None, description="ISO 8601 timestamp when run started")
+    completed_at: Optional[str] = Field(None, description="ISO 8601 timestamp when run completed")
+    duration_seconds: Optional[int] = Field(None, description="Duration of the run in seconds")
 
 
 class DeploymentStatusResponse(BaseModel):
-    repository_id: str
-    repository_name: str
-    environments: List[Dict[str, Any]]
-    total_environments: int
+    repository_id: str = Field(..., description="Repository UUID")
+    repository_name: str = Field(..., description="Name of the repository")
+    environments: List[Dict[str, Any]] = Field(..., description="List of environment deployment statuses")
+    total_environments: int = Field(..., description="Total number of deployment environments")
 
 
 class SyncRequest(BaseModel):
-    organization_id: Optional[str] = None
-    repository_id: Optional[str] = None
-    days_back: int = 30
+    organization_id: Optional[str] = Field(None, description="Organization UUID to sync. Defaults to current org")
+    repository_id: Optional[str] = Field(None, description="Specific repository UUID to sync. If omitted, syncs all")
+    days_back: int = Field(30, description="Number of days of CI/CD history to fetch")
 
 
 class SyncResponse(BaseModel):
-    status: str
-    message: str
-    stats: Dict[str, Any]
+    status: str = Field(..., description="Sync status (success, started, error)")
+    message: str = Field(..., description="Human-readable status message")
+    stats: Dict[str, Any] = Field(..., description="Sync statistics (repositories processed, records created)")
 
 
 # =============================================================================
 # Deployment Endpoints
 # =============================================================================
 
-@router.get("/deployments", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/deployments", summary="List deployment history", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 500: {"description": "Internal server error"}})
 async def list_deployments(
     repository_name: Optional[str] = None,
     environment: Optional[str] = None,
@@ -132,7 +132,7 @@ async def list_deployments(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/deployments/repository/{repository_id}", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/deployments/repository/{repository_id}", summary="Get repository deployment status", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 404: {"description": "Repository not found"}, 500: {"description": "Internal server error"}})
 async def get_repository_deployments(
     repository_id: str,
     environment: Optional[str] = None,
@@ -181,7 +181,7 @@ async def get_repository_deployments(
 # Workflow Run Endpoints
 # =============================================================================
 
-@router.get("/workflow-runs", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/workflow-runs", summary="List CI/CD workflow runs", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 500: {"description": "Internal server error"}})
 async def list_workflow_runs(
     repository_name: Optional[str] = None,
     workflow_name: Optional[str] = None,
@@ -246,7 +246,7 @@ async def list_workflow_runs(
 # Sync Endpoints
 # =============================================================================
 
-@router.post("/sync", response_model=SyncResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post("/sync", response_model=SyncResponse, summary="Sync CI/CD data from GitHub Actions", dependencies=[Depends(require_permissions("findings:write"))], responses={400: {"description": "Organization ID required"}, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 404: {"description": "Organization or repository not found"}, 500: {"description": "GitHub token not configured or sync error"}})
 async def sync_cicd_data(
     request: SyncRequest,
     background_tasks: BackgroundTasks,
@@ -356,7 +356,7 @@ async def sync_cicd_data(
 # Statistics Endpoints
 # =============================================================================
 
-@router.get("/stats", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/stats", summary="Get CI/CD statistics", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 500: {"description": "Internal server error"}})
 async def get_cicd_stats(
     days_back: int = 30,
     db: Session = Depends(get_tenant_db)

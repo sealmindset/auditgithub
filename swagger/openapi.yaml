@@ -1,3 +1,13 @@
+# =============================================================================
+# ARCHIVED — The source of truth for API documentation is now FastAPI /docs.
+#
+# This hand-written spec covers only 51 of 315+ endpoints (16% coverage).
+# The FastAPI auto-generated spec at /openapi.json now covers 100% of
+# endpoints with enriched summaries, response models, and error codes.
+#
+# This file is preserved as a reference for schema design patterns.
+# Do NOT update this file — update the Python source code instead.
+# =============================================================================
 openapi: 3.0.3
 info:
   title: AuditGH Security Portal API

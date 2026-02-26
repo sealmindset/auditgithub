@@ -10,9 +10,23 @@ router = APIRouter(
     tags=["integrations"]
 )
 
-@router.post("/webhook", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/webhook",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Handle Jira webhook events",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing findings:write permission"},
+        500: {"description": "Error processing webhook payload"},
+    },
+)
 async def jira_webhook(request: Request, db: Session = Depends(get_tenant_db)):
-    """Handle incoming webhooks from Jira."""
+    """Receive and process incoming webhook events from Jira.
+
+    Requires the **findings:write** permission. When a Jira issue is updated,
+    maps the Jira status to an internal finding status (e.g. resolved, in_progress)
+    and persists the change.
+    """
     try:
         payload = await request.json()
         event = payload.get("webhookEvent")

@@ -1,0 +1,45 @@
+name: OpenAPI Validation
+
+on:
+  push:
+    paths:
+      - 'src/api/**'
+      - 'scripts/export_openapi.py'
+      - 'scripts/check_openapi_coverage.py'
+  pull_request:
+    paths:
+      - 'src/api/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Export OpenAPI schema
+        run: python scripts/export_openapi.py --json-only
+
+      - name: Validate schema structure
+        run: |
+          npm install -g @apidevtools/swagger-cli
+          swagger-cli validate openapi.json
+
+      - name: Check documentation coverage
+        run: python scripts/check_openapi_coverage.py --strict
+
+      - name: Upload schema artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: openapi.json
+          retention-days: 30

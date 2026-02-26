@@ -12,7 +12,7 @@ Implements:
 
 from fastapi import APIRouter, Request, HTTPException, Depends, status, Form
 from starlette.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from src.auth.providers import oauth
 from src.auth.tokens import rotate_refresh_token, revoke_token, generate_access_token
 from src.auth.dependencies import get_current_user
@@ -27,7 +27,7 @@ from datetime import datetime
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
-@router.get("/login/{provider}")
+@router.get("/login/{provider}", summary="Initiate OIDC login", responses={400: {"description": "Invalid provider"}})
 async def login(provider: str, request: Request):
     """
     Initiate OIDC login flow with specified provider.
@@ -62,7 +62,7 @@ async def login(provider: str, request: Request):
     )
 
 
-@router.post("/break-glass/login")
+@router.post("/break-glass/login", summary="Break glass emergency login", responses={401: {"description": "Invalid credentials"}, 403: {"description": "Email not authorized for break glass"}})
 async def break_glass_login(
     email: str = Form(...),
     password: str = Form(...),
@@ -181,7 +181,7 @@ async def break_glass_login(
         db.close()
 
 
-@router.get("/callback/{provider}", name="callback")
+@router.get("/callback/{provider}", name="callback", summary="Handle OAuth callback", responses={400: {"description": "Invalid provider or email not verified"}, 401: {"description": "Authentication failed"}, 403: {"description": "No invitation found"}})
 async def callback(provider: str, request: Request):
     """
     Handle OAuth callback and exchange authorization code for tokens.
@@ -325,7 +325,7 @@ async def callback(provider: str, request: Request):
         )
 
 
-@router.get("/logout")
+@router.get("/logout", summary="Logout and clear session", responses={401: {"description": "Not authenticated"}})
 async def logout(request: Request):
     """
     Clear user session (client-side logout).
@@ -347,7 +347,7 @@ async def logout(request: Request):
     return RedirectResponse(url='/', status_code=303)
 
 
-@router.get("/me")
+@router.get("/me", summary="Get current user info", responses={401: {"description": "Not authenticated"}})
 async def get_current_user_info(request: Request):
     """
     Get current authenticated user information.
@@ -383,17 +383,17 @@ async def get_current_user_info(request: Request):
 
 class RefreshRequest(BaseModel):
     """Request body for token refresh."""
-    refresh_token: str
+    refresh_token: str = Field(..., description="Current refresh token to rotate")
 
 
 class RefreshResponse(BaseModel):
     """Response body for token refresh."""
-    refresh_token: str
-    access_token: str
-    token_type: str = "bearer"
+    refresh_token: str = Field(..., description="New refresh token (old one is invalidated)")
+    access_token: str = Field(..., description="New short-lived access token")
+    token_type: str = Field("bearer", description="Token type, always 'bearer'")
 
 
-@router.post("/refresh", response_model=RefreshResponse)
+@router.post("/refresh", response_model=RefreshResponse, summary="Refresh access token", responses={401: {"description": "Invalid, expired, or already-used refresh token"}})
 async def refresh_tokens(request: RefreshRequest):
     """
     Refresh access and refresh tokens.
@@ -446,7 +446,7 @@ async def refresh_tokens(request: RefreshRequest):
         )
 
 
-@router.post("/revoke", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/revoke", status_code=status.HTTP_204_NO_CONTENT, summary="Revoke current access token", responses={400: {"description": "No token JTI in request"}, 401: {"description": "Not authenticated"}})
 async def revoke_current_token(
     request: Request,
     current_user: User = Depends(get_current_user)

@@ -217,14 +217,30 @@ async def get_current_user_from_token(
 
 async def get_current_user_with_bypass(request: Request) -> User:
     """
-    Get current user with AUTH_DISABLED bypass support.
+    Get current user with multi-method authentication support.
 
-    If AUTH_DISABLED environment variable is set to 'true', returns a mock admin user.
-    Otherwise, uses normal session-based authentication.
+    Authentication chain (checked in order):
+    1. X-API-Key header -> validate_api_key()
+    2. AUTH_DISABLED env -> mock admin bypass
+    3. Session cookie -> get_current_user_from_session()
     """
     import os
 
-    # Check if authentication is disabled
+    # 1. Check for API key authentication (first — cheapest to validate)
+    try:
+        from src.auth.api_key_auth import validate_api_key
+        api_key_user = await validate_api_key(request)
+        if api_key_user is not None:
+            logger.debug(f"Authenticated via API key: {api_key_user.email}")
+            return api_key_user
+    except HTTPException:
+        # Re-raise HTTP exceptions (invalid key, rate limit, etc.)
+        raise
+    except Exception as e:
+        # Log but don't block — fall through to other auth methods
+        logger.warning(f"API key auth check failed: {e}")
+
+    # 2. Check if authentication is disabled
     auth_disabled = os.getenv("AUTH_DISABLED", "false").lower() == "true"
 
     if auth_disabled:
@@ -237,7 +253,7 @@ async def get_current_user_with_bypass(request: Request) -> User:
             provider="bypass"
         )
 
-    # Normal authentication flow
+    # 3. Normal session-based authentication flow
     return await get_current_user_from_session(request)
 
 
@@ -298,6 +314,13 @@ def get_db_user(request: Request) -> DBUser:
             auth_provider="local",
             is_active=True
         )
+
+    # Check if already resolved via API key auth
+    if getattr(request.state, 'auth_method', None) == 'api_key':
+        db_user_from_key = getattr(request.state, 'db_user', None)
+        if db_user_from_key:
+            request.state.is_break_glass = False
+            return db_user_from_key
 
     # Get authenticated user from session/token
     user_data = request.session.get('user')

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_, extract
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..dependencies import get_tenant_db
 from .. import models
@@ -40,48 +40,48 @@ SLA_HOURS = {
 
 class SLAConfig(BaseModel):
     """SLA configuration for each severity level."""
-    critical_hours: int = 24
-    high_hours: int = 168
-    medium_hours: int = 720
-    low_hours: int = 2160
-    info_hours: int = 4320
+    critical_hours: int = Field(24, description="SLA hours for critical severity findings")
+    high_hours: int = Field(168, description="SLA hours for high severity findings")
+    medium_hours: int = Field(720, description="SLA hours for medium severity findings")
+    low_hours: int = Field(2160, description="SLA hours for low severity findings")
+    info_hours: int = Field(4320, description="SLA hours for informational findings")
 
 
 class MTTRStats(BaseModel):
     """Mean Time to Remediate statistics."""
-    overall_mttr_hours: Optional[float]
-    by_severity: Dict[str, Optional[float]]
-    by_scanner: Dict[str, Optional[float]]
-    by_month: List[Dict[str, Any]]
+    overall_mttr_hours: Optional[float] = Field(None, description="Overall mean time to remediate in hours")
+    by_severity: Dict[str, Optional[float]] = Field(..., description="MTTR in hours grouped by severity level")
+    by_scanner: Dict[str, Optional[float]] = Field(..., description="MTTR in hours grouped by scanner name")
+    by_month: List[Dict[str, Any]] = Field(..., description="Monthly MTTR trend data")
 
 
 class SLAComplianceStats(BaseModel):
     """SLA compliance statistics."""
-    total_resolved: int
-    on_time: int
-    overdue: int
-    compliance_rate: float
-    by_severity: Dict[str, Dict[str, Any]]
+    total_resolved: int = Field(..., description="Total number of resolved findings in the time period")
+    on_time: int = Field(..., description="Number of findings resolved within SLA")
+    overdue: int = Field(..., description="Number of findings resolved past SLA")
+    compliance_rate: float = Field(..., description="Percentage of findings resolved within SLA")
+    by_severity: Dict[str, Dict[str, Any]] = Field(..., description="Compliance breakdown by severity level")
 
 
 class OverdueFinding(BaseModel):
     """A finding that is past its SLA."""
-    id: str
-    title: str
-    severity: str
-    repo_name: str
-    created_at: datetime
-    sla_hours: int
-    hours_overdue: float
-    assigned_to: Optional[str]
+    id: str = Field(..., description="Finding UUID")
+    title: str = Field(..., description="Finding title")
+    severity: str = Field(..., description="Severity level")
+    repo_name: str = Field(..., description="Repository name")
+    created_at: datetime = Field(..., description="When the finding was created")
+    sla_hours: int = Field(..., description="SLA target in hours for this severity")
+    hours_overdue: float = Field(..., description="Number of hours past the SLA deadline")
+    assigned_to: Optional[str] = Field(None, description="Assignee for remediation")
 
 
 class SLADashboardResponse(BaseModel):
     """Full SLA dashboard response."""
-    config: SLAConfig
-    mttr: MTTRStats
-    compliance: SLAComplianceStats
-    overdue_findings: List[OverdueFinding]
+    config: SLAConfig = Field(..., description="Current SLA configuration")
+    mttr: MTTRStats = Field(..., description="Mean Time to Remediate statistics")
+    compliance: SLAComplianceStats = Field(..., description="SLA compliance statistics")
+    overdue_findings: List[OverdueFinding] = Field(..., description="List of findings that are past their SLA")
 
 
 # =============================================================================
@@ -115,9 +115,14 @@ def is_overdue(finding: models.Finding) -> bool:
 # Endpoints
 # =============================================================================
 
-@router.get("/config", response_model=SLAConfig, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get("/config", response_model=SLAConfig, dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get SLA configuration",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_sla_config():
-    """Get current SLA configuration."""
+    """
+    Get current SLA configuration showing remediation time targets per severity level.
+    Requires reports:read permission.
+    """
     return SLAConfig(
         critical_hours=SLA_HOURS['critical'],
         high_hours=SLA_HOURS['high'],
@@ -127,12 +132,18 @@ def get_sla_config():
     )
 
 
-@router.get("/mttr", response_model=MTTRStats, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get("/mttr", response_model=MTTRStats, dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get Mean Time to Remediate statistics",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_mttr_stats(
     days: int = Query(90, description="Number of days to analyze"),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get Mean Time to Remediate statistics."""
+    """
+    Get Mean Time to Remediate statistics for resolved findings.
+    Includes breakdowns by severity, scanner, and monthly trends.
+    Requires reports:read permission.
+    """
     cutoff = datetime.utcnow() - timedelta(days=days)
     
     # Get resolved findings
@@ -203,12 +214,18 @@ def get_mttr_stats(
     )
 
 
-@router.get("/compliance", response_model=SLAComplianceStats, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get("/compliance", response_model=SLAComplianceStats, dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get SLA compliance statistics",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_sla_compliance(
     days: int = Query(90, description="Number of days to analyze"),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get SLA compliance statistics."""
+    """
+    Get SLA compliance statistics showing on-time vs overdue resolution rates.
+    Includes per-severity compliance breakdowns.
+    Requires reports:read permission.
+    """
     cutoff = datetime.utcnow() - timedelta(days=days)
     
     # Get resolved findings
@@ -257,13 +274,19 @@ def get_sla_compliance(
     )
 
 
-@router.get("/overdue", response_model=List[OverdueFinding], dependencies=[Depends(require_permissions("reports:read"))])
+@router.get("/overdue", response_model=List[OverdueFinding], dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get overdue findings past SLA",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_overdue_findings(
     limit: int = Query(50, le=200),
     severity: Optional[str] = None,
     db: Session = Depends(get_tenant_db)
 ):
-    """Get findings that are past their SLA."""
+    """
+    Get open findings that have exceeded their SLA deadline.
+    Sorted by most overdue first. Can be filtered by severity level.
+    Requires reports:read permission.
+    """
     query = db.query(models.Finding).join(models.Repository).filter(
         models.Finding.status == 'open'
     )
@@ -305,13 +328,19 @@ def get_overdue_findings(
     ) for item in overdue_list]
 
 
-@router.get("/dashboard", response_model=SLADashboardResponse, dependencies=[Depends(require_permissions("reports:read"))])
+@router.get("/dashboard", response_model=SLADashboardResponse, dependencies=[Depends(require_permissions("reports:read"))],
+    summary="Get full SLA dashboard",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_sla_dashboard(
     days: int = Query(90, description="Number of days to analyze"),
     overdue_limit: int = Query(20, le=50),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get the full SLA dashboard."""
+    """
+    Get the full SLA dashboard combining configuration, MTTR, compliance, and overdue findings.
+    Provides a consolidated view for tracking remediation performance against SLA targets.
+    Requires reports:read permission.
+    """
     config = get_sla_config()
     mttr = get_mttr_stats(days=days, db=db)
     compliance = get_sla_compliance(days=days, db=db)
@@ -325,9 +354,15 @@ def get_sla_dashboard(
     )
 
 
-@router.post("/start-remediation/{finding_id}", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post("/start-remediation/{finding_id}", dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Start remediation tracking for a finding",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
 def start_remediation(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Mark remediation as started for MTTR tracking."""
+    """
+    Mark remediation as started for a specific finding to enable MTTR tracking.
+    Sets the remediation start timestamp for SLA calculations.
+    Requires admin:manage permission.
+    """
     import uuid as uuid_lib
     
     try:

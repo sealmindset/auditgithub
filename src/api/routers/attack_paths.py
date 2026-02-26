@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..dependencies import get_tenant_db
 from .. import models
@@ -27,50 +27,50 @@ router = APIRouter(
 
 class AttackNode(BaseModel):
     """A node in an attack path."""
-    id: str
-    label: str
-    type: str  # secret, vulnerability, dependency, infrastructure
-    severity: str
-    repo_name: str
-    details: Dict[str, Any]
+    id: str = Field(..., description="Unique node identifier")
+    label: str = Field(..., description="Display label for the node")
+    type: str = Field(..., description="Node type: secret, vulnerability, dependency, or infrastructure")
+    severity: str = Field(..., description="Severity level of the finding")
+    repo_name: str = Field(..., description="Repository name this node belongs to")
+    details: Dict[str, Any] = Field(..., description="Additional details about the node")
 
 
 class AttackEdge(BaseModel):
     """An edge connecting attack nodes."""
-    source: str
-    target: str
-    relationship: str  # exposes, enables, chains_to
+    source: str = Field(..., description="Source node identifier")
+    target: str = Field(..., description="Target node identifier")
+    relationship: str = Field(..., description="Relationship type: exposes, enables, or chains_to")
 
 
 class AttackPath(BaseModel):
     """A single attack path."""
-    id: str
-    name: str
-    risk_score: int
-    nodes: List[AttackNode]
-    edges: List[AttackEdge]
-    description: str
+    id: str = Field(..., description="Unique attack path identifier")
+    name: str = Field(..., description="Human-readable name for the attack path")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    nodes: List[AttackNode] = Field(..., description="Ordered list of nodes in the attack path")
+    edges: List[AttackEdge] = Field(..., description="Edges connecting nodes in the path")
+    description: str = Field(..., description="Description of the attack path scenario")
 
 
 class AttackPathsResponse(BaseModel):
     """Response containing attack paths."""
-    total_paths: int
-    high_risk_paths: int
-    paths: List[AttackPath]
-    mermaid_diagram: str
+    total_paths: int = Field(..., description="Total number of attack paths found")
+    high_risk_paths: int = Field(..., description="Number of paths with risk score >= 70")
+    paths: List[AttackPath] = Field(..., description="List of attack paths")
+    mermaid_diagram: str = Field(..., description="Mermaid flowchart diagram of the attack paths")
 
 
 class RepoAttackSurface(BaseModel):
     """Attack surface for a single repository."""
-    repo_id: str
-    repo_name: str
-    total_findings: int
-    critical_count: int
-    high_count: int
-    active_secrets: int
-    vulnerable_deps: int
-    risk_score: int
-    attack_vectors: List[str]
+    repo_id: str = Field(..., description="UUID of the repository")
+    repo_name: str = Field(..., description="Repository name")
+    total_findings: int = Field(..., description="Total open findings count")
+    critical_count: int = Field(..., description="Number of critical findings")
+    high_count: int = Field(..., description="Number of high severity findings")
+    active_secrets: int = Field(..., description="Number of validated active secrets")
+    vulnerable_deps: int = Field(..., description="Number of vulnerable dependencies")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    attack_vectors: List[str] = Field(..., description="List of identified attack vectors")
 
 
 # =============================================================================
@@ -241,7 +241,9 @@ def build_attack_paths(
 # Endpoints
 # =============================================================================
 
-@router.get("/", response_model=AttackPathsResponse, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/", response_model=AttackPathsResponse, dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Generate attack path visualization",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_attack_paths(
     limit: int = Query(10, le=20),
     min_risk: int = Query(30, description="Minimum risk score to include"),
@@ -289,9 +291,15 @@ def get_attack_paths(
     )
 
 
-@router.get("/repo/{repo_id}", response_model=RepoAttackSurface, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/repo/{repo_id}", response_model=RepoAttackSurface, dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get attack surface for a specific repository",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Repository not found"}})
 def get_repo_attack_surface(repo_id: str, db: Session = Depends(get_tenant_db)):
-    """Get attack surface analysis for a specific repository."""
+    """
+    Get attack surface analysis for a specific repository.
+    Returns finding counts, active secrets, vulnerable dependencies, risk score, and attack vectors.
+    Requires findings:read permission.
+    """
     import uuid
     
     try:
@@ -311,9 +319,15 @@ def get_repo_attack_surface(repo_id: str, db: Session = Depends(get_tenant_db)):
     return calculate_attack_surface(findings, repo)
 
 
-@router.get("/summary", dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/summary", dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get overall attack surface summary",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
-    """Get overall attack surface summary across all repositories."""
+    """
+    Get overall attack surface summary across all repositories.
+    Returns repository counts, severity breakdown, active secrets, and attack vector indicators.
+    Requires findings:read permission.
+    """
     # Get stats
     total_repos = db.query(models.Repository).count()
     repos_with_findings = db.query(models.Repository).join(models.Finding).filter(
@@ -358,12 +372,18 @@ def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
     }
 
 
-@router.post("/generate", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post("/generate", dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Generate detailed attack path report",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid repository UUID provided"}})
 def generate_attack_path_report(
     repo_ids: Optional[List[str]] = None,
     db: Session = Depends(get_tenant_db)
 ):
-    """Generate a detailed attack path report for specific repositories."""
+    """
+    Generate a detailed attack path report for specific repositories.
+    If no repository IDs are provided, analyzes the top 5 riskiest repositories.
+    Requires findings:write permission.
+    """
     import uuid
     
     if repo_ids:

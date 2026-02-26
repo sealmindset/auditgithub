@@ -439,7 +439,10 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
+    is_service_account = Column(Boolean, default=False)
+
     assigned_findings = relationship("Finding", back_populates="assignee")
+    api_keys = relationship("ApiKey", back_populates="user")
 
 
 # =============================================================================
@@ -533,6 +536,81 @@ class AuthAuditLog(Base):
 
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
+
+
+# =============================================================================
+# API KEYS - Programmatic API key authentication
+# =============================================================================
+
+class ApiKey(Base):
+    """API key for programmatic access with tool/repo scoping and rate limiting."""
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('api_keys_api_id_seq'), unique=True)
+
+    # Ownership
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False)
+
+    # Key identity
+    name = Column(String(255), nullable=False)
+    key_hash = Column(String(64), unique=True, nullable=False, index=True)
+    key_prefix = Column(String(12), nullable=False)
+
+    # Tool scoping (hierarchical) — NULL = all tools allowed
+    allowed_tool_categories = Column(JSONB, nullable=True)
+    allowed_tools = Column(JSONB, nullable=True)
+
+    # Repository scoping — NULL = all repos the owner has access to
+    allowed_repository_ids = Column(JSONB, nullable=True)
+
+    # RBAC override — NULL = inherit all owner permissions
+    permission_overrides = Column(JSONB, nullable=True)
+
+    # Rate limiting
+    rate_limit_per_hour = Column(Integer, nullable=False, default=1000)
+
+    # Lifecycle
+    is_active = Column(Boolean, nullable=False, default=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    last_used_ip = Column(String(45), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="api_keys")
+    organization = relationship("Organization")
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'organization_id', 'name', name='uq_api_keys_user_name'),
+    )
+
+
+class ApiKeyAuditLog(Base):
+    """Audit log for API key lifecycle events."""
+    __tablename__ = "api_key_audit_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('api_key_audit_log_api_id_seq'), unique=True)
+
+    api_key_id = Column(UUID(as_uuid=True), ForeignKey('api_keys.id', ondelete='SET NULL'), nullable=True)
+    actor_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
+    event_type = Column(String(50), nullable=False)  # created, revoked, rotated, used, expired, permission_denied
+    event_detail = Column(JSONB, default={})
+
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    api_key = relationship("ApiKey")
+    actor = relationship("User", foreign_keys=[actor_user_id])
 
 
 class FindingHistory(Base):

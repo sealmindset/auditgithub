@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case, or_
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..dependencies import get_tenant_db
 from .. import models
@@ -27,53 +27,53 @@ router = APIRouter(
 
 class SecretFinding(BaseModel):
     """A secret finding with validation status."""
-    id: str
-    title: str
-    severity: str
-    scanner_name: Optional[str]
-    file_path: Optional[str]
-    repo_name: str
-    repository_id: str
-    is_verified_by_scanner: bool
-    is_validated_active: Optional[bool]
-    validation_message: Optional[str]
-    validated_at: Optional[datetime]
-    created_at: datetime
-    status: str
-    risk_score: Optional[int]
+    id: str = Field(..., description="Finding UUID")
+    title: str = Field(..., description="Title of the secret finding")
+    severity: str = Field(..., description="Severity level (critical, high, medium, low)")
+    scanner_name: Optional[str] = Field(None, description="Scanner that detected the secret")
+    file_path: Optional[str] = Field(None, description="File path containing the secret")
+    repo_name: str = Field(..., description="Repository name")
+    repository_id: str = Field(..., description="UUID of the repository")
+    is_verified_by_scanner: bool = Field(..., description="Whether the scanner verified the secret")
+    is_validated_active: Optional[bool] = Field(None, description="Whether the secret is confirmed active (True), revoked (False), or unknown (None)")
+    validation_message: Optional[str] = Field(None, description="Message from the validation process")
+    validated_at: Optional[datetime] = Field(None, description="Timestamp of last validation")
+    created_at: datetime = Field(..., description="When the finding was first created")
+    status: str = Field(..., description="Finding status (open, resolved, etc.)")
+    risk_score: Optional[int] = Field(None, description="Calculated risk score")
 
     model_config = {"from_attributes": True}
 
 
 class SecretStats(BaseModel):
     """Statistics about secrets in the system."""
-    total_secrets: int
-    active_secrets: int
-    revoked_secrets: int
-    unknown_secrets: int
-    unvalidated_secrets: int
-    by_scanner: Dict[str, int]
-    by_severity: Dict[str, int]
+    total_secrets: int = Field(..., description="Total number of secret findings")
+    active_secrets: int = Field(..., description="Secrets confirmed as still active")
+    revoked_secrets: int = Field(..., description="Secrets confirmed as revoked")
+    unknown_secrets: int = Field(..., description="Secrets with unknown validation status")
+    unvalidated_secrets: int = Field(..., description="Secrets that have not been validated yet")
+    by_scanner: Dict[str, int] = Field(..., description="Secret counts grouped by scanner name")
+    by_severity: Dict[str, int] = Field(..., description="Secret counts grouped by severity level")
 
 
 class SecretDashboardResponse(BaseModel):
     """Full dashboard response."""
-    stats: SecretStats
-    recent_active: List[SecretFinding]
-    high_risk_unvalidated: List[SecretFinding]
+    stats: SecretStats = Field(..., description="Aggregate secret statistics")
+    recent_active: List[SecretFinding] = Field(..., description="Recently validated active secrets")
+    high_risk_unvalidated: List[SecretFinding] = Field(..., description="High-risk secrets pending validation")
 
 
 class ValidateSecretRequest(BaseModel):
     """Request to validate a secret."""
-    force: bool = False  # Re-validate even if already validated
+    force: bool = Field(False, description="Re-validate even if already validated")
 
 
 class ValidateSecretResponse(BaseModel):
     """Response after validating a secret."""
-    id: str
-    is_active: Optional[bool]
-    message: str
-    validated_at: datetime
+    id: str = Field(..., description="Finding UUID")
+    is_active: Optional[bool] = Field(None, description="Whether the secret is active (True), revoked (False), or unknown (None)")
+    message: str = Field(..., description="Validation result message")
+    validated_at: datetime = Field(..., description="Timestamp of the validation")
 
 
 # =============================================================================
@@ -116,9 +116,15 @@ def get_secret_query(db: Session):
 # Endpoints
 # =============================================================================
 
-@router.get("/stats", response_model=SecretStats, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/stats", response_model=SecretStats, dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get secret statistics",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secret_stats(db: Session = Depends(get_tenant_db)):
-    """Get statistics about secrets in the system."""
+    """
+    Get aggregate statistics about secrets in the system.
+    Includes counts by validation status, scanner, and severity.
+    Requires findings:read permission.
+    """
     base_query = get_secret_query(db)
     
     total = base_query.count()
@@ -161,12 +167,18 @@ def get_secret_stats(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.get("/dashboard", response_model=SecretDashboardResponse, dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/dashboard", response_model=SecretDashboardResponse, dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Get secrets dashboard",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets_dashboard(
     limit: int = Query(10, le=50),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get the secrets dashboard with stats and key findings."""
+    """
+    Get the secrets dashboard with statistics, recent active secrets, and high-risk unvalidated secrets.
+    Provides a consolidated view for security analysts to prioritize secret remediation.
+    Requires findings:read permission.
+    """
     stats = get_secret_stats(db)
     
     # Get recent active secrets
@@ -228,7 +240,9 @@ def get_secrets_dashboard(
     )
 
 
-@router.get("/", response_model=List[SecretFinding], dependencies=[Depends(require_permissions("findings:read"))])
+@router.get("/", response_model=List[SecretFinding], dependencies=[Depends(require_permissions("findings:read"))],
+    summary="List secret findings with filtering",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets(
     status_filter: Optional[str] = Query(None, description="active, revoked, unknown, unvalidated"),
     severity: Optional[str] = None,
@@ -237,7 +251,11 @@ def get_secrets(
     skip: int = 0,
     db: Session = Depends(get_tenant_db)
 ):
-    """Get all secret findings with optional filtering."""
+    """
+    Get all secret findings with optional filtering by status, severity, and repository.
+    Results are ordered by validation status, risk score, and creation date.
+    Requires findings:read permission.
+    """
     query = get_secret_query(db)
     
     # Apply filters
@@ -286,7 +304,9 @@ def get_secrets(
     ) for f in findings]
 
 
-@router.post("/{finding_id}/validate", response_model=ValidateSecretResponse, dependencies=[Depends(require_permissions("findings:write"))])
+@router.post("/{finding_id}/validate", response_model=ValidateSecretResponse, dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Validate a secret finding",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format or finding is not a secret"}, 404: {"description": "Finding not found"}})
 def validate_secret(
     finding_id: str,
     request: ValidateSecretRequest = None,
@@ -341,9 +361,15 @@ def validate_secret(
     )
 
 
-@router.post("/{finding_id}/mark-revoked", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post("/{finding_id}/mark-revoked", dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Mark a secret as revoked",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
 def mark_secret_revoked(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Manually mark a secret as revoked/inactive."""
+    """
+    Manually mark a secret as revoked/inactive.
+    Updates the validation status and sets a timestamp for audit purposes.
+    Requires findings:write permission.
+    """
     import uuid as uuid_lib
     
     try:
@@ -366,9 +392,15 @@ def mark_secret_revoked(finding_id: str, db: Session = Depends(get_tenant_db)):
     return {"status": "success", "message": "Secret marked as revoked"}
 
 
-@router.post("/{finding_id}/mark-active", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post("/{finding_id}/mark-active", dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Mark a secret as active",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
 def mark_secret_active(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Manually mark a secret as still active."""
+    """
+    Manually mark a secret as still active.
+    Updates the validation status and sets a timestamp for audit purposes.
+    Requires findings:write permission.
+    """
     import uuid as uuid_lib
     
     try:

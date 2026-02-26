@@ -3,7 +3,7 @@ Git Sync Router - Handles pushing architecture artifacts to GitHub repositories
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import subprocess
 import tempfile
 import shutil
@@ -23,13 +23,15 @@ router = APIRouter(
 
 
 class GitPushREADMERequest(BaseModel):
-    project_id: str
-    organization: str
+    """Request model for pushing an architecture README to a repository."""
+    project_id: str = Field(..., description="ID of the repository/project to update")
+    organization: str = Field(..., description="GitHub organization that owns the repository")
 
 
 class GitPushDiagramRequest(BaseModel):
-    project_id: str
-    organization: str
+    """Request model for pushing an architecture diagram to a repository."""
+    project_id: str = Field(..., description="ID of the repository/project to update")
+    organization: str = Field(..., description="GitHub organization that owns the repository")
 
 
 def get_github_token_for_org(org: str) -> Optional[str]:
@@ -173,13 +175,25 @@ def clone_and_update_repo(
             logger.warning(f"Failed to cleanup temp dir {temp_dir}: {e}")
 
 
-@router.post("/push-readme")
+@router.post(
+    "/push-readme",
+    summary="Push architecture README to repository",
+    responses={
+        400: {"description": "No architecture report available or repository URL missing"},
+        403: {"description": "Repository does not belong to the specified organization"},
+        404: {"description": "Repository or organization not found"},
+        500: {"description": "GitHub token not configured or git operation failed"},
+    },
+)
 async def push_readme_to_git(
     request: GitPushREADMERequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """
-    Push architecture report to README.md in the repository.
+    """Push the generated architecture report as README.md to a GitHub repository.
+
+    Clones the repository, overwrites README.md with the architecture report,
+    commits, and pushes the changes. Requires a GitHub token configured for
+    the target organization.
     """
     try:
         # Get repository
@@ -250,13 +264,26 @@ async def push_readme_to_git(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/push-diagram")
+@router.post(
+    "/push-diagram",
+    summary="Push architecture diagram to repository",
+    responses={
+        400: {"description": "No architecture diagram available or repository URL missing"},
+        403: {"description": "Repository does not belong to the specified organization"},
+        404: {"description": "Repository or organization not found"},
+        500: {"description": "GitHub token not configured or git operation failed"},
+        501: {"description": "PNG conversion not yet implemented"},
+    },
+)
 async def push_diagram_to_git(
     request: GitPushDiagramRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """
-    Convert Mermaid diagram to PNG and push to repository root.
+    """Convert a Mermaid architecture diagram to PNG and push it to a repository.
+
+    Validates repository ownership against the specified organization and
+    requires a GitHub token for the target org. Currently returns 501 as PNG
+    conversion is not yet implemented.
     """
     try:
         # Get repository

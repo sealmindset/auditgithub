@@ -7,7 +7,7 @@ from ..dependencies import get_tenant_db
 from ..database import  get_current_org_id
 from .. import models
 import uuid
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from src.rbac.dependencies import require_permissions
 import os
@@ -40,15 +40,17 @@ def _get_current_organization_id(db: Session) -> Optional[str]:
     return None
 
 
-@router.get("/")
+@router.get("/",
+    summary="List all projects with summary stats",
+    responses={401: {"description": "Not authenticated"}, 500: {"description": "Database query error"}})
 async def get_projects(
     db: Session = Depends(get_tenant_db),
     organization_id: Optional[str] = Query(None, description="Filter by organization ID")
 ):
     """
     Get a list of all projects with summary stats.
-    
-    Multi-tenant: Results are scoped to the current organization.
+    Results are scoped to the current organization (multi-tenant).
+    Includes finding counts by severity and contributor metrics for each project.
     """
     # Get organization ID for multi-tenant scoping
     org_id = organization_id or _get_current_organization_id(db)
@@ -116,9 +118,14 @@ async def get_projects(
 
     return results
 
-@router.get("/{project_id}")
+@router.get("/{project_id}",
+    summary="Get project details with security metrics",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
 async def get_project_details(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get basic details for a specific project."""
+    """
+    Get basic details for a specific project including finding counts by severity.
+    Accepts either UUID or project name as the identifier.
+    """
     try:
         # Try to parse UUID
         p_uuid = uuid.UUID(project_id)
@@ -182,9 +189,14 @@ async def get_project_details(project_id: str, db: Session = Depends(get_tenant_
         }
     }
 
-@router.get("/{project_id}/secrets")
+@router.get("/{project_id}/secrets",
+    summary="Get secret findings for a project",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
 async def get_project_secrets(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get secrets findings for a project."""
+    """
+    Get secret findings for a project detected by TruffleHog and other scanners.
+    Returns only open findings. Accepts either UUID or project name.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -210,9 +222,14 @@ async def get_project_secrets(project_id: str, db: Session = Depends(get_tenant_
         "created_at": f.created_at
     } for f in findings]
 
-@router.get("/{project_id}/sast")
+@router.get("/{project_id}/sast",
+    summary="Get SAST findings for a project",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
 async def get_project_sast(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get SAST (Semgrep/CodeQL) findings for a project."""
+    """
+    Get SAST (Semgrep/CodeQL) findings for a project.
+    Returns only open findings. Accepts either UUID or project name.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -240,81 +257,86 @@ async def get_project_sast(project_id: str, db: Session = Depends(get_tenant_db)
 
 class FileWithSeverity(BaseModel):
     """File entry with security severity data."""
-    path: str
-    severity: Optional[str]
-    findings_count: int = 0
+    path: str = Field(..., description="File path relative to the repository root")
+    severity: Optional[str] = Field(None, description="Highest severity finding in this file")
+    findings_count: int = Field(0, description="Number of findings in this file")
 
 
 class ContributorSummary(BaseModel):
     """Summary for table display."""
-    id: str
-    name: str
-    email: Optional[str]
-    github_username: Optional[str]
-    commits: int
-    commit_percentage: Optional[float]
-    last_commit_at: Optional[datetime]
-    languages: List[str]
-    files_count: int
-    folders_count: int
-    risk_score: int
-    highest_severity: Optional[str]
+    id: str = Field(..., description="Unique contributor identifier")
+    name: str = Field(..., description="Contributor name")
+    email: Optional[str] = Field(None, description="Contributor email address")
+    github_username: Optional[str] = Field(None, description="GitHub username")
+    commits: int = Field(..., description="Number of commits")
+    commit_percentage: Optional[float] = Field(None, description="Percentage of total commits")
+    last_commit_at: Optional[datetime] = Field(None, description="Date of last commit")
+    languages: List[str] = Field(..., description="Programming languages the contributor works with")
+    files_count: int = Field(..., description="Number of files contributed to")
+    folders_count: int = Field(..., description="Number of folders contributed to")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    highest_severity: Optional[str] = Field(None, description="Highest finding severity in contributed files")
 
     model_config = {"from_attributes": True}
 
 
 class ContributorDetail(BaseModel):
     """Full contributor details for modal display."""
-    id: str
-    name: str
-    email: Optional[str]
-    github_username: Optional[str]
-    commits: int
-    commit_percentage: Optional[float]
-    last_commit_at: Optional[datetime]
-    languages: List[str]
-    files_contributed: List[FileWithSeverity]
-    folders_contributed: List[str]
-    risk_score: int
-    ai_summary: Optional[str]
+    id: str = Field(..., description="Unique contributor identifier")
+    name: str = Field(..., description="Contributor name")
+    email: Optional[str] = Field(None, description="Contributor email address")
+    github_username: Optional[str] = Field(None, description="GitHub username")
+    commits: int = Field(..., description="Number of commits")
+    commit_percentage: Optional[float] = Field(None, description="Percentage of total commits")
+    last_commit_at: Optional[datetime] = Field(None, description="Date of last commit")
+    languages: List[str] = Field(..., description="Programming languages")
+    files_contributed: List[FileWithSeverity] = Field(..., description="Files contributed to with severity data")
+    folders_contributed: List[str] = Field(..., description="Folders contributed to")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    ai_summary: Optional[str] = Field(None, description="AI-generated contributor analysis summary")
     # Computed stats for modal
-    critical_files_count: int = 0
-    high_files_count: int = 0
-    medium_files_count: int = 0
-    low_files_count: int = 0
+    critical_files_count: int = Field(0, description="Number of files with critical findings")
+    high_files_count: int = Field(0, description="Number of files with high severity findings")
+    medium_files_count: int = Field(0, description="Number of files with medium severity findings")
+    low_files_count: int = Field(0, description="Number of files with low severity findings")
 
     model_config = {"from_attributes": True}
 
 
 class ContributorsResponse(BaseModel):
     """Response for contributors list endpoint."""
-    total_contributors: int
-    total_commits: int
-    bus_factor: int
-    team_ai_summary: Optional[str]
-    contributors: List[ContributorSummary]
+    total_contributors: int = Field(..., description="Total number of contributors")
+    total_commits: int = Field(..., description="Total commits across all contributors")
+    bus_factor: int = Field(..., description="Minimum contributors needed for 50% of commits")
+    team_ai_summary: Optional[str] = Field(None, description="AI-generated team summary")
+    contributors: List[ContributorSummary] = Field(..., description="List of contributor summaries")
 
 
 # Keep old response model for backward compatibility
 class ContributorResponse(BaseModel):
-    id: str
-    name: str
-    email: Optional[str]
-    commits: int
-    last_commit_at: Optional[datetime]
-    languages: List[str]
-    risk_score: int
+    id: str = Field(..., description="Unique contributor identifier")
+    name: str = Field(..., description="Contributor name")
+    email: Optional[str] = Field(None, description="Contributor email address")
+    commits: int = Field(..., description="Number of commits")
+    last_commit_at: Optional[datetime] = Field(None, description="Date of last commit")
+    languages: List[str] = Field(..., description="Programming languages")
+    risk_score: int = Field(..., description="Calculated risk score")
 
     model_config = {"from_attributes": True}
 
 
-@router.get("/{project_id}/contributors", response_model=ContributorsResponse)
+@router.get("/{project_id}/contributors", response_model=ContributorsResponse,
+    summary="Get project contributors with summary data",
+    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid project ID format"}, 404: {"description": "Repository not found"}})
 def get_project_contributors(
     project_id: str,
     db: Session = Depends(get_tenant_db),
     limit: int = 100
 ):
-    """Get all contributors with summary data for table display."""
+    """
+    Get all contributors with summary data for table display.
+    Includes bus factor calculation, commit percentages, and highest severity per contributor.
+    """
     try:
         repo_uuid = uuid.UUID(project_id)
     except ValueError:
@@ -376,13 +398,18 @@ def get_project_contributors(
     )
 
 
-@router.get("/{project_id}/contributors/{contributor_id}", response_model=ContributorDetail)
+@router.get("/{project_id}/contributors/{contributor_id}", response_model=ContributorDetail,
+    summary="Get detailed contributor information",
+    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid ID format"}, 404: {"description": "Contributor not found"}})
 def get_contributor_detail(
     project_id: str,
     contributor_id: str,
     db: Session = Depends(get_tenant_db)
 ):
-    """Get full contributor details for modal display."""
+    """
+    Get full contributor details for modal display.
+    Includes files contributed with severity data, folders, and AI-generated summary.
+    """
     try:
         repo_uuid = uuid.UUID(project_id)
         contrib_uuid = uuid.UUID(contributor_id)
@@ -425,18 +452,23 @@ def get_contributor_detail(
     )
 
 class LanguageStatResponse(BaseModel):
-    name: str
-    files: int
-    lines: int
-    blanks: int
-    comments: int
-    findings: Dict[str, int] # severity -> count
+    name: str = Field(..., description="Programming language name")
+    files: int = Field(..., description="Number of files in this language")
+    lines: int = Field(..., description="Total lines of code")
+    blanks: int = Field(..., description="Number of blank lines")
+    comments: int = Field(..., description="Number of comment lines")
+    findings: Dict[str, int] = Field(..., description="Finding counts by severity level")
 
     model_config = {"from_attributes": True}
 
-@router.get("/{project_id}/languages", response_model=List[LanguageStatResponse])
+@router.get("/{project_id}/languages", response_model=List[LanguageStatResponse],
+    summary="Get language statistics for a project",
+    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Project not found"}})
 def get_project_languages(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get language stats and findings for a project."""
+    """
+    Get language statistics and security finding counts per language for a project.
+    Includes lines of code, blanks, comments, and finding severity breakdown.
+    """
     try:
         uuid_obj = uuid.UUID(project_id)
     except ValueError:
@@ -495,25 +527,30 @@ def get_project_languages(project_id: str, db: Session = Depends(get_tenant_db))
     return results
 
 class DependencyResponse(BaseModel):
-    id: str
-    name: str
-    version: str
-    type: str
-    package_manager: str
-    license: str
-    locations: List[str]
-    source: Optional[str]
-    
+    id: str = Field(..., description="Unique dependency identifier")
+    name: str = Field(..., description="Package name")
+    version: str = Field(..., description="Package version")
+    type: str = Field(..., description="Dependency type (direct, transitive, etc.)")
+    package_manager: str = Field(..., description="Package manager (npm, pip, maven, etc.)")
+    license: str = Field(..., description="License identifier")
+    locations: List[str] = Field(..., description="File locations where the dependency is declared")
+    source: Optional[str] = Field(None, description="Source of the dependency information")
+
     # Enriched fields
-    vulnerability_count: int = 0
-    max_severity: str = "Safe"
-    ai_analysis: Optional[Dict[str, Any]] = None
+    vulnerability_count: int = Field(0, description="Number of known vulnerabilities")
+    max_severity: str = Field("Safe", description="Maximum vulnerability severity (Safe, low, medium, high, critical)")
+    ai_analysis: Optional[Dict[str, Any]] = Field(None, description="AI-generated vulnerability analysis")
 
     model_config = {"from_attributes": True}
 
-@router.get("/{project_id}/dependencies", response_model=List[DependencyResponse])
+@router.get("/{project_id}/dependencies", response_model=List[DependencyResponse],
+    summary="Get project dependencies with vulnerabilities",
+    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Project not found"}})
 def get_project_dependencies(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get dependencies (SBOM) for a project, enriched with vulnerability data."""
+    """
+    Get dependencies (SBOM) for a project enriched with vulnerability data and AI analysis.
+    Returns all known dependencies with their vulnerability counts and maximum severity.
+    """
     try:
         uuid_obj = uuid.UUID(project_id)
     except ValueError:
@@ -608,9 +645,14 @@ def get_project_dependencies(project_id: str, db: Session = Depends(get_tenant_d
         
     return results
 
-@router.get("/{project_id}/terraform")
+@router.get("/{project_id}/terraform",
+    summary="Get Terraform/IaC findings for a project",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
 async def get_project_terraform(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get Terraform/IaC findings for a project."""
+    """
+    Get Terraform and infrastructure-as-code findings for a project.
+    Returns only open findings. Accepts either UUID or project name.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -636,9 +678,14 @@ async def get_project_terraform(project_id: str, db: Session = Depends(get_tenan
         "created_at": f.created_at
     } for f in findings]
 
-@router.get("/{project_id}/oss")
+@router.get("/{project_id}/oss",
+    summary="Get OSS dependency findings for a project",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
 async def get_project_oss(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get OSS/Dependency findings for a project."""
+    """
+    Get OSS/dependency vulnerability findings for a project.
+    Returns only open findings. Accepts either UUID or project name.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -664,9 +711,14 @@ async def get_project_oss(project_id: str, db: Session = Depends(get_tenant_db))
         "created_at": f.created_at
     } for f in findings]
 
-@router.get("/{project_id}/runs")
+@router.get("/{project_id}/runs",
+    summary="Get scan run history for a project",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
 async def get_project_runs(project_id: str, db: Session = Depends(get_tenant_db)):
-    """Get scan runs for a project."""
+    """
+    Get scan run history for a project sorted by most recent first.
+    Returns up to 50 runs with status, findings count, and duration.
+    """
     try:
         p_uuid = uuid.UUID(project_id)
         project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
@@ -697,12 +749,14 @@ async def get_project_runs(project_id: str, db: Session = Depends(get_tenant_db)
 
 class SecurityReportRequest(BaseModel):
     """Request model for generating security assessment report."""
-    include_architecture: bool = True
-    include_diagram: bool = True
-    highlight_count: int = 10
+    include_architecture: bool = Field(True, description="Include architecture analysis in the report")
+    include_diagram: bool = Field(True, description="Generate and include architecture diagram")
+    highlight_count: int = Field(10, description="Number of top findings to highlight")
 
 
-@router.post("/{project_id}/security-report")
+@router.post("/{project_id}/security-report",
+    summary="Generate AI-powered security assessment report",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}, 500: {"description": "AI analysis or report generation error"}})
 async def generate_security_report(
     project_id: str,
     request: SecurityReportRequest,
@@ -710,9 +764,8 @@ async def generate_security_report(
 ):
     """
     Generate an AI-powered security assessment report for a project.
-    
-    This endpoint aggregates all security findings, architecture analysis,
-    and project insights into a comprehensive report with AI-curated highlights.
+    Aggregates all security findings, architecture analysis, and project insights
+    into a comprehensive report with AI-curated highlights and executive summary.
     """
     import sys
     sys.path.insert(0, '/app/execution')

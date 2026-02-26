@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
 import requests
 from loguru import logger
@@ -28,48 +28,48 @@ router = APIRouter(
 
 class RepositoryMetadata(BaseModel):
     """GitHub repository metadata."""
-    id: str
-    name: str
-    full_name: Optional[str]
-    description: Optional[str]
-    url: Optional[str]
-    default_branch: Optional[str]
-    language: Optional[str]
-    pushed_at: Optional[datetime]
-    github_created_at: Optional[datetime]
-    github_updated_at: Optional[datetime]
-    stargazers_count: int = 0
-    watchers_count: int = 0
-    forks_count: int = 0
-    open_issues_count: int = 0
-    size_kb: int = 0
-    is_fork: bool = False
-    is_archived: bool = False
-    is_private: bool = True
-    visibility: Optional[str]
-    topics: Optional[List[str]]
-    license_name: Optional[str]
+    id: str = Field(..., description="Unique identifier for the repository")
+    name: str = Field(..., description="Repository name")
+    full_name: Optional[str] = Field(None, description="Full name including org prefix (e.g. org/repo)")
+    description: Optional[str] = Field(None, description="Repository description from GitHub")
+    url: Optional[str] = Field(None, description="HTML URL of the repository on GitHub")
+    default_branch: Optional[str] = Field(None, description="Default branch name (e.g. main)")
+    language: Optional[str] = Field(None, description="Primary programming language")
+    pushed_at: Optional[datetime] = Field(None, description="Timestamp of the last push to the repository")
+    github_created_at: Optional[datetime] = Field(None, description="When the repository was created on GitHub")
+    github_updated_at: Optional[datetime] = Field(None, description="When the repository was last updated on GitHub")
+    stargazers_count: int = Field(0, description="Number of stars on the repository")
+    watchers_count: int = Field(0, description="Number of watchers on the repository")
+    forks_count: int = Field(0, description="Number of forks of the repository")
+    open_issues_count: int = Field(0, description="Number of open issues")
+    size_kb: int = Field(0, description="Repository size in kilobytes")
+    is_fork: bool = Field(False, description="Whether this repository is a fork")
+    is_archived: bool = Field(False, description="Whether this repository is archived")
+    is_private: bool = Field(True, description="Whether this repository is private")
+    visibility: Optional[str] = Field(None, description="Repository visibility (public, private, internal)")
+    topics: Optional[List[str]] = Field(None, description="List of repository topics/tags")
+    license_name: Optional[str] = Field(None, description="SPDX license identifier or license name")
 
     model_config = {"from_attributes": True}
 
 
 class FileCommitInfo(BaseModel):
     """File commit information."""
-    file_path: str
-    last_commit_sha: Optional[str]
-    last_commit_date: Optional[datetime]
-    last_commit_author: Optional[str]
-    last_commit_message: Optional[str]
+    file_path: str = Field(..., description="Path of the file within the repository")
+    last_commit_sha: Optional[str] = Field(None, description="SHA hash of the last commit that modified the file")
+    last_commit_date: Optional[datetime] = Field(None, description="Date of the last commit that modified the file")
+    last_commit_author: Optional[str] = Field(None, description="Author name of the last commit")
+    last_commit_message: Optional[str] = Field(None, description="Commit message of the last commit")
 
     model_config = {"from_attributes": True}
 
 
 class SyncResult(BaseModel):
     """Result of a sync operation."""
-    success: bool
-    message: str
-    repos_synced: int = 0
-    files_synced: int = 0
+    success: bool = Field(..., description="Whether the sync operation succeeded")
+    message: str = Field(..., description="Human-readable status message")
+    repos_synced: int = Field(0, description="Number of repositories successfully synced")
+    files_synced: int = Field(0, description="Number of files successfully synced")
 
 
 # =============================================================================
@@ -220,9 +220,23 @@ def sync_file_commit(db: Session, repo: models.Repository, file_path: str) -> Op
 # Endpoints
 # =============================================================================
 
-@router.get("/repos/{repo_name}/metadata", response_model=RepositoryMetadata, dependencies=[Depends(require_permissions("repositories:read"))])
+@router.get(
+    "/repos/{repo_name}/metadata",
+    response_model=RepositoryMetadata,
+    dependencies=[Depends(require_permissions("repositories:read"))],
+    summary="Get repository GitHub metadata",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:read permission"},
+        404: {"description": "Repository not found"},
+    },
+)
 def get_repo_metadata(repo_name: str, db: Session = Depends(get_tenant_db)):
-    """Get stored GitHub metadata for a repository."""
+    """Retrieve locally-stored GitHub metadata for a single repository.
+
+    Requires the **repositories:read** permission. Returns metadata fields
+    fetched from the GitHub API during the last sync.
+    """
     repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -252,9 +266,24 @@ def get_repo_metadata(repo_name: str, db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.post("/repos/{repo_name}/sync", response_model=SyncResult, dependencies=[Depends(require_permissions("repositories:write"))])
+@router.post(
+    "/repos/{repo_name}/sync",
+    response_model=SyncResult,
+    dependencies=[Depends(require_permissions("repositories:write"))],
+    summary="Sync single repository from GitHub",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:write permission"},
+        404: {"description": "Repository not found in local database"},
+        502: {"description": "Failed to fetch data from GitHub API"},
+    },
+)
 def sync_repo_from_github(repo_name: str, db: Session = Depends(get_tenant_db)):
-    """Sync repository metadata from GitHub API."""
+    """Fetch the latest metadata for a repository from the GitHub API and store it locally.
+
+    Requires the **repositories:write** permission. Contacts the GitHub API to
+    refresh repository statistics, topics, and other metadata.
+    """
     repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -272,9 +301,23 @@ def sync_repo_from_github(repo_name: str, db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.post("/sync-all", response_model=SyncResult, dependencies=[Depends(require_permissions("repositories:write"))])
+@router.post(
+    "/sync-all",
+    response_model=SyncResult,
+    dependencies=[Depends(require_permissions("repositories:write"))],
+    summary="Sync all repositories from GitHub",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:write permission"},
+        500: {"description": "Internal server error during sync"},
+    },
+)
 def sync_all_repos(background_tasks: BackgroundTasks, db: Session = Depends(get_tenant_db)):
-    """Sync all repositories from GitHub API (runs in background)."""
+    """Queue a background job that syncs metadata for every repository from the GitHub API.
+
+    Requires the **repositories:write** permission. The sync runs asynchronously;
+    use the sync-status endpoint to monitor progress.
+    """
     repos = db.query(models.Repository).all()
     
     def sync_all(repo_names: List[str]):
@@ -299,14 +342,22 @@ def sync_all_repos(background_tasks: BackgroundTasks, db: Session = Depends(get_
     )
 
 
-@router.get("/repos/{repo_name}/files/{file_path:path}/commit", response_model=FileCommitInfo, dependencies=[Depends(require_permissions("repositories:read"))])
+@router.get(
+    "/repos/{repo_name}/files/{file_path:path}/commit",
+    response_model=FileCommitInfo,
+    dependencies=[Depends(require_permissions("repositories:read"))],
+    summary="Get last commit info for a file",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:read permission"},
+        404: {"description": "Repository or file commit data not found"},
+    },
+)
 def get_file_commit(repo_name: str, file_path: str, refresh: bool = False, db: Session = Depends(get_tenant_db)):
-    """Get last commit information for a specific file.
-    
-    Args:
-        repo_name: Repository name
-        file_path: Path to the file within the repository
-        refresh: If true, fetch fresh data from GitHub API
+    """Return the last commit information for a specific file in a repository.
+
+    Requires the **repositories:read** permission. Returns cached data by
+    default; set `refresh=true` to fetch fresh commit data from the GitHub API.
     """
     repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
     if not repo:
@@ -333,9 +384,23 @@ def get_file_commit(repo_name: str, file_path: str, refresh: bool = False, db: S
     )
 
 
-@router.post("/repos/{repo_name}/files/sync", response_model=SyncResult, dependencies=[Depends(require_permissions("repositories:write"))])
+@router.post(
+    "/repos/{repo_name}/files/sync",
+    response_model=SyncResult,
+    dependencies=[Depends(require_permissions("repositories:write"))],
+    summary="Sync file commit data for a repository",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:write permission"},
+        404: {"description": "Repository not found"},
+    },
+)
 def sync_files_for_findings(repo_name: str, db: Session = Depends(get_tenant_db)):
-    """Sync file commit data for all files with findings in a repository."""
+    """Fetch commit data from GitHub for every file that has findings in the given repository.
+
+    Requires the **repositories:write** permission. Iterates over distinct file
+    paths associated with findings and refreshes their last-commit metadata.
+    """
     repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
@@ -360,12 +425,22 @@ def sync_files_for_findings(repo_name: str, db: Session = Depends(get_tenant_db)
     )
 
 
-@router.post("/sync-all-files", response_model=SyncResult, dependencies=[Depends(require_permissions("repositories:write"))])
+@router.post(
+    "/sync-all-files",
+    response_model=SyncResult,
+    dependencies=[Depends(require_permissions("repositories:write"))],
+    summary="Sync file commit data for all repositories",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:write permission"},
+        500: {"description": "Internal server error during sync"},
+    },
+)
 def sync_all_files_for_findings(background_tasks: BackgroundTasks, db: Session = Depends(get_tenant_db)):
-    """Sync file commit data for ALL files with findings across all repositories.
-    
-    This runs in the background and may take a while for large numbers of files.
-    Use GET /github/sync-status to check progress.
+    """Queue a background job to sync file commit data for ALL files with findings across all repositories.
+
+    Requires the **repositories:write** permission. This may take a while for
+    large numbers of files. Use GET /github/sync-status to check progress.
     """
     from ..database import SessionLocal
     
@@ -420,9 +495,22 @@ def sync_all_files_for_findings(background_tasks: BackgroundTasks, db: Session =
     )
 
 
-@router.get("/sync-status", dependencies=[Depends(require_permissions("repositories:read"))])
+@router.get(
+    "/sync-status",
+    dependencies=[Depends(require_permissions("repositories:read"))],
+    summary="Get sync status overview",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing repositories:read permission"},
+    },
+)
 def get_sync_status(db: Session = Depends(get_tenant_db)):
-    """Get current sync status for repositories and files."""
+    """Return aggregate sync status showing how many repositories and files have been synced.
+
+    Requires the **repositories:read** permission. Provides counts and
+    percentages for repositories with metadata, files with commit data,
+    and findings with associated file commit information.
+    """
     # Count repos with GitHub metadata
     repos_with_metadata = db.query(models.Repository).filter(
         models.Repository.pushed_at.isnot(None)

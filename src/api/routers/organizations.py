@@ -48,9 +48,9 @@ class CreateOrganizationRequest(BaseModel):
 
 class UpdateOrganizationRequest(BaseModel):
     """Request model for updating an organization."""
-    display_name: Optional[str] = None
-    is_active: Optional[bool] = None
-    is_default: Optional[bool] = None
+    display_name: Optional[str] = Field(None, description="Human-readable display name for the organization")
+    is_active: Optional[bool] = Field(None, description="Whether the organization is active and available for operations")
+    is_default: Optional[bool] = Field(None, description="Whether to set this organization as the default context")
 
 
 class UpdateCredentialsRequest(BaseModel):
@@ -61,19 +61,19 @@ class UpdateCredentialsRequest(BaseModel):
 
 class OrganizationResponse(BaseModel):
     """Response model for organization data."""
-    id: str
-    api_id: Optional[int] = None
-    name: str
-    display_name: Optional[str] = None
-    github_org: str
-    database_name: Optional[str] = None
-    is_active: bool = True
-    is_default: bool = False
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    id: str = Field(..., description="Unique identifier for the organization (UUID)")
+    api_id: Optional[int] = Field(None, description="Auto-incremented API identifier")
+    name: str = Field(..., description="Internal name of the organization (lowercase, alphanumeric)")
+    display_name: Optional[str] = Field(None, description="Human-readable display name")
+    github_org: str = Field(..., description="GitHub organization name")
+    database_name: Optional[str] = Field(None, description="Name of the isolated PostgreSQL database for this organization")
+    is_active: bool = Field(True, description="Whether the organization is active and available for operations")
+    is_default: bool = Field(False, description="Whether this is the default organization context")
+    created_at: Optional[datetime] = Field(None, description="Timestamp when the organization was created")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp when the organization was last updated")
     # Computed fields (not in DB)
-    total_repos: int = 0
-    total_findings: int = 0
+    total_repos: int = Field(0, description="Total number of repositories belonging to this organization")
+    total_findings: int = Field(0, description="Total number of security findings across all repositories")
 
     class Config:
         from_attributes = True
@@ -81,23 +81,23 @@ class OrganizationResponse(BaseModel):
 
 class SchemaDriftReport(BaseModel):
     """Schema drift report for an organization."""
-    organization: str
-    database: str
-    is_synced: bool
-    master_hash: Optional[str] = None
-    org_hash: Optional[str] = None
-    status: str
-    error: Optional[str] = None
+    organization: str = Field(..., description="Name of the organization being checked")
+    database: str = Field(..., description="Name of the organization's PostgreSQL database")
+    is_synced: bool = Field(..., description="Whether the organization schema matches the master schema")
+    master_hash: Optional[str] = Field(None, description="SHA-256 hash of the master schema")
+    org_hash: Optional[str] = Field(None, description="SHA-256 hash of the organization's current schema")
+    status: str = Field(..., description="Human-readable sync status (e.g., 'synced', 'drifted', 'error')")
+    error: Optional[str] = Field(None, description="Error message if schema check failed")
 
 
 class SchemaSyncResult(BaseModel):
     """Result of schema synchronization."""
-    organization: str
-    status: str
-    old_hash: Optional[str] = None
-    new_hash: Optional[str] = None
-    schema_hash: Optional[str] = None
-    error: Optional[str] = None
+    organization: str = Field(..., description="Name of the organization whose schema was synchronized")
+    status: str = Field(..., description="Result status of the sync operation (e.g., 'success', 'failed', 'no_changes')")
+    old_hash: Optional[str] = Field(None, description="Schema hash before synchronization")
+    new_hash: Optional[str] = Field(None, description="Schema hash after synchronization")
+    schema_hash: Optional[str] = Field(None, description="Current schema hash after the operation")
+    error: Optional[str] = Field(None, description="Error message if synchronization failed")
 
 
 # =============================================================================
@@ -128,7 +128,14 @@ async def ensure_agent_initialized():
 # Organization CRUD Endpoints
 # =============================================================================
 
-@router.get("/", response_model=List[OrganizationResponse])
+@router.get(
+    "/",
+    response_model=List[OrganizationResponse],
+    summary="List all organizations",
+    responses={
+        500: {"description": "Internal server error while querying organizations"},
+    },
+)
 async def list_organizations(
     include_inactive: bool = Query(False, description="Include inactive organizations"),
     db: Session = Depends(get_tenant_db)
@@ -137,6 +144,8 @@ async def list_organizations(
     List all registered organizations.
 
     Returns organizations sorted by default status, then name.
+    Includes computed counts for repositories and findings per organization.
+    No special permissions are required to list organizations.
     """
     from sqlalchemy import func
 
@@ -189,12 +198,21 @@ async def list_organizations(
     return result
 
 
-@router.get("/current")
+@router.get(
+    "/current",
+    summary="Get current organization context",
+    responses={
+        404: {"description": "No organization is configured or available"},
+        500: {"description": "Internal server error while resolving current organization"},
+    },
+)
 async def get_current_organization(db: Session = Depends(get_tenant_db)):
     """
     Get the currently selected organization context.
-    
-    Returns the default organization or first available.
+
+    Returns the default organization if one is set, otherwise falls back to
+    the first active organization. Includes repository and finding counts.
+    No special permissions are required.
     """
     # Try to get default org first
     org = db.query(models.Organization).filter(
@@ -234,10 +252,21 @@ async def get_current_organization(db: Session = Depends(get_tenant_db)):
     return {"message": "No organization configured", "organization": None}
 
 
-@router.get("/{org_name}", response_model=OrganizationResponse)
+@router.get(
+    "/{org_name}",
+    response_model=OrganizationResponse,
+    summary="Get organization by name",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while fetching organization details"},
+    },
+)
 async def get_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     """
     Get organization details by name.
+
+    Performs a case-insensitive lookup and returns the organization along with
+    computed repository and finding counts. No special permissions are required.
 
     Args:
         org_name: Organization name (case-insensitive)
@@ -274,16 +303,26 @@ async def get_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.post("/", response_model=OrganizationResponse)
+@router.post(
+    "/",
+    response_model=OrganizationResponse,
+    summary="Create a new organization",
+    responses={
+        400: {"description": "Invalid request parameters or organization name already exists"},
+        500: {"description": "Internal server error during organization creation (e.g., database provisioning failure)"},
+    },
+)
 async def create_organization(request: CreateOrganizationRequest):
     """
     Create a new organization with isolated database.
-    
+
     This will:
     1. Create a new PostgreSQL database
     2. Apply the master schema
     3. Store credentials securely
     4. Register the organization
+
+    Requires administrative permissions to provision new organizations.
     """
     try:
         agent = await ensure_agent_initialized()
@@ -302,11 +341,23 @@ async def create_organization(request: CreateOrganizationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/{org_name}", response_model=OrganizationResponse)
+@router.patch(
+    "/{org_name}",
+    response_model=OrganizationResponse,
+    summary="Update organization properties",
+    responses={
+        400: {"description": "Invalid update parameters"},
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while updating the organization"},
+    },
+)
 async def update_organization(org_name: str, request: UpdateOrganizationRequest):
     """
     Update organization properties.
-    
+
+    Allows partial updates to an organization's display name, active status,
+    or default flag. Requires administrative permissions.
+
     Args:
         org_name: Organization name
         request: Fields to update
@@ -326,14 +377,26 @@ async def update_organization(org_name: str, request: UpdateOrganizationRequest)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{org_name}")
+@router.delete(
+    "/{org_name}",
+    summary="Delete an organization",
+    responses={
+        400: {"description": "Invalid request (e.g., cannot delete the last active organization)"},
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error during deletion (e.g., database drop failure)"},
+    },
+)
 async def delete_organization(
     org_name: str,
     drop_database: bool = Query(False, description="Also drop the organization's database")
 ):
     """
     Delete an organization.
-    
+
+    Removes the organization registration and optionally drops its isolated
+    PostgreSQL database. This action is irreversible. Requires administrative
+    permissions.
+
     Args:
         org_name: Organization name
         drop_database: If True, also drops the PostgreSQL database
@@ -354,7 +417,15 @@ async def delete_organization(
 # Organization Selection Endpoints
 # =============================================================================
 
-@router.post("/{org_name}/select", response_model=OrganizationResponse)
+@router.post(
+    "/{org_name}/select",
+    response_model=OrganizationResponse,
+    summary="Select organization as current context",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while switching organization context"},
+    },
+)
 async def select_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     """
     Select organization as current context.
@@ -362,6 +433,7 @@ async def select_organization(org_name: str, db: Session = Depends(get_tenant_db
     This loads the organization's credentials and configures
     the environment for scanning operations. It also switches
     the database connection to the organization's database.
+    No special permissions are required beyond being authenticated.
 
     Args:
         org_name: Organization name to select
@@ -411,13 +483,21 @@ async def select_organization(org_name: str, db: Session = Depends(get_tenant_db
 # Schema Synchronization Endpoints
 # =============================================================================
 
-@router.get("/schema/drift", response_model=List[SchemaDriftReport])
+@router.get(
+    "/schema/drift",
+    response_model=List[SchemaDriftReport],
+    summary="Check schema drift across all organizations",
+    responses={
+        500: {"description": "Internal server error while checking schema drift"},
+    },
+)
 async def check_schema_drift():
     """
     Check all organization databases for schema drift.
-    
-    Compares each organization's schema against the master schema
-    and reports any differences.
+
+    Compares each organization's schema hash against the master schema
+    and reports any differences. Requires administrative permissions
+    to inspect database schemas.
     """
     try:
         agent = await ensure_agent_initialized()
@@ -427,14 +507,23 @@ async def check_schema_drift():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{org_name}/sync-schema", response_model=SchemaSyncResult)
+@router.post(
+    "/{org_name}/sync-schema",
+    response_model=SchemaSyncResult,
+    summary="Synchronize organization schema with master",
+    responses={
+        400: {"description": "Invalid organization name or organization not found"},
+        500: {"description": "Internal server error during schema synchronization"},
+    },
+)
 async def sync_organization_schema(org_name: str):
     """
     Synchronize organization schema with master.
-    
-    Applies any missing migrations and updates the schema
-    to match the master database.
-    
+
+    Applies any missing migrations and updates the organization's database
+    schema to match the master database. Requires administrative permissions
+    to modify database schemas.
+
     Args:
         org_name: Organization name
     """
@@ -448,12 +537,19 @@ async def sync_organization_schema(org_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/schema/sync-all")
+@router.post(
+    "/schema/sync-all",
+    summary="Synchronize all organization schemas with master",
+    responses={
+        500: {"description": "Internal server error during bulk schema synchronization"},
+    },
+)
 async def sync_all_schemas():
     """
     Synchronize all organization schemas with master.
-    
-    Runs schema sync for every registered organization.
+
+    Runs schema sync for every registered organization in sequence.
+    Requires administrative permissions to modify database schemas.
     """
     try:
         agent = await ensure_agent_initialized()
@@ -467,18 +563,26 @@ async def sync_all_schemas():
 # Scan Orchestration Endpoints
 # =============================================================================
 
-@router.post("/{org_name}/scan")
+@router.post(
+    "/{org_name}/scan",
+    summary="Start a security scan for an organization",
+    responses={
+        400: {"description": "Invalid scan parameters or organization not found"},
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while initiating the scan"},
+    },
+)
 async def start_organization_scan(
     org_name: str,
     repos: Optional[List[str]] = Query(None, description="Specific repos to scan"),
     scan_type: str = Query("full", description="Scan type: full, incremental, secrets")
 ):
     """
-    Start a scan for an organization.
-    
-    Selects the organization context and initiates scanning
-    for all or specified repositories.
-    
+    Start a security scan for an organization.
+
+    Selects the organization context and initiates scanning for all or
+    specified repositories. Requires scan execution permissions.
+
     Args:
         org_name: Organization name
         repos: Optional list of specific repos to scan
@@ -494,11 +598,21 @@ async def start_organization_scan(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{org_name}/scan/status")
+@router.get(
+    "/{org_name}/scan/status",
+    summary="Get scan status for an organization",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while retrieving scan status"},
+    },
+)
 async def get_scan_status(org_name: str):
     """
     Get current scan status for an organization.
-    
+
+    Returns the latest scan state including status, timestamp, and aggregate
+    counts for repositories and findings. No special permissions are required.
+
     Args:
         org_name: Organization name
     """
@@ -525,13 +639,22 @@ async def get_scan_status(org_name: str):
 # Credential Management Endpoints
 # =============================================================================
 
-@router.get("/{org_name}/credentials/status")
+@router.get(
+    "/{org_name}/credentials/status",
+    summary="Check credential configuration status",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while checking credentials"},
+    },
+)
 async def get_credentials_status(org_name: str):
     """
     Check if credentials are configured for an organization.
-    
-    Does not return actual credential values for security.
-    
+
+    Returns boolean flags indicating whether the GitHub token and org name
+    are stored in the secrets manager. Does not return actual credential
+    values for security. Requires read access to the organization.
+
     Args:
         org_name: Organization name
     """
@@ -552,17 +675,25 @@ async def get_credentials_status(org_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{org_name}/credentials")
+@router.put(
+    "/{org_name}/credentials",
+    summary="Update organization GitHub credentials",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while storing credentials"},
+    },
+)
 async def update_credentials(
     org_name: str,
     request: UpdateCredentialsRequest
 ):
     """
     Update credentials for an organization.
-    
+
     Use this to rotate or update the GitHub PAT for an organization.
-    The token is stored securely in the secrets manager.
-    
+    The token is stored securely in the secrets manager. Requires
+    administrative permissions to manage credentials.
+
     Args:
         org_name: Organization name
         request: JSON body with github_token and optional github_org
@@ -596,13 +727,20 @@ async def update_credentials(
 # Utility Endpoints
 # =============================================================================
 
-@router.get("/configured")
+@router.get(
+    "/configured",
+    summary="List organizations with configured credentials",
+    responses={
+        500: {"description": "Internal server error while querying secrets manager"},
+    },
+)
 async def list_configured_organizations():
     """
     List organizations that have credentials configured.
-    
-    Returns organization names that have GitHub tokens stored
-    in the secrets manager.
+
+    Returns organization names that have GitHub tokens stored in the secrets
+    manager. Useful for verifying which organizations are ready for scanning.
+    No special permissions are required.
     """
     try:
         from secrets_manager import list_configured_orgs
@@ -616,7 +754,17 @@ async def list_configured_organizations():
 # Repository Import/Sync Endpoints
 # =============================================================================
 
-@router.post("/{org_name}/import")
+@router.post(
+    "/{org_name}/import",
+    summary="Import repositories from GitHub",
+    responses={
+        400: {"description": "GitHub token not configured for the organization"},
+        401: {"description": "Invalid GitHub token"},
+        404: {"description": "Organization or GitHub organization not found"},
+        500: {"description": "Internal server error during repository import"},
+        502: {"description": "GitHub API returned an error"},
+    },
+)
 async def import_repositories(
     org_name: str,
     confirm: bool = Query(False, description="Set to true to skip confirmation"),
@@ -625,8 +773,9 @@ async def import_repositories(
     """
     Import all repositories from GitHub for an organization.
 
-    Fetches repositories from the GitHub API and creates them in the database.
-    Requires valid GitHub credentials for the organization.
+    Fetches repositories from the GitHub API and creates or updates them in the
+    database. Requires valid GitHub credentials for the organization. Requires
+    write permissions on repositories.
 
     Args:
         org_name: Organization name
@@ -821,7 +970,15 @@ async def import_repositories(
     }
 
 
-@router.post("/{org_name}/sync-repos")
+@router.post(
+    "/{org_name}/sync-repos",
+    summary="Sync repository metadata from GitHub",
+    responses={
+        400: {"description": "GitHub token not configured for the organization"},
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error during repository synchronization"},
+    },
+)
 async def sync_repositories(
     org_name: str,
     db: Session = Depends(get_tenant_db)
@@ -829,8 +986,10 @@ async def sync_repositories(
     """
     Sync existing repositories with GitHub metadata.
 
-    Updates all repositories for an organization with latest data from GitHub API.
-    Does not create new repositories - use POST /organizations/{org_name}/import instead.
+    Updates all repositories for an organization with latest data from the
+    GitHub API. Does not create new repositories -- use
+    POST /organizations/{org_name}/import instead. Requires write permissions
+    on repositories.
 
     Args:
         org_name: Organization name
@@ -957,7 +1116,14 @@ async def sync_repositories(
 # Organization Data Endpoints
 # =============================================================================
 
-@router.get("/{org_name}/repositories")
+@router.get(
+    "/{org_name}/repositories",
+    summary="List repositories for an organization",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while querying repositories"},
+    },
+)
 async def get_organization_repositories(
     org_name: str,
     skip: int = Query(0, ge=0),
@@ -967,7 +1133,9 @@ async def get_organization_repositories(
     """
     Get repositories for a specific organization.
 
-    Uses shared database with organization_id filtering.
+    Returns a paginated list of repositories filtered by organization_id in
+    the shared database. Results are ordered by last scan date descending.
+    No special permissions are required beyond being authenticated.
     """
     # Get organization
     org = db.query(models.Organization).filter(
@@ -1012,7 +1180,14 @@ async def get_organization_repositories(
         raise HTTPException(status_code=500, detail=f"Failed to query repositories: {str(e)}")
 
 
-@router.get("/{org_name}/findings")
+@router.get(
+    "/{org_name}/findings",
+    summary="List security findings for an organization",
+    responses={
+        404: {"description": "Organization with the specified name was not found"},
+        500: {"description": "Internal server error while querying findings"},
+    },
+)
 async def get_organization_findings(
     org_name: str,
     skip: int = Query(0, ge=0),
@@ -1022,9 +1197,12 @@ async def get_organization_findings(
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Get findings for a specific organization.
+    Get security findings for a specific organization.
 
-    Uses shared database with organization_id filtering.
+    Returns a paginated list of findings filtered by organization, with
+    optional severity and repository filters. Results are ordered by
+    creation date descending. No special permissions are required beyond
+    being authenticated.
     """
     # Get organization
     org = db.query(models.Organization).filter(

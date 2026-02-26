@@ -31,81 +31,94 @@ router = APIRouter(prefix="/tenants", tags=["Tenants"])
 
 class TenantBase(BaseModel):
     """Base model for tenant data."""
-    name: str = Field(..., min_length=1, max_length=255)
-    github_org: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255, description="Display name of the tenant")
+    github_org: str = Field(..., min_length=1, max_length=255, description="GitHub organization name associated with this tenant")
+    description: Optional[str] = Field(None, description="Optional description of the tenant")
 
 
 class TenantCreate(TenantBase):
     """Model for creating a new tenant."""
-    slug: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z0-9-]+$")
-    database_host: Optional[str] = "db"
-    database_port: Optional[int] = 5432
-    database_name: Optional[str] = None  # Auto-generated if not provided
-    database_user: Optional[str] = "auditgh"
-    database_password: Optional[str] = "auditgh_secret"
-    auto_provision: bool = True  # Automatically provision database
+    slug: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z0-9-]+$", description="URL-safe slug identifier (lowercase alphanumeric and hyphens only)")
+    database_host: Optional[str] = Field("db", description="PostgreSQL host for the tenant database")
+    database_port: Optional[int] = Field(5432, description="PostgreSQL port for the tenant database")
+    database_name: Optional[str] = Field(None, description="Database name; auto-generated from slug if not provided")
+    database_user: Optional[str] = Field("auditgh", description="Database user for the tenant schema")
+    database_password: Optional[str] = Field("auditgh_secret", description="Database password for the tenant schema")
+    auto_provision: bool = Field(True, description="Automatically provision the database schema after creation")
 
 
 class TenantUpdate(BaseModel):
     """Model for updating a tenant."""
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    github_org: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Updated display name")
+    github_org: Optional[str] = Field(None, min_length=1, max_length=255, description="Updated GitHub organization name")
+    description: Optional[str] = Field(None, description="Updated description")
+    is_active: Optional[bool] = Field(None, description="Set active/inactive status")
 
 
 class TenantResponse(TenantBase):
     """Model for tenant response."""
-    id: str
-    slug: str
-    database_name: str
-    is_active: bool
-    is_provisioned: bool
-    schema_version: Optional[str]
-    migration_status: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    id: str = Field(..., description="Unique tenant identifier")
+    slug: str = Field(..., description="URL-safe slug identifier")
+    database_name: str = Field(..., description="Name of the tenant's PostgreSQL database")
+    is_active: bool = Field(..., description="Whether the tenant is currently active")
+    is_provisioned: bool = Field(..., description="Whether the tenant database has been provisioned")
+    schema_version: Optional[str] = Field(None, description="Current database schema version")
+    migration_status: Optional[str] = Field(None, description="Migration status (current, behind, error, pending)")
+    created_at: datetime = Field(..., description="Timestamp when the tenant was created")
+    updated_at: datetime = Field(..., description="Timestamp when the tenant was last updated")
     
     model_config = {"from_attributes": True}
 
 
 class TenantListResponse(BaseModel):
     """Model for tenant list response."""
-    total: int
-    tenants: List[TenantResponse]
+    total: int = Field(..., description="Total number of tenants matching the query")
+    tenants: List[TenantResponse] = Field(..., description="List of tenant records")
 
 
 class TenantHealthResponse(BaseModel):
     """Model for tenant health check response."""
-    total_tenants: int
-    current: int
-    behind: int
-    error: int
-    pending: int
-    latest_version: Optional[str]
-    tenants: List[dict]
+    total_tenants: int = Field(..., description="Total number of active tenants")
+    current: int = Field(..., description="Number of tenants with up-to-date schemas")
+    behind: int = Field(..., description="Number of tenants with outdated schemas")
+    error: int = Field(..., description="Number of tenants in error state")
+    pending: int = Field(..., description="Number of tenants pending provisioning")
+    latest_version: Optional[str] = Field(None, description="Latest schema version across all tenants")
+    tenants: List[dict] = Field(..., description="Per-tenant migration status details")
 
 
 class ProvisionResponse(BaseModel):
     """Model for provision response."""
-    success: bool
-    message: str
-    tenant_slug: str
+    success: bool = Field(..., description="Whether the provisioning request was accepted")
+    message: str = Field(..., description="Human-readable status message")
+    tenant_slug: str = Field(..., description="Slug of the tenant being provisioned")
 
 
 # =============================================================================
 # Endpoints
 # =============================================================================
 
-@router.get("", response_model=TenantListResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "",
+    response_model=TenantListResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="List all tenants",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 def list_tenants(
     skip: int = 0,
     limit: int = 100,
     include_inactive: bool = False,
     db: Session = Depends(get_metadata_db)
 ):
-    """List all registered tenants."""
+    """Return a paginated list of all registered tenants.
+
+    Requires the **admin:manage** permission. By default only active tenants
+    are returned; set `include_inactive=true` to include deactivated tenants.
+    """
     query = db.query(Tenant)
     
     if not include_inactive:
@@ -133,7 +146,19 @@ def list_tenants(
     )
 
 
-@router.post("", response_model=TenantResponse, status_code=201, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "",
+    response_model=TenantResponse,
+    status_code=201,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Create a new tenant",
+    responses={
+        400: {"description": "Invalid slug format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        409: {"description": "Tenant slug or GitHub org already exists"},
+    },
+)
 def create_tenant(
     tenant_data: TenantCreate,
     background_tasks: BackgroundTasks,
@@ -142,8 +167,9 @@ def create_tenant(
     """
     Create a new tenant with schema-per-tenant isolation.
 
-    Creates a tenant record and provisions a PostgreSQL schema in the background.
-    The slug must be lowercase, alphanumeric, and may contain hyphens.
+    Requires the **admin:manage** permission. Creates a tenant record and
+    provisions a PostgreSQL schema in the background. The slug must be
+    lowercase, alphanumeric, and may contain hyphens.
     """
     import re
 
@@ -217,9 +243,22 @@ def create_tenant(
     )
 
 
-@router.get("/health", response_model=TenantHealthResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/health",
+    response_model=TenantHealthResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get tenant migration health",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+    },
+)
 def get_tenant_health(db: Session = Depends(get_metadata_db)):
-    """Get migration health status for all tenants."""
+    """Return migration health status for all active tenants.
+
+    Requires the **admin:manage** permission. Reports how many tenants are
+    current, behind, in error, or pending, along with per-tenant details.
+    """
     tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
     
     status_counts = {
@@ -262,9 +301,23 @@ def get_tenant_health(db: Session = Depends(get_metadata_db)):
     )
 
 
-@router.get("/{slug}", response_model=TenantResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.get(
+    "/{slug}",
+    response_model=TenantResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Get tenant by slug",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        404: {"description": "Tenant not found"},
+    },
+)
 def get_tenant(slug: str, db: Session = Depends(get_metadata_db)):
-    """Get tenant details by slug."""
+    """Retrieve full details for a single tenant identified by its slug.
+
+    Requires the **admin:manage** permission. Returns the tenant record
+    including database provisioning and migration status.
+    """
     tenant = db.query(Tenant).filter(Tenant.slug == slug).first()
     
     if not tenant:
@@ -286,13 +339,27 @@ def get_tenant(slug: str, db: Session = Depends(get_metadata_db)):
     )
 
 
-@router.put("/{slug}", response_model=TenantResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.put(
+    "/{slug}",
+    response_model=TenantResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Update a tenant",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        404: {"description": "Tenant not found"},
+    },
+)
 def update_tenant(
     slug: str,
     tenant_data: TenantUpdate,
     db: Session = Depends(get_metadata_db)
 ):
-    """Update tenant details."""
+    """Update mutable fields on an existing tenant.
+
+    Requires the **admin:manage** permission. Only fields included in the
+    request body are modified; omitted fields remain unchanged.
+    """
     tenant = db.query(Tenant).filter(Tenant.slug == slug).first()
     
     if not tenant:
@@ -332,13 +399,27 @@ def update_tenant(
     )
 
 
-@router.post("/{slug}/provision", response_model=ProvisionResponse, dependencies=[Depends(require_permissions("admin:manage"))])
+@router.post(
+    "/{slug}/provision",
+    response_model=ProvisionResponse,
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Provision tenant database",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        404: {"description": "Tenant not found"},
+    },
+)
 def provision_tenant(
     slug: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_metadata_db)
 ):
-    """Manually trigger database provisioning for a tenant."""
+    """Manually trigger database schema provisioning for a tenant.
+
+    Requires the **admin:manage** permission. If the tenant is already
+    provisioned, returns a success message without re-provisioning.
+    """
     tenant = db.query(Tenant).filter(Tenant.slug == slug).first()
     
     if not tenant:
@@ -361,9 +442,22 @@ def provision_tenant(
     )
 
 
-@router.delete("/{slug}", dependencies=[Depends(require_permissions("admin:manage"))])
+@router.delete(
+    "/{slug}",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Deactivate a tenant",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Missing admin:manage permission"},
+        404: {"description": "Tenant not found"},
+    },
+)
 def deactivate_tenant(slug: str, db: Session = Depends(get_metadata_db)):
-    """Deactivate a tenant (soft delete)."""
+    """Soft-delete a tenant by setting it to inactive.
+
+    Requires the **admin:manage** permission. The tenant record is preserved
+    but marked inactive and removed from the database router cache.
+    """
     tenant = db.query(Tenant).filter(Tenant.slug == slug).first()
     
     if not tenant:

@@ -17,6 +17,7 @@ import {
     ChevronDown,
     Target,
     Calendar,
+    KeyRound,
 } from "lucide-react"
 
 import {
@@ -125,6 +126,11 @@ const data: { navMain: NavGroup[] } = {
                     title: "API Audit",
                     url: "/api-audit/settings",
                     icon: FileText,
+                },
+                {
+                    title: "API Keys",
+                    url: "/settings/api-keys",
+                    icon: KeyRound,
                 },
             ],
         },

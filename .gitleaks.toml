@@ -1,0 +1,20 @@
+[extend]
+# Extend the default gitleaks config
+
+[[rules]]
+id = "auditgh-api-key"
+description = "AuditGitHub API key detected"
+regex = '''agh_[0-9a-f]{40}'''
+tags = ["key", "auditgh"]
+
+[rules.allowlist]
+regexes = [
+    '''agh_[x]{8,}''',
+    '''agh_[0]{8,}''',
+    '''agh_abc123''',
+]
+paths = [
+    '''docs/.*\.md$''',
+    '''.*_test\.go$''',
+    '''.*_test\.py$''',
+]

@@ -46,10 +46,10 @@ class TimeWindow(str, Enum):
 
 # Pydantic Schemas
 class ScheduleBase(BaseModel):
-    frequency: Frequency
+    frequency: Frequency = Field(..., description="Scan frequency (daily, weekly, bi-weekly, monthly, annually)")
     day_of_week: Optional[int] = Field(None, ge=0, le=6, description="0=Monday, 6=Sunday")
-    time_window: TimeWindow
-    scan_arguments: Optional[dict] = None
+    time_window: TimeWindow = Field(..., description="Preferred time window for scan execution")
+    scan_arguments: Optional[dict] = Field(None, description="Optional scan configuration arguments")
 
 
 class ScheduleUpdate(ScheduleBase):
@@ -59,53 +59,53 @@ class ScheduleUpdate(ScheduleBase):
 
 class ScheduleCreate(BaseModel):
     """Request to create a new schedule."""
-    repository_id: str
-    frequency: Frequency
+    repository_id: str = Field(..., description="UUID of the repository to schedule")
+    frequency: Frequency = Field(..., description="Scan frequency (daily, weekly, bi-weekly, monthly, annually)")
     day_of_week: Optional[int] = Field(None, ge=0, le=6, description="0=Monday, 6=Sunday")
-    time_window: TimeWindow
-    schedule_type: ScheduleType = ScheduleType.manual
-    use_ai_recommendation: bool = False
+    time_window: TimeWindow = Field(..., description="Preferred time window for scan execution")
+    schedule_type: ScheduleType = Field(ScheduleType.manual, description="Schedule type (ai or manual)")
+    use_ai_recommendation: bool = Field(False, description="If true, override with AI-recommended settings")
 
 
 class AIRecommendationResponse(BaseModel):
     """AI recommendation for a repository schedule."""
-    frequency: str
-    time_window: str
-    day_of_week: Optional[int] = None  # 0=Monday, 6=Sunday - derived from last commit date
-    confidence: float
-    reasoning: str
-    factors_considered: List[str]
-    anniversary_date: Optional[datetime] = None  # For annual scans: when to scan (anniversary of last commit)
+    frequency: str = Field(..., description="Recommended scan frequency")
+    time_window: str = Field(..., description="Recommended time window for scans")
+    day_of_week: Optional[int] = Field(None, description="Recommended day of week (0=Monday, 6=Sunday), derived from last commit date")
+    confidence: float = Field(..., description="AI confidence score (0.0-1.0)")
+    reasoning: str = Field(..., description="Human-readable explanation of the recommendation")
+    factors_considered: List[str] = Field(..., description="List of factors the AI considered")
+    anniversary_date: Optional[datetime] = Field(None, description="For annual scans: anniversary date of last commit for scheduling")
 
 
 class ScheduleResponse(BaseModel):
     """Response for a single schedule."""
-    id: str
-    repository_id: str
-    repository_name: str
-    schedule_type: ScheduleType
-    frequency: Frequency
-    day_of_week: Optional[int]
-    time_window: TimeWindow
-    scan_arguments: Optional[dict]
-    next_scheduled_at: Optional[datetime]
-    last_executed_at: Optional[datetime]
-    last_execution_status: Optional[str]
-    is_locked: bool
-    locked_at: Optional[datetime]
-    locked_by_email: Optional[str]
-    ai_reasoning: Optional[str]
-    ai_confidence: Optional[float]
-    created_at: datetime
-    updated_at: datetime
+    id: str = Field(..., description="Schedule UUID")
+    repository_id: str = Field(..., description="Associated repository UUID")
+    repository_name: str = Field(..., description="Repository name")
+    schedule_type: ScheduleType = Field(..., description="Schedule type (ai or manual)")
+    frequency: Frequency = Field(..., description="Scan frequency")
+    day_of_week: Optional[int] = Field(None, description="Day of week for scans (0=Monday, 6=Sunday)")
+    time_window: TimeWindow = Field(..., description="Preferred time window for execution")
+    scan_arguments: Optional[dict] = Field(None, description="Optional scan configuration arguments")
+    next_scheduled_at: Optional[datetime] = Field(None, description="Next scheduled execution time")
+    last_executed_at: Optional[datetime] = Field(None, description="Timestamp of last execution")
+    last_execution_status: Optional[str] = Field(None, description="Status of last execution (success, failed, running)")
+    is_locked: bool = Field(..., description="Whether the schedule is locked from AI modifications")
+    locked_at: Optional[datetime] = Field(None, description="When the schedule was locked")
+    locked_by_email: Optional[str] = Field(None, description="Email of the user who locked the schedule")
+    ai_reasoning: Optional[str] = Field(None, description="AI reasoning for the schedule recommendation")
+    ai_confidence: Optional[float] = Field(None, description="AI confidence score (0.0-1.0)")
+    created_at: datetime = Field(..., description="Schedule creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
 
     model_config = {"from_attributes": True}
 
 
 class ScheduleListResponse(BaseModel):
     """Response for schedule list."""
-    schedules: List[ScheduleResponse]
-    total: int
+    schedules: List[ScheduleResponse] = Field(..., description="List of scan schedules")
+    total: int = Field(..., description="Total number of active schedules")
 
 
 class OverrideCreate(BaseModel):
@@ -115,61 +115,69 @@ class OverrideCreate(BaseModel):
 
 class OverrideHistoryItem(BaseModel):
     """Single override history entry."""
-    id: str
-    previous_frequency: Optional[str]
-    previous_day_of_week: Optional[int]
-    previous_time_window: Optional[str]
-    new_frequency: Optional[str]
-    new_day_of_week: Optional[int]
-    new_time_window: Optional[str]
-    override_reason: Optional[str]
-    overridden_by_email: str
-    created_at: datetime
+    id: str = Field(..., description="Override record UUID")
+    previous_frequency: Optional[str] = Field(None, description="Previous frequency before override")
+    previous_day_of_week: Optional[int] = Field(None, description="Previous day of week before override")
+    previous_time_window: Optional[str] = Field(None, description="Previous time window before override")
+    new_frequency: Optional[str] = Field(None, description="New frequency after override")
+    new_day_of_week: Optional[int] = Field(None, description="New day of week after override")
+    new_time_window: Optional[str] = Field(None, description="New time window after override")
+    override_reason: Optional[str] = Field(None, description="Reason provided for the override")
+    overridden_by_email: str = Field(..., description="Email of the user who performed the override")
+    created_at: datetime = Field(..., description="When the override was performed")
 
     model_config = {"from_attributes": True}
 
 
 class OverrideHistoryResponse(BaseModel):
     """Response for override history."""
-    schedule_id: str
-    repository_name: str
-    overrides: List[OverrideHistoryItem]
+    schedule_id: str = Field(..., description="Schedule UUID")
+    repository_name: str = Field(..., description="Repository name")
+    overrides: List[OverrideHistoryItem] = Field(..., description="List of override history entries")
 
 
 # Schema for repository with schedule info
 class RepositoryScheduleInfo(BaseModel):
     """Repository with optional schedule information."""
-    repository_id: str
-    repository_name: str
-    pushed_at: Optional[datetime] = None  # Last commit from GitHub
-    last_scanned_at: Optional[datetime] = None
-    is_archived: bool = False
+    repository_id: str = Field(..., description="Repository UUID")
+    repository_name: str = Field(..., description="Repository name")
+    pushed_at: Optional[datetime] = Field(None, description="Last commit/push timestamp from GitHub")
+    last_scanned_at: Optional[datetime] = Field(None, description="Last scan execution timestamp")
+    is_archived: bool = Field(False, description="Whether the repository is archived on GitHub")
 
     # Schedule info (null if no schedule exists)
-    has_schedule: bool
-    schedule_id: Optional[str] = None
-    schedule_type: Optional[ScheduleType] = None
-    frequency: Optional[Frequency] = None
-    day_of_week: Optional[int] = None
-    time_window: Optional[TimeWindow] = None
-    next_scheduled_at: Optional[datetime] = None
-    last_executed_at: Optional[datetime] = None
-    last_execution_status: Optional[str] = None
-    is_locked: bool = False
-    ai_confidence: Optional[float] = None
+    has_schedule: bool = Field(..., description="Whether the repository has an active scan schedule")
+    schedule_id: Optional[str] = Field(None, description="Schedule UUID if a schedule exists")
+    schedule_type: Optional[ScheduleType] = Field(None, description="Schedule type (ai or manual)")
+    frequency: Optional[Frequency] = Field(None, description="Scan frequency if scheduled")
+    day_of_week: Optional[int] = Field(None, description="Day of week for scans (0=Monday, 6=Sunday)")
+    time_window: Optional[TimeWindow] = Field(None, description="Preferred time window for execution")
+    next_scheduled_at: Optional[datetime] = Field(None, description="Next scheduled execution time")
+    last_executed_at: Optional[datetime] = Field(None, description="Timestamp of last execution")
+    last_execution_status: Optional[str] = Field(None, description="Status of last execution")
+    is_locked: bool = Field(False, description="Whether the schedule is locked from AI modifications")
+    ai_confidence: Optional[float] = Field(None, description="AI confidence score for the schedule")
 
     model_config = {"from_attributes": True}
 
 
 class RepositoryScheduleListResponse(BaseModel):
     """Response for repository schedule list."""
-    repositories: List[RepositoryScheduleInfo]
-    total: int
-    scheduled_count: int
-    unscheduled_count: int
+    repositories: List[RepositoryScheduleInfo] = Field(..., description="List of repositories with schedule info")
+    total: int = Field(..., description="Total number of repositories returned")
+    scheduled_count: int = Field(..., description="Number of repositories with active schedules")
+    unscheduled_count: int = Field(..., description="Number of repositories without schedules")
 
 
-@router.get("/repositories", response_model=RepositoryScheduleListResponse)
+@router.get(
+    "/repositories",
+    response_model=RepositoryScheduleListResponse,
+    summary="List repositories with schedule status",
+    responses={
+        401: {"description": "Not authenticated"},
+        500: {"description": "Internal server error"},
+    },
+)
 def list_repositories_with_schedules(
     filter: Optional[str] = None,  # 'scheduled', 'unscheduled', or None for all
     db: Session = Depends(get_tenant_db),
@@ -326,7 +334,18 @@ def _calculate_next_run(frequency: str, time_window: str, day_of_week: Optional[
     return next_run
 
 
-@router.post("/", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:create"))])
+@router.post(
+    "/",
+    response_model=ScheduleResponse,
+    dependencies=[Depends(require_permissions("schedules:create"))],
+    summary="Create a new scan schedule",
+    responses={
+        400: {"description": "Schedule already exists or AI recommends disabling"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:create required"},
+        404: {"description": "Repository not found"},
+    },
+)
 async def create_schedule(
     schedule_create: ScheduleCreate,
     db: Session = Depends(get_tenant_db),
@@ -568,7 +587,15 @@ async def _get_ai_recommendation_internal(repo: models.Repository, db: Session) 
     }
 
 
-@router.get("/{repo_id}/recommend", response_model=AIRecommendationResponse)
+@router.get(
+    "/{repo_id}/recommend",
+    response_model=AIRecommendationResponse,
+    summary="Get AI schedule recommendation for a repository",
+    responses={
+        401: {"description": "Not authenticated"},
+        404: {"description": "Repository not found"},
+    },
+)
 async def get_ai_recommendation(
     repo_id: str,
     db: Session = Depends(get_tenant_db),
@@ -607,7 +634,15 @@ async def get_ai_recommendation(
     )
 
 
-@router.get("/", response_model=ScheduleListResponse)
+@router.get(
+    "/",
+    response_model=ScheduleListResponse,
+    summary="List all scan schedules",
+    responses={
+        401: {"description": "Not authenticated"},
+        500: {"description": "Internal server error"},
+    },
+)
 def list_schedules(
     skip: int = 0,
     limit: int = 100,
@@ -675,24 +710,34 @@ def list_schedules(
 # Batch operation models
 class BatchScheduleResult(BaseModel):
     """Result for a single repository in batch operation."""
-    repository_id: str
-    repository_name: str
-    status: str  # "created", "skipped", "error"
-    frequency: Optional[str] = None
-    next_scheduled_at: Optional[datetime] = None
-    error: Optional[str] = None
+    repository_id: str = Field(..., description="Repository UUID")
+    repository_name: str = Field(..., description="Repository name")
+    status: str = Field(..., description="Operation result status (created, skipped, error)")
+    frequency: Optional[str] = Field(None, description="Assigned frequency if created")
+    next_scheduled_at: Optional[datetime] = Field(None, description="Next scheduled run time if created")
+    error: Optional[str] = Field(None, description="Error message if status is skipped or error")
 
 
 class BatchScheduleResponse(BaseModel):
     """Response for batch schedule creation."""
-    total_processed: int
-    created: int
-    skipped: int
-    errors: int
-    results: List[BatchScheduleResult]
+    total_processed: int = Field(..., description="Total number of repositories processed")
+    created: int = Field(..., description="Number of schedules successfully created")
+    skipped: int = Field(..., description="Number of repositories skipped (archived or disabled)")
+    errors: int = Field(..., description="Number of repositories that encountered errors")
+    results: List[BatchScheduleResult] = Field(..., description="Per-repository results")
 
 
-@router.post("/batch/apply-ai", response_model=BatchScheduleResponse, dependencies=[Depends(require_permissions("schedules:create"))])
+@router.post(
+    "/batch/apply-ai",
+    response_model=BatchScheduleResponse,
+    dependencies=[Depends(require_permissions("schedules:create"))],
+    summary="Apply AI schedules to all unscheduled repositories",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:create required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def batch_apply_ai_schedules(
     db: Session = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
@@ -815,7 +860,17 @@ async def batch_apply_ai_schedules(
     )
 
 
-@router.post("/batch/refresh-ai", response_model=BatchScheduleResponse, dependencies=[Depends(require_permissions("schedules:update"))])
+@router.post(
+    "/batch/refresh-ai",
+    response_model=BatchScheduleResponse,
+    dependencies=[Depends(require_permissions("schedules:update"))],
+    summary="Refresh AI recommendations for unlocked schedules",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:update required"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def batch_refresh_ai_schedules(
     db: Session = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
@@ -921,33 +976,41 @@ async def batch_refresh_ai_schedules(
 # Today's Scans Models - MUST BE BEFORE /{repo_id} routes for correct routing
 class TodayScanItem(BaseModel):
     """A single scan scheduled for today or currently running."""
-    schedule_id: str
-    repository_id: str
-    repository_name: str
-    organization_name: Optional[str] = None
-    scheduled_time: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    status: str  # scheduled, running, completed, failed
-    frequency: str
-    time_window: str
-    progress_percent: Optional[int] = None  # 0-100 for running scans
-    error_message: Optional[str] = None
-    duration_seconds: Optional[int] = None
-    findings_count: Optional[int] = None
+    schedule_id: str = Field(..., description="Schedule UUID")
+    repository_id: str = Field(..., description="Repository UUID")
+    repository_name: str = Field(..., description="Repository name")
+    organization_name: Optional[str] = Field(None, description="Organization name")
+    scheduled_time: Optional[datetime] = Field(None, description="Scheduled execution time")
+    started_at: Optional[datetime] = Field(None, description="Actual start time of the scan")
+    completed_at: Optional[datetime] = Field(None, description="Completion time of the scan")
+    status: str = Field(..., description="Current status (scheduled, running, completed, failed)")
+    frequency: str = Field(..., description="Schedule frequency")
+    time_window: str = Field(..., description="Scheduled time window")
+    progress_percent: Optional[int] = Field(None, description="Scan progress percentage (0-100) for running scans")
+    error_message: Optional[str] = Field(None, description="Error message if the scan failed")
+    duration_seconds: Optional[int] = Field(None, description="Scan duration in seconds for completed scans")
+    findings_count: Optional[int] = Field(None, description="Number of findings detected in this scan")
 
 
 class TodayScansResponse(BaseModel):
     """Response for today's scans."""
-    scans: List[TodayScanItem]
-    total_scheduled: int
-    total_running: int
-    total_completed: int
-    total_failed: int
-    current_time: datetime
+    scans: List[TodayScanItem] = Field(..., description="List of scans for today")
+    total_scheduled: int = Field(..., description="Number of scans still scheduled for today")
+    total_running: int = Field(..., description="Number of scans currently running")
+    total_completed: int = Field(..., description="Number of scans completed today")
+    total_failed: int = Field(..., description="Number of scans that failed today")
+    current_time: datetime = Field(..., description="Current server time")
 
 
-@router.get("/today", response_model=TodayScansResponse)
+@router.get(
+    "/today",
+    response_model=TodayScansResponse,
+    summary="Get today's scheduled and running scans",
+    responses={
+        401: {"description": "Not authenticated"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_todays_scans(
     db: Session = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
@@ -1065,7 +1128,15 @@ def get_todays_scans(
     )
 
 
-@router.get("/{repo_id}", response_model=ScheduleResponse)
+@router.get(
+    "/{repo_id}",
+    response_model=ScheduleResponse,
+    summary="Get schedule for a specific repository",
+    responses={
+        401: {"description": "Not authenticated"},
+        404: {"description": "Schedule not found for this repository"},
+    },
+)
 def get_schedule(
     repo_id: str,
     db: Session = Depends(get_tenant_db),
@@ -1119,7 +1190,17 @@ def get_schedule(
     )
 
 
-@router.put("/{repo_id}", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:update"))])
+@router.put(
+    "/{repo_id}",
+    response_model=ScheduleResponse,
+    dependencies=[Depends(require_permissions("schedules:update"))],
+    summary="Update a scan schedule with manual override",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:update required"},
+        404: {"description": "Schedule not found for this repository"},
+    },
+)
 def update_schedule(
     repo_id: str,
     update: ScheduleUpdate,
@@ -1203,7 +1284,18 @@ def update_schedule(
     )
 
 
-@router.post("/{repo_id}/lock", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:override"))])
+@router.post(
+    "/{repo_id}/lock",
+    response_model=ScheduleResponse,
+    dependencies=[Depends(require_permissions("schedules:override"))],
+    summary="Lock a schedule to prevent AI modifications",
+    responses={
+        400: {"description": "Schedule is already locked"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:override required"},
+        404: {"description": "Schedule not found for this repository"},
+    },
+)
 def lock_schedule(
     repo_id: str,
     lock_request: OverrideCreate,
@@ -1283,7 +1375,18 @@ def lock_schedule(
     )
 
 
-@router.delete("/{repo_id}/lock", response_model=ScheduleResponse, dependencies=[Depends(require_permissions("schedules:override"))])
+@router.delete(
+    "/{repo_id}/lock",
+    response_model=ScheduleResponse,
+    dependencies=[Depends(require_permissions("schedules:override"))],
+    summary="Unlock a schedule to allow AI modifications",
+    responses={
+        400: {"description": "Schedule is not locked"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:override required"},
+        404: {"description": "Schedule not found for this repository"},
+    },
+)
 def unlock_schedule(
     repo_id: str,
     db: Session = Depends(get_tenant_db),
@@ -1361,7 +1464,15 @@ def unlock_schedule(
     )
 
 
-@router.get("/{repo_id}/history", response_model=OverrideHistoryResponse)
+@router.get(
+    "/{repo_id}/history",
+    response_model=OverrideHistoryResponse,
+    summary="Get override history for a schedule",
+    responses={
+        401: {"description": "Not authenticated"},
+        404: {"description": "Schedule not found for this repository"},
+    },
+)
 def get_override_history(
     repo_id: str,
     db: Session = Depends(get_tenant_db),
@@ -1425,10 +1536,10 @@ def get_override_history(
 # Scanner information models
 class ScannerInfo(BaseModel):
     """Information about an available scanner."""
-    id: str
-    name: str
-    category: str
-    description: str
+    id: str = Field(..., description="Scanner identifier (e.g. trufflehog, semgrep)")
+    name: str = Field(..., description="Human-readable scanner name")
+    category: str = Field(..., description="Scanner category (secrets, sast, deps, iac, api, mobile, go, other)")
+    description: str = Field(..., description="Brief description of the scanner's purpose")
 
 
 # Available scanners grouped by category
@@ -1472,11 +1583,18 @@ AVAILABLE_SCANNERS: List[ScannerInfo] = [
 
 class ScannerListResponse(BaseModel):
     """Response for scanner list."""
-    scanners: List[ScannerInfo]
-    total: int
+    scanners: List[ScannerInfo] = Field(..., description="List of available scanners")
+    total: int = Field(..., description="Total number of available scanners")
 
 
-@router.get("/scanners", response_model=ScannerListResponse)
+@router.get(
+    "/scanners",
+    response_model=ScannerListResponse,
+    summary="List all available scanners",
+    responses={
+        500: {"description": "Internal server error"},
+    },
+)
 def list_scanners():
     """
     List all available scanners with their metadata.
@@ -1492,11 +1610,23 @@ def list_scanners():
 
 class TriggerResponse(BaseModel):
     """Response for manual scan trigger."""
-    status: str
-    message: str
+    status: str = Field(..., description="Trigger result status (triggered)")
+    message: str = Field(..., description="Human-readable result message")
 
 
-@router.post("/{repo_id}/trigger", response_model=TriggerResponse, dependencies=[Depends(require_permissions("schedules:trigger"))])
+@router.post(
+    "/{repo_id}/trigger",
+    response_model=TriggerResponse,
+    dependencies=[Depends(require_permissions("schedules:trigger"))],
+    summary="Trigger an immediate scan for a repository",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - schedules:trigger required"},
+        404: {"description": "Schedule not found for this repository"},
+        500: {"description": "Failed to trigger scan"},
+        503: {"description": "Scheduler service not running"},
+    },
+)
 async def trigger_scan(
     repo_id: str,
     db: Session = Depends(get_tenant_db),

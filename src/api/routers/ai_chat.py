@@ -38,53 +38,57 @@ class ChatMessageRequest(BaseModel):
 
 class CitationResponse(BaseModel):
     """Response model for citation"""
-    id: str
-    type: str
-    source: str
-    reference: str
-    excerpt: Optional[str] = None
-    url: Optional[str] = None
+    id: str = Field(..., description="Unique citation identifier")
+    type: str = Field(..., description="Citation type (e.g. scan_result, vulnerability, code_reference)")
+    source: str = Field(..., description="Source of the citation (e.g. scanner name, file path)")
+    reference: str = Field(..., description="Reference identifier within the source")
+    excerpt: Optional[str] = Field(None, description="Relevant excerpt from the cited source")
+    url: Optional[str] = Field(None, description="URL link to the cited resource")
 
 
 class ChatMessageResponse(BaseModel):
     """Response model for chat message"""
-    conversation_id: str
-    message_id: str
-    content: str
-    thinking: Optional[str] = None
-    needs_clarification: bool = False
-    clarification_question: Optional[str] = None
-    citations: List[CitationResponse] = []
-    timestamp: str
-    web_search_performed: bool = False
+    conversation_id: str = Field(..., description="Conversation UUID")
+    message_id: str = Field(..., description="Message UUID")
+    content: str = Field(..., description="AI response content in markdown")
+    thinking: Optional[str] = Field(None, description="AI reasoning/thinking process (if available)")
+    needs_clarification: bool = Field(False, description="Whether the AI needs additional information")
+    clarification_question: Optional[str] = Field(None, description="Follow-up question if clarification is needed")
+    citations: List[CitationResponse] = Field([], description="Citations referenced in the response")
+    timestamp: str = Field(..., description="ISO 8601 response timestamp")
+    web_search_performed: bool = Field(False, description="Whether external web search was used")
 
 
 class ConversationHistoryResponse(BaseModel):
     """Response model for conversation history"""
-    id: str
-    title: str
-    focus: str
-    message_count: int
-    created_at: str
-    updated_at: str
-    last_message_at: Optional[str] = None
+    id: str = Field(..., description="Conversation UUID")
+    title: str = Field(..., description="Conversation title (auto-generated or user-set)")
+    focus: str = Field(..., description="Conversation focus area (security_architecture, zero_trust, vulnerabilities)")
+    message_count: int = Field(..., description="Total number of messages in the conversation")
+    created_at: str = Field(..., description="ISO 8601 creation timestamp")
+    updated_at: str = Field(..., description="ISO 8601 last update timestamp")
+    last_message_at: Optional[str] = Field(None, description="ISO 8601 timestamp of the last message")
 
 
 class MessageHistoryResponse(BaseModel):
     """Response model for message in history"""
-    id: str
-    role: str
-    content: str
-    timestamp: str
-    citations: List[CitationResponse] = []
-    needs_clarification: bool = False
+    id: str = Field(..., description="Message UUID")
+    role: str = Field(..., description="Message role (user or assistant)")
+    content: str = Field(..., description="Message content")
+    timestamp: str = Field(..., description="ISO 8601 message timestamp")
+    citations: List[CitationResponse] = Field([], description="Citations in this message")
+    needs_clarification: bool = Field(False, description="Whether the AI was seeking clarification")
 
 
 @router.post(
     "/projects/{project_id}/repositories/{repository_id}/ai-chat",
     response_model=ChatMessageResponse,
     summary="Send message to AI assistant",
-    description="Send a message to the AI security architect and get a response with context-aware analysis"
+    description="Send a message to the AI security architect and get a response with context-aware analysis",
+    responses={
+        404: {"description": "Repository or project not found"},
+        500: {"description": "Failed to process AI message"},
+    },
 )
 async def send_ai_message(
     project_id: int,
@@ -144,7 +148,10 @@ async def send_ai_message(
     "/projects/{project_id}/repositories/{repository_id}/ai-conversations",
     response_model=List[ConversationHistoryResponse],
     summary="Get conversation history",
-    description="Get list of AI conversations for this repository"
+    description="Get list of AI conversations for this repository",
+    responses={
+        500: {"description": "Failed to fetch conversations"},
+    },
 )
 async def get_conversations(
     project_id: int,
@@ -153,7 +160,12 @@ async def get_conversations(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Get list of AI conversations for this repository"""
+    """
+    Get list of AI conversations for this repository.
+
+    Returns conversations ordered by last message date descending,
+    filtered by project and repository.
+    """
     try:
         conversations = (
             db.query(AIConversation)
@@ -192,7 +204,11 @@ async def get_conversations(
     "/projects/{project_id}/repositories/{repository_id}/ai-conversations/{conversation_id}",
     response_model=List[MessageHistoryResponse],
     summary="Get conversation messages",
-    description="Get all messages in a conversation"
+    description="Get all messages in a conversation",
+    responses={
+        404: {"description": "Conversation not found"},
+        500: {"description": "Failed to fetch messages"},
+    },
 )
 async def get_conversation_messages(
     project_id: int,
@@ -201,7 +217,12 @@ async def get_conversation_messages(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Get all messages in a conversation"""
+    """
+    Get all messages in a conversation.
+
+    Returns all messages in chronological order with their citations.
+    Verifies the conversation belongs to the current user's organization.
+    """
     try:
         # Verify conversation exists and belongs to user's organization
         conversation = (
@@ -270,7 +291,11 @@ async def get_conversation_messages(
     "/projects/{project_id}/repositories/{repository_id}/ai-conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete conversation",
-    description="Delete an AI conversation and all its messages"
+    description="Delete an AI conversation and all its messages",
+    responses={
+        404: {"description": "Conversation not found"},
+        500: {"description": "Failed to delete conversation"},
+    },
 )
 async def delete_conversation(
     project_id: int,
@@ -279,7 +304,12 @@ async def delete_conversation(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Delete an AI conversation"""
+    """
+    Delete an AI conversation.
+
+    Permanently removes the conversation and all associated messages
+    and citations. Verifies ownership via organization_id.
+    """
     try:
         conversation = (
             db.query(AIConversation)
@@ -316,7 +346,10 @@ async def delete_conversation(
 @router.get(
     "/projects/{project_id}/repositories/{repository_id}/ai-context",
     summary="Get AI context summary",
-    description="Get a summary of the context available for AI conversations"
+    description="Get a summary of the context available for AI conversations",
+    responses={
+        500: {"description": "Failed to get context summary"},
+    },
 )
 async def get_ai_context_summary(
     project_id: int,
@@ -324,7 +357,12 @@ async def get_ai_context_summary(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Get summary of available context for AI"""
+    """
+    Get summary of available context for AI.
+
+    Returns a summary of repository data, scan results, and security
+    metrics available for AI conversations.
+    """
     try:
         from services.ai_rag_service import AIRAGService
 

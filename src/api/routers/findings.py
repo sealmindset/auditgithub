@@ -6,7 +6,7 @@ from loguru import logger
 from ..dependencies import get_tenant_db
 from ..database import get_current_org_id
 from .. import models
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 from ..utils.risk_scoring import calculate_risk_score, get_risk_level
@@ -30,59 +30,61 @@ SEVERITY_PRIORITY = {
 }
 
 class RemediationModel(BaseModel):
-    id: str
-    remediation_text: str
-    diff: Optional[str]
-    confidence: Optional[float]
-    created_at: datetime
+    """A remediation suggestion generated for a security finding."""
+    id: str = Field(description="Unique identifier for the remediation entry")
+    remediation_text: str = Field(description="Human-readable remediation guidance text")
+    diff: Optional[str] = Field(default=None, description="Suggested code diff to apply the remediation")
+    confidence: Optional[float] = Field(default=None, description="AI confidence score for this remediation (0.0-1.0)")
+    created_at: datetime = Field(description="Timestamp when the remediation was generated")
 
     model_config = {"from_attributes": True}
 
 class FindingResponse(BaseModel):
-    id: str
-    title: str
-    description: Optional[str]
-    severity: str
-    status: str
-    scanner_name: Optional[str]
-    file_path: Optional[str]
-    line_start: Optional[int]
-    code_snippet: Optional[str]
-    created_at: datetime
-    repo_pushed_at: Optional[datetime] = None  # Last push to repo (from GitHub API)
-    file_last_commit_at: Optional[datetime] = None  # Last commit to specific file
-    file_last_commit_author: Optional[str] = None  # Author of last file commit
-    repo_name: str
-    repository_id: Optional[str] = None
-    is_archived: Optional[bool] = None  # Is the repo archived
-    investigation_status: Optional[str] = None  # triage, incident_response, resolved
-    investigation_started_at: Optional[datetime] = None
+    """Full representation of a security finding with enrichment data."""
+    id: str = Field(description="Unique UUID identifier for the finding")
+    title: str = Field(description="Short title summarizing the finding")
+    description: Optional[str] = Field(default=None, description="Detailed description of the security finding")
+    severity: str = Field(description="Severity level: critical, high, medium, low, info, or warning")
+    status: str = Field(description="Current status of the finding (e.g. open, resolved)")
+    scanner_name: Optional[str] = Field(default=None, description="Name of the scanner that detected this finding")
+    file_path: Optional[str] = Field(default=None, description="Path to the file where the finding was detected")
+    line_start: Optional[int] = Field(default=None, description="Starting line number within the file")
+    code_snippet: Optional[str] = Field(default=None, description="Relevant code snippet around the finding")
+    created_at: datetime = Field(description="Timestamp when the finding was first detected")
+    repo_pushed_at: Optional[datetime] = Field(default=None, description="Last push to the repository (from GitHub API)")
+    file_last_commit_at: Optional[datetime] = Field(default=None, description="Last commit date for the specific file")
+    file_last_commit_author: Optional[str] = Field(default=None, description="Author of the last commit to the specific file")
+    repo_name: str = Field(description="Name of the repository where the finding was detected")
+    repository_id: Optional[str] = Field(default=None, description="Unique identifier of the repository")
+    is_archived: Optional[bool] = Field(default=None, description="Whether the repository is archived on GitHub")
+    investigation_status: Optional[str] = Field(default=None, description="Investigation workflow status: triage, incident_response, or resolved")
+    investigation_started_at: Optional[datetime] = Field(default=None, description="Timestamp when investigation was started")
     # Risk scoring (Phase 1.1)
-    risk_score: Optional[int] = None
-    risk_level: Optional[str] = None  # critical, high, medium, low
-    risk_factors: Optional[Dict] = None
+    risk_score: Optional[int] = Field(default=None, description="Computed risk score (0-100) combining severity, exposure, and activity")
+    risk_level: Optional[str] = Field(default=None, description="Risk level derived from risk score: critical, high, medium, or low")
+    risk_factors: Optional[Dict] = Field(default=None, description="Breakdown of individual risk factor contributions")
     # Snooze (Phase 1.2)
-    snoozed_until: Optional[datetime] = None
-    snooze_reason: Optional[str] = None
+    snoozed_until: Optional[datetime] = Field(default=None, description="If snoozed, the datetime when the finding becomes active again")
+    snooze_reason: Optional[str] = Field(default=None, description="Reason provided for snoozing this finding")
     # AI Triage (Phase 3.2)
-    ai_triage_recommendation: Optional[str] = None
-    ai_triage_confidence: Optional[float] = None
+    ai_triage_recommendation: Optional[str] = Field(default=None, description="AI-generated triage recommendation text")
+    ai_triage_confidence: Optional[float] = Field(default=None, description="AI confidence in the triage recommendation (0.0-1.0)")
     # Report inclusion
-    include_in_report: Optional[bool] = False
-    remediations: List[RemediationModel] = []
+    include_in_report: Optional[bool] = Field(default=False, description="Whether to include this finding in the Critical Insights report section")
+    remediations: List[RemediationModel] = Field(default=[], description="List of remediation suggestions for this finding")
 
     model_config = {"from_attributes": True}
 
 
 class PaginatedFindingsResponse(BaseModel):
     """Paginated response for findings with metadata for UI pagination."""
-    items: List[FindingResponse]
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
-    has_next: bool
-    has_prev: bool
+    items: List[FindingResponse] = Field(description="List of finding objects for the current page")
+    total: int = Field(description="Total number of findings matching the query filters")
+    page: int = Field(description="Current page number (1-indexed)")
+    page_size: int = Field(description="Number of items per page")
+    total_pages: int = Field(description="Total number of pages available")
+    has_next: bool = Field(description="Whether a next page exists")
+    has_prev: bool = Field(description="Whether a previous page exists")
 
 
 # Redis cache helper
@@ -108,7 +110,13 @@ def get_count_cache_key(org_id: Optional[str], severity: Optional[str],
 @router.get(
     "/paginated",
     dependencies=[Depends(require_permissions("findings:read"))],
-    response_model=PaginatedFindingsResponse
+    response_model=PaginatedFindingsResponse,
+    summary="List findings with pagination",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        500: {"description": "Internal server error"},
+    },
 )
 def get_findings_paginated(
     page: int = 1,
@@ -125,6 +133,7 @@ def get_findings_paginated(
 
     Returns findings with pagination metadata for efficient UI rendering.
     Results are cached in Redis for 60 seconds to reduce database load.
+    Requires the ``findings:read`` permission.
     """
     import json
 
@@ -306,7 +315,13 @@ def get_findings_paginated(
 @router.get(
     "/",
     dependencies=[Depends(require_permissions("findings:read"))],
-    response_model=List[FindingResponse]
+    response_model=List[FindingResponse],
+    summary="List all findings",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        500: {"description": "Internal server error"},
+    },
 )
 def get_findings(
     skip: int = 0,
@@ -319,7 +334,10 @@ def get_findings(
     db: Session = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all findings with optional filtering.
+    """Get all findings with optional filtering, sorting, and offset-based pagination.
+
+    Supports filtering by severity, status, and repository name. Snoozed findings
+    are excluded by default. Requires the ``findings:read`` permission.
 
     Args:
         skip: Number of records to skip (pagination)
@@ -457,9 +475,25 @@ def get_findings(
     
     return response
 
-@router.get("/{finding_id}", dependencies=[Depends(require_permissions("findings:read"))], response_model=FindingResponse)
+@router.get(
+    "/{finding_id}",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    response_model=FindingResponse,
+    summary="Get a finding by ID",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_finding(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Get a specific finding by UUID."""
+    """Retrieve a single security finding by its UUID, including file commit metadata.
+
+    Returns the full finding object with risk scores, remediation suggestions,
+    and repository context. Requires the ``findings:read`` permission.
+    """
     # Try to parse UUID
     try:
         uuid_obj = uuid.UUID(finding_id)
@@ -516,22 +550,39 @@ def get_finding(finding_id: str, db: Session = Depends(get_tenant_db)):
 # =============================================================================
 
 class FindingUpdateRequest(BaseModel):
-    """Request to update a finding's fields."""
-    description: Optional[str] = None
-    severity: Optional[str] = None
-    scope: Optional[str] = "specific"  # "specific" or "global"
+    """Request to update a finding's fields such as description or severity."""
+    description: Optional[str] = Field(default=None, description="New description text for the finding")
+    severity: Optional[str] = Field(default=None, description="New severity level: critical, high, medium, low, info, or warning")
+    scope: Optional[str] = Field(default="specific", description="Update scope: 'specific' for this finding only or 'global' for all identical findings")
 
 class FindingUpdateResponse(BaseModel):
     """Response after updating a finding."""
-    id: str
-    message: str
-    updated_fields: List[str]
-    version_id: Optional[str] = None
+    id: str = Field(description="UUID of the updated finding")
+    message: str = Field(description="Human-readable result message")
+    updated_fields: List[str] = Field(description="List of field names that were modified")
+    version_id: Optional[str] = Field(default=None, description="ID of the version history entry created for this change")
 
 
-@router.patch("/{finding_id}", dependencies=[Depends(require_permissions("findings:write"))], response_model=FindingUpdateResponse)
+@router.patch(
+    "/{finding_id}",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=FindingUpdateResponse,
+    summary="Update a finding",
+    responses={
+        400: {"description": "Invalid UUID format or invalid severity value"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def update_finding(finding_id: str, update: FindingUpdateRequest, db: Session = Depends(get_tenant_db)):
-    """Update a specific finding by UUID. Support description and severity updates."""
+    """Update a finding's description or severity by UUID.
+
+    Supports 'specific' scope (single finding) or 'global' scope (all identical
+    findings in the same repository). Changes are tracked in version history.
+    Requires the ``findings:write`` permission.
+    """
     # Try to parse UUID
     try:
         uuid_obj = uuid.UUID(finding_id)
@@ -625,19 +676,35 @@ def update_finding(finding_id: str, update: FindingUpdateRequest, db: Session = 
 # =============================================================================
 
 class IncludeInReportRequest(BaseModel):
-    """Request to toggle include_in_report flag."""
-    include_in_report: bool
+    """Request to toggle whether a finding is included in the Critical Insights report."""
+    include_in_report: bool = Field(description="Set to true to include this finding in reports, false to exclude it")
 
 class IncludeInReportResponse(BaseModel):
-    """Response after toggling include_in_report."""
-    id: str
-    include_in_report: bool
-    message: str
+    """Response after toggling the include_in_report flag on a finding."""
+    id: str = Field(description="UUID of the finding that was toggled")
+    include_in_report: bool = Field(description="Current value of the include_in_report flag after update")
+    message: str = Field(description="Human-readable confirmation message")
 
 
-@router.patch("/{finding_id}/include-in-report", dependencies=[Depends(require_permissions("findings:write"))], response_model=IncludeInReportResponse)
+@router.patch(
+    "/{finding_id}/include-in-report",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=IncludeInReportResponse,
+    summary="Toggle report inclusion for a finding",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def toggle_include_in_report(finding_id: str, request: IncludeInReportRequest, db: Session = Depends(get_tenant_db)):
-    """Toggle whether a finding should be included in the Critical Insights section of reports."""
+    """Toggle whether a finding should be included in the Critical Insights section of reports.
+
+    Sets or clears the include_in_report flag and records the change in
+    finding history. Requires the ``findings:write`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -685,22 +752,38 @@ def toggle_include_in_report(finding_id: str, request: IncludeInReportRequest, d
 # =============================================================================
 
 class DescriptionVersionResponse(BaseModel):
-    """A single description version."""
-    id: str
-    description: str
-    created_at: datetime
-    is_current: bool = False
+    """A single historical version of a finding's description."""
+    id: str = Field(description="Unique identifier for the version history entry")
+    description: str = Field(description="The description text at this version")
+    created_at: datetime = Field(description="Timestamp when this version was created")
+    is_current: bool = Field(default=False, description="Whether this is the currently active description")
 
 class DescriptionVersionListResponse(BaseModel):
-    """List of description versions."""
-    finding_id: str
-    current_description: Optional[str]
-    versions: List[DescriptionVersionResponse]
+    """List of all description versions for a finding, including the current one."""
+    finding_id: str = Field(description="UUID of the finding these versions belong to")
+    current_description: Optional[str] = Field(default=None, description="The current active description text")
+    versions: List[DescriptionVersionResponse] = Field(description="List of previous description versions in reverse chronological order")
 
 
-@router.get("/{finding_id}/description-versions", dependencies=[Depends(require_permissions("findings:read"))], response_model=DescriptionVersionListResponse)
+@router.get(
+    "/{finding_id}/description-versions",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    response_model=DescriptionVersionListResponse,
+    summary="List description version history",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_description_versions(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Get all description versions for a finding."""
+    """Retrieve all historical description versions for a finding.
+
+    Returns the current description and a chronological list of previous
+    versions that can be restored. Requires the ``findings:read`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -737,13 +820,29 @@ def get_description_versions(finding_id: str, db: Session = Depends(get_tenant_d
 
 
 class RestoreVersionRequest(BaseModel):
-    """Request to restore a specific version."""
-    version_id: str
+    """Request to restore a specific previous description version for a finding."""
+    version_id: str = Field(description="UUID of the description version to restore")
 
 
-@router.post("/{finding_id}/restore-description", dependencies=[Depends(require_permissions("findings:write"))], response_model=FindingUpdateResponse)
+@router.post(
+    "/{finding_id}/restore-description",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=FindingUpdateResponse,
+    summary="Restore a previous description version",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding or version not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def restore_description_version(finding_id: str, request: RestoreVersionRequest, db: Session = Depends(get_tenant_db)):
-    """Restore a previous description version."""
+    """Restore a finding's description to a previous version from its history.
+
+    The current description is saved to history before the restore is applied.
+    Requires the ``findings:write`` permission.
+    """
     try:
         finding_uuid = uuid.UUID(finding_id)
         version_uuid = uuid.UUID(request.version_id)
@@ -800,41 +899,41 @@ def restore_description_version(finding_id: str, request: RestoreVersionRequest,
 # =============================================================================
 
 class ExceptionRuleRequest(BaseModel):
-    """Request to generate an exception rule for a finding."""
-    finding_id: str
-    scope: str  # "specific" or "global"
-    reason: Optional[str] = None  # Optional reason for the exception
+    """Request to generate a scanner-specific exception rule for a finding."""
+    finding_id: str = Field(description="UUID of the finding to generate an exception rule for")
+    scope: str = Field(description="Rule scope: 'specific' for this finding only or 'global' for the entire file path")
+    reason: Optional[str] = Field(default=None, description="Optional justification for creating the exception")
 
 class ExceptionRuleResponse(BaseModel):
-    """Response containing the generated exception rule."""
-    scanner_name: str
-    rule_type: str  # e.g., "allowlist", "exclude", "ignore"
-    rule_content: str  # The actual rule (TOML, regex, etc.)
-    instruction: str  # Where to apply this rule
-    affected_count: int  # How many findings match this rule
+    """Response containing the generated scanner-specific exception rule configuration."""
+    scanner_name: str = Field(description="Name of the scanner the rule applies to (e.g. gitleaks, semgrep)")
+    rule_type: str = Field(description="Type of exception rule: allowlist, exclude, or ignore")
+    rule_content: str = Field(description="The actual rule configuration content (TOML, YAML, or comment format)")
+    instruction: str = Field(description="Instructions on where and how to apply this rule in your project")
+    affected_count: int = Field(description="Number of existing findings that would be covered by this exception rule")
 
 class DeleteDryRunRequest(BaseModel):
-    """Request for dry-run deletion analysis."""
-    finding_id: str
-    scope: str  # "specific" or "global"
+    """Request for a dry-run deletion analysis to preview what would be removed."""
+    finding_id: str = Field(description="UUID of the finding to use as the deletion reference")
+    scope: str = Field(description="Deletion scope: 'specific' for this finding only or 'global' for all matching scanner/file findings")
 
 class DeleteDryRunResponse(BaseModel):
-    """Response showing what would be deleted."""
-    count: int
-    scanner_name: str
-    file_path: Optional[str]
-    sample_findings: List[dict]  # Sample of findings that would be deleted
+    """Response previewing the findings that would be deleted without actually removing them."""
+    count: int = Field(description="Total number of findings that would be deleted")
+    scanner_name: str = Field(description="Scanner name of the matched findings")
+    file_path: Optional[str] = Field(default=None, description="File path of the matched findings")
+    sample_findings: List[dict] = Field(description="Sample of up to 5 findings that would be deleted (id, title, file_path, scanner_name)")
 
 class DeleteFindingsRequest(BaseModel):
-    """Request to delete findings."""
-    finding_id: str
-    scope: str  # "specific" or "global"
-    confirmed: bool = False  # Must be True to actually delete
+    """Request to permanently delete findings. Requires explicit confirmation."""
+    finding_id: str = Field(description="UUID of the finding to delete (or use as reference for global scope)")
+    scope: str = Field(description="Deletion scope: 'specific' for this finding only or 'global' for all matching scanner/file findings")
+    confirmed: bool = Field(default=False, description="Safety flag: must be set to true to proceed with deletion")
 
 class DeleteFindingsResponse(BaseModel):
-    """Response after deletion."""
-    deleted_count: int
-    message: str
+    """Response confirming how many findings were permanently deleted."""
+    deleted_count: int = Field(description="Number of findings that were permanently deleted")
+    message: str = Field(description="Human-readable confirmation message")
 
 
 # =============================================================================
@@ -941,12 +1040,28 @@ def generate_generic_rule(finding: models.Finding, scope: str) -> dict:
     }
 
 
-@router.post("/exception/generate", dependencies=[Depends(require_permissions("findings:write"))], response_model=ExceptionRuleResponse)
+@router.post(
+    "/exception/generate",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=ExceptionRuleResponse,
+    summary="Generate an exception rule for a finding",
+    responses={
+        400: {"description": "Invalid UUID format or invalid scope"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def generate_exception_rule(
     request: ExceptionRuleRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """Generate an exception rule for a finding based on its scanner type."""
+    """Generate a scanner-specific exception rule configuration for a finding.
+
+    Produces allowlist, exclude, or ignore rules for Gitleaks, TruffleHog,
+    Semgrep, or generic scanners. Requires the ``findings:write`` permission.
+    """
     # Get the finding
     try:
         uuid_obj = uuid.UUID(request.finding_id)
@@ -1001,14 +1116,28 @@ def generate_exception_rule(
 # Delete Findings with Dry-Run Verification
 # =============================================================================
 
-@router.post("/exception/delete/dry-run", dependencies=[Depends(require_permissions("findings:delete"))], response_model=DeleteDryRunResponse)
+@router.post(
+    "/exception/delete/dry-run",
+    dependencies=[Depends(require_permissions("findings:delete"))],
+    response_model=DeleteDryRunResponse,
+    summary="Preview findings that would be deleted",
+    responses={
+        400: {"description": "Invalid UUID format or invalid scope"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:delete"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def delete_findings_dry_run(
     request: DeleteDryRunRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """
-    Perform a dry-run analysis to show how many findings would be deleted.
-    This is a safety check before actual deletion.
+    """Perform a dry-run analysis to show how many findings would be deleted.
+
+    Returns a count and sample of matching findings without actually removing
+    anything. Use this as a safety check before calling the delete endpoint.
+    Requires the ``findings:delete`` permission.
     """
     # Get the finding
     try:
@@ -1063,16 +1192,28 @@ def delete_findings_dry_run(
     )
 
 
-@router.post("/exception/delete", dependencies=[Depends(require_permissions("findings:delete"))], response_model=DeleteFindingsResponse)
+@router.post(
+    "/exception/delete",
+    dependencies=[Depends(require_permissions("findings:delete"))],
+    response_model=DeleteFindingsResponse,
+    summary="Permanently delete findings",
+    responses={
+        400: {"description": "Invalid UUID format, invalid scope, or deletion not confirmed"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:delete"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error or deletion failed"},
+    },
+)
 def delete_findings(
     request: DeleteFindingsRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """
-    Delete findings based on scope. Requires confirmed=True for safety.
+    """Permanently delete findings based on scope. Requires confirmed=True for safety.
 
-    - specific: Delete only the specified finding
-    - global: Delete all findings with same scanner AND file path
+    Use 'specific' scope to delete only the referenced finding, or 'global' to
+    delete all findings sharing the same scanner and file path. Associated
+    remediations are also removed. Requires the ``findings:delete`` permission.
     """
     if not request.confirmed:
         raise HTTPException(
@@ -1147,52 +1288,68 @@ def delete_findings(
 # =============================================================================
 
 class InvestigationStatusUpdate(BaseModel):
-    """Request to update investigation status."""
-    status: str  # 'triage', 'incident_response', 'resolved', or null to clear
+    """Request to update the investigation workflow status of a finding."""
+    status: str = Field(description="New investigation status: 'triage', 'incident_response', 'resolved', or empty string to clear")
 
 class JournalEntryRequest(BaseModel):
-    """Request to create a journal entry."""
-    entry_text: str
-    entry_type: Optional[str] = 'note'  # 'note', 'status_change', 'ai_response', 'communication'
-    author_name: Optional[str] = 'Analyst'
-    is_ai_generated: Optional[bool] = False
-    ai_prompt: Optional[str] = None
+    """Request to create a new journal entry on a finding's investigation timeline."""
+    entry_text: str = Field(description="The content text of the journal entry")
+    entry_type: Optional[str] = Field(default='note', description="Entry category: 'note', 'status_change', 'ai_response', or 'communication'")
+    author_name: Optional[str] = Field(default='Analyst', description="Display name of the entry author")
+    is_ai_generated: Optional[bool] = Field(default=False, description="Whether this entry was generated by AI")
+    ai_prompt: Optional[str] = Field(default=None, description="The original prompt if this entry was AI-generated")
 
 class JournalEntryResponse(BaseModel):
-    """A single journal entry."""
-    id: str
-    entry_text: str
-    entry_type: str
-    author_name: str
-    is_ai_generated: bool
-    ai_prompt: Optional[str]
-    created_at: datetime
+    """A single journal entry from a finding's investigation timeline."""
+    id: str = Field(description="Unique identifier for the journal entry")
+    entry_text: str = Field(description="The content text of the journal entry")
+    entry_type: str = Field(description="Entry category: note, status_change, ai_response, or communication")
+    author_name: str = Field(description="Display name of the entry author")
+    is_ai_generated: bool = Field(description="Whether this entry was generated by AI")
+    ai_prompt: Optional[str] = Field(default=None, description="The original prompt if this entry was AI-generated")
+    created_at: datetime = Field(description="Timestamp when the journal entry was created")
 
     model_config = {"from_attributes": True}
 
 class InvestigationStatusResponse(BaseModel):
-    """Response with investigation status and journal."""
-    finding_id: str
-    investigation_status: Optional[str]
-    investigation_started_at: Optional[datetime]
-    investigation_resolved_at: Optional[datetime]
-    journal_entries: List[JournalEntryResponse]
+    """Full investigation context for a finding, including status and journal timeline."""
+    finding_id: str = Field(description="UUID of the finding")
+    investigation_status: Optional[str] = Field(default=None, description="Current investigation status: triage, incident_response, or resolved")
+    investigation_started_at: Optional[datetime] = Field(default=None, description="Timestamp when the investigation was first started")
+    investigation_resolved_at: Optional[datetime] = Field(default=None, description="Timestamp when the investigation was marked resolved")
+    journal_entries: List[JournalEntryResponse] = Field(description="Chronological list of journal entries for this investigation")
 
 class AskJournalAIRequest(BaseModel):
-    """Request to ask AI a question about the finding in journal context."""
-    question: str
-    author_name: Optional[str] = 'Analyst'
+    """Request to ask AI a question about a finding within the investigation journal context."""
+    question: str = Field(description="The question to ask the AI assistant about this finding")
+    author_name: Optional[str] = Field(default='Analyst', description="Display name of the analyst asking the question")
 
 class JournalEntryUpdateRequest(BaseModel):
-    """Request to update a journal entry."""
-    entry_text: Optional[str] = None
-    entry_type: Optional[str] = None  # 'note', 'status_change', 'ai_response', 'communication'
-    author_name: Optional[str] = None
+    """Request to update the content or metadata of an existing journal entry."""
+    entry_text: Optional[str] = Field(default=None, description="New content text for the journal entry")
+    entry_type: Optional[str] = Field(default=None, description="New entry category: 'note', 'status_change', 'ai_response', or 'communication'")
+    author_name: Optional[str] = Field(default=None, description="New display name for the entry author")
 
 
-@router.get("/{finding_id}/investigation", dependencies=[Depends(require_permissions("findings:read"))], response_model=InvestigationStatusResponse)
+@router.get(
+    "/{finding_id}/investigation",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    response_model=InvestigationStatusResponse,
+    summary="Get investigation status and journal",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_investigation_status(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Get investigation status and journal entries for a finding."""
+    """Retrieve the investigation status and full journal timeline for a finding.
+
+    Returns the current investigation workflow state (triage, incident_response,
+    resolved) along with all journal entries. Requires the ``findings:read`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -1227,9 +1384,25 @@ def get_investigation_status(finding_id: str, db: Session = Depends(get_tenant_d
     )
 
 
-@router.patch("/{finding_id}/investigation/status", dependencies=[Depends(require_permissions("findings:write"))])
+@router.patch(
+    "/{finding_id}/investigation/status",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Update investigation status",
+    responses={
+        400: {"description": "Invalid UUID format or invalid status value"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def update_investigation_status(finding_id: str, update: InvestigationStatusUpdate, db: Session = Depends(get_tenant_db)):
-    """Update investigation status for a finding."""
+    """Transition a finding's investigation status and record a journal entry.
+
+    Valid statuses are 'triage', 'incident_response', and 'resolved'. Starting
+    an investigation sets the started_at timestamp; resolving sets resolved_at.
+    Requires the ``findings:write`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -1285,9 +1458,25 @@ def update_investigation_status(finding_id: str, update: InvestigationStatusUpda
     }
 
 
-@router.post("/{finding_id}/journal", dependencies=[Depends(require_permissions("findings:write"))], response_model=JournalEntryResponse)
+@router.post(
+    "/{finding_id}/journal",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=JournalEntryResponse,
+    summary="Create a journal entry",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def create_journal_entry(finding_id: str, entry: JournalEntryRequest, db: Session = Depends(get_tenant_db)):
-    """Create a new journal entry for a finding."""
+    """Add a new journal entry to a finding's investigation timeline.
+
+    Supports notes, status changes, AI responses, and communication entries.
+    Requires the ``findings:write`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -1323,9 +1512,26 @@ def create_journal_entry(finding_id: str, entry: JournalEntryRequest, db: Sessio
     )
 
 
-@router.post("/{finding_id}/journal/ask-ai", dependencies=[Depends(require_permissions("findings:write"))], response_model=JournalEntryResponse)
+@router.post(
+    "/{finding_id}/journal/ask-ai",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=JournalEntryResponse,
+    summary="Ask AI about a finding in journal context",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error or AI provider failure"},
+    },
+)
 async def ask_journal_ai(finding_id: str, request: AskJournalAIRequest, db: Session = Depends(get_tenant_db)):
-    """Ask AI a question in the context of the journal and get an AI response."""
+    """Ask the AI assistant a question about a finding within its journal context.
+
+    The question and AI response are both saved as journal entries. The AI
+    receives the finding details and recent journal history as context.
+    Requires the ``findings:write`` permission.
+    """
     from ..config import settings
     
     try:
@@ -1432,9 +1638,25 @@ Please provide helpful, actionable advice for the analyst's question. Be concise
     )
 
 
-@router.get("/{finding_id}/journal/{entry_id}", dependencies=[Depends(require_permissions("findings:read"))], response_model=JournalEntryResponse)
+@router.get(
+    "/{finding_id}/journal/{entry_id}",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    response_model=JournalEntryResponse,
+    summary="Get a journal entry by ID",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        404: {"description": "Finding or journal entry not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def get_journal_entry(finding_id: str, entry_id: str, db: Session = Depends(get_tenant_db)):
-    """Get a specific journal entry for a finding."""
+    """Retrieve a specific journal entry by its UUID within a finding's investigation.
+
+    Returns the full journal entry including text, type, author, and AI metadata.
+    Requires the ``findings:read`` permission.
+    """
     try:
         finding_uuid = uuid.UUID(finding_id)
         entry_uuid = uuid.UUID(entry_id)
@@ -1469,14 +1691,30 @@ def get_journal_entry(finding_id: str, entry_id: str, db: Session = Depends(get_
     )
 
 
-@router.put("/{finding_id}/journal/{entry_id}", dependencies=[Depends(require_permissions("findings:write"))], response_model=JournalEntryResponse)
+@router.put(
+    "/{finding_id}/journal/{entry_id}",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=JournalEntryResponse,
+    summary="Update a journal entry",
+    responses={
+        400: {"description": "Invalid UUID format or invalid entry_type"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions or attempt to edit system entries"},
+        404: {"description": "Finding or journal entry not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def update_journal_entry(
     finding_id: str,
     entry_id: str,
     update: JournalEntryUpdateRequest,
     db: Session = Depends(get_tenant_db)
 ):
-    """Update a journal entry for a finding."""
+    """Update the text, type, or author of an existing journal entry.
+
+    System-generated status change entries cannot be modified.
+    Requires the ``findings:write`` permission.
+    """
     try:
         finding_uuid = uuid.UUID(finding_id)
         entry_uuid = uuid.UUID(entry_id)
@@ -1535,9 +1773,24 @@ def update_journal_entry(
     )
 
 
-@router.delete("/{finding_id}/journal/{entry_id}", dependencies=[Depends(require_permissions("findings:delete"))])
+@router.delete(
+    "/{finding_id}/journal/{entry_id}",
+    dependencies=[Depends(require_permissions("findings:delete"))],
+    summary="Delete a journal entry",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions or attempt to delete system entries"},
+        404: {"description": "Finding or journal entry not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def delete_journal_entry(finding_id: str, entry_id: str, db: Session = Depends(get_tenant_db)):
-    """Delete a journal entry for a finding."""
+    """Permanently delete a journal entry from a finding's investigation timeline.
+
+    System-generated status change entries cannot be deleted.
+    Requires the ``findings:delete`` permission.
+    """
     try:
         finding_uuid = uuid.UUID(finding_id)
         entry_uuid = uuid.UUID(entry_id)
@@ -1583,21 +1836,37 @@ def delete_journal_entry(finding_id: str, entry_id: str, db: Session = Depends(g
 # =============================================================================
 
 class SnoozeRequest(BaseModel):
-    """Request to snooze a finding."""
-    days: int = 7  # Number of days to snooze
-    reason: Optional[str] = None
+    """Request to temporarily snooze a finding so it is hidden from default views."""
+    days: int = Field(default=7, description="Number of days to snooze the finding (1-365)")
+    reason: Optional[str] = Field(default=None, description="Optional justification for snoozing this finding")
 
 
 class SnoozeResponse(BaseModel):
-    """Response after snoozing a finding."""
-    id: str
-    snoozed_until: datetime
-    reason: Optional[str]
+    """Response confirming a finding has been snoozed."""
+    id: str = Field(description="UUID of the snoozed finding")
+    snoozed_until: datetime = Field(description="Datetime when the snooze expires and the finding becomes visible again")
+    reason: Optional[str] = Field(default=None, description="The snooze justification that was provided")
 
 
-@router.post("/{finding_id}/snooze", dependencies=[Depends(require_permissions("findings:write"))], response_model=SnoozeResponse)
+@router.post(
+    "/{finding_id}/snooze",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=SnoozeResponse,
+    summary="Snooze a finding",
+    responses={
+        400: {"description": "Invalid UUID format or days out of range (1-365)"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def snooze_finding(finding_id: str, request: SnoozeRequest, db: Session = Depends(get_tenant_db)):
-    """Snooze a finding for a specified number of days."""
+    """Temporarily snooze a finding so it is hidden from default listing views.
+
+    The finding will reappear after the specified number of days. The snooze
+    action is recorded in finding history. Requires the ``findings:write`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -1640,9 +1909,24 @@ def snooze_finding(finding_id: str, request: SnoozeRequest, db: Session = Depend
     )
 
 
-@router.post("/{finding_id}/unsnooze", dependencies=[Depends(require_permissions("findings:write"))])
+@router.post(
+    "/{finding_id}/unsnooze",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="Unsnooze a finding",
+    responses={
+        400: {"description": "Invalid UUID format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        404: {"description": "Finding not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 def unsnooze_finding(finding_id: str, db: Session = Depends(get_tenant_db)):
-    """Remove snooze from a finding."""
+    """Remove the snooze from a finding, making it visible in default listing views again.
+
+    Clears the snoozed_until and snooze_reason fields.
+    Requires the ``findings:write`` permission.
+    """
     try:
         uuid_obj = uuid.UUID(finding_id)
     except ValueError:
@@ -1663,23 +1947,38 @@ def unsnooze_finding(finding_id: str, db: Session = Depends(get_tenant_db)):
 
 
 class BulkActionRequest(BaseModel):
-    """Request to perform bulk actions on multiple findings."""
-    finding_ids: List[str]
-    action: str  # "resolve", "snooze", "update_severity", "unsnooze"
-    value: Optional[str] = None  # For snooze: days, for severity: new severity level
-    reason: Optional[str] = None
+    """Request to perform the same action on multiple findings at once."""
+    finding_ids: List[str] = Field(description="List of finding UUIDs to apply the action to")
+    action: str = Field(description="Action to perform: 'resolve', 'reopen', 'snooze', 'unsnooze', or 'update_severity'")
+    value: Optional[str] = Field(default=None, description="Action parameter: number of days for snooze, or severity level for update_severity")
+    reason: Optional[str] = Field(default=None, description="Optional justification for the bulk action (used with snooze)")
 
 
 class BulkActionResponse(BaseModel):
-    """Response after bulk action."""
-    success_count: int
-    error_count: int
-    errors: List[str] = []
+    """Response summarizing the results of a bulk action across multiple findings."""
+    success_count: int = Field(description="Number of findings successfully updated")
+    error_count: int = Field(description="Number of findings that failed to update")
+    errors: List[str] = Field(default=[], description="List of error messages for each failed finding")
 
 
-@router.post("/bulk-action", dependencies=[Depends(require_permissions("findings:write"))], response_model=BulkActionResponse)
+@router.post(
+    "/bulk-action",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=BulkActionResponse,
+    summary="Perform a bulk action on multiple findings",
+    responses={
+        400: {"description": "Invalid action type or missing required value"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        500: {"description": "Internal server error"},
+    },
+)
 def bulk_action(request: BulkActionRequest, db: Session = Depends(get_tenant_db)):
-    """Perform bulk actions on multiple findings."""
+    """Apply the same action to multiple findings in a single request.
+
+    Supported actions: resolve, reopen, snooze, unsnooze, and update_severity.
+    Returns per-finding success/error counts. Requires the ``findings:write`` permission.
+    """
     valid_actions = ["resolve", "snooze", "update_severity", "unsnooze", "reopen"]
     if request.action not in valid_actions:
         raise HTTPException(status_code=400, detail=f"Action must be one of: {valid_actions}")
@@ -1752,22 +2051,37 @@ def bulk_action(request: BulkActionRequest, db: Session = Depends(get_tenant_db)
 # =============================================================================
 
 class CalculateRiskScoresRequest(BaseModel):
-    """Request to calculate risk scores for findings."""
-    finding_ids: Optional[List[str]] = None  # If None, calculate for all
+    """Request to trigger risk score calculation for findings."""
+    finding_ids: Optional[List[str]] = Field(default=None, description="List of finding UUIDs to calculate scores for. If omitted, calculates for all unscored findings (up to 500)")
 
 
 class CalculateRiskScoresResponse(BaseModel):
-    """Response after calculating risk scores."""
-    calculated_count: int
-    average_score: float
+    """Response summarizing the batch risk score calculation results."""
+    calculated_count: int = Field(description="Number of findings for which risk scores were calculated")
+    average_score: float = Field(description="Average risk score across all calculated findings")
 
 
-@router.post("/calculate-risk-scores", dependencies=[Depends(require_permissions("findings:write"))], response_model=CalculateRiskScoresResponse)
+@router.post(
+    "/calculate-risk-scores",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=CalculateRiskScoresResponse,
+    summary="Batch calculate risk scores",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+        500: {"description": "Internal server error"},
+    },
+)
 def calculate_and_store_risk_scores(
     request: CalculateRiskScoresRequest = None,
     db: Session = Depends(get_tenant_db)
 ):
-    """Calculate and persist risk scores for findings."""
+    """Calculate and persist risk scores for a batch of findings.
+
+    If specific finding IDs are provided, scores are calculated for those only.
+    Otherwise, scores are calculated for up to 500 unscored findings.
+    Requires the ``findings:write`` permission.
+    """
     if request and request.finding_ids:
         findings = db.query(models.Finding).filter(
             models.Finding.finding_uuid.in_([uuid.UUID(fid) for fid in request.finding_ids])

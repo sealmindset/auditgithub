@@ -33,123 +33,123 @@ router = APIRouter(
 # =============================================================================
 
 class ContributorAliasBase(BaseModel):
-    alias_type: str  # 'email', 'github_username', 'name'
-    alias_value: str
-    is_primary: bool = False
-    source: Optional[str] = None
-    match_confidence: Optional[float] = None
-    match_reason: Optional[str] = None
+    alias_type: str = Field(..., description="Alias type: email, github_username, or name")
+    alias_value: str = Field(..., description="The alias value (email address, username, or name)")
+    is_primary: bool = Field(False, description="Whether this is the primary alias for its type")
+    source: Optional[str] = Field(None, description="Source of the alias (manual, auto-detected, etc.)")
+    match_confidence: Optional[float] = Field(None, description="Confidence score of the identity match (0.0-1.0)")
+    match_reason: Optional[str] = Field(None, description="Reason for the identity match")
 
 
 class ContributorAliasResponse(ContributorAliasBase):
-    id: str
-    profile_id: str
-    first_seen_at: Optional[datetime] = None
-    last_seen_at: Optional[datetime] = None
-    created_at: datetime
+    id: str = Field(..., description="Unique alias identifier")
+    profile_id: str = Field(..., description="Parent contributor profile ID")
+    first_seen_at: Optional[datetime] = Field(None, description="When this alias was first seen in commits")
+    last_seen_at: Optional[datetime] = Field(None, description="When this alias was last seen in commits")
+    created_at: datetime = Field(..., description="When this alias record was created")
 
     model_config = {"from_attributes": True}
 
 
 class ContributorProfileBase(BaseModel):
-    display_name: str
-    primary_email: Optional[str] = None
-    primary_github_username: Optional[str] = None
-    
+    display_name: str = Field(..., description="Display name of the contributor")
+    primary_email: Optional[str] = Field(None, description="Primary email address")
+    primary_github_username: Optional[str] = Field(None, description="Primary GitHub username")
+
     # Entra ID fields
-    entra_id_object_id: Optional[str] = None
-    entra_id_upn: Optional[str] = None
-    entra_id_employee_id: Optional[str] = None
-    entra_id_job_title: Optional[str] = None
-    entra_id_department: Optional[str] = None
-    entra_id_manager_upn: Optional[str] = None
-    
+    entra_id_object_id: Optional[str] = Field(None, description="Entra ID object identifier")
+    entra_id_upn: Optional[str] = Field(None, description="Entra ID user principal name")
+    entra_id_employee_id: Optional[str] = Field(None, description="Entra ID employee identifier")
+    entra_id_job_title: Optional[str] = Field(None, description="Job title from Entra ID")
+    entra_id_department: Optional[str] = Field(None, description="Department from Entra ID")
+    entra_id_manager_upn: Optional[str] = Field(None, description="Manager UPN from Entra ID")
+
     # Employment
-    employment_status: str = "unknown"
-    employment_start_date: Optional[datetime] = None
-    employment_end_date: Optional[datetime] = None
-    
-    notes: Optional[str] = None
+    employment_status: str = Field("unknown", description="Employment status: active, inactive, terminated, contractor, or unknown")
+    employment_start_date: Optional[datetime] = Field(None, description="Employment start date")
+    employment_end_date: Optional[datetime] = Field(None, description="Employment end date")
+
+    notes: Optional[str] = Field(None, description="Free-text notes about the contributor")
 
 
 class ContributorProfileCreate(ContributorProfileBase):
-    aliases: Optional[List[ContributorAliasBase]] = []
+    aliases: Optional[List[ContributorAliasBase]] = Field([], description="Initial aliases to associate with the profile")
 
 
 class ContributorProfileUpdate(BaseModel):
-    display_name: Optional[str] = None
-    primary_email: Optional[str] = None
-    primary_github_username: Optional[str] = None
-    entra_id_object_id: Optional[str] = None
-    entra_id_upn: Optional[str] = None
-    entra_id_employee_id: Optional[str] = None
-    entra_id_job_title: Optional[str] = None
-    entra_id_department: Optional[str] = None
-    entra_id_manager_upn: Optional[str] = None
-    employment_status: Optional[str] = None
-    employment_start_date: Optional[datetime] = None
-    employment_end_date: Optional[datetime] = None
-    notes: Optional[str] = None
-    is_verified: Optional[bool] = None
+    display_name: Optional[str] = Field(None, description="Updated display name")
+    primary_email: Optional[str] = Field(None, description="Updated primary email")
+    primary_github_username: Optional[str] = Field(None, description="Updated primary GitHub username")
+    entra_id_object_id: Optional[str] = Field(None, description="Updated Entra ID object identifier")
+    entra_id_upn: Optional[str] = Field(None, description="Updated Entra ID user principal name")
+    entra_id_employee_id: Optional[str] = Field(None, description="Updated Entra ID employee identifier")
+    entra_id_job_title: Optional[str] = Field(None, description="Updated job title")
+    entra_id_department: Optional[str] = Field(None, description="Updated department")
+    entra_id_manager_upn: Optional[str] = Field(None, description="Updated manager UPN")
+    employment_status: Optional[str] = Field(None, description="Updated employment status")
+    employment_start_date: Optional[datetime] = Field(None, description="Updated employment start date")
+    employment_end_date: Optional[datetime] = Field(None, description="Updated employment end date")
+    notes: Optional[str] = Field(None, description="Updated notes")
+    is_verified: Optional[bool] = Field(None, description="Set verification status")
 
 
 class ContributorProfileResponse(ContributorProfileBase):
-    id: str
-    total_repos: int
-    total_commits: int
-    last_activity_at: Optional[datetime] = None
-    first_activity_at: Optional[datetime] = None
-    risk_score: int
-    is_stale: bool
-    has_elevated_access: bool
-    files_with_findings: int
-    critical_files_count: int
-    ai_identity_confidence: Optional[float] = None
-    ai_summary: Optional[str] = None
-    is_verified: bool
-    verified_at: Optional[datetime] = None
-    employment_verified_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    aliases: List[ContributorAliasResponse] = []
-    
+    id: str = Field(..., description="Unique profile identifier")
+    total_repos: int = Field(..., description="Total repositories the contributor has committed to")
+    total_commits: int = Field(..., description="Total commits across all repositories")
+    last_activity_at: Optional[datetime] = Field(None, description="Date of last activity")
+    first_activity_at: Optional[datetime] = Field(None, description="Date of first known activity")
+    risk_score: int = Field(..., description="Calculated risk score from 0 to 100")
+    is_stale: bool = Field(..., description="Whether the contributor is considered stale (no recent activity)")
+    has_elevated_access: bool = Field(..., description="Whether the contributor has elevated access")
+    files_with_findings: int = Field(..., description="Number of files with security findings")
+    critical_files_count: int = Field(..., description="Number of files with critical findings")
+    ai_identity_confidence: Optional[float] = Field(None, description="AI confidence in identity resolution (0.0-1.0)")
+    ai_summary: Optional[str] = Field(None, description="AI-generated contributor summary")
+    is_verified: bool = Field(..., description="Whether the profile identity has been verified")
+    verified_at: Optional[datetime] = Field(None, description="When the profile was verified")
+    employment_verified_at: Optional[datetime] = Field(None, description="When employment status was last verified")
+    created_at: datetime = Field(..., description="Profile creation timestamp")
+    updated_at: datetime = Field(..., description="Profile last update timestamp")
+    aliases: List[ContributorAliasResponse] = Field([], description="Associated aliases for this profile")
+
     # Computed fields
-    alias_count: int = 0
-    repo_names: List[str] = []
+    alias_count: int = Field(0, description="Number of aliases associated with this profile")
+    repo_names: List[str] = Field([], description="Names of repositories the contributor has committed to")
 
     model_config = {"from_attributes": True}
 
 
 class ProfileSummary(BaseModel):
-    total_profiles: int
-    verified_profiles: int
-    unverified_profiles: int
-    stale_profiles: int
-    active_employees: int
-    inactive_employees: int
-    terminated_employees: int
-    contractors: int
-    unknown_status: int
-    profiles_with_entra_id: int
-    profiles_needing_review: int
+    total_profiles: int = Field(..., description="Total number of contributor profiles")
+    verified_profiles: int = Field(..., description="Number of verified profiles")
+    unverified_profiles: int = Field(..., description="Number of unverified profiles")
+    stale_profiles: int = Field(..., description="Number of stale profiles (no recent activity)")
+    active_employees: int = Field(..., description="Number of active employees")
+    inactive_employees: int = Field(..., description="Number of inactive employees")
+    terminated_employees: int = Field(..., description="Number of terminated employees")
+    contractors: int = Field(..., description="Number of contractors")
+    unknown_status: int = Field(..., description="Number of profiles with unknown employment status")
+    profiles_with_entra_id: int = Field(..., description="Number of profiles linked to Entra ID")
+    profiles_needing_review: int = Field(..., description="Profiles that need review (stale, unverified, or unknown status)")
 
 
 class MergeProfilesRequest(BaseModel):
-    source_profile_ids: List[str]
-    target_display_name: Optional[str] = None
-    target_primary_email: Optional[str] = None
+    source_profile_ids: List[str] = Field(..., description="List of profile IDs to merge (minimum 2)")
+    target_display_name: Optional[str] = Field(None, description="Override display name for the merged profile")
+    target_primary_email: Optional[str] = Field(None, description="Override primary email for the merged profile")
 
 
 class BuildProfilesRequest(BaseModel):
-    dry_run: bool = True
-    min_confidence: float = 0.85
+    dry_run: bool = Field(True, description="If true, preview changes without creating profiles")
+    min_confidence: float = Field(0.85, description="Minimum identity match confidence threshold (0.0-1.0)")
 
 
 class BuildProfilesResponse(BaseModel):
-    profiles_created: int
-    aliases_linked: int
-    contributors_linked: int
-    profiles: List[Dict[str, Any]] = []  # For dry run
+    profiles_created: int = Field(..., description="Number of profiles created or would be created")
+    aliases_linked: int = Field(..., description="Number of aliases linked or would be linked")
+    contributors_linked: int = Field(..., description="Number of contributors linked or would be linked")
+    profiles: List[Dict[str, Any]] = Field([], description="Preview of profiles (populated during dry run)")
 
 
 # =============================================================================
@@ -388,9 +388,15 @@ def get_canonical_email(emails: List[str]) -> Optional[str]:
 # API ENDPOINTS
 # =============================================================================
 
-@router.get("/summary", response_model=ProfileSummary, dependencies=[Depends(require_permissions("projects:read"))])
+@router.get("/summary", response_model=ProfileSummary, dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Get contributor profile summary statistics",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
 def get_profile_summary(db: Session = Depends(get_tenant_db)):
-    """Get summary statistics for contributor profiles."""
+    """
+    Get summary statistics for contributor profiles.
+    Includes counts by verification status, employment status, and profiles needing review.
+    Requires projects:read permission.
+    """
     
     total = db.query(models.ContributorProfile).count()
     verified = db.query(models.ContributorProfile).filter(
@@ -436,7 +442,9 @@ def get_profile_summary(db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.get("/", response_model=List[ContributorProfileResponse], dependencies=[Depends(require_permissions("projects:read"))])
+@router.get("/", response_model=List[ContributorProfileResponse], dependencies=[Depends(require_permissions("projects:read"))],
+    summary="List contributor profiles",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
 def list_profiles(
     db: Session = Depends(get_tenant_db),
     skip: int = 0,
@@ -449,7 +457,11 @@ def list_profiles(
     sort_by: str = Query(default="last_activity_at", enum=["display_name", "last_activity_at", "total_commits", "risk_score"]),
     sort_order: str = Query(default="desc", enum=["asc", "desc"])
 ):
-    """List contributor profiles with filtering and sorting."""
+    """
+    List contributor profiles with filtering, searching, and sorting.
+    Supports filtering by employment status, staleness, verification, and Entra ID linkage.
+    Requires projects:read permission.
+    """
     
     query = db.query(models.ContributorProfile)
     
@@ -552,7 +564,9 @@ def list_profiles(
     return results
 
 
-@router.get("/lookup-by-email", response_model=Optional[ContributorProfileResponse], dependencies=[Depends(require_permissions("projects:read"))])
+@router.get("/lookup-by-email", response_model=Optional[ContributorProfileResponse], dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Look up contributor profile by email",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
 def lookup_profile_by_email(
     email: str = Query(..., description="Email address to look up"),
     db: Session = Depends(get_tenant_db)
@@ -754,9 +768,15 @@ def lookup_profile_by_email(
     )
 
 
-@router.get("/{profile_id}", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:read"))])
+@router.get("/{profile_id}", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Get contributor profile by ID",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}, 404: {"description": "Profile not found"}})
 def get_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
-    """Get a specific contributor profile by ID."""
+    """
+    Get a specific contributor profile by ID.
+    Returns full profile details including aliases, Entra ID linkage, and activity metrics.
+    Requires projects:read permission.
+    """
     
     profile = db.query(models.ContributorProfile).filter(
         models.ContributorProfile.id == profile_id
@@ -823,9 +843,15 @@ def get_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
     )
 
 
-@router.post("/", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:write"))])
+@router.post("/", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:write"))],
+    summary="Create a new contributor profile",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 400: {"description": "Profile with given email already exists"}})
 def create_profile(profile: ContributorProfileCreate, db: Session = Depends(get_tenant_db)):
-    """Create a new contributor profile."""
+    """
+    Create a new contributor profile with optional aliases.
+    Checks for duplicate primary emails before creation.
+    Requires projects:write permission.
+    """
     
     # Check for duplicate primary email
     if profile.primary_email:
@@ -876,13 +902,19 @@ def create_profile(profile: ContributorProfileCreate, db: Session = Depends(get_
     return get_profile(str(db_profile.id), db)
 
 
-@router.patch("/{profile_id}", response_model=ContributorProfileResponse)
+@router.patch("/{profile_id}", response_model=ContributorProfileResponse,
+    summary="Update a contributor profile",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Profile not found"}})
 def update_profile(
     profile_id: str,
     update: ContributorProfileUpdate,
     db: Session = Depends(get_tenant_db)
 ):
-    """Update a contributor profile."""
+    """
+    Update a contributor profile with partial data.
+    Only fields included in the request body will be updated.
+    Sets verified_at timestamp automatically when is_verified is set to true.
+    """
     
     profile = db.query(models.ContributorProfile).filter(
         models.ContributorProfile.id == profile_id
@@ -905,9 +937,14 @@ def update_profile(
     return get_profile(str(profile.id), db)
 
 
-@router.delete("/{profile_id}")
+@router.delete("/{profile_id}",
+    summary="Delete a contributor profile",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Profile not found"}})
 def delete_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
-    """Delete a contributor profile."""
+    """
+    Delete a contributor profile and unlink associated contributors.
+    Contributors linked to this profile will have their profile_id set to null.
+    """
     
     profile = db.query(models.ContributorProfile).filter(
         models.ContributorProfile.id == profile_id
@@ -927,13 +964,19 @@ def delete_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
     return {"status": "deleted", "id": profile_id}
 
 
-@router.post("/{profile_id}/aliases", response_model=ContributorAliasResponse, dependencies=[Depends(require_permissions("projects:write"))])
+@router.post("/{profile_id}/aliases", response_model=ContributorAliasResponse, dependencies=[Depends(require_permissions("projects:write"))],
+    summary="Add an alias to a profile",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 400: {"description": "Alias already exists"}, 404: {"description": "Profile not found"}})
 def add_alias(
     profile_id: str,
     alias: ContributorAliasBase,
     db: Session = Depends(get_tenant_db)
 ):
-    """Add an alias to a profile."""
+    """
+    Add an alias (email, GitHub username, or name) to a contributor profile.
+    Checks for duplicate aliases before adding.
+    Requires projects:write permission.
+    """
     
     profile = db.query(models.ContributorProfile).filter(
         models.ContributorProfile.id == profile_id
@@ -984,9 +1027,14 @@ def add_alias(
     )
 
 
-@router.delete("/{profile_id}/aliases/{alias_id}")
+@router.delete("/{profile_id}/aliases/{alias_id}",
+    summary="Remove an alias from a profile",
+    responses={401: {"description": "Not authenticated"}, 404: {"description": "Alias not found"}})
 def remove_alias(profile_id: str, alias_id: str, db: Session = Depends(get_tenant_db)):
-    """Remove an alias from a profile."""
+    """
+    Remove an alias from a contributor profile.
+    The alias must belong to the specified profile.
+    """
     
     alias = db.query(models.ContributorAlias).filter(
         models.ContributorAlias.id == alias_id,
@@ -1002,9 +1050,15 @@ def remove_alias(profile_id: str, alias_id: str, db: Session = Depends(get_tenan
     return {"status": "deleted", "alias_id": alias_id}
 
 
-@router.post("/merge", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:write"))])
+@router.post("/merge", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:write"))],
+    summary="Merge multiple profiles into one",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 400: {"description": "Need at least 2 profiles to merge"}, 404: {"description": "One or more profiles not found"}})
 def merge_profiles(request: MergeProfilesRequest, db: Session = Depends(get_tenant_db)):
-    """Merge multiple profiles into one."""
+    """
+    Merge multiple contributor profiles into a single unified profile.
+    Aggregates stats, aliases, and contributor links from all source profiles.
+    Requires projects:write permission.
+    """
     
     if len(request.source_profile_ids) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 profiles to merge")
@@ -1078,15 +1132,18 @@ def merge_profiles(request: MergeProfilesRequest, db: Session = Depends(get_tena
     return get_profile(str(base_profile.id), db)
 
 
-@router.post("/build-from-contributors", response_model=BuildProfilesResponse, dependencies=[Depends(require_permissions("projects:write"))])
+@router.post("/build-from-contributors", response_model=BuildProfilesResponse, dependencies=[Depends(require_permissions("projects:write"))],
+    summary="Build profiles from contributor data",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 500: {"description": "Profile building error"}})
 def build_profiles_from_contributors(
     request: BuildProfilesRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Build contributor profiles from existing contributor data.
-    Uses deduplication logic to identify and merge same-person entries.
+    Build contributor profiles from existing contributor data using identity deduplication.
+    Supports dry_run mode to preview changes before committing.
+    Requires projects:write permission.
     """
     
     # Get all contributors
@@ -1251,9 +1308,15 @@ def build_profiles_from_contributors(
     )
 
 
-@router.post("/refresh-stats", dependencies=[Depends(require_permissions("projects:write"))])
+@router.post("/refresh-stats", dependencies=[Depends(require_permissions("projects:write"))],
+    summary="Refresh aggregated profile statistics",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}})
 def refresh_profile_stats(db: Session = Depends(get_tenant_db)):
-    """Recalculate aggregated stats for all profiles from linked contributors."""
+    """
+    Recalculate aggregated statistics for all profiles from linked contributors.
+    Updates repo counts, commit totals, activity dates, and staleness indicators.
+    Requires projects:write permission.
+    """
     
     profiles = db.query(models.ContributorProfile).all()
     now = datetime.utcnow()
@@ -1296,46 +1359,49 @@ def refresh_profile_stats(db: Session = Depends(get_tenant_db)):
 
 class ContributorSecurityMetrics(BaseModel):
     """Security metrics for a contributor."""
-    profile_id: str
-    display_name: str
-    primary_email: Optional[str]
-    findings_introduced: int
-    findings_remediated: int
-    net_security_impact: int  # remediated - introduced
-    avg_time_to_remediate_hours: Optional[float]
-    active_findings_count: int
-    critical_findings_count: int
-    repos_contributed: int
+    profile_id: str = Field(..., description="Contributor profile ID")
+    display_name: str = Field(..., description="Display name of the contributor")
+    primary_email: Optional[str] = Field(None, description="Primary email address")
+    findings_introduced: int = Field(..., description="Number of findings introduced by this contributor")
+    findings_remediated: int = Field(..., description="Number of findings remediated by this contributor")
+    net_security_impact: int = Field(..., description="Net impact: remediated minus introduced")
+    avg_time_to_remediate_hours: Optional[float] = Field(None, description="Average time to remediate findings in hours")
+    active_findings_count: int = Field(..., description="Number of currently active findings")
+    critical_findings_count: int = Field(..., description="Number of critical severity findings")
+    repos_contributed: int = Field(..., description="Number of repositories contributed to")
 
 
 class LeaderboardEntry(BaseModel):
     """An entry in the security leaderboard."""
-    rank: int
-    profile_id: str
-    display_name: str
-    score: int
-    findings_remediated: int
-    findings_introduced: int
-    badge: str  # gold, silver, bronze, neutral, warning
+    rank: int = Field(..., description="Leaderboard position")
+    profile_id: str = Field(..., description="Contributor profile ID")
+    display_name: str = Field(..., description="Display name of the contributor")
+    score: int = Field(..., description="Calculated leaderboard score")
+    findings_remediated: int = Field(..., description="Number of findings remediated")
+    findings_introduced: int = Field(..., description="Number of findings introduced")
+    badge: str = Field(..., description="Badge level: gold, silver, bronze, neutral, or warning")
 
 
 class LeaderboardResponse(BaseModel):
     """Security leaderboard response."""
-    period_days: int
-    top_remediators: List[LeaderboardEntry]
-    most_findings_introduced: List[LeaderboardEntry]
-    summary: Dict[str, Any]
+    period_days: int = Field(..., description="Analysis period in days")
+    top_remediators: List[LeaderboardEntry] = Field(..., description="Top contributors by remediation count")
+    most_findings_introduced: List[LeaderboardEntry] = Field(..., description="Contributors who introduced the most findings")
+    summary: Dict[str, Any] = Field(..., description="Overall leaderboard summary statistics")
 
 
-@router.get("/security/leaderboard", response_model=LeaderboardResponse, dependencies=[Depends(require_permissions("projects:read"))])
+@router.get("/security/leaderboard", response_model=LeaderboardResponse, dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Get security contributor leaderboard",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
 def get_security_leaderboard(
     days: int = Query(90, description="Period to analyze"),
     limit: int = Query(10, le=50),
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Get security leaderboard showing top remediators and contributors
-    who may need additional security training.
+    Get the security leaderboard showing top remediators and contributors
+    who may need additional security training, ranked by remediation activity.
+    Requires projects:read permission.
     """
     from datetime import timedelta
     
@@ -1447,13 +1513,19 @@ def get_security_leaderboard(
     )
 
 
-@router.get("/security/metrics/{profile_id}", response_model=ContributorSecurityMetrics, dependencies=[Depends(require_permissions("projects:read"))])
+@router.get("/security/metrics/{profile_id}", response_model=ContributorSecurityMetrics, dependencies=[Depends(require_permissions("projects:read"))],
+    summary="Get security metrics for a contributor",
+    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Profile not found"}})
 def get_contributor_security_metrics(
     profile_id: str,
     days: int = Query(90),
     db: Session = Depends(get_tenant_db)
 ):
-    """Get detailed security metrics for a specific contributor."""
+    """
+    Get detailed security metrics for a specific contributor including findings
+    introduced, findings remediated, and average time to remediate.
+    Requires projects:read permission.
+    """
     import uuid
     from datetime import timedelta
     
