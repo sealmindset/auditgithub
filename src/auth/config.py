@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = [
         "http://localhost:3000",  # Next.js dev server
         "http://localhost:3001",  # Alternative dev port
+        "http://localhost:8001",  # Sandbox API
+        "http://localhost:8080",  # Swagger Editor
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]

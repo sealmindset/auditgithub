@@ -613,6 +613,30 @@ class ApiKeyAuditLog(Base):
     actor = relationship("User", foreign_keys=[actor_user_id])
 
 
+# =============================================================================
+# SANDBOX API KEY — Only used when SANDBOX_MODE=true
+# =============================================================================
+
+class SandboxApiKey(Base):
+    """
+    Pre-generated API keys for the sandbox environment.
+
+    Unlike production ApiKey, these store the plaintext key_value so it can
+    be displayed publicly on the sandbox landing page.  This table only
+    exists in the auditgh_sandbox database.
+    """
+    __tablename__ = "sandbox_api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    name = Column(String(100), nullable=False)
+    key_hash = Column(String(64), unique=True, nullable=False, index=True)
+    key_value = Column(String(64), nullable=False)  # plaintext — safe for sandbox display
+    role = Column(String(50), nullable=False, default="viewer")
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class FindingHistory(Base):
     __tablename__ = "finding_history"
 
