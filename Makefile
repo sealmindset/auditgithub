@@ -2,9 +2,37 @@
 # AuditGH Makefile — Sandbox & Developer Workflow Targets
 # =============================================================================
 
-.PHONY: sandbox-up sandbox-down sandbox-reset sandbox-export \
+.PHONY: dev-up dev-down dev-logs \
+        sandbox-up sandbox-down sandbox-reset sandbox-export \
         sandbox-sdk-python sandbox-sdk-typescript sandbox-validate \
         sandbox-logs sandbox-status
+
+# -----------------------------------------------------------------------------
+# Development environment with Mock OIDC
+# -----------------------------------------------------------------------------
+
+## Start dev environment with mock OIDC provider (API :8000, OIDC :3007, UI :3000)
+dev-up:
+	docker compose --profile dev up -d mock-oidc
+	@echo "Waiting for mock OIDC to become healthy..."
+	@sleep 3
+	docker compose up -d api web-ui redis db mailhog
+	@echo ""
+	@echo "API:            http://localhost:8000"
+	@echo "Web UI:         http://localhost:3000"
+	@echo "Mock OIDC:      http://localhost:3007"
+	@echo "MailHog:        http://localhost:8025"
+	@echo ""
+	@echo "Login at:       http://localhost:8000/auth/login/mock-oidc"
+	@echo ""
+
+## Stop dev environment
+dev-down:
+	docker compose --profile dev down
+
+## Tail dev logs (API + mock OIDC)
+dev-logs:
+	docker compose logs -f api mock-oidc
 
 # -----------------------------------------------------------------------------
 # Sandbox lifecycle

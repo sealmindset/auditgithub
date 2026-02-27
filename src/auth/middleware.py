@@ -88,9 +88,11 @@ async def validate_jwt_token(token: str, provider: str) -> dict:
     """
     Validate JWT token and return claims.
 
+    Provider-agnostic: works with any registered OIDC provider (mock-oidc, entra, okta).
+
     Args:
         token: JWT token string
-        provider: Identity provider name ("entra" or "okta")
+        provider: Identity provider name (must be registered in settings)
 
     Returns:
         dict: Validated token claims including email, name, sub
@@ -103,20 +105,17 @@ async def validate_jwt_token(token: str, provider: str) -> dict:
         - Validates aud (audience) claim to prevent confused deputy attacks
         - Validates iss (issuer) claim to prevent token reuse across apps
         - Validates exp (expiration) claim to prevent replay attacks
-        - See RESEARCH.md "Common Pitfalls #1, #2"
     """
-    # Determine discovery URL based on provider
-    if provider == "entra":
-        discovery_url = settings.entra_discovery_url
-        audience = settings.entra_client_id
-    elif provider == "okta":
-        discovery_url = settings.okta_discovery_url
-        audience = settings.okta_client_id
-    else:
+    # Look up provider configuration dynamically
+    provider_config = settings.get_provider_config(provider)
+    if not provider_config:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid provider: {provider}"
+            detail=f"Unknown provider: {provider}"
         )
+
+    discovery_url = provider_config["discovery_url"]
+    audience = provider_config["client_id"]
 
     try:
         # Fetch JWKS (cached)
@@ -255,7 +254,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "img-src 'self' data: https:",
             "font-src 'self' data: https://cdn.jsdelivr.net",
-            "connect-src 'self' https://login.microsoftonline.com https://*.okta.com",
+            f"connect-src 'self' https://login.microsoftonline.com https://*.okta.com {settings.oidc_external_base_url}".strip(),
             "frame-ancestors 'none'",  # Prevent embedding in iframes
             "base-uri 'self'",
             "form-action 'self'"

@@ -174,9 +174,10 @@ async def get_current_user_from_token(
             logger.debug("Token is not self-signed, trying OIDC providers")
             pass
 
-    # Try validating with each OIDC provider
+    # Try validating with each registered OIDC provider
     # We don't know which IdP issued the token without parsing claims first
-    for provider in ["entra", "okta"]:
+    from src.auth.config import settings as auth_settings
+    for provider in auth_settings.registered_provider_names:
         try:
             # Validate token with this provider
             claims = await validate_jwt_token(token, provider)

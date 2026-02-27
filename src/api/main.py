@@ -427,6 +427,15 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Failed to initialize RBAC: {e}")
 
+    # Development auth bootstrap — seed invitations for mock OIDC users
+    if os.getenv("OIDC_PROVIDER_NAME") == "mock-oidc" and not is_sandbox():
+        try:
+            from scripts.seed_dev_auth import seed_dev_invitations
+            seed_dev_invitations()
+            logger.info("Dev auth bootstrap complete")
+        except Exception as e:
+            logger.warning(f"Failed to seed dev auth: {e}")
+
     # Sandbox initialization — seed dummy data on first boot
     if is_sandbox():
         try:

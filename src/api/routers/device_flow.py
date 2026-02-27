@@ -374,9 +374,9 @@ async def verify_user_code(
     # Store user_code in session for post-auth approval
     request.session['device_flow_user_code'] = user_code
 
-    # TODO: Determine provider based on organization config
-    # For now, default to entra
-    provider = 'entra'
+    # Use first available registered OIDC provider
+    from src.auth.config import settings as auth_settings
+    provider = auth_settings.registered_provider_names[0] if auth_settings.registered_provider_names else 'entra'
 
     logger.bind(router="device_flow", endpoint="verify-code").info(
         f"User code validated, redirecting to OIDC: {user_code}"

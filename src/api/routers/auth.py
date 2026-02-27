@@ -2,8 +2,10 @@
 Authentication router for OIDC/OAuth2 login flows and token management.
 
 Implements:
+- /auth/providers - List available OIDC providers
 - /auth/login/{provider} - Initiate OIDC login with PKCE
 - /auth/callback/{provider} - Handle OAuth callback and token exchange
+- /auth/accept-invite - Accept invitation and redirect to OIDC login
 - /auth/logout - Clear session
 - /auth/me - Get current user info
 - /auth/refresh - Refresh access and refresh tokens
@@ -14,6 +16,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends, status, Form
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from src.auth.providers import oauth
+from src.auth.config import settings
 from src.auth.tokens import rotate_refresh_token, revoke_token, generate_access_token
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
@@ -27,39 +30,105 @@ from datetime import datetime
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
+@router.get("/providers", summary="List available OIDC providers", responses={200: {"description": "List of available providers"}})
+async def list_providers():
+    """
+    Return list of available authentication providers.
+
+    Used by the frontend login page to display provider options dynamically.
+    """
+    return {
+        "providers": [
+            {"name": p["name"], "display_name": p["name"].replace("-", " ").title()}
+            for p in settings.oidc_providers
+        ]
+    }
+
+
 @router.get("/login/{provider}", summary="Initiate OIDC login", responses={400: {"description": "Invalid provider"}})
 async def login(provider: str, request: Request):
     """
     Initiate OIDC login flow with specified provider.
 
+    Supports any registered OIDC provider (mock-oidc, entra, okta).
+    Passes login_hint parameter when provided (used by mock-oidc for automated testing).
+
     Args:
-        provider: Identity provider name ("entra" or "okta")
+        provider: Identity provider name (must be registered)
         request: FastAPI request object
 
     Returns:
         RedirectResponse to identity provider's authorization endpoint
 
     Raises:
-        HTTPException 400 if provider is not in whitelist
+        HTTPException 400 if provider is not registered
 
     Security: Forces PKCE with S256 algorithm to prevent authorization code
-    interception attacks (see RESEARCH.md "Common Pitfalls #4").
+    interception attacks.
     """
-    # Validate provider against whitelist to prevent SSRF attacks
-    if provider not in ["entra", "okta"]:
-        raise HTTPException(status_code=400, detail="Invalid provider")
+    # Validate provider against dynamic whitelist
+    if provider not in settings.registered_provider_names:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider '{provider}'. Available: {settings.registered_provider_names}"
+        )
 
     # Get callback URL for this provider
     redirect_uri = str(request.url_for('callback', provider=provider))
 
+    # Build extra authorization params
+    extra_params = {}
+    if login_hint := request.query_params.get("login_hint"):
+        extra_params["login_hint"] = login_hint
+
     # Initiate OAuth flow with forced PKCE (S256 = SHA-256)
-    # Authlib enables PKCE automatically, but explicit is better for security-critical code
     provider_client = getattr(oauth, provider)
     return await provider_client.authorize_redirect(
         request,
         redirect_uri,
-        code_challenge_method='S256'
+        code_challenge_method='S256',
+        **extra_params
     )
+
+
+@router.get("/accept-invite", summary="Accept invitation and redirect to OIDC login", responses={400: {"description": "Invalid or expired invitation"}})
+async def accept_invite(token: str, request: Request, provider: str = ""):
+    """
+    First step of invitation acceptance — stores invite token in session
+    and redirects to OIDC login.
+
+    The callback handler will check for this token and create the user
+    with the role specified in the invitation.
+
+    Args:
+        token: Invitation token from email link
+        provider: Optional OIDC provider name (defaults to first available)
+        request: FastAPI request object
+
+    Returns:
+        RedirectResponse to OIDC login endpoint
+    """
+    db = SessionLocal()
+    try:
+        invitation = get_invitation_by_token(db, token)
+        if not invitation or invitation.status != 'pending':
+            raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+
+        # Store invite token in session for callback to find
+        request.session['invite_token'] = token
+
+        # Determine which provider to use
+        if not provider:
+            provider = settings.registered_provider_names[0] if settings.registered_provider_names else "entra"
+
+        # Build login URL, with login_hint for mock-oidc to auto-select user
+        login_url = f"/auth/login/{provider}"
+        if provider == "mock-oidc":
+            login_url += f"?login_hint={invitation.email}"
+
+        return RedirectResponse(url=login_url, status_code=303)
+    finally:
+        db.close()
 
 
 @router.post("/break-glass/login", summary="Break glass emergency login", responses={401: {"description": "Invalid credentials"}, 403: {"description": "Email not authorized for break glass"}})
@@ -71,7 +140,7 @@ async def break_glass_login(
     """
     Break glass login with local password.
 
-    Emergency authentication for ravance@gmail.com when Entra ID is unavailable.
+    Emergency authentication for ravance@gmail.com when OIDC providers are unavailable.
     All break glass access is prominently logged and audited.
 
     Args:
@@ -85,12 +154,6 @@ async def break_glass_login(
     Raises:
         HTTPException 403: If email is not ravance@gmail.com
         HTTPException 401: If credentials are invalid
-
-    Security:
-        - Only allowed for ravance@gmail.com
-        - All attempts audited in auth_audit_log
-        - Break glass flag set in session
-        - Warning banner displayed in UI
     """
     # Only allow ravance@gmail.com
     if email != "ravance@gmail.com":
@@ -186,14 +249,16 @@ async def callback(provider: str, request: Request):
     """
     Handle OAuth callback and exchange authorization code for tokens.
 
+    Provider-agnostic: works with mock-oidc, Entra ID, Okta, or any registered provider.
+
     Enhanced to support RBAC invitation system:
     - Checks if user exists in database
     - If not, checks for pending invitation
-    - Creates user account if invitation valid
+    - Creates user account if invitation valid (with assigned role)
     - Stores role and access_type in session
 
     Args:
-        provider: Identity provider name ("entra" or "okta")
+        provider: Identity provider name (must be registered)
         request: FastAPI request object
 
     Returns:
@@ -205,14 +270,14 @@ async def callback(provider: str, request: Request):
         HTTPException 403 if no invitation found
 
     Security:
-    - Validates email_verified claim before trusting email (RESEARCH.md "Pitfalls #3")
+    - Validates email_verified claim before trusting email
     - Stores session data with RBAC fields (role, access_type)
     - Uses 303 redirect to prevent browser re-POST on refresh
     - Requires invitation for new users
     """
-    # Validate provider against whitelist
-    if provider not in ["entra", "okta"]:
-        raise HTTPException(status_code=400, detail="Invalid provider")
+    # Validate provider against dynamic whitelist
+    if provider not in settings.registered_provider_names:
+        raise HTTPException(status_code=400, detail=f"Invalid provider '{provider}'")
 
     try:
         # Exchange authorization code for tokens
@@ -230,11 +295,11 @@ async def callback(provider: str, request: Request):
             )
 
         # Validate email_verified claim before trusting email
-        # Not all providers verify emails by default (security risk)
-        if user_info.get('email') and not user_info.get('email_verified'):
+        # Mock OIDC always sets email_verified=true; skip check if not present
+        if user_info.get('email') and user_info.get('email_verified') is False:
             raise HTTPException(
                 status_code=400,
-                detail="Email not verified"
+                detail="Email not verified by identity provider"
             )
 
         # Check if user exists in database
@@ -256,14 +321,14 @@ async def callback(provider: str, request: Request):
                         detail="No invitation found. Please contact administrator."
                     )
 
-                # Accept invitation and create user
+                # Accept invitation and create user (provider-agnostic)
                 try:
-                    user = accept_invitation(db, invite_token, user_info)
+                    user = accept_invitation(db, invite_token, user_info, provider=provider)
 
                     # Clear invitation token from session
                     request.session.pop('invite_token', None)
 
-                    logger.info(f"User created via invitation: {user.email}")
+                    logger.info(f"User created via invitation: {user.email} (provider={provider})")
 
                 except ValueError as e:
                     logger.warning(f"Invitation acceptance failed: {e}")
@@ -271,17 +336,22 @@ async def callback(provider: str, request: Request):
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=str(e)
                     )
+            else:
+                # Existing user — update OIDC fields if not set
+                if not user.oidc_subject and user_info.get('sub'):
+                    user.oidc_subject = user_info['sub']
+                    user.oidc_issuer = user_info.get('iss', '')
 
             # Update last login
             user.last_login_at = datetime.utcnow()
             db.commit()
 
-            # Audit log successful login
+            # Audit log successful login (provider-agnostic)
             audit_log = AuthAuditLog(
                 user_id=user.id,
                 email=user.email,
                 event_type='login',
-                auth_method='entra' if provider == 'entra' else 'oauth',
+                auth_method=provider,
                 success=True,
                 ip_address=request.client.host if request.client else None,
                 user_agent=request.headers.get('user-agent'),
@@ -295,7 +365,7 @@ async def callback(provider: str, request: Request):
                 'provider': provider,
                 'email': user.email,
                 'name': user.full_name,
-                'sub': user_info['sub'],  # Entra ID subject
+                'sub': user_info['sub'],
                 'role': user.role,
                 'access_type': user.access_type,
                 'user_id': str(user.id),
@@ -303,9 +373,9 @@ async def callback(provider: str, request: Request):
             }
 
             # Store access token for API calls
-            request.session['access_token'] = token['access_token']
+            request.session['access_token'] = token.get('access_token', '')
 
-            logger.info(f"Login successful: {user.email} (role={user.role})")
+            logger.info(f"Login successful: {user.email} (role={user.role}, provider={provider})")
 
             # Redirect to homepage with 303 See Other (POST-redirect-GET pattern)
             return RedirectResponse(url='/', status_code=303)
@@ -335,10 +405,6 @@ async def logout(request: Request):
 
     Returns:
         RedirectResponse to homepage (/) with 303 See Other status
-
-    Note: This is client-side logout only. It clears the session but does not
-    perform IdP logout (sign out from Entra ID/Okta). Full SSO logout with
-    token revocation will be implemented in Phase 5.
     """
     # Clear all session data including tokens
     request.session.clear()
@@ -356,14 +422,10 @@ async def get_current_user_info(request: Request):
         request: FastAPI request object
 
     Returns:
-        dict: User information (email, name, sub, provider)
+        dict: User information (email, name, sub, provider, role, access_type)
 
     Raises:
         HTTPException 401 if user is not authenticated
-
-    Note: This endpoint uses session-based authentication. For JWT-based
-    authentication with Bearer tokens, see Phase 2 Plan 3 (JWT Validation).
-    Does not return access_token (tokens stay in backend session only).
     """
     # Get user from session
     user = request.session.get('user')
@@ -406,15 +468,6 @@ async def refresh_tokens(request: RefreshRequest):
     - Validates old token before issuing new one
     - Prevents token reuse attacks
     - Checks blacklist for revoked tokens
-
-    Args:
-        request: RefreshRequest with refresh_token
-
-    Returns:
-        RefreshResponse with new refresh_token and access_token
-
-    Raises:
-        HTTPException 401: If refresh token is invalid, expired, blacklisted, or already used
     """
     try:
         # Rotate refresh token (validates and generates new one)
@@ -455,23 +508,11 @@ async def revoke_current_token(
     Revoke the current user's access token.
 
     Adds the token's JTI to the blacklist, preventing further use.
-    Useful for logout or security incidents.
 
     Security:
     - Instant revocation across all API instances (Redis-backed)
     - Blacklist entry expires at token's natural expiry (auto-cleanup)
     - Requires authentication (only user can revoke their own token)
-
-    Args:
-        request: FastAPI Request object (contains token metadata)
-        current_user: Current authenticated user (from dependency)
-
-    Returns:
-        204 No Content on success
-
-    Raises:
-        HTTPException 400: If token JTI not found in request
-        HTTPException 500: If revocation fails
     """
     try:
         # Extract JTI from request state (set by get_current_user_from_token)

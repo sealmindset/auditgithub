@@ -103,15 +103,19 @@ def create_invitation(
 def accept_invitation(
     db: Session,
     invite_token: str,
-    entra_user_info: Dict
+    user_info: Dict,
+    provider: str = "entra"
 ) -> User:
     """
-    Accept invitation after Entra ID authentication.
+    Accept invitation after OIDC authentication.
+
+    Provider-agnostic: works with mock-oidc, Entra ID, Okta, or any OIDC provider.
 
     Args:
         db: Database session
         invite_token: Unique invitation token from email link
-        entra_user_info: User info from Entra ID OAuth (contains sub, email, name, upn)
+        user_info: User info from OIDC provider (contains sub, email, name)
+        provider: OIDC provider name (e.g., "entra", "okta", "mock-oidc")
 
     Returns:
         Newly created User
@@ -135,10 +139,10 @@ def accept_invitation(
         raise ValueError("Invitation expired")
 
     # Verify email matches
-    if invitation.email.lower() != entra_user_info.get('email', '').lower():
+    if invitation.email.lower() != user_info.get('email', '').lower():
         raise ValueError(
             f"Email mismatch: invitation for {invitation.email}, "
-            f"authenticated as {entra_user_info.get('email')}"
+            f"authenticated as {user_info.get('email')}"
         )
 
     # Check if user already exists (race condition protection)
@@ -146,16 +150,20 @@ def accept_invitation(
     if existing_user:
         raise ValueError("User already exists")
 
-    # Create user
+    # Create user (provider-agnostic with backward-compatible Entra fields)
     user = User(
         email=invitation.email,
-        username=entra_user_info.get('preferred_username', invitation.email.split('@')[0]),
-        full_name=entra_user_info.get('name', ''),
+        username=user_info.get('preferred_username', invitation.email.split('@')[0]),
+        full_name=user_info.get('name', ''),
         role=invitation.invited_role,
         access_type=invitation.invited_access_type,
-        entra_id_object_id=entra_user_info.get('sub'),
-        entra_id_upn=entra_user_info.get('upn'),
-        auth_provider='entra',
+        # Provider-agnostic OIDC fields
+        oidc_subject=user_info.get('sub'),
+        oidc_issuer=user_info.get('iss', ''),
+        auth_provider=provider,
+        # Backward-compatible Entra fields (populated only for Entra logins)
+        entra_id_object_id=user_info.get('sub') if provider == 'entra' else None,
+        entra_id_upn=user_info.get('upn') if provider == 'entra' else None,
         is_active=True,
         is_invited=True,
         first_login_at=datetime.utcnow()
@@ -172,7 +180,7 @@ def accept_invitation(
 
     logger.info(
         f"Invitation accepted: {user.email} created with role {user.role} "
-        f"(invited by user_id={invitation.invited_by})"
+        f"(provider={provider}, invited by user_id={invitation.invited_by})"
     )
 
     return user

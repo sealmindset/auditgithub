@@ -94,6 +94,12 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
       - APP_URL=${APP_URL:-http://localhost:3000}
+      # OIDC provider configuration (mock-oidc in dev, Entra/Okta in prod)
+      - OIDC_PROVIDER_NAME=${OIDC_PROVIDER_NAME:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_DISCOVERY_URL=${OIDC_DISCOVERY_URL:-}
+      - OIDC_EXTERNAL_BASE_URL=${OIDC_EXTERNAL_BASE_URL:-}
     depends_on:
       db:
         condition: service_started
@@ -256,6 +262,35 @@ services:
       - "1025:1025"   # SMTP server
       - "8025:8025"   # Web UI
     restart: unless-stopped
+
+  # =============================================================================
+  # Mock OIDC Provider — Development authentication (port 3007)
+  # =============================================================================
+  # Full OIDC 1.0 compliant provider for local development.
+  # Eliminates dependency on Entra ID / Okta during development.
+  # Pre-seeded with test users matching common invitation emails.
+  # Split URL architecture: external (browser) vs internal (container).
+  # =============================================================================
+  mock-oidc:
+    build:
+      context: ../mocksvcs/mock_oidc
+    container_name: auditgh_mock_oidc
+    ports:
+      - "3007:10090"
+    environment:
+      - MOCK_OIDC_EXTERNAL_BASE_URL=http://localhost:3007
+      - MOCK_OIDC_INTERNAL_BASE_URL=http://mock-oidc:10090
+      - MOCK_OIDC_DEFAULT_CLIENT_ID=${OIDC_CLIENT_ID:-auditgh-dev-client}
+      - MOCK_OIDC_DEFAULT_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-auditgh-dev-secret}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - dev
+      - mock-oidc
 
   # =============================================================================
   # Sandbox API Service — Isolated developer sandbox (port 8001)

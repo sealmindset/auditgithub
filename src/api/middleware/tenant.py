@@ -161,10 +161,11 @@ class TenantMiddleware(BaseHTTPMiddleware):
 
         db = SessionLocal()
         try:
-            # Try to validate JWT with each provider (Phase 2 integration)
-            # Don't know which provider issued token, so try both
+            # Try to validate JWT with each registered provider
+            # Don't know which provider issued token, so try all
+            from src.auth.config import settings as auth_settings
             claims = None
-            for provider in ["entra", "okta"]:
+            for provider in auth_settings.registered_provider_names:
                 try:
                     claims = await validate_jwt_token(token, provider)
                     logger.bind(middleware="TenantMiddleware", provider=provider).debug(f"JWT validated with provider {provider}")

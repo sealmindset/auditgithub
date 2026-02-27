@@ -422,10 +422,14 @@ class User(Base):
     # Break glass authentication (only for ravance@gmail.com)
     local_password_hash = Column(String, nullable=True)  # bcrypt hash
 
-    # Entra ID fields
+    # OIDC fields (provider-agnostic — stable identifier across any OIDC provider)
+    oidc_subject = Column(String, unique=True, nullable=True, index=True)  # OIDC 'sub' claim
+    oidc_issuer = Column(String, nullable=True)  # OIDC issuer URL (identifies which provider)
+
+    # Entra ID fields (backward compatible, populated only for Entra logins)
     entra_id_object_id = Column(String, unique=True, nullable=True)  # Azure AD Object ID
     entra_id_upn = Column(String, nullable=True)  # User Principal Name
-    auth_provider = Column(String, default='entra')  # entra, local, google
+    auth_provider = Column(String, default='entra')  # entra, okta, mock-oidc, local
 
     # Status
     is_invited = Column(Boolean, default=False)
@@ -459,7 +463,7 @@ class UserInvitation(Base):
     invite_token = Column(String(64), unique=True, nullable=False, index=True)  # cryptographic token
 
     # Invitation metadata
-    invited_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)  # Null for system/bootstrap invitations
     invited_role = Column(String, nullable=False, default='user')  # Initial role
     invited_access_type = Column(String, nullable=False, default='ui_only')
 
