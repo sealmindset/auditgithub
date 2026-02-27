@@ -138,9 +138,9 @@ Use one of the pre-generated API keys below in the `X-API-Key` header:
 
 | Key Name | Role | Value |
 |----------|------|-------|
-| sandbox-admin-key | super_admin | `sbx_admin_4a8b2c1d3e5f6789` |
-| sandbox-analyst-key | analyst | `sbx_analyst_9f8e7d6c5b4a3210` |
-| sandbox-readonly-key | viewer | `sbx_readonly_1a2b3c4d5e6f7890` |
+| Sandbox Admin Key | super_admin | `agh_sandbox_admin` |
+| Sandbox Analyst Key | analyst | `agh_sandbox_analyst` |
+| Sandbox Readonly Key | user | `agh_sandbox_readonly` |
 
 ## Sandbox Endpoints
 - `GET /api/sandbox/keys` — List all sandbox keys with usage examples
@@ -360,7 +360,15 @@ if is_sandbox():
                 "type": "apiKey",
                 "in": "header",
                 "name": "X-API-Key",
-                "description": "Sandbox API key (see GET /api/sandbox/keys for available keys)",
+                "description": (
+                    "Sandbox API Key. Available keys:\n\n"
+                    "| Key | Role | Access |\n"
+                    "|-----|------|--------|\n"
+                    "| `agh_sandbox_admin` | super_admin | Full access |\n"
+                    "| `agh_sandbox_analyst` | analyst | Read/write |\n"
+                    "| `agh_sandbox_readonly` | user | Read-only |\n\n"
+                    "Enter any key above in the value field."
+                ),
             },
         }
         openapi_schema["security"] = [{"ApiKeyAuth": []}]
@@ -521,55 +529,99 @@ if is_sandbox():
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AuditGH Sandbox</title>
+<title>AuditGH Developer Portal</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem}
-h1{font-size:2rem;margin-bottom:.5rem;color:#38bdf8}
-.subtitle{color:#94a3b8;margin-bottom:2rem;font-size:1.1rem}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;max-width:960px;width:100%;margin-bottom:2rem}
-.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1.5rem;transition:border-color .2s}
-.card:hover{border-color:#38bdf8}
-.card h2{font-size:1.2rem;margin-bottom:.5rem;color:#f1f5f9}
-.card p{color:#94a3b8;margin-bottom:1rem;font-size:.9rem}
-.card a{display:inline-block;background:#0ea5e9;color:#fff;padding:.5rem 1rem;border-radius:6px;text-decoration:none;font-size:.9rem}
-.card a:hover{background:#0284c7}
-table{border-collapse:collapse;max-width:960px;width:100%;margin-top:1rem}
-th,td{text-align:left;padding:.6rem 1rem;border-bottom:1px solid #334155}
-th{color:#38bdf8;font-size:.85rem;text-transform:uppercase;letter-spacing:.05em}
-td{font-size:.9rem}
-code{background:#334155;padding:.15rem .4rem;border-radius:4px;font-size:.85rem;color:#7dd3fc}
-.note{color:#64748b;font-size:.8rem;margin-top:1.5rem;text-align:center}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+       max-width: 900px; margin: 0 auto; padding: 40px 20px;
+       background: #0f172a; color: #e2e8f0; }
+h1 { color: #38bdf8; font-size: 2rem; }
+.subtitle { color: #94a3b8; font-size: 1.1rem; margin-bottom: 2rem; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.card { background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+        padding: 24px; text-decoration: none; color: inherit;
+        transition: border-color 0.2s; }
+.card:hover { border-color: #38bdf8; }
+.card h2 { color: #f8fafc; margin-top: 0; font-size: 1.2rem; }
+.card p { color: #94a3b8; font-size: 0.9rem; line-height: 1.5; }
+.card .url { color: #38bdf8; font-size: 0.85rem; }
+.keys { background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+        padding: 24px; margin-top: 2rem; }
+.keys h2 { color: #f8fafc; }
+.key-row { display: flex; justify-content: space-between; align-items: center;
+           padding: 8px 0; border-bottom: 1px solid #334155; }
+.key-value { font-family: 'SF Mono', 'Fira Code', monospace;
+             background: #0f172a; padding: 4px 10px; border-radius: 6px;
+             color: #34d399; font-size: 0.9rem; }
+.key-role { color: #94a3b8; font-size: 0.85rem; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+         font-size: 0.75rem; font-weight: 600; }
+.badge-admin { background: #7c3aed20; color: #a78bfa; }
+.badge-analyst { background: #2563eb20; color: #60a5fa; }
+.badge-readonly { background: #16a34a20; color: #4ade80; }
+.notice { background: #422006; border: 1px solid #92400e; border-radius: 8px;
+          padding: 12px 16px; margin-top: 2rem; font-size: 0.9rem; color: #fbbf24; }
+code { background: #334155; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; }
 </style>
 </head>
 <body>
-<h1>AuditGH Sandbox</h1>
-<p class="subtitle">Isolated developer environment with synthetic data &mdash; resets every 24 hours</p>
+<h1>AuditGH Developer Portal</h1>
+<p class="subtitle">
+    Explore, test, and integrate with the AuditGH Security Platform API.
+    This sandbox environment uses dummy data &mdash; no production impact.
+</p>
 <div class="cards">
-  <div class="card">
-    <h2>Swagger UI</h2>
-    <p>Interactive API explorer with try-it-out. Paste a sandbox API key to authenticate.</p>
-    <a href="/docs">Open /docs</a>
-  </div>
-  <div class="card">
-    <h2>Swagger Editor</h2>
-    <p>Edit and validate the OpenAPI spec live. Runs on port 8080.</p>
-    <a href="http://localhost:8080" target="_blank">Open Editor</a>
-  </div>
-  <div class="card">
-    <h2>ReDoc</h2>
-    <p>Beautiful, responsive API documentation. Great for reading and sharing.</p>
-    <a href="/redoc">Open /redoc</a>
-  </div>
+    <a class="card" href="/docs">
+        <h2>Swagger UI</h2>
+        <p>Interactive API explorer. Test endpoints directly with
+           "Try It Out". Authenticate with sandbox API keys.</p>
+        <span class="url">localhost:8001/docs</span>
+    </a>
+    <a class="card" href="http://localhost:8080" target="_blank">
+        <h2>Swagger Editor</h2>
+        <p>Edit and validate the OpenAPI specification.
+           Generate client SDKs in Python, TypeScript, Go, and more.</p>
+        <span class="url">localhost:8080</span>
+    </a>
+    <a class="card" href="/redoc">
+        <h2>Redoc</h2>
+        <p>Beautiful read-only API reference documentation.
+           Ideal for architects and reviewers.</p>
+        <span class="url">localhost:8001/redoc</span>
+    </a>
 </div>
-<h2 style="color:#f1f5f9;margin-bottom:.5rem">Sandbox API Keys</h2>
-<table>
-<tr><th>Name</th><th>Role</th><th>Key</th></tr>
-<tr><td>sandbox-admin-key</td><td>super_admin</td><td><code>sbx_admin_4a8b2c1d3e5f6789</code></td></tr>
-<tr><td>sandbox-analyst-key</td><td>analyst</td><td><code>sbx_analyst_9f8e7d6c5b4a3210</code></td></tr>
-<tr><td>sandbox-readonly-key</td><td>viewer</td><td><code>sbx_readonly_1a2b3c4d5e6f7890</code></td></tr>
-</table>
-<p class="note">Data resets automatically every 24 hours. Admin key can trigger an immediate reset via POST /api/sandbox/reset.</p>
+<div class="keys">
+    <h2>Sandbox API Keys</h2>
+    <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:16px;">
+        Use these keys in the <code>X-API-Key</code> header to authenticate.
+        Click "Authorize" in Swagger UI and paste a key.
+    </p>
+    <div class="key-row">
+        <div>
+            <span class="key-value">agh_sandbox_admin</span>
+            <span class="badge badge-admin">super_admin</span>
+        </div>
+        <span class="key-role">Full access &mdash; can reset sandbox</span>
+    </div>
+    <div class="key-row">
+        <div>
+            <span class="key-value">agh_sandbox_analyst</span>
+            <span class="badge badge-analyst">analyst</span>
+        </div>
+        <span class="key-role">Read/write findings, execute scans</span>
+    </div>
+    <div class="key-row" style="border-bottom:none;">
+        <div>
+            <span class="key-value">agh_sandbox_readonly</span>
+            <span class="badge badge-readonly">user</span>
+        </div>
+        <span class="key-role">Read-only access to all data</span>
+    </div>
+</div>
+<div class="notice">
+    This is a sandbox environment with dummy data.
+    Data resets automatically every 24 hours.
+    To reset manually: <code>POST /api/sandbox/reset</code> (admin key required).
+</div>
 </body>
 </html>""")
 else:

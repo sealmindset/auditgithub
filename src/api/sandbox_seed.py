@@ -12,6 +12,7 @@ Entry points
 """
 
 import hashlib
+import json
 import logging
 import os
 import uuid
@@ -104,9 +105,9 @@ USER_TEMPLATES = [
 ]
 
 SANDBOX_KEY_TEMPLATES = [
-    ("sandbox-admin-key", "sbx_admin_4a8b2c1d3e5f6789", "super_admin", "Full admin access — can reset sandbox and manage all resources"),
-    ("sandbox-analyst-key", "sbx_analyst_9f8e7d6c5b4a3210", "analyst", "Analyst access — read/write findings, scans, and analytics"),
-    ("sandbox-readonly-key", "sbx_readonly_1a2b3c4d5e6f7890", "viewer", "Read-only access — view all resources, no mutations"),
+    ("Sandbox Admin Key", "agh_sandbox_admin", "super_admin", "Full administrative access. Can reset sandbox, manage all data."),
+    ("Sandbox Analyst Key", "agh_sandbox_analyst", "analyst", "Security analyst access. Read/write findings, execute scans, read repos."),
+    ("Sandbox Readonly Key", "agh_sandbox_readonly", "user", "Read-only access. View all data, cannot modify or create."),
 ]
 
 SCHEDULE_TEMPLATES = [
@@ -368,6 +369,118 @@ def _seed_contributor_profiles(db: Session) -> list:
     return profiles
 
 
+def _seed_architecture_versions(db: Session, repos: list, users: list) -> list:
+    """Create architecture analysis results for a subset of repos.
+
+    Seeds one ArchitectureVersion per repo and populates the repository's
+    architecture_report and architecture_diagram fields.
+    """
+    from src.api.mock_ai import MOCK_ARCHITECTURE
+
+    versions = []
+    counter = 0
+    admin_user = users[0] if users else None
+    mermaid_diagram = (
+        "graph TD\n"
+        "    A[Frontend SPA] -->|HTTPS| B[API Gateway]\n"
+        "    B -->|gRPC| C[Auth Service]\n"
+        "    B -->|TCP/TLS| D[(Database)]\n"
+        "    B -->|AMQP| E[Message Queue]\n"
+        "    E --> F[Worker Service]\n"
+        "    F --> D"
+    )
+
+    for repo in repos:
+        report_content = (
+            f"# Architecture Report: {repo.name}\n\n"
+            f"## Summary\n{MOCK_ARCHITECTURE['summary']}\n\n"
+            f"## Components\n"
+        )
+        for comp in MOCK_ARCHITECTURE["components"]:
+            report_content += f"- **{comp['name']}** ({comp['language']}) — Risk: {comp['risk']}\n"
+        report_content += (
+            f"\n## Data Flows\n"
+        )
+        for flow in MOCK_ARCHITECTURE["data_flows"]:
+            report_content += f"- {flow['from']} -> {flow['to']} ({flow['protocol']}): {flow['data']}\n"
+
+        version = models.ArchitectureVersion(
+            id=_duuid("archver", counter),
+            repository_id=repo.id,
+            version_number=1,
+            report_content=report_content,
+            diagram_code=mermaid_diagram,
+            description=f"Initial architecture analysis for {repo.name.split('/')[-1]}",
+            created_by=admin_user.id if admin_user else None,
+        )
+        db.add(version)
+        versions.append(version)
+
+        # Also populate the repository convenience fields
+        repo.architecture_report = report_content
+        repo.architecture_diagram = mermaid_diagram
+
+        counter += 1
+
+    db.flush()
+    logger.info(f"Seeded {len(versions)} architecture versions")
+    return versions
+
+
+def _seed_feedback() -> None:
+    """Seed sample component feedback to the JSON file.
+
+    The feedback router uses file-based storage, not the database,
+    so we write directly to the expected path.
+    """
+    feedback_file = "/app/data/component_feedback.json"
+    now = datetime.now(timezone.utc)
+    feedback_entries = [
+        {
+            "component_id": "findings-table",
+            "component_name": "Findings Table",
+            "vote": "up",
+            "timestamp": (now - timedelta(days=5)).isoformat(),
+            "received_at": (now - timedelta(days=5)).isoformat(),
+        },
+        {
+            "component_id": "risk-dashboard",
+            "component_name": "Risk Dashboard",
+            "vote": "up",
+            "timestamp": (now - timedelta(days=3)).isoformat(),
+            "received_at": (now - timedelta(days=3)).isoformat(),
+        },
+        {
+            "component_id": "risk-dashboard",
+            "component_name": "Risk Dashboard",
+            "vote": "up",
+            "timestamp": (now - timedelta(days=2)).isoformat(),
+            "received_at": (now - timedelta(days=2)).isoformat(),
+        },
+        {
+            "component_id": "scan-scheduler",
+            "component_name": "Scan Scheduler",
+            "vote": "down",
+            "timestamp": (now - timedelta(days=1)).isoformat(),
+            "received_at": (now - timedelta(days=1)).isoformat(),
+        },
+        {
+            "component_id": "architecture-diagram",
+            "component_name": "Architecture Diagram",
+            "vote": "up",
+            "timestamp": now.isoformat(),
+            "received_at": now.isoformat(),
+        },
+    ]
+    try:
+        os.makedirs(os.path.dirname(feedback_file), exist_ok=True)
+        with open(feedback_file, "w") as f:
+            json.dump(feedback_entries, f, indent=2)
+        logger.info(f"Seeded {len(feedback_entries)} feedback entries")
+    except Exception as e:
+        logger.warning(f"Could not seed feedback file: {e}")
+
+
 def _seed_system_config(db: Session) -> None:
     """Seed a few system config entries."""
     configs = [
@@ -447,7 +560,7 @@ def _run_full_seed(db: Session) -> None:
     """Run all seed functions in dependency order."""
     _seed_sandbox_api_keys(db)
     orgs = _seed_organizations(db)
-    _seed_users(db)
+    users = _seed_users(db)
     repos = _seed_repositories(db, orgs)
     _seed_findings(db, repos)
     _seed_scan_runs(db, repos)
@@ -455,6 +568,8 @@ def _run_full_seed(db: Session) -> None:
     _seed_contributors(db, repos)
     _seed_api_endpoints(db, repos)
     _seed_contributor_profiles(db)
+    _seed_architecture_versions(db, repos, users)
+    _seed_feedback()
     _seed_system_config(db)
 
 

@@ -29,7 +29,7 @@ sandbox-down:
 ## Reset sandbox data (requires admin key)
 sandbox-reset:
 	curl -s -X POST http://localhost:8001/api/sandbox/reset \
-	  -H "X-API-Key: sbx_admin_4a8b2c1d3e5f6789" | python -m json.tool
+	  -H "X-API-Key: agh_sandbox_admin" | python -m json.tool
 
 ## Export the sandbox OpenAPI spec to a file
 sandbox-export:
