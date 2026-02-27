@@ -227,7 +227,7 @@ async def poll_device_token(
 # USER VERIFICATION FLOW
 # =============================================================================
 
-@router.get("/verify", response_class=HTMLResponse, summary="Device verification page (HTML)")
+@router.get("/verify", response_class=HTMLResponse, summary="Device verification page (HTML)", responses={200: {"description": "HTML form for entering device code"}})
 async def device_verification_page(
     user_code: Optional[str] = None
 ):

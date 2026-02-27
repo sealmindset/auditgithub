@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ..dependencies import get_tenant_db
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS
 
 router = APIRouter(
     prefix="/secrets",
@@ -118,7 +119,7 @@ def get_secret_query(db: Session):
 
 @router.get("/stats", response_model=SecretStats, dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get secret statistics",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secret_stats(db: Session = Depends(get_tenant_db)):
     """
     Get aggregate statistics about secrets in the system.
@@ -169,7 +170,7 @@ def get_secret_stats(db: Session = Depends(get_tenant_db)):
 
 @router.get("/dashboard", response_model=SecretDashboardResponse, dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get secrets dashboard",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets_dashboard(
     limit: int = Query(10, le=50),
     db: Session = Depends(get_tenant_db)
@@ -242,7 +243,7 @@ def get_secrets_dashboard(
 
 @router.get("/", response_model=List[SecretFinding], dependencies=[Depends(require_permissions("findings:read"))],
     summary="List secret findings with filtering",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets(
     status_filter: Optional[str] = Query(None, description="active, revoked, unknown, unvalidated"),
     severity: Optional[str] = None,
@@ -306,7 +307,7 @@ def get_secrets(
 
 @router.post("/{finding_id}/validate", response_model=ValidateSecretResponse, dependencies=[Depends(require_permissions("findings:write"))],
     summary="Validate a secret finding",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format or finding is not a secret"}, 404: {"description": "Finding not found"}})
+    responses={**CRUD_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format or finding is not a secret"}, 404: {"description": "Finding not found"}})
 def validate_secret(
     finding_id: str,
     request: ValidateSecretRequest = None,
@@ -314,9 +315,11 @@ def validate_secret(
 ):
     """
     Validate a secret to check if it's still active.
-    
+
     Note: Full validation requires implementing provider-specific validators.
     This endpoint currently marks the finding as "manually validated".
+
+    Requires **findings:write** permission.
     """
     import uuid as uuid_lib
     
@@ -363,7 +366,7 @@ def validate_secret(
 
 @router.post("/{finding_id}/mark-revoked", dependencies=[Depends(require_permissions("findings:write"))],
     summary="Mark a secret as revoked",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
+    responses={**CRUD_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
 def mark_secret_revoked(finding_id: str, db: Session = Depends(get_tenant_db)):
     """
     Manually mark a secret as revoked/inactive.
@@ -394,7 +397,7 @@ def mark_secret_revoked(finding_id: str, db: Session = Depends(get_tenant_db)):
 
 @router.post("/{finding_id}/mark-active", dependencies=[Depends(require_permissions("findings:write"))],
     summary="Mark a secret as active",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
+    responses={**CRUD_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
 def mark_secret_active(finding_id: str, db: Session = Depends(get_tenant_db)):
     """
     Manually mark a secret as still active.

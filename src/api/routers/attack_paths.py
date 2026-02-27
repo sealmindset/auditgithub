@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ..dependencies import get_tenant_db
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS, CREATE_ERRORS
 
 router = APIRouter(
     prefix="/attack-paths",
@@ -241,9 +242,17 @@ def build_attack_paths(
 # Endpoints
 # =============================================================================
 
-@router.get("/", response_model=AttackPathsResponse, dependencies=[Depends(require_permissions("findings:read"))],
+@router.get(
+    "/",
+    response_model=AttackPathsResponse,
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Generate attack path visualization",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={
+        **LIST_ERRORS,
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+    },
+)
 def get_attack_paths(
     limit: int = Query(10, le=20),
     min_risk: int = Query(30, description="Minimum risk score to include"),
@@ -251,7 +260,11 @@ def get_attack_paths(
 ):
     """
     Generate attack path visualization for high-risk repositories.
-    Returns structured data and a Mermaid diagram.
+
+    Analyzes open findings across repositories to build chained attack paths
+    and returns structured data along with a Mermaid flowchart diagram.
+
+    **Required permissions:** `findings:read`
     """
     # Get high-risk repos with open findings
     repos_with_findings = db.query(models.Repository).join(models.Finding).filter(
@@ -291,14 +304,26 @@ def get_attack_paths(
     )
 
 
-@router.get("/repo/{repo_id}", response_model=RepoAttackSurface, dependencies=[Depends(require_permissions("findings:read"))],
+@router.get(
+    "/repo/{repo_id}",
+    response_model=RepoAttackSurface,
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get attack surface for a specific repository",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Repository not found"}})
+    responses={
+        **CRUD_ERRORS,
+        400: {"description": "Invalid UUID format"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+        404: {"description": "Repository not found"},
+    },
+)
 def get_repo_attack_surface(repo_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get attack surface analysis for a specific repository.
-    Returns finding counts, active secrets, vulnerable dependencies, risk score, and attack vectors.
-    Requires findings:read permission.
+
+    Returns finding counts, active secrets, vulnerable dependencies,
+    risk score, and identified attack vectors.
+
+    **Required permissions:** `findings:read`
     """
     import uuid
     
@@ -319,14 +344,24 @@ def get_repo_attack_surface(repo_id: str, db: Session = Depends(get_tenant_db)):
     return calculate_attack_surface(findings, repo)
 
 
-@router.get("/summary", dependencies=[Depends(require_permissions("findings:read"))],
+@router.get(
+    "/summary",
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get overall attack surface summary",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={
+        **LIST_ERRORS,
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - requires findings:read"},
+    },
+)
 def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
     """
     Get overall attack surface summary across all repositories.
-    Returns repository counts, severity breakdown, active secrets, and attack vector indicators.
-    Requires findings:read permission.
+
+    Returns repository counts, severity breakdown, active secrets,
+    and attack vector indicators aggregated across every repository.
+
+    **Required permissions:** `findings:read`
     """
     # Get stats
     total_repos = db.query(models.Repository).count()
@@ -372,17 +407,28 @@ def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
     }
 
 
-@router.post("/generate", dependencies=[Depends(require_permissions("findings:write"))],
+@router.post(
+    "/generate",
+    dependencies=[Depends(require_permissions("findings:write"))],
     summary="Generate detailed attack path report",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:write"}, 400: {"description": "Invalid repository UUID provided"}})
+    responses={
+        **CREATE_ERRORS,
+        400: {"description": "Invalid repository UUID provided"},
+        403: {"description": "Insufficient permissions - requires findings:write"},
+    },
+)
 def generate_attack_path_report(
     repo_ids: Optional[List[str]] = None,
     db: Session = Depends(get_tenant_db)
 ):
     """
     Generate a detailed attack path report for specific repositories.
-    If no repository IDs are provided, analyzes the top 5 riskiest repositories.
-    Requires findings:write permission.
+
+    If no repository IDs are provided, analyzes the top 5 riskiest
+    repositories automatically. Returns per-repository risk scores,
+    attack vectors, and top critical findings.
+
+    **Required permissions:** `findings:write`
     """
     import uuid
     

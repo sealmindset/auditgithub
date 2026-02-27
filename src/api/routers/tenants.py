@@ -20,6 +20,7 @@ from loguru import logger
 from ..database import get_metadata_db
 from ..models import Tenant
 from ..database_router import database_router
+from src.api.schemas.common import LIST_ERRORS, CREATE_ERRORS, CRUD_ERRORS, DELETE_ERRORS
 from src.rbac.dependencies import require_permissions
 
 router = APIRouter(prefix="/tenants", tags=["Tenants"])
@@ -104,6 +105,7 @@ class ProvisionResponse(BaseModel):
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="List all tenants",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
     },
@@ -153,6 +155,7 @@ def list_tenants(
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Create a new tenant",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Invalid slug format"},
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
@@ -249,6 +252,7 @@ def create_tenant(
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get tenant migration health",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
     },
@@ -307,6 +311,7 @@ def get_tenant_health(db: Session = Depends(get_metadata_db)):
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get tenant by slug",
     responses={
+        **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
         404: {"description": "Tenant not found"},
@@ -345,6 +350,7 @@ def get_tenant(slug: str, db: Session = Depends(get_metadata_db)):
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Update a tenant",
     responses={
+        **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
         404: {"description": "Tenant not found"},
@@ -405,6 +411,7 @@ def update_tenant(
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Provision tenant database",
     responses={
+        **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
         404: {"description": "Tenant not found"},
@@ -447,6 +454,7 @@ def provision_tenant(
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Deactivate a tenant",
     responses={
+        **DELETE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Missing admin:manage permission"},
         404: {"description": "Tenant not found"},

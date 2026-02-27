@@ -18,6 +18,7 @@ from ..config import settings # Keep settings as it's used later
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
 from src.auth.dependencies import get_current_user
+from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS, AUTH_ERRORS
 
 
 async def get_github_token_for_repo(db: Session, repo: models.Repository) -> str:
@@ -90,6 +91,7 @@ router = APIRouter(
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get current AI provider configuration",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
     },
@@ -170,6 +172,7 @@ class RemediationResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Generate AI remediation for a vulnerability",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "AI generation failed"},
@@ -255,6 +258,7 @@ class TriageResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="AI-triage a security finding",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "AI triage failed"},
@@ -338,6 +342,7 @@ class AnalyzeFindingRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Analyze a specific finding using AI",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         404: {"description": "Finding not found"},
@@ -432,6 +437,7 @@ class AnalyzeComponentRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Analyze a software component for vulnerabilities",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "AI analysis failed"},
@@ -511,6 +517,7 @@ async def analyze_component_endpoint(
     "/remediate/{remediation_id}",
     summary="Delete a remediation suggestion",
     responses={
+        **DELETE_ERRORS,
         400: {"description": "Invalid UUID format"},
         404: {"description": "Remediation not found"},
     },
@@ -550,6 +557,7 @@ class ZeroDayResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Analyze a zero-day vulnerability across repositories",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "Analysis failed"},
@@ -562,10 +570,9 @@ async def analyze_zero_day(
 ):
     """
     Analyze a zero-day vulnerability query with optional scope filtering.
-    
-    Args:
-        request.query: Natural language query about vulnerabilities or technologies
-        request.scope: Optional list of data sources to search (dependencies, findings, languages, all)
+
+    Searches across repositories for affected dependencies, findings, and
+    technologies. **Required permissions:** findings:write.
     """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
@@ -597,6 +604,7 @@ async def analyze_zero_day(
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get the zero-day analysis prompt template",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
     },
@@ -657,6 +665,7 @@ class ValidateZDAPromptRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Validate a zero-day analysis prompt",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "AI provider does not support prompt execution"},
@@ -724,6 +733,7 @@ async def validate_zero_day_prompt(
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Export zero-day analysis as PDF",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "PDF generation failed or reportlab not installed"},
@@ -835,6 +845,7 @@ async def export_zda_pdf(request: dict):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Export zero-day analysis as DOCX",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "DOCX generation failed or python-docx not installed"},
@@ -920,6 +931,7 @@ async def export_zda_docx(request: dict):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Export affected repositories list as PDF",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "PDF generation failed or reportlab not installed"},
@@ -1021,6 +1033,7 @@ async def export_zda_repos_pdf(request: dict):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Export affected repositories list as DOCX",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "DOCX generation failed or python-docx not installed"},
@@ -1136,6 +1149,7 @@ class PromptRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Get the architecture analysis prompt for a project",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Repository URL is missing"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1198,6 +1212,7 @@ async def get_architecture_prompt(
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Execute a custom architecture prompt",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Prompt is required"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1236,6 +1251,7 @@ class RefineRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Refine diagram code with correct cloud provider icons",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Code is required"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1303,6 +1319,7 @@ class ArchitectureResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get saved architecture overview for a project",
     responses={
+        **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
         404: {"description": "Project not found"},
@@ -1360,6 +1377,7 @@ async def get_architecture(project_id: str, db: Session = Depends(get_tenant_db)
     response_model=ArchitectureResponse,
     summary="Update architecture overview after user edits",
     responses={
+        **CRUD_ERRORS,
         404: {"description": "Project not found"},
         500: {"description": "Diagram generation or AI fix failed"},
     },
@@ -1486,6 +1504,7 @@ def execute_diagram_code(code: str, use_self_annealing: bool = True, report_cont
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Generate an architecture overview for a project",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Repository URL is missing"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1614,6 +1633,7 @@ class VersionDetailResponse(VersionResponse):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Save current architecture as a new version",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "No architecture report to save"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1673,6 +1693,7 @@ async def create_architecture_version(
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="List all architecture versions for a project",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
         404: {"description": "Project not found"},
@@ -1714,6 +1735,7 @@ async def list_architecture_versions(project_id: str, db: Session = Depends(get_
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get a specific architecture version",
     responses={
+        **CRUD_ERRORS,
         400: {"description": "Invalid version ID format"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
@@ -1750,6 +1772,7 @@ async def get_architecture_version(project_id: str, version_id: str, db: Session
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Restore a previous architecture version",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Invalid version ID format"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1814,6 +1837,7 @@ class PreprocessedArchitectureResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Preprocess repository for architecture extraction",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Repository URL is missing"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1829,13 +1853,9 @@ async def preprocess_architecture(
     """
     Preprocess a repository to extract architecture information.
 
-    This endpoint:
-    1. Clones the repository
-    2. Runs deterministic code extractors (routes, models, services, imports)
-    3. Uses AI to summarize each domain (services, API, data layer, tech stack)
-    4. Returns structured JSON for accurate diagram generation
-
-    The preprocessed data is cached in the database for future use.
+    Clones the repo, runs deterministic code extractors, and uses AI to produce
+    structured JSON for diagram generation. Results are cached.
+    **Required permissions:** findings:write.
     """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
@@ -1921,6 +1941,7 @@ async def preprocess_architecture(
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Generate architecture diagram from preprocessed data",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "No preprocessed data found"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
@@ -1936,8 +1957,9 @@ async def generate_architecture_from_preprocessed(
     """
     Generate architecture diagram using preprocessed data.
 
-    This endpoint uses cached preprocessed architecture data to generate
-    a more accurate diagram without re-analyzing the entire codebase.
+    Uses cached preprocessed architecture data to generate a more accurate
+    diagram without re-analyzing the entire codebase.
+    **Required permissions:** findings:write.
     """
     if not ai_agent:
         raise HTTPException(status_code=503, detail="AI Agent not initialized")
@@ -2127,6 +2149,7 @@ class DeduplicateResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Find duplicate findings using AI",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "Deduplication analysis failed"},
@@ -2137,8 +2160,10 @@ def find_duplicate_findings(
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Use AI to find duplicate findings based on title, description, and context similarity.
-    Groups similar findings together for bulk actions.
+    Find duplicate findings based on title, description, and context similarity.
+
+    Groups similar findings together for bulk actions using normalized
+    pattern matching. **Required permissions:** findings:write.
     """
     from collections import defaultdict
     
@@ -2211,6 +2236,7 @@ def find_duplicate_findings(
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get all duplicate finding groups",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "Internal server error"},
@@ -2255,6 +2281,7 @@ def get_duplicate_groups(
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Perform bulk action on a duplicate group",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         404: {"description": "Duplicate group not found"},
@@ -2326,6 +2353,7 @@ class AutoTriageResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Auto-triage findings using AI and heuristics",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "Auto-triage failed"},
@@ -2336,8 +2364,10 @@ def auto_triage_findings(
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Use AI and heuristics to automatically triage findings.
-    Marks findings with recommendation, confidence, and reasoning.
+    Automatically triage findings using heuristic rules and AI.
+
+    Marks each finding with a recommendation (true_positive, false_positive,
+    needs_review), confidence score, and reasoning. **Required permissions:** findings:write.
     """
     # Get findings to triage
     if request.finding_ids:
@@ -2422,6 +2452,7 @@ def auto_triage_findings(
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get AI triage recommendation statistics",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "Internal server error"},
@@ -2491,6 +2522,7 @@ class LearnFPResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Learn false positive patterns from resolved findings",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "Pattern learning failed"},
@@ -2501,8 +2533,10 @@ def learn_false_positive_patterns(
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Analyze resolved false positive findings to learn patterns.
-    Creates patterns that can be used to auto-dismiss similar findings.
+    Analyze resolved false positive findings to learn repeatable patterns.
+
+    Extracts title and file-path patterns from recently dismissed findings
+    for use in auto-dismissal. **Required permissions:** findings:write.
     """
     from datetime import timedelta
     from collections import Counter
@@ -2572,6 +2606,7 @@ def learn_false_positive_patterns(
     dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get false positive dismissal suggestions",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "Internal server error"},
@@ -2582,8 +2617,10 @@ def get_fp_suggestions(
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Get findings that match learned false positive patterns.
-    These are candidates for bulk false positive dismissal.
+    Get open findings that match learned false positive patterns.
+
+    Returns candidates in test or vendor directories for bulk false positive
+    dismissal. **Required permissions:** findings:read.
     """
     # Find open findings in test directories
     test_findings = db.query(models.Finding).join(models.Repository).filter(
@@ -2634,6 +2671,7 @@ def get_fp_suggestions(
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Apply false positive suggestions to dismiss findings",
     responses={
+        **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:write required"},
         500: {"description": "Internal server error"},

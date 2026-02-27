@@ -21,6 +21,7 @@ from ..dependencies import get_tenant_db
 from .. import models
 from ..config import settings
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 
 router = APIRouter(
     prefix="/contributor-profiles",
@@ -390,12 +391,13 @@ def get_canonical_email(emails: List[str]) -> Optional[str]:
 
 @router.get("/summary", response_model=ProfileSummary, dependencies=[Depends(require_permissions("projects:read"))],
     summary="Get contributor profile summary statistics",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
+    responses=LIST_ERRORS)
 def get_profile_summary(db: Session = Depends(get_tenant_db)):
     """
     Get summary statistics for contributor profiles.
     Includes counts by verification status, employment status, and profiles needing review.
-    Requires projects:read permission.
+
+    **Required permissions:** projects:read
     """
     
     total = db.query(models.ContributorProfile).count()
@@ -444,7 +446,7 @@ def get_profile_summary(db: Session = Depends(get_tenant_db)):
 
 @router.get("/", response_model=List[ContributorProfileResponse], dependencies=[Depends(require_permissions("projects:read"))],
     summary="List contributor profiles",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
+    responses=LIST_ERRORS)
 def list_profiles(
     db: Session = Depends(get_tenant_db),
     skip: int = 0,
@@ -460,7 +462,8 @@ def list_profiles(
     """
     List contributor profiles with filtering, searching, and sorting.
     Supports filtering by employment status, staleness, verification, and Entra ID linkage.
-    Requires projects:read permission.
+
+    **Required permissions:** projects:read
     """
     
     query = db.query(models.ContributorProfile)
@@ -566,17 +569,16 @@ def list_profiles(
 
 @router.get("/lookup-by-email", response_model=Optional[ContributorProfileResponse], dependencies=[Depends(require_permissions("projects:read"))],
     summary="Look up contributor profile by email",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
+    responses=CRUD_ERRORS)
 def lookup_profile_by_email(
     email: str = Query(..., description="Email address to look up"),
     db: Session = Depends(get_tenant_db)
 ):
     """
     Look up a contributor profile by email address.
-    Searches both primary_email and all aliases of type 'email'.
-    If multiple profiles are found that should be merged (same display_name),
-    aggregates all their aliases into a single response.
-    Returns the matching profile with all aliases, or null if not found.
+    Searches primary_email and aliases. Aggregates related profiles with the same display name.
+
+    **Required permissions:** projects:read
     """
     email_lower = email.lower().strip()
     
@@ -770,12 +772,13 @@ def lookup_profile_by_email(
 
 @router.get("/{profile_id}", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:read"))],
     summary="Get contributor profile by ID",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}, 404: {"description": "Profile not found"}})
+    responses=CRUD_ERRORS)
 def get_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get a specific contributor profile by ID.
     Returns full profile details including aliases, Entra ID linkage, and activity metrics.
-    Requires projects:read permission.
+
+    **Required permissions:** projects:read
     """
     
     profile = db.query(models.ContributorProfile).filter(
@@ -845,12 +848,13 @@ def get_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
 
 @router.post("/", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:write"))],
     summary="Create a new contributor profile",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 400: {"description": "Profile with given email already exists"}})
+    responses=CREATE_ERRORS)
 def create_profile(profile: ContributorProfileCreate, db: Session = Depends(get_tenant_db)):
     """
     Create a new contributor profile with optional aliases.
     Checks for duplicate primary emails before creation.
-    Requires projects:write permission.
+
+    **Required permissions:** projects:write
     """
     
     # Check for duplicate primary email
@@ -904,16 +908,15 @@ def create_profile(profile: ContributorProfileCreate, db: Session = Depends(get_
 
 @router.patch("/{profile_id}", response_model=ContributorProfileResponse,
     summary="Update a contributor profile",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Profile not found"}})
+    responses=CRUD_ERRORS)
 def update_profile(
     profile_id: str,
     update: ContributorProfileUpdate,
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Update a contributor profile with partial data.
-    Only fields included in the request body will be updated.
-    Sets verified_at timestamp automatically when is_verified is set to true.
+    Update a contributor profile with partial data (PATCH semantics).
+    Only provided fields are updated. Sets verified_at when is_verified becomes true.
     """
     
     profile = db.query(models.ContributorProfile).filter(
@@ -939,7 +942,7 @@ def update_profile(
 
 @router.delete("/{profile_id}",
     summary="Delete a contributor profile",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Profile not found"}})
+    responses=DELETE_ERRORS)
 def delete_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
     """
     Delete a contributor profile and unlink associated contributors.
@@ -966,7 +969,7 @@ def delete_profile(profile_id: str, db: Session = Depends(get_tenant_db)):
 
 @router.post("/{profile_id}/aliases", response_model=ContributorAliasResponse, dependencies=[Depends(require_permissions("projects:write"))],
     summary="Add an alias to a profile",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 400: {"description": "Alias already exists"}, 404: {"description": "Profile not found"}})
+    responses={**CREATE_ERRORS, 404: {"description": "Profile not found"}})
 def add_alias(
     profile_id: str,
     alias: ContributorAliasBase,
@@ -975,7 +978,8 @@ def add_alias(
     """
     Add an alias (email, GitHub username, or name) to a contributor profile.
     Checks for duplicate aliases before adding.
-    Requires projects:write permission.
+
+    **Required permissions:** projects:write
     """
     
     profile = db.query(models.ContributorProfile).filter(
@@ -1029,7 +1033,7 @@ def add_alias(
 
 @router.delete("/{profile_id}/aliases/{alias_id}",
     summary="Remove an alias from a profile",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Alias not found"}})
+    responses=DELETE_ERRORS)
 def remove_alias(profile_id: str, alias_id: str, db: Session = Depends(get_tenant_db)):
     """
     Remove an alias from a contributor profile.
@@ -1052,12 +1056,13 @@ def remove_alias(profile_id: str, alias_id: str, db: Session = Depends(get_tenan
 
 @router.post("/merge", response_model=ContributorProfileResponse, dependencies=[Depends(require_permissions("projects:write"))],
     summary="Merge multiple profiles into one",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 400: {"description": "Need at least 2 profiles to merge"}, 404: {"description": "One or more profiles not found"}})
+    responses={**CREATE_ERRORS, 404: {"description": "One or more profiles not found"}})
 def merge_profiles(request: MergeProfilesRequest, db: Session = Depends(get_tenant_db)):
     """
     Merge multiple contributor profiles into a single unified profile.
     Aggregates stats, aliases, and contributor links from all source profiles.
-    Requires projects:write permission.
+
+    **Required permissions:** projects:write
     """
     
     if len(request.source_profile_ids) < 2:
@@ -1134,7 +1139,7 @@ def merge_profiles(request: MergeProfilesRequest, db: Session = Depends(get_tena
 
 @router.post("/build-from-contributors", response_model=BuildProfilesResponse, dependencies=[Depends(require_permissions("projects:write"))],
     summary="Build profiles from contributor data",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}, 500: {"description": "Profile building error"}})
+    responses=CREATE_ERRORS)
 def build_profiles_from_contributors(
     request: BuildProfilesRequest,
     background_tasks: BackgroundTasks,
@@ -1143,7 +1148,8 @@ def build_profiles_from_contributors(
     """
     Build contributor profiles from existing contributor data using identity deduplication.
     Supports dry_run mode to preview changes before committing.
-    Requires projects:write permission.
+
+    **Required permissions:** projects:write
     """
     
     # Get all contributors
@@ -1310,12 +1316,13 @@ def build_profiles_from_contributors(
 
 @router.post("/refresh-stats", dependencies=[Depends(require_permissions("projects:write"))],
     summary="Refresh aggregated profile statistics",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:write"}})
+    responses=CREATE_ERRORS)
 def refresh_profile_stats(db: Session = Depends(get_tenant_db)):
     """
     Recalculate aggregated statistics for all profiles from linked contributors.
     Updates repo counts, commit totals, activity dates, and staleness indicators.
-    Requires projects:write permission.
+
+    **Required permissions:** projects:write
     """
     
     profiles = db.query(models.ContributorProfile).all()
@@ -1392,7 +1399,7 @@ class LeaderboardResponse(BaseModel):
 
 @router.get("/security/leaderboard", response_model=LeaderboardResponse, dependencies=[Depends(require_permissions("projects:read"))],
     summary="Get security contributor leaderboard",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}})
+    responses=LIST_ERRORS)
 def get_security_leaderboard(
     days: int = Query(90, description="Period to analyze"),
     limit: int = Query(10, le=50),
@@ -1401,7 +1408,8 @@ def get_security_leaderboard(
     """
     Get the security leaderboard showing top remediators and contributors
     who may need additional security training, ranked by remediation activity.
-    Requires projects:read permission.
+
+    **Required permissions:** projects:read
     """
     from datetime import timedelta
     
@@ -1515,7 +1523,7 @@ def get_security_leaderboard(
 
 @router.get("/security/metrics/{profile_id}", response_model=ContributorSecurityMetrics, dependencies=[Depends(require_permissions("projects:read"))],
     summary="Get security metrics for a contributor",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires projects:read"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Profile not found"}})
+    responses=CRUD_ERRORS)
 def get_contributor_security_metrics(
     profile_id: str,
     days: int = Query(90),
@@ -1524,7 +1532,8 @@ def get_contributor_security_metrics(
     """
     Get detailed security metrics for a specific contributor including findings
     introduced, findings remediated, and average time to remediate.
-    Requires projects:read permission.
+
+    **Required permissions:** projects:read
     """
     import uuid
     from datetime import timedelta

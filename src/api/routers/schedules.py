@@ -19,6 +19,7 @@ from .. import models
 from src.auth.dependencies import get_current_user
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
@@ -173,10 +174,7 @@ class RepositoryScheduleListResponse(BaseModel):
     "/repositories",
     response_model=RepositoryScheduleListResponse,
     summary="List repositories with schedule status",
-    responses={
-        401: {"description": "Not authenticated"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**LIST_ERRORS},
 )
 def list_repositories_with_schedules(
     filter: Optional[str] = None,  # 'scheduled', 'unscheduled', or None for all
@@ -339,12 +337,7 @@ def _calculate_next_run(frequency: str, time_window: str, day_of_week: Optional[
     response_model=ScheduleResponse,
     dependencies=[Depends(require_permissions("schedules:create"))],
     summary="Create a new scan schedule",
-    responses={
-        400: {"description": "Schedule already exists or AI recommends disabling"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:create required"},
-        404: {"description": "Repository not found"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Insufficient permissions - schedules:create required"}, 404: {"description": "Repository not found"}},
 )
 async def create_schedule(
     schedule_create: ScheduleCreate,
@@ -356,6 +349,7 @@ async def create_schedule(
 
     If use_ai_recommendation is True, the AI recommendation will be fetched
     and used to set the frequency, time_window, and reasoning.
+    Requires the **schedules:create** permission.
 
     Args:
         schedule_create: Schedule configuration
@@ -591,10 +585,7 @@ async def _get_ai_recommendation_internal(repo: models.Repository, db: Session) 
     "/{repo_id}/recommend",
     response_model=AIRecommendationResponse,
     summary="Get AI schedule recommendation for a repository",
-    responses={
-        401: {"description": "Not authenticated"},
-        404: {"description": "Repository not found"},
-    },
+    responses={**CRUD_ERRORS, 404: {"description": "Repository not found"}},
 )
 async def get_ai_recommendation(
     repo_id: str,
@@ -638,10 +629,7 @@ async def get_ai_recommendation(
     "/",
     response_model=ScheduleListResponse,
     summary="List all scan schedules",
-    responses={
-        401: {"description": "Not authenticated"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**LIST_ERRORS},
 )
 def list_schedules(
     skip: int = 0,
@@ -732,11 +720,7 @@ class BatchScheduleResponse(BaseModel):
     response_model=BatchScheduleResponse,
     dependencies=[Depends(require_permissions("schedules:create"))],
     summary="Apply AI schedules to all unscheduled repositories",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:create required"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Insufficient permissions - schedules:create required"}},
 )
 async def batch_apply_ai_schedules(
     db: Session = Depends(get_tenant_db),
@@ -747,8 +731,8 @@ async def batch_apply_ai_schedules(
 
     This creates scan schedules for all repositories that don't have one,
     using AI recommendations based on activity and findings.
-
     Archived repos and repos with "disabled" recommendations are skipped.
+    Requires the **schedules:create** permission.
     """
     import uuid
     from ..database import get_current_org_id
@@ -865,11 +849,7 @@ async def batch_apply_ai_schedules(
     response_model=BatchScheduleResponse,
     dependencies=[Depends(require_permissions("schedules:update"))],
     summary="Refresh AI recommendations for unlocked schedules",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:update required"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - schedules:update required"}},
 )
 async def batch_refresh_ai_schedules(
     db: Session = Depends(get_tenant_db),
@@ -883,6 +863,7 @@ async def batch_refresh_ai_schedules(
     - Using AI management
 
     Locked schedules are preserved as-is.
+    Requires the **schedules:update** permission.
     """
     from ..database import get_current_org_id
 
@@ -1006,10 +987,7 @@ class TodayScansResponse(BaseModel):
     "/today",
     response_model=TodayScansResponse,
     summary="Get today's scheduled and running scans",
-    responses={
-        401: {"description": "Not authenticated"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**LIST_ERRORS},
 )
 def get_todays_scans(
     db: Session = Depends(get_tenant_db),
@@ -1132,10 +1110,7 @@ def get_todays_scans(
     "/{repo_id}",
     response_model=ScheduleResponse,
     summary="Get schedule for a specific repository",
-    responses={
-        401: {"description": "Not authenticated"},
-        404: {"description": "Schedule not found for this repository"},
-    },
+    responses={**CRUD_ERRORS, 404: {"description": "Schedule not found for this repository"}},
 )
 def get_schedule(
     repo_id: str,
@@ -1195,11 +1170,7 @@ def get_schedule(
     response_model=ScheduleResponse,
     dependencies=[Depends(require_permissions("schedules:update"))],
     summary="Update a scan schedule with manual override",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:update required"},
-        404: {"description": "Schedule not found for this repository"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - schedules:update required"}},
 )
 def update_schedule(
     repo_id: str,
@@ -1211,6 +1182,7 @@ def update_schedule(
     Update the scan schedule for a repository.
 
     This creates a manual override and locks the schedule from AI changes.
+    Requires the **schedules:update** permission.
 
     Args:
         repo_id: Repository UUID
@@ -1289,12 +1261,7 @@ def update_schedule(
     response_model=ScheduleResponse,
     dependencies=[Depends(require_permissions("schedules:override"))],
     summary="Lock a schedule to prevent AI modifications",
-    responses={
-        400: {"description": "Schedule is already locked"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:override required"},
-        404: {"description": "Schedule not found for this repository"},
-    },
+    responses={**CRUD_ERRORS, 400: {"description": "Schedule is already locked"}, 403: {"description": "Insufficient permissions - schedules:override required"}},
 )
 def lock_schedule(
     repo_id: str,
@@ -1306,6 +1273,7 @@ def lock_schedule(
     Lock a schedule to prevent AI modifications.
 
     Use this to preserve the current schedule settings without changing them.
+    Requires the **schedules:override** permission.
 
     Args:
         repo_id: Repository UUID
@@ -1380,12 +1348,7 @@ def lock_schedule(
     response_model=ScheduleResponse,
     dependencies=[Depends(require_permissions("schedules:override"))],
     summary="Unlock a schedule to allow AI modifications",
-    responses={
-        400: {"description": "Schedule is not locked"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:override required"},
-        404: {"description": "Schedule not found for this repository"},
-    },
+    responses={**DELETE_ERRORS, 400: {"description": "Schedule is not locked"}, 403: {"description": "Insufficient permissions - schedules:override required"}},
 )
 def unlock_schedule(
     repo_id: str,
@@ -1396,6 +1359,7 @@ def unlock_schedule(
     Unlock a schedule to allow AI modifications.
 
     This returns the schedule to AI management.
+    Requires the **schedules:override** permission.
 
     Args:
         repo_id: Repository UUID
@@ -1468,10 +1432,7 @@ def unlock_schedule(
     "/{repo_id}/history",
     response_model=OverrideHistoryResponse,
     summary="Get override history for a schedule",
-    responses={
-        401: {"description": "Not authenticated"},
-        404: {"description": "Schedule not found for this repository"},
-    },
+    responses={**CRUD_ERRORS, 404: {"description": "Schedule not found for this repository"}},
 )
 def get_override_history(
     repo_id: str,
@@ -1591,9 +1552,7 @@ class ScannerListResponse(BaseModel):
     "/scanners",
     response_model=ScannerListResponse,
     summary="List all available scanners",
-    responses={
-        500: {"description": "Internal server error"},
-    },
+    responses={**LIST_ERRORS},
 )
 def list_scanners():
     """
@@ -1619,13 +1578,7 @@ class TriggerResponse(BaseModel):
     response_model=TriggerResponse,
     dependencies=[Depends(require_permissions("schedules:trigger"))],
     summary="Trigger an immediate scan for a repository",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - schedules:trigger required"},
-        404: {"description": "Schedule not found for this repository"},
-        500: {"description": "Failed to trigger scan"},
-        503: {"description": "Scheduler service not running"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - schedules:trigger required"}, 404: {"description": "Schedule not found for this repository"}, 503: {"description": "Scheduler service not running"}},
 )
 async def trigger_scan(
     repo_id: str,
@@ -1636,6 +1589,7 @@ async def trigger_scan(
     Trigger an immediate scan for a repository.
 
     This runs the scan now, regardless of the schedule.
+    Requires the **schedules:trigger** permission.
 
     Args:
         repo_id: Repository UUID

@@ -15,6 +15,7 @@ from loguru import logger
 from ..dependencies import get_tenant_db
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS
 
 router = APIRouter(
     prefix="/github",
@@ -225,11 +226,7 @@ def sync_file_commit(db: Session, repo: models.Repository, file_path: str) -> Op
     response_model=RepositoryMetadata,
     dependencies=[Depends(require_permissions("repositories:read"))],
     summary="Get repository GitHub metadata",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:read permission"},
-        404: {"description": "Repository not found"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing repositories:read permission"}, 404: {"description": "Repository not found"}},
 )
 def get_repo_metadata(repo_name: str, db: Session = Depends(get_tenant_db)):
     """Retrieve locally-stored GitHub metadata for a single repository.
@@ -271,12 +268,7 @@ def get_repo_metadata(repo_name: str, db: Session = Depends(get_tenant_db)):
     response_model=SyncResult,
     dependencies=[Depends(require_permissions("repositories:write"))],
     summary="Sync single repository from GitHub",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:write permission"},
-        404: {"description": "Repository not found in local database"},
-        502: {"description": "Failed to fetch data from GitHub API"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing repositories:write permission"}, 404: {"description": "Repository not found in local database"}, 502: {"description": "Failed to fetch data from GitHub API"}},
 )
 def sync_repo_from_github(repo_name: str, db: Session = Depends(get_tenant_db)):
     """Fetch the latest metadata for a repository from the GitHub API and store it locally.
@@ -306,11 +298,7 @@ def sync_repo_from_github(repo_name: str, db: Session = Depends(get_tenant_db)):
     response_model=SyncResult,
     dependencies=[Depends(require_permissions("repositories:write"))],
     summary="Sync all repositories from GitHub",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:write permission"},
-        500: {"description": "Internal server error during sync"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Missing repositories:write permission"}, 500: {"description": "Internal server error during sync"}},
 )
 def sync_all_repos(background_tasks: BackgroundTasks, db: Session = Depends(get_tenant_db)):
     """Queue a background job that syncs metadata for every repository from the GitHub API.
@@ -347,11 +335,7 @@ def sync_all_repos(background_tasks: BackgroundTasks, db: Session = Depends(get_
     response_model=FileCommitInfo,
     dependencies=[Depends(require_permissions("repositories:read"))],
     summary="Get last commit info for a file",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:read permission"},
-        404: {"description": "Repository or file commit data not found"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing repositories:read permission"}, 404: {"description": "Repository or file commit data not found"}},
 )
 def get_file_commit(repo_name: str, file_path: str, refresh: bool = False, db: Session = Depends(get_tenant_db)):
     """Return the last commit information for a specific file in a repository.
@@ -389,11 +373,7 @@ def get_file_commit(repo_name: str, file_path: str, refresh: bool = False, db: S
     response_model=SyncResult,
     dependencies=[Depends(require_permissions("repositories:write"))],
     summary="Sync file commit data for a repository",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:write permission"},
-        404: {"description": "Repository not found"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing repositories:write permission"}, 404: {"description": "Repository not found"}},
 )
 def sync_files_for_findings(repo_name: str, db: Session = Depends(get_tenant_db)):
     """Fetch commit data from GitHub for every file that has findings in the given repository.
@@ -430,11 +410,7 @@ def sync_files_for_findings(repo_name: str, db: Session = Depends(get_tenant_db)
     response_model=SyncResult,
     dependencies=[Depends(require_permissions("repositories:write"))],
     summary="Sync file commit data for all repositories",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:write permission"},
-        500: {"description": "Internal server error during sync"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Missing repositories:write permission"}, 500: {"description": "Internal server error during sync"}},
 )
 def sync_all_files_for_findings(background_tasks: BackgroundTasks, db: Session = Depends(get_tenant_db)):
     """Queue a background job to sync file commit data for ALL files with findings across all repositories.
@@ -499,10 +475,7 @@ def sync_all_files_for_findings(background_tasks: BackgroundTasks, db: Session =
     "/sync-status",
     dependencies=[Depends(require_permissions("repositories:read"))],
     summary="Get sync status overview",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing repositories:read permission"},
-    },
+    responses={**LIST_ERRORS, 403: {"description": "Missing repositories:read permission"}},
 )
 def get_sync_status(db: Session = Depends(get_tenant_db)):
     """Return aggregate sync status showing how many repositories and files have been synced.

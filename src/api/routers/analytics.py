@@ -9,6 +9,7 @@ from ..dependencies import get_tenant_db
 from ..database import  get_request_org_id
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import LIST_ERRORS
 
 
 def apply_org_filter(query, model):
@@ -107,9 +108,9 @@ class ComponentFeedback(BaseModel):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get dashboard summary metrics",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_summary_metrics(db: Session = Depends(get_tenant_db)):
@@ -155,9 +156,9 @@ async def get_summary_metrics(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get findings count by severity with trends",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_severity_distribution(db: Session = Depends(get_tenant_db)):
@@ -223,9 +224,9 @@ async def get_severity_distribution(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get findings trend over repository lifetime",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_severity_trend(db: Session = Depends(get_tenant_db)):
@@ -328,9 +329,9 @@ async def get_severity_trend(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get repository growth over time",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_repo_growth(db: Session = Depends(get_tenant_db)):
@@ -439,9 +440,9 @@ async def get_repo_growth(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get finding trends over recent days",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_finding_trends(days: int = 7, db: Session = Depends(get_tenant_db)):
@@ -477,9 +478,9 @@ async def get_finding_trends(days: int = 7, db: Session = Depends(get_tenant_db)
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get recent critical and high findings",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_recent_findings(limit: int = 5, db: Session = Depends(get_tenant_db)):
@@ -516,9 +517,9 @@ async def get_recent_findings(limit: int = 5, db: Session = Depends(get_tenant_d
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get hero metrics for the dashboard",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_hero_metrics(db: Session = Depends(get_tenant_db)):
@@ -628,9 +629,9 @@ async def get_hero_metrics(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get repository risk data for heatmap",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_risk_heatmap(
@@ -730,9 +731,9 @@ async def get_risk_heatmap(
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get recent AI activity insights",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_ai_insights(
@@ -839,9 +840,9 @@ async def get_ai_insights(
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get threat radar data for visualization",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_threat_radar(db: Session = Depends(get_tenant_db)):
@@ -954,9 +955,9 @@ async def get_threat_radar(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get executive summary with actions and trends",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_executive_summary(db: Session = Depends(get_tenant_db)):
@@ -1243,9 +1244,9 @@ async def get_executive_summary(db: Session = Depends(get_tenant_db)):
     dependencies=[Depends(require_permissions("scans:read"))],
     summary="Get recent scan runs",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - scans:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_recent_scans(limit: int = 10, db: Session = Depends(get_tenant_db)):
@@ -1287,9 +1288,9 @@ async def get_recent_scans(limit: int = 10, db: Session = Depends(get_tenant_db)
     dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get finding counts by severity over time",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - reports:read required"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_finding_trends(days: int = 30, db: Session = Depends(get_tenant_db)):

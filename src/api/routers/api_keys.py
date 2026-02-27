@@ -20,6 +20,8 @@ from src.api.models import ApiKey, ApiKeyAuditLog, User as DBUser
 from src.api.constants.tool_categories import TOOL_CATEGORIES, ALL_TOOL_NAMES, ALL_CATEGORY_NAMES
 from src.auth.dependencies import get_current_user, get_db_user
 
+from src.api.schemas.common import LIST_ERRORS, CREATE_ERRORS, CRUD_ERRORS, DELETE_ERRORS
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,13 +34,14 @@ router = APIRouter(prefix="/api/api-keys", tags=["api-keys"])
 # =============================================================================
 
 class CreateApiKeyRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    allowed_tool_categories: Optional[List[str]] = None
-    allowed_tools: Optional[List[str]] = None
-    allowed_repository_ids: Optional[List[str]] = None
-    permission_overrides: Optional[List[str]] = None
-    rate_limit_per_hour: int = Field(default=1000, ge=100, le=100000)
-    expires_in_days: Optional[int] = Field(default=90, ge=1, le=365)
+    """Request body for creating a new API key."""
+    name: str = Field(..., min_length=1, max_length=255, description="Human-readable name for the API key")
+    allowed_tool_categories: Optional[List[str]] = Field(default=None, description="Tool categories this key can access (None = all categories)")
+    allowed_tools: Optional[List[str]] = Field(default=None, description="Individual tools this key can access (None = all tools)")
+    allowed_repository_ids: Optional[List[str]] = Field(default=None, description="Repository UUIDs this key can access (None = all repos)")
+    permission_overrides: Optional[List[str]] = Field(default=None, description="Permission overrides (admin-only)")
+    rate_limit_per_hour: int = Field(default=1000, ge=100, le=100000, description="Maximum requests per hour (100-100000)")
+    expires_in_days: Optional[int] = Field(default=90, ge=1, le=365, description="Days until key expires (1-365, None = never for admins)")
 
     @field_validator('allowed_tool_categories')
     @classmethod
@@ -60,42 +63,45 @@ class CreateApiKeyRequest(BaseModel):
 
 
 class CreateApiKeyResponse(BaseModel):
-    id: str
-    name: str
-    key: str  # Only returned on creation
-    key_prefix: str
-    expires_at: Optional[str] = None
-    created_at: str
+    """Response returned after creating a new API key. Contains the raw key shown only once."""
+    id: str = Field(..., description="Unique identifier for the API key (UUID)")
+    name: str = Field(..., description="Human-readable name for the API key")
+    key: str = Field(..., description="Raw API key value (shown only on creation -- store securely)")
+    key_prefix: str = Field(..., description="Key prefix for identification (e.g. agh_abcd1234)")
+    expires_at: Optional[str] = Field(default=None, description="ISO-8601 expiration timestamp, or null if non-expiring")
+    created_at: str = Field(..., description="ISO-8601 creation timestamp")
 
 
 class ApiKeyResponse(BaseModel):
-    id: str
-    name: str
-    key_prefix: str
-    user_id: str
-    user_email: str
-    is_service_account: bool
-    organization_id: str
-    allowed_tool_categories: Optional[List[str]] = None
-    allowed_tools: Optional[List[str]] = None
-    allowed_repository_ids: Optional[List[str]] = None
-    permission_overrides: Optional[List[str]] = None
-    rate_limit_per_hour: int
-    is_active: bool
-    expires_at: Optional[str] = None
-    last_used_at: Optional[str] = None
-    created_at: str
-    updated_at: str
+    """Full API key details (excludes the raw key value)."""
+    id: str = Field(..., description="Unique identifier for the API key (UUID)")
+    name: str = Field(..., description="Human-readable name for the API key")
+    key_prefix: str = Field(..., description="Key prefix for identification (e.g. agh_abcd1234)")
+    user_id: str = Field(..., description="UUID of the user who owns this key")
+    user_email: str = Field(..., description="Email of the key owner")
+    is_service_account: bool = Field(..., description="Whether the owner is a service account")
+    organization_id: str = Field(..., description="UUID of the organization this key belongs to")
+    allowed_tool_categories: Optional[List[str]] = Field(default=None, description="Tool categories this key can access")
+    allowed_tools: Optional[List[str]] = Field(default=None, description="Individual tools this key can access")
+    allowed_repository_ids: Optional[List[str]] = Field(default=None, description="Repository UUIDs this key can access")
+    permission_overrides: Optional[List[str]] = Field(default=None, description="Permission overrides applied to this key")
+    rate_limit_per_hour: int = Field(..., description="Maximum requests per hour")
+    is_active: bool = Field(..., description="Whether the key is currently active")
+    expires_at: Optional[str] = Field(default=None, description="ISO-8601 expiration timestamp")
+    last_used_at: Optional[str] = Field(default=None, description="ISO-8601 timestamp of last use")
+    created_at: str = Field(..., description="ISO-8601 creation timestamp")
+    updated_at: str = Field(..., description="ISO-8601 last update timestamp")
 
 
 class UpdateApiKeyRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    allowed_tool_categories: Optional[List[str]] = None
-    allowed_tools: Optional[List[str]] = None
-    allowed_repository_ids: Optional[List[str]] = None
-    permission_overrides: Optional[List[str]] = None
-    rate_limit_per_hour: Optional[int] = Field(default=None, ge=100, le=100000)
-    is_active: Optional[bool] = None
+    """Request body for updating an existing API key's settings."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255, description="Updated human-readable name")
+    allowed_tool_categories: Optional[List[str]] = Field(default=None, description="Updated tool category scoping")
+    allowed_tools: Optional[List[str]] = Field(default=None, description="Updated individual tool scoping")
+    allowed_repository_ids: Optional[List[str]] = Field(default=None, description="Updated repository scoping")
+    permission_overrides: Optional[List[str]] = Field(default=None, description="Updated permission overrides (admin-only)")
+    rate_limit_per_hour: Optional[int] = Field(default=None, ge=100, le=100000, description="Updated rate limit per hour")
+    is_active: Optional[bool] = Field(default=None, description="Set active/inactive status")
 
 
 # =============================================================================
@@ -210,22 +216,29 @@ def _validate_admin_only_fields(request_data, db_user: DBUser):
 # Endpoints
 # =============================================================================
 
-@router.get("/tool-categories", summary="List tool categories for scoping", responses={401: {"description": "Not authenticated"}})
+@router.get("/tool-categories", summary="List tool categories for scoping", responses={**LIST_ERRORS})
 async def get_tool_categories(
     db_user: DBUser = Depends(get_db_user),
 ):
-    """Return tool category definitions for UI dropdowns."""
+    """Return the available tool category definitions for use in key scoping.
+
+    Used by the UI to populate dropdown menus when creating or editing API keys.
+    """
     return TOOL_CATEGORIES
 
 
-@router.post("", response_model=CreateApiKeyResponse, status_code=status.HTTP_201_CREATED, summary="Generate a new API key", responses={400: {"description": "No organization context"}, 401: {"description": "Not authenticated"}, 403: {"description": "Admin-only field used by non-admin"}, 409: {"description": "Key name already exists"}})
+@router.post("", response_model=CreateApiKeyResponse, status_code=status.HTTP_201_CREATED, summary="Generate a new API key", responses={**CREATE_ERRORS, 400: {"description": "No organization context"}, 403: {"description": "Admin-only field used by non-admin"}, 409: {"description": "Key name already exists"}})
 async def create_api_key(
     body: CreateApiKeyRequest,
     request: Request,
     db_user: DBUser = Depends(get_db_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new API key. The raw key is returned only once."""
+    """Generate a new API key scoped to the current user and organization.
+
+    The raw key value is returned only once in the response. Store it securely.
+    Non-admin users are subject to restrictions on expiration and rate limits.
+    """
     # Validate admin-only fields
     _validate_admin_only_fields(body, db_user)
 
@@ -301,13 +314,17 @@ async def create_api_key(
     )
 
 
-@router.get("", response_model=List[ApiKeyResponse], summary="List API keys", responses={401: {"description": "Not authenticated"}})
+@router.get("", response_model=List[ApiKeyResponse], summary="List API keys", responses={**LIST_ERRORS})
 async def list_api_keys(
     request: Request,
     db_user: DBUser = Depends(get_db_user),
     db: Session = Depends(get_db),
 ):
-    """List API keys. Admins see all keys in org; users see only their own."""
+    """List API keys for the current organization.
+
+    Admins see all keys in the organization; non-admin users see only their own keys.
+    Results are ordered by creation date descending.
+    """
     query = db.query(ApiKey)
 
     org_id = getattr(request.state, 'org_id', None)
@@ -333,13 +350,16 @@ async def list_api_keys(
     return results
 
 
-@router.get("/{key_id}", response_model=ApiKeyResponse, summary="Get API key details", responses={401: {"description": "Not authenticated"}, 403: {"description": "Access denied"}, 404: {"description": "API key not found"}})
+@router.get("/{key_id}", response_model=ApiKeyResponse, summary="Get API key details", responses={**CRUD_ERRORS, 403: {"description": "Access denied -- not owner or admin"}, 404: {"description": "API key not found"}})
 async def get_api_key(
     key_id: UUID,
     db_user: DBUser = Depends(get_db_user),
     db: Session = Depends(get_db),
 ):
-    """Get details of a specific API key."""
+    """Retrieve details of a specific API key by its UUID.
+
+    Users can view their own keys; admins can view any key in the organization.
+    """
     api_key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
     if not api_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
@@ -352,7 +372,7 @@ async def get_api_key(
     return _key_to_response(api_key, owner)
 
 
-@router.patch("/{key_id}", response_model=ApiKeyResponse, summary="Update API key settings", responses={401: {"description": "Not authenticated"}, 403: {"description": "Access denied or admin-only field"}, 404: {"description": "API key not found"}})
+@router.patch("/{key_id}", response_model=ApiKeyResponse, summary="Update API key settings", responses={**CRUD_ERRORS, 403: {"description": "Access denied or admin-only field used by non-admin"}, 404: {"description": "API key not found"}})
 async def update_api_key(
     key_id: UUID,
     body: UpdateApiKeyRequest,
@@ -360,7 +380,11 @@ async def update_api_key(
     db_user: DBUser = Depends(get_db_user),
     db: Session = Depends(get_db),
 ):
-    """Update an API key's metadata and scoping."""
+    """Update an API key's name, scoping, rate limit, or active status.
+
+    Only the key owner or an admin can update a key. Admin-only fields
+    (permission_overrides, high rate limits) are validated server-side.
+    """
     api_key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
     if not api_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
@@ -385,14 +409,18 @@ async def update_api_key(
     return _key_to_response(api_key, owner)
 
 
-@router.delete("/{key_id}", status_code=status.HTTP_200_OK, summary="Revoke an API key", responses={401: {"description": "Not authenticated"}, 403: {"description": "Access denied"}, 404: {"description": "API key not found"}})
+@router.delete("/{key_id}", status_code=status.HTTP_200_OK, summary="Revoke an API key", responses={**DELETE_ERRORS, 403: {"description": "Access denied -- not owner or admin"}})
 async def revoke_api_key(
     key_id: UUID,
     request: Request,
     db_user: DBUser = Depends(get_db_user),
     db: Session = Depends(get_db),
 ):
-    """Revoke an API key (soft-delete: sets is_active=false)."""
+    """Revoke an API key by setting it to inactive (soft-delete).
+
+    The key record is preserved for audit purposes but can no longer
+    authenticate requests. Only the key owner or an admin can revoke.
+    """
     api_key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
     if not api_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
@@ -417,14 +445,18 @@ async def revoke_api_key(
     return {"detail": "API key revoked", "key_prefix": api_key.key_prefix}
 
 
-@router.post("/{key_id}/rotate", response_model=CreateApiKeyResponse, summary="Rotate an API key", responses={400: {"description": "Cannot rotate a revoked key"}, 401: {"description": "Not authenticated"}, 403: {"description": "Access denied"}, 404: {"description": "API key not found"}})
+@router.post("/{key_id}/rotate", response_model=CreateApiKeyResponse, summary="Rotate an API key", responses={**CREATE_ERRORS, 400: {"description": "Cannot rotate a revoked key"}, 403: {"description": "Access denied -- not owner or admin"}, 404: {"description": "API key not found"}})
 async def rotate_api_key(
     key_id: UUID,
     request: Request,
     db_user: DBUser = Depends(get_db_user),
     db: Session = Depends(get_db),
 ):
-    """Rotate an API key: revoke the old key and generate a new one with the same config."""
+    """Rotate an API key by revoking the old key and generating a new one.
+
+    The new key inherits all scoping, rate limits, and expiration from the
+    original. The new raw key is returned only once in the response.
+    """
     api_key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
     if not api_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")

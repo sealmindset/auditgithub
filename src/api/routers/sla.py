@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ..dependencies import get_tenant_db
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS
 
 router = APIRouter(
     prefix="/sla",
@@ -117,7 +118,7 @@ def is_overdue(finding: models.Finding) -> bool:
 
 @router.get("/config", response_model=SLAConfig, dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get SLA configuration",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_sla_config():
     """
     Get current SLA configuration showing remediation time targets per severity level.
@@ -134,7 +135,7 @@ def get_sla_config():
 
 @router.get("/mttr", response_model=MTTRStats, dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get Mean Time to Remediate statistics",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_mttr_stats(
     days: int = Query(90, description="Number of days to analyze"),
     db: Session = Depends(get_tenant_db)
@@ -216,7 +217,7 @@ def get_mttr_stats(
 
 @router.get("/compliance", response_model=SLAComplianceStats, dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get SLA compliance statistics",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_sla_compliance(
     days: int = Query(90, description="Number of days to analyze"),
     db: Session = Depends(get_tenant_db)
@@ -276,7 +277,7 @@ def get_sla_compliance(
 
 @router.get("/overdue", response_model=List[OverdueFinding], dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get overdue findings past SLA",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_overdue_findings(
     limit: int = Query(50, le=200),
     severity: Optional[str] = None,
@@ -330,7 +331,7 @@ def get_overdue_findings(
 
 @router.get("/dashboard", response_model=SLADashboardResponse, dependencies=[Depends(require_permissions("reports:read"))],
     summary="Get full SLA dashboard",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires reports:read"}})
 def get_sla_dashboard(
     days: int = Query(90, description="Number of days to analyze"),
     overdue_limit: int = Query(20, le=50),
@@ -356,7 +357,7 @@ def get_sla_dashboard(
 
 @router.post("/start-remediation/{finding_id}", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Start remediation tracking for a finding",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
+    responses={**CRUD_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Finding not found"}})
 def start_remediation(finding_id: str, db: Session = Depends(get_tenant_db)):
     """
     Mark remediation as started for a specific finding to enable MTTR tracking.

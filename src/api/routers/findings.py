@@ -13,6 +13,7 @@ from ..utils.risk_scoring import calculate_risk_score, get_risk_level
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 
 router = APIRouter(
     prefix="/findings",
@@ -112,11 +113,7 @@ def get_count_cache_key(org_id: Optional[str], severity: Optional[str],
     dependencies=[Depends(require_permissions("findings:read"))],
     response_model=PaginatedFindingsResponse,
     summary="List findings with pagination",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:read"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**LIST_ERRORS, 403: {"description": "Insufficient permissions - requires findings:read"}},
 )
 def get_findings_paginated(
     page: int = 1,
@@ -317,11 +314,7 @@ def get_findings_paginated(
     dependencies=[Depends(require_permissions("findings:read"))],
     response_model=List[FindingResponse],
     summary="List all findings",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:read"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**LIST_ERRORS, 403: {"description": "Insufficient permissions - requires findings:read"}},
 )
 def get_findings(
     skip: int = 0,
@@ -480,13 +473,7 @@ def get_findings(
     dependencies=[Depends(require_permissions("findings:read"))],
     response_model=FindingResponse,
     summary="Get a finding by ID",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:read"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:read"}},
 )
 def get_finding(finding_id: str, db: Session = Depends(get_tenant_db)):
     """Retrieve a single security finding by its UUID, including file commit metadata.
@@ -568,13 +555,7 @@ class FindingUpdateResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     response_model=FindingUpdateResponse,
     summary="Update a finding",
-    responses={
-        400: {"description": "Invalid UUID format or invalid severity value"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}},
 )
 def update_finding(finding_id: str, update: FindingUpdateRequest, db: Session = Depends(get_tenant_db)):
     """Update a finding's description or severity by UUID.
@@ -691,13 +672,7 @@ class IncludeInReportResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     response_model=IncludeInReportResponse,
     summary="Toggle report inclusion for a finding",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}},
 )
 def toggle_include_in_report(finding_id: str, request: IncludeInReportRequest, db: Session = Depends(get_tenant_db)):
     """Toggle whether a finding should be included in the Critical Insights section of reports.
@@ -770,13 +745,7 @@ class DescriptionVersionListResponse(BaseModel):
     dependencies=[Depends(require_permissions("findings:read"))],
     response_model=DescriptionVersionListResponse,
     summary="List description version history",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:read"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:read"}},
 )
 def get_description_versions(finding_id: str, db: Session = Depends(get_tenant_db)):
     """Retrieve all historical description versions for a finding.
@@ -829,13 +798,7 @@ class RestoreVersionRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:write"))],
     response_model=FindingUpdateResponse,
     summary="Restore a previous description version",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding or version not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}},
 )
 def restore_description_version(finding_id: str, request: RestoreVersionRequest, db: Session = Depends(get_tenant_db)):
     """Restore a finding's description to a previous version from its history.
@@ -1045,13 +1008,7 @@ def generate_generic_rule(finding: models.Finding, scope: str) -> dict:
     dependencies=[Depends(require_permissions("findings:write"))],
     response_model=ExceptionRuleResponse,
     summary="Generate an exception rule for a finding",
-    responses={
-        400: {"description": "Invalid UUID format or invalid scope"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}, 404: {"description": "Finding not found"}},
 )
 def generate_exception_rule(
     request: ExceptionRuleRequest,
@@ -1121,13 +1078,7 @@ def generate_exception_rule(
     dependencies=[Depends(require_permissions("findings:delete"))],
     response_model=DeleteDryRunResponse,
     summary="Preview findings that would be deleted",
-    responses={
-        400: {"description": "Invalid UUID format or invalid scope"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:delete"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:delete"}},
 )
 def delete_findings_dry_run(
     request: DeleteDryRunRequest,
@@ -1197,13 +1148,7 @@ def delete_findings_dry_run(
     dependencies=[Depends(require_permissions("findings:delete"))],
     response_model=DeleteFindingsResponse,
     summary="Permanently delete findings",
-    responses={
-        400: {"description": "Invalid UUID format, invalid scope, or deletion not confirmed"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:delete"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error or deletion failed"},
-    },
+    responses={**DELETE_ERRORS, 400: {"description": "Invalid UUID format, invalid scope, or deletion not confirmed"}, 403: {"description": "Insufficient permissions - requires findings:delete"}},
 )
 def delete_findings(
     request: DeleteFindingsRequest,
@@ -1336,13 +1281,7 @@ class JournalEntryUpdateRequest(BaseModel):
     dependencies=[Depends(require_permissions("findings:read"))],
     response_model=InvestigationStatusResponse,
     summary="Get investigation status and journal",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:read"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:read"}},
 )
 def get_investigation_status(finding_id: str, db: Session = Depends(get_tenant_db)):
     """Retrieve the investigation status and full journal timeline for a finding.
@@ -1388,13 +1327,7 @@ def get_investigation_status(finding_id: str, db: Session = Depends(get_tenant_d
     "/{finding_id}/investigation/status",
     dependencies=[Depends(require_permissions("findings:write"))],
     summary="Update investigation status",
-    responses={
-        400: {"description": "Invalid UUID format or invalid status value"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}},
 )
 def update_investigation_status(finding_id: str, update: InvestigationStatusUpdate, db: Session = Depends(get_tenant_db)):
     """Transition a finding's investigation status and record a journal entry.
@@ -1463,13 +1396,7 @@ def update_investigation_status(finding_id: str, update: InvestigationStatusUpda
     dependencies=[Depends(require_permissions("findings:write"))],
     response_model=JournalEntryResponse,
     summary="Create a journal entry",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}, 404: {"description": "Finding not found"}},
 )
 def create_journal_entry(finding_id: str, entry: JournalEntryRequest, db: Session = Depends(get_tenant_db)):
     """Add a new journal entry to a finding's investigation timeline.
@@ -1517,13 +1444,7 @@ def create_journal_entry(finding_id: str, entry: JournalEntryRequest, db: Sessio
     dependencies=[Depends(require_permissions("findings:write"))],
     response_model=JournalEntryResponse,
     summary="Ask AI about a finding in journal context",
-    responses={
-        400: {"description": "Invalid UUID format"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - requires findings:write"},
-        404: {"description": "Finding not found"},
-        500: {"description": "Internal server error or AI provider failure"},
-    },
+    responses={**CREATE_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}, 404: {"description": "Finding not found"}},
 )
 async def ask_journal_ai(finding_id: str, request: AskJournalAIRequest, db: Session = Depends(get_tenant_db)):
     """Ask the AI assistant a question about a finding within its journal context.

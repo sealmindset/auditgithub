@@ -17,6 +17,7 @@ from ..dependencies import get_tenant_db
 from .. import models
 from ..config import settings
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import LIST_ERRORS
 
 router = APIRouter(
     prefix="/attack-surface",
@@ -529,7 +530,7 @@ def merge_contributor_group(group: List[Dict]) -> Dict:
 
 @router.get("/secrets", response_model=SecretsReport, dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get hardcoded secrets and sensitive data report",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}, 500: {"description": "Internal server error"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets_report(
     db: Session = Depends(get_tenant_db),
     severity: Optional[str] = None,
@@ -539,8 +540,9 @@ def get_secrets_report(
 ):
     """
     Get comprehensive report of hardcoded secrets and sensitive data.
-    
     Aggregates findings from TruffleHog (secrets) and Semgrep (hardcoded values).
+
+    **Required permissions:** findings:read
     """
     # Base query for secrets (TruffleHog)
     secrets_query = db.query(models.Finding).join(
@@ -657,7 +659,7 @@ def get_secrets_report(
 
 @router.get("/secrets/by-type/{secret_type}", dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get secrets filtered by type",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_secrets_by_type(
     secret_type: str,
     db: Session = Depends(get_tenant_db),
@@ -665,8 +667,9 @@ def get_secrets_by_type(
 ):
     """
     Get all secrets of a specific type (e.g., 'AWS', 'PrivateKey', 'SQLServer').
-    Returns findings with file commit metadata and severity ordering.
-    Requires findings:read permission.
+    Returns findings with file commit metadata, ordered by severity.
+
+    **Required permissions:** findings:read
     """
     findings = db.query(
         models.Finding,
@@ -774,7 +777,7 @@ def calculate_abandonment_score(
 
 @router.get("/abandoned", response_model=List[AbandonedRepo], dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get repositories with high abandonment risk",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_abandoned_repos(
     db: Session = Depends(get_tenant_db),
     min_score: int = Query(default=30, ge=0, le=100),
@@ -785,11 +788,10 @@ def get_abandoned_repos(
 ):
     """
     Get repositories with high abandonment risk scores.
-    
-    Abandoned repositories are attractive to attackers because:
-    - Security issues won't be fixed
-    - May have credentials that are still valid
-    - Provide reconnaissance about organization
+    Abandoned repos are attractive to attackers because security issues
+    won't be fixed and credentials may still be valid.
+
+    **Required permissions:** findings:read
     """
     now = datetime.utcnow()
     cutoff_date = now - timedelta(days=min_days_inactive)
@@ -880,7 +882,7 @@ def get_abandoned_repos(
 
 @router.get("/stale-contributors", response_model=List[StaleContributor], dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get inactive contributors across the organization",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_stale_contributors(
     db: Session = Depends(get_tenant_db),
     min_days_inactive: int = Query(default=90, description="Minimum days since last commit to ANY repo"),
@@ -890,14 +892,10 @@ def get_stale_contributors(
 ):
     """
     Get contributors with no recent activity across the entire organization.
-    
-    This identifies people who haven't committed to ANY repo in the past N days,
-    aggregating their activity across all repositories they've contributed to.
-    
-    Stale contributors are a risk because:
-    - May have left the organization but still have access
-    - Knowledge of vulnerable code is no longer available
-    - Their code may not be maintained
+    Identifies people who haven't committed to any repo in the past N days,
+    with cross-repo deduplication of contributor identities.
+
+    **Required permissions:** findings:read
     """
     now = datetime.utcnow()
     cutoff_date = now - timedelta(days=min_days_inactive)
@@ -1042,7 +1040,7 @@ def get_stale_contributors(
 
 @router.get("/public-exposure", response_model=List[PublicExposure], dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get public repositories with exposure risks",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_public_exposures(
     db: Session = Depends(get_tenant_db),
     include_archived: bool = False,
@@ -1050,12 +1048,11 @@ def get_public_exposures(
     limit: int = Query(default=50, le=200)
 ):
     """
-    Get repositories with public exposure risks.
-    
-    Public repositories are high-risk because:
-    - Secrets may be exposed to anyone
-    - Attack surface is visible to adversaries
-    - Vulnerable code can be studied for exploits
+    Get public repositories ranked by exposure risk.
+    Flags repos where secrets, critical vulnerabilities, or sensitive code
+    are publicly accessible to adversaries.
+
+    **Required permissions:** findings:read
     """
     # Get public repos
     repos_query = db.query(
@@ -1142,19 +1139,18 @@ def get_public_exposures(
 
 @router.get("/high-risk-repos", response_model=List[HighRiskRepo], dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get high-risk repositories by attack surface analysis",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_high_risk_repos(
     db: Session = Depends(get_tenant_db),
     limit: int = Query(200, ge=1, le=200),
     offset: int = Query(0, ge=0)
 ):
     """
-    Get high-risk repositories based on attack surface analysis.
-    
-    High-risk repos are defined as:
-    - Public repos with exposed secrets (trufflehog findings)
-    - Abandoned/archived repos with critical findings
-    - Repos with high risk scores based on multiple factors
+    Get high-risk repositories based on composite attack surface analysis.
+    Includes public repos with secrets, abandoned repos with critical findings,
+    and repos with high aggregate risk scores.
+
+    **Required permissions:** findings:read
     """
     now = datetime.utcnow()
     one_year_ago = now - timedelta(days=365)
@@ -1332,12 +1328,14 @@ def get_high_risk_repos(
 
 @router.get("/summary", response_model=AttackSurfaceSummary, dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get overall attack surface summary",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
     """
     Get overall attack surface summary for the executive dashboard.
-    Aggregates repository counts, findings, secrets, stale contributors, and risk metrics.
-    Requires findings:read permission.
+    Aggregates repository counts, findings, secrets, stale contributors,
+    and risk metrics into a single overview.
+
+    **Required permissions:** findings:read
     """
     now = datetime.utcnow()
     one_year_ago = now - timedelta(days=365)
@@ -1506,15 +1504,16 @@ def get_attack_surface_summary(db: Session = Depends(get_tenant_db)):
 
 @router.get("/incident-response", response_model=List[IRFinding], dependencies=[Depends(require_permissions("findings:read"))],
     summary="Get findings under active investigation",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
+    responses={**LIST_ERRORS, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires findings:read"}})
 def get_ir_findings(
     limit: int = Query(200, description="Maximum number of findings to return"),
     db: Session = Depends(get_tenant_db)
 ):
     """
-    Get all findings currently under investigation (triage or incident_response status).
-    Includes journal entry counts and last journal dates for each finding.
-    Requires findings:read permission.
+    Get all findings currently under investigation (triage or incident_response).
+    Includes journal entry counts and last journal timestamps per finding.
+
+    **Required permissions:** findings:read
     """
     # Query findings with active investigation status
     findings = db.query(models.Finding).join(

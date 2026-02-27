@@ -18,6 +18,7 @@ from .. import models
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
 from src.auth.dependencies import get_current_user
+from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS, AUTH_ERRORS
 
 router = APIRouter(
     prefix="/projects",
@@ -100,12 +101,12 @@ class OpenAPISpecResponse(BaseModel):
 
 @router.get("/{project_id}/api-audit/matched-credentials", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get AI-matched credentials",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI matching service error"}})
+    responses={**CRUD_ERRORS})
 async def get_matched_credentials(project_id: str, server_url: str = None, db: Session = Depends(get_tenant_db)):
     """
     Get AI-matched credentials with certainty scores.
     Returns credentials matched to their likely target services.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     import sys
     sys.path.insert(0, '/app/execution')
@@ -138,7 +139,7 @@ async def get_matched_credentials(project_id: str, server_url: str = None, db: S
 
 @router.get("/{project_id}/api-audit/credential-url-correlations", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get credential-URL correlations",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI correlation service error"}})
+    responses={**CRUD_ERRORS})
 async def get_credential_url_correlations(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get AI-powered credential-URL correlations with confidence scores.
@@ -153,6 +154,8 @@ async def get_credential_url_correlations(project_id: str, db: Session = Depends
     1. Pre-validates URLs to check if they require authentication
     2. Skips PUBLIC URLs that don't need credentials
     3. Only maps credentials to AUTH_REQUIRED URLs
+
+    **Required permissions:** admin:manage
     """
     import sys
     sys.path.insert(0, '/app/execution')
@@ -190,7 +193,7 @@ async def get_credential_url_correlations(project_id: str, db: Session = Depends
 
 @router.get("/{project_id}/api-audit/inbound-url-correlations", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get inbound endpoint-server correlations",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI correlation service error"}})
+    responses={**CRUD_ERRORS})
 async def get_inbound_url_correlations(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get AI-powered inbound endpoint-server correlations with confidence scores.
@@ -199,6 +202,8 @@ async def get_inbound_url_correlations(project_id: str, db: Session = Depends(ge
     - Path patterns matching server base URLs
     - Framework detection (Express routes → Node servers)
     - Environment indicators in file paths
+
+    **Required permissions:** admin:manage
     """
     import sys
     sys.path.insert(0, '/app/execution')
@@ -227,7 +232,7 @@ async def get_inbound_url_correlations(project_id: str, db: Session = Depends(ge
 
 @router.get("/{project_id}/api-audit/outbound-url-correlations", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get outbound endpoint-server correlations",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI correlation service error"}})
+    responses={**CRUD_ERRORS})
 async def get_outbound_url_correlations(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get AI-powered outbound endpoint-server correlations with confidence scores.
@@ -237,6 +242,8 @@ async def get_outbound_url_correlations(project_id: str, db: Session = Depends(g
     - Environment variable references
     - Service type matching
     - Credential associations
+
+    **Required permissions:** admin:manage
     """
     import sys
     sys.path.insert(0, '/app/execution')
@@ -265,7 +272,7 @@ async def get_outbound_url_correlations(project_id: str, db: Session = Depends(g
 
 @router.get("/{project_id}/api-audit/server-credential-correlations", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get server-credential correlations",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI correlation service error"}})
+    responses={**CRUD_ERRORS})
 async def get_server_credential_correlations(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get AI-powered server-credential correlations with confidence scores.
@@ -274,6 +281,8 @@ async def get_server_credential_correlations(project_id: str, db: Session = Depe
     - Environment matching (prod servers → prod credentials)
     - Domain patterns in credential code
     - Service type matching (Azure URLs → Azure keys)
+
+    **Required permissions:** admin:manage
     """
     import sys
     sys.path.insert(0, '/app/execution')
@@ -302,7 +311,7 @@ async def get_server_credential_correlations(project_id: str, db: Session = Depe
 
 @router.get("/{project_id}/api-audit/swagger-server-credentials", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get credentials mapped to Swagger servers",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "Credential mapping service error"}})
+    responses={**CRUD_ERRORS})
 async def get_swagger_server_credentials(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get credentials mapped to discovered Swagger/OpenAPI servers.
@@ -312,6 +321,8 @@ async def get_swagger_server_credentials(project_id: str, db: Session = Depends(
     
     The server URLs match what's shown in SwaggerUI > API Discovery > servers discovered.
     The credentials can be used for testing API connectivity and authentication.
+
+    **Required permissions:** admin:manage
     """
     import sys
     sys.path.insert(0, '/app/execution')
@@ -340,12 +351,12 @@ async def get_swagger_server_credentials(project_id: str, db: Session = Depends(
 
 @router.get("/{project_id}/api-audit/swagger-files", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="List available Swagger files",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def list_swagger_files(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     List all available swagger files for a project.
     Returns per-server swagger specs generated by AI discovery.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -400,12 +411,12 @@ def list_swagger_files(project_id: str, db: Session = Depends(get_tenant_db)):
 
 @router.get("/{project_id}/api-audit/swagger-file/{filename}", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Download a specific Swagger file",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project or file not found"}})
+    responses={**CRUD_ERRORS})
 def download_swagger_file(project_id: str, filename: str, db: Session = Depends(get_tenant_db)):
     """
     Download a specific swagger file by filename.
     Returns the file content with appropriate media type headers.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -440,12 +451,12 @@ def download_swagger_file(project_id: str, filename: str, db: Session = Depends(
 
 @router.get("/{project_id}/api-audit", response_model=List[APIEndpointResponse], dependencies=[Depends(require_permissions("admin:manage"))],
     summary="List discovered API endpoints",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_api_endpoints(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get all discovered API endpoints for a project.
     Returns both inbound (serves) and outbound endpoints sorted by direction and URL.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     # Verify project exists
     project = db.query(models.Repository).filter(
@@ -481,12 +492,12 @@ def get_project_api_endpoints(project_id: str, db: Session = Depends(get_tenant_
 
 @router.get("/{project_id}/api-audit/summary", response_model=APIAuditSummary, dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get API audit summary statistics",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_api_summary(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get summary statistics for the API audit of a project.
     Includes counts by direction, auth method, framework, and OpenAPI spec availability.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -532,7 +543,7 @@ def get_project_api_summary(project_id: str, db: Session = Depends(get_tenant_db
 
 @router.get("/{project_id}/api-audit/openapi", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Download project OpenAPI specification",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project or OpenAPI specification not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_openapi_spec(
     project_id: str,
     format: str = "yaml",
@@ -541,7 +552,7 @@ def get_project_openapi_spec(
     """
     Get the OpenAPI specification for a project in YAML or JSON format.
     The specification must be generated by an API audit scan first.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -580,12 +591,14 @@ from fastapi.responses import HTMLResponse
 
 @router.get("/{project_id}/api-audit/swagger", response_class=HTMLResponse, dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Serve SwaggerUI page for project",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_swagger_ui(project_id: str, spec_url: str = None, db: Session = Depends(get_tenant_db)):
     """
     Serve a local SwaggerUI page that loads the project's OpenAPI spec.
     Optionally accepts spec_url to load a specific swagger file.
     Automatically injects discovered credentials for authenticated API testing.
+
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -1055,12 +1068,12 @@ def _match_credential_to_server(credential: dict, server_url: str) -> bool:
 
 @router.get("/{project_id}/api-audit/server-testing", response_class=HTMLResponse, dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Serve API discovery testing UI",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_server_testing_ui(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Server Testing UI - Clean table layout with modal-based AI discovery.
     Displays discovered servers and allows AI-powered API path discovery per server.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     # Debug: Log database connection info
     try:
@@ -1540,12 +1553,12 @@ def get_server_testing_ui(project_id: str, db: Session = Depends(get_tenant_db))
 
 @router.post("/{project_id}/api-audit/save-server-swagger", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Save discovered paths as Swagger file",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 400: {"description": "Missing server_url or no paths provided"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def save_server_swagger(project_id: str, request_data: dict, db: Session = Depends(get_tenant_db)):
     """
     Save discovered API paths as a Swagger/OpenAPI file for a specific server.
     Creates both YAML and JSON versions of the specification.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -1624,12 +1637,12 @@ async def save_server_swagger(project_id: str, request_data: dict, db: Session =
 
 @router.post("/{project_id}/api-audit/ai-discover", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="AI-powered API path discovery",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 400: {"description": "Missing server_url"}, 500: {"description": "AI discovery module not available or error"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def ai_discover_paths(project_id: str, request_data: dict, db: Session = Depends(get_tenant_db)):
     """
     AI-powered API path discovery.
     Combines code analysis, server probing, and LLM inference to discover API endpoints.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     from pathlib import Path as PathlibPath
     
@@ -1762,12 +1775,12 @@ async def ai_discover_paths(project_id: str, request_data: dict, db: Session = D
 
 @router.post("/{project_id}/api-audit/spider-server", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Spider a server for OpenAPI spec",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 400: {"description": "Missing server_url"}, 500: {"description": "Server error during spidering"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def spider_single_server(project_id: str, request_data: dict, db: Session = Depends(get_tenant_db)):
     """
     Spider a single server for OpenAPI specification.
     Probes common OpenAPI paths and merges discovered endpoints into the project spec.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     import httpx
     
@@ -1900,12 +1913,12 @@ async def spider_single_server(project_id: str, request_data: dict, db: Session 
 
 @router.post("/{project_id}/api-audit/test-auth", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Test server authorization with credentials",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 400: {"description": "Missing server_url or credential_value"}, 500: {"description": "Server error or timeout during auth test"}})
+    responses={**CREATE_ERRORS})
 async def test_server_authorization(project_id: str, request_data: dict, db: Session = Depends(get_tenant_db)):
     """
     Test authorization against a server with the provided credential.
     Makes a HEAD request to the server with appropriate auth headers.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     import httpx
     
@@ -1954,12 +1967,12 @@ async def test_server_authorization(project_id: str, request_data: dict, db: Ses
 
 @router.get("/{project_id}/api-audit/server/{server_index}/swagger", response_class=HTMLResponse, dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Serve per-server SwaggerUI with pre-filled auth",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project or server index not found"}})
+    responses={**CRUD_ERRORS})
 def get_server_swagger_ui(project_id: str, server_index: int, db: Session = Depends(get_tenant_db)):
     """
     Per-server SwaggerUI with pre-filled auth credentials.
     Shows only the paths for this specific server with auth already configured.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -2305,12 +2318,12 @@ def get_server_swagger_ui(project_id: str, server_index: int, db: Session = Depe
 
 @router.post("/{project_id}/api-audit/spider-openapi", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Spider all servers for OpenAPI specs",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "Spidering error"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def spider_openapi_specs(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Spider all discovered servers for OpenAPI specifications.
     Updates the project's OpenAPI spec with discovered paths and methods.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -2445,12 +2458,12 @@ from src.rbac.dependencies import require_permissions
 
 @router.get("/{project_id}/api-audit/openapi/view", response_model=OpenAPISpecResponse, dependencies=[Depends(require_permissions("admin:manage"))],
     summary="View OpenAPI specification content",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project or OpenAPI specification not found"}})
+    responses={**CRUD_ERRORS})
 def view_project_openapi_spec(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get the OpenAPI specification content for viewing in the UI.
     Returns the raw spec content, format, version, and endpoint count.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -2485,12 +2498,12 @@ import yaml
 
 @router.get("/{project_id}/api-audit/full-report", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get complete API audit report",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_full_audit_report(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get the complete API audit report data including inbound/outbound endpoints,
     discovered servers, credential risk assessment, and fingerprint data.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -2634,7 +2647,7 @@ def get_project_full_audit_report(project_id: str, db: Session = Depends(get_ten
 
 @global_router.get("/dictionary", response_model=List[PathDictionaryItem],
     summary="List API path dictionary words",
-    responses={401: {"description": "Not authenticated"}})
+    responses={**LIST_ERRORS})
 def get_path_dictionary(db: Session = Depends(get_tenant_db)):
     """
     List all words in the API path dictionary used for endpoint discovery.
@@ -2644,7 +2657,7 @@ def get_path_dictionary(db: Session = Depends(get_tenant_db)):
 
 @global_router.post("/dictionary", response_model=PathDictionaryItem,
     summary="Add word to API path dictionary",
-    responses={401: {"description": "Not authenticated"}, 400: {"description": "Word already exists in dictionary"}})
+    responses={**CREATE_ERRORS})
 def add_path_dictionary_item(item: CreatePathDictionaryItem, db: Session = Depends(get_tenant_db)):
     """
     Add a new word to the API path dictionary for endpoint discovery.
@@ -2670,7 +2683,7 @@ def add_path_dictionary_item(item: CreatePathDictionaryItem, db: Session = Depen
 
 @global_router.delete("/dictionary/{word}",
     summary="Delete word from API path dictionary",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Word not found"}})
+    responses={**DELETE_ERRORS})
 def delete_path_dictionary_item(word: str, db: Session = Depends(get_tenant_db)):
     """
     Delete a word from the API path dictionary.
@@ -2689,7 +2702,7 @@ def delete_path_dictionary_item(word: str, db: Session = Depends(get_tenant_db))
 
 @global_router.get("/uri-library", response_model=List[URILibraryItem],
     summary="List URI library entries",
-    responses={401: {"description": "Not authenticated"}})
+    responses={**LIST_ERRORS})
 def get_uri_library(db: Session = Depends(get_tenant_db)):
     """
     List all URIs in the library used for API audit enrichment.
@@ -2699,7 +2712,7 @@ def get_uri_library(db: Session = Depends(get_tenant_db)):
 
 @global_router.post("/uri-library", response_model=URILibraryItem,
     summary="Add URI to the library",
-    responses={401: {"description": "Not authenticated"}, 400: {"description": "URI already exists in library"}})
+    responses={**CREATE_ERRORS})
 def add_uri_library_item(item: CreateURILibraryItem, db: Session = Depends(get_tenant_db)):
     """
     Add a new URI to the library for API audit enrichment.
@@ -2726,7 +2739,7 @@ def add_uri_library_item(item: CreateURILibraryItem, db: Session = Depends(get_t
 
 @global_router.delete("/uri-library/{item_id}",
     summary="Delete URI from the library",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "URI not found"}})
+    responses={**DELETE_ERRORS})
 def delete_uri_library_item(item_id: str, db: Session = Depends(get_tenant_db)):
     """
     Delete a URI from the library by its ID.
@@ -2750,12 +2763,12 @@ def delete_uri_library_item(item_id: str, db: Session = Depends(get_tenant_db)):
 
 @router.get("/{project_id}/api-audit/credential-testing", response_class=HTMLResponse, dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Serve credential testing UI",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_credential_testing_ui(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Credential Testing UI for testing authentication against discovered API servers
     using matched credentials from the codebase.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -3156,12 +3169,12 @@ async def get_credential_testing_ui(project_id: str, db: Session = Depends(get_t
 
 @router.post("/{project_id}/api-audit/test-credential", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Test a credential against a server URL",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 400: {"description": "Missing server_url"}, 500: {"description": "Server error or timeout"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def test_credential(project_id: str, request_data: dict, db: Session = Depends(get_tenant_db)):
     """
     Test a credential against a server URL.
     Attempts to make a request to the server using the provided credential and auth type.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     import httpx
     
@@ -3272,7 +3285,7 @@ def _get_current_organization_id(db: Session) -> Optional[str]:
 
 @router.get("/{project_id}/api-audit/credential-url-test-results", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get credential-URL test results",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}})
+    responses={**LIST_ERRORS})
 async def get_credential_url_test_results(
     project_id: str,
     auth_status: Optional[str] = None,
@@ -3284,7 +3297,7 @@ async def get_credential_url_test_results(
     Get all credential-URL test results for a project.
     Multi-tenant: Results are filtered by current organization.
     Supports filtering by auth_status and threat_level.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     org_id = _get_current_organization_id(db)
     
@@ -3332,7 +3345,7 @@ async def get_credential_url_test_results(
 
 @router.get("/{project_id}/api-audit/credential-url-test-results/{result_id}", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get detailed credential-URL test result",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Test result not found"}})
+    responses={**CRUD_ERRORS})
 async def get_credential_url_test_result_detail(
     project_id: str,
     result_id: str,
@@ -3341,7 +3354,7 @@ async def get_credential_url_test_result_detail(
     """
     Get detailed test result for a specific credential-URL test.
     Includes full discovered paths, sample data, OSINT findings, and unmasked credentials.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     org_id = _get_current_organization_id(db)
     
@@ -3396,7 +3409,7 @@ async def get_credential_url_test_result_detail(
 
 @router.delete("/{project_id}/api-audit/credential-url-test-results/{result_id}",
     summary="Delete a credential-URL test result",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Test result not found"}})
+    responses={**DELETE_ERRORS})
 async def delete_credential_url_test_result(
     project_id: str,
     result_id: str,
@@ -3405,31 +3418,33 @@ async def delete_credential_url_test_result(
     """
     Delete a specific credential-URL test result by ID.
     Scoped to the current organization in multi-tenant mode.
+
+    **Required permissions:** admin:manage
     """
     org_id = _get_current_organization_id(db)
-    
+
     query = db.query(models.CredentialUrlTestResult).filter(
         models.CredentialUrlTestResult.id == result_id,
         models.CredentialUrlTestResult.repository_id == project_id
     )
-    
+
     if org_id:
         query = query.filter(models.CredentialUrlTestResult.organization_id == org_id)
-    
+
     result = query.first()
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Test result not found")
-    
+
     db.delete(result)
     db.commit()
-    
+
     return {"success": True, "message": "Test result deleted"}
 
 
 @router.get("/{project_id}/api-audit/credential-url-test-status", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get credential-URL test initialization status",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}})
+    responses={**LIST_ERRORS})
 async def get_credential_url_test_status(
     project_id: str,
     db: Session = Depends(get_tenant_db)
@@ -3437,7 +3452,7 @@ async def get_credential_url_test_status(
     """
     Get the auto-test initialization status for a project.
     Returns whether initial testing has been completed.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     org_id = _get_current_organization_id(db)
     
@@ -3467,7 +3482,7 @@ async def get_credential_url_test_status(
 
 @router.post("/{project_id}/api-audit/credential-url-test-status/mark-complete", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Mark initial credential-URL test as complete",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}})
+    responses={**CREATE_ERRORS})
 async def mark_initial_test_complete(
     project_id: str,
     total_tested: int = 0,
@@ -3477,7 +3492,7 @@ async def mark_initial_test_complete(
     """
     Mark the initial auto-test as complete for a project.
     Prevents re-testing on every page load by recording completion status.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     org_id = _get_current_organization_id(db)
     
@@ -3520,7 +3535,7 @@ async def mark_initial_test_complete(
 
 @router.delete("/{project_id}/api-audit/credential-url-reset",
     summary="Reset credential-URL test data",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**DELETE_ERRORS})
 async def reset_credential_url_mappings(
     project_id: str,
     db: Session = Depends(get_tenant_db)
@@ -3529,6 +3544,8 @@ async def reset_credential_url_mappings(
     Reset all credential-URL test results and status for a project.
     Deletes all test results and marks initial test as not completed,
     allowing re-running with updated matching logic.
+
+    **Required permissions:** admin:manage
     """
     org_id = _get_current_organization_id(db)
     
@@ -3584,7 +3601,7 @@ async def reset_credential_url_mappings(
 
 @router.post("/{project_id}/api-audit/credential-url-test", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Test a single credential-URL pair with AI agent",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI agent error or test failure"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def test_credential_url_endpoint(
     project_id: str,
     request_data: CredentialUrlTestRequest,
@@ -3594,7 +3611,7 @@ async def test_credential_url_endpoint(
     Test a single credential-URL pair using the AI Agent.
     The agent authenticates, discovers paths, analyzes data, gathers OSINT,
     and generates AI-powered risk assessment and recommendations.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     from execution.ai_credential_url_agent import test_credential_url
     
@@ -3712,7 +3729,7 @@ async def test_credential_url_endpoint(
 
 @router.post("/{project_id}/api-audit/credential-url-test-all", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Test all credential-URL pairs with AI agent",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}, 500: {"description": "AI agent or correlation error"}})
+    responses={**CREATE_ERRORS, 404: CRUD_ERRORS[404]})
 async def test_all_credential_urls(
     project_id: str,
     request_data: CredentialUrlTestAllRequest,
@@ -3722,7 +3739,7 @@ async def test_all_credential_urls(
     Test all credential-URL pairs for a project using the AI Agent.
     Uses an OSINT-first approach to pre-validate URLs and skip public endpoints.
     Results are stored in the database and scoped to the current organization.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     from execution.ai_credential_matcher import correlate_credentials_to_urls_v2
     from execution.ai_credential_url_agent import test_credential_url
@@ -3851,7 +3868,7 @@ async def test_all_credential_urls(
 
 @router.get("/{project_id}/api-audit/credential-url-results", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get all credential-URL results",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_credential_url_results(
     project_id: str,
     db: Session = Depends(get_tenant_db)
@@ -3859,7 +3876,7 @@ async def get_credential_url_results(
     """
     Get all credential-URL test results for a project.
     Results are scoped to the current organization in multi-tenant mode.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     project = db.query(models.Repository).filter(
         models.Repository.id == project_id
@@ -3901,7 +3918,7 @@ async def get_credential_url_results(
 
 @router.get("/{project_id}/api-audit/credential-url-results/{result_id}", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get detailed credential-URL test result",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Result not found"}})
+    responses={**CRUD_ERRORS})
 async def get_credential_url_result_detail(
     project_id: str,
     result_id: str,
@@ -3910,7 +3927,7 @@ async def get_credential_url_result_detail(
     """
     Get detailed results for a specific credential-URL test including full
     unmasked credential values, discovered paths, and AI analysis.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     # Get current organization for multi-tenant scoping
     org_id = _get_current_organization_id(db)
@@ -3973,7 +3990,7 @@ async def get_credential_url_result_detail(
 
 @router.get("/{project_id}/api-audit/credential-url-results/{result_id}/download", dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Download credential-URL test result",
-    responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions - requires admin:manage"}, 404: {"description": "Result not found"}, 400: {"description": "Unsupported format"}})
+    responses={**CRUD_ERRORS})
 async def download_credential_url_result(
     project_id: str,
     result_id: str,
@@ -3984,7 +4001,7 @@ async def download_credential_url_result(
     """
     Download credential-URL test results in various formats.
     Supported formats: json, csv, markdown, pdf, docx.
-    Requires admin:manage permission.
+    **Required permissions:** admin:manage
     """
     from fastapi.responses import Response
     

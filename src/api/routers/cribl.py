@@ -16,6 +16,7 @@ import os
 from ..dependencies import get_tenant_db
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import CRUD_ERRORS
 
 router = APIRouter(
     prefix="/cribl",
@@ -117,10 +118,7 @@ def get_or_create_config(db: Session) -> models.CriblConfig:
     response_model=CriblConfigResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get Cribl configuration",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 def get_config(db: Session = Depends(get_tenant_db)):
     """Retrieve the current Cribl Stream integration configuration.
@@ -157,10 +155,7 @@ def get_config(db: Session = Depends(get_tenant_db)):
     response_model=CriblConfigResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Update Cribl configuration",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 def update_config(update: CriblConfigUpdate, db: Session = Depends(get_tenant_db)):
     """Update the Cribl Stream integration configuration.
@@ -226,10 +221,7 @@ def update_config(update: CriblConfigUpdate, db: Session = Depends(get_tenant_db
     response_model=CriblTestResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Test Cribl connection",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 async def test_connection(request: CriblTestRequest, db: Session = Depends(get_tenant_db)):
     """
@@ -358,10 +350,7 @@ async def test_connection(request: CriblTestRequest, db: Session = Depends(get_t
     response_model=CriblTestResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Test MinIO connection",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 async def test_minio_connection(db: Session = Depends(get_tenant_db)):
     """
@@ -420,10 +409,7 @@ async def test_minio_connection(db: Session = Depends(get_tenant_db)):
     response_model=CriblStatusResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get Cribl logging status",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 def get_status(db: Session = Depends(get_tenant_db)):
     """Return a high-level overview of the Cribl logging integration status.
@@ -446,10 +432,7 @@ def get_status(db: Session = Depends(get_tenant_db)):
     "/toggle",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Toggle Cribl log forwarding",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 def toggle_cribl(enabled: bool, db: Session = Depends(get_tenant_db)):
     """Enable or disable Cribl log forwarding globally.
@@ -488,11 +471,7 @@ class LogForwardRequest(BaseModel):
     "/forward",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Forward a log entry to Cribl",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-        500: {"description": "Internal error during log forwarding"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}, 500: {"description": "Internal error during log forwarding"}},
 )
 async def forward_log(log_entry: LogForwardRequest, db: Session = Depends(get_tenant_db)):
     """

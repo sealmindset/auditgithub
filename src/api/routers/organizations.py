@@ -25,6 +25,7 @@ from .. import models
 from src.rbac.dependencies import require_permissions
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 
 router = APIRouter(
     prefix="/organizations",
@@ -132,9 +133,7 @@ async def ensure_agent_initialized():
     "/",
     response_model=List[OrganizationResponse],
     summary="List all organizations",
-    responses={
-        500: {"description": "Internal server error while querying organizations"},
-    },
+    responses={**LIST_ERRORS},
 )
 async def list_organizations(
     include_inactive: bool = Query(False, description="Include inactive organizations"),
@@ -201,10 +200,7 @@ async def list_organizations(
 @router.get(
     "/current",
     summary="Get current organization context",
-    responses={
-        404: {"description": "No organization is configured or available"},
-        500: {"description": "Internal server error while resolving current organization"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def get_current_organization(db: Session = Depends(get_tenant_db)):
     """
@@ -256,10 +252,7 @@ async def get_current_organization(db: Session = Depends(get_tenant_db)):
     "/{org_name}",
     response_model=OrganizationResponse,
     summary="Get organization by name",
-    responses={
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while fetching organization details"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def get_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     """
@@ -307,10 +300,7 @@ async def get_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     "/",
     response_model=OrganizationResponse,
     summary="Create a new organization",
-    responses={
-        400: {"description": "Invalid request parameters or organization name already exists"},
-        500: {"description": "Internal server error during organization creation (e.g., database provisioning failure)"},
-    },
+    responses={**CREATE_ERRORS},
 )
 async def create_organization(request: CreateOrganizationRequest):
     """
@@ -345,11 +335,7 @@ async def create_organization(request: CreateOrganizationRequest):
     "/{org_name}",
     response_model=OrganizationResponse,
     summary="Update organization properties",
-    responses={
-        400: {"description": "Invalid update parameters"},
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while updating the organization"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def update_organization(org_name: str, request: UpdateOrganizationRequest):
     """
@@ -380,11 +366,7 @@ async def update_organization(org_name: str, request: UpdateOrganizationRequest)
 @router.delete(
     "/{org_name}",
     summary="Delete an organization",
-    responses={
-        400: {"description": "Invalid request (e.g., cannot delete the last active organization)"},
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error during deletion (e.g., database drop failure)"},
-    },
+    responses={**DELETE_ERRORS, 400: {"description": "Cannot delete the last active organization"}},
 )
 async def delete_organization(
     org_name: str,
@@ -421,10 +403,7 @@ async def delete_organization(
     "/{org_name}/select",
     response_model=OrganizationResponse,
     summary="Select organization as current context",
-    responses={
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while switching organization context"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def select_organization(org_name: str, db: Session = Depends(get_tenant_db)):
     """
@@ -487,9 +466,7 @@ async def select_organization(org_name: str, db: Session = Depends(get_tenant_db
     "/schema/drift",
     response_model=List[SchemaDriftReport],
     summary="Check schema drift across all organizations",
-    responses={
-        500: {"description": "Internal server error while checking schema drift"},
-    },
+    responses={**LIST_ERRORS},
 )
 async def check_schema_drift():
     """
@@ -511,10 +488,7 @@ async def check_schema_drift():
     "/{org_name}/sync-schema",
     response_model=SchemaSyncResult,
     summary="Synchronize organization schema with master",
-    responses={
-        400: {"description": "Invalid organization name or organization not found"},
-        500: {"description": "Internal server error during schema synchronization"},
-    },
+    responses={**CREATE_ERRORS, 404: {"description": "Organization not found"}},
 )
 async def sync_organization_schema(org_name: str):
     """
@@ -540,9 +514,7 @@ async def sync_organization_schema(org_name: str):
 @router.post(
     "/schema/sync-all",
     summary="Synchronize all organization schemas with master",
-    responses={
-        500: {"description": "Internal server error during bulk schema synchronization"},
-    },
+    responses={**CREATE_ERRORS},
 )
 async def sync_all_schemas():
     """
@@ -566,11 +538,7 @@ async def sync_all_schemas():
 @router.post(
     "/{org_name}/scan",
     summary="Start a security scan for an organization",
-    responses={
-        400: {"description": "Invalid scan parameters or organization not found"},
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while initiating the scan"},
-    },
+    responses={**CREATE_ERRORS, 404: {"description": "Organization not found"}},
 )
 async def start_organization_scan(
     org_name: str,
@@ -601,10 +569,7 @@ async def start_organization_scan(
 @router.get(
     "/{org_name}/scan/status",
     summary="Get scan status for an organization",
-    responses={
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while retrieving scan status"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def get_scan_status(org_name: str):
     """
@@ -642,10 +607,7 @@ async def get_scan_status(org_name: str):
 @router.get(
     "/{org_name}/credentials/status",
     summary="Check credential configuration status",
-    responses={
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while checking credentials"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def get_credentials_status(org_name: str):
     """
@@ -678,10 +640,7 @@ async def get_credentials_status(org_name: str):
 @router.put(
     "/{org_name}/credentials",
     summary="Update organization GitHub credentials",
-    responses={
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while storing credentials"},
-    },
+    responses={**CRUD_ERRORS},
 )
 async def update_credentials(
     org_name: str,
@@ -730,9 +689,7 @@ async def update_credentials(
 @router.get(
     "/configured",
     summary="List organizations with configured credentials",
-    responses={
-        500: {"description": "Internal server error while querying secrets manager"},
-    },
+    responses={**LIST_ERRORS},
 )
 async def list_configured_organizations():
     """
@@ -757,13 +714,7 @@ async def list_configured_organizations():
 @router.post(
     "/{org_name}/import",
     summary="Import repositories from GitHub",
-    responses={
-        400: {"description": "GitHub token not configured for the organization"},
-        401: {"description": "Invalid GitHub token"},
-        404: {"description": "Organization or GitHub organization not found"},
-        500: {"description": "Internal server error during repository import"},
-        502: {"description": "GitHub API returned an error"},
-    },
+    responses={**CREATE_ERRORS, 404: {"description": "Organization or GitHub org not found"}, 502: {"description": "GitHub API returned an error"}},
 )
 async def import_repositories(
     org_name: str,
@@ -973,11 +924,7 @@ async def import_repositories(
 @router.post(
     "/{org_name}/sync-repos",
     summary="Sync repository metadata from GitHub",
-    responses={
-        400: {"description": "GitHub token not configured for the organization"},
-        404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error during repository synchronization"},
-    },
+    responses={**CREATE_ERRORS, 404: {"description": "Organization not found"}},
 )
 async def sync_repositories(
     org_name: str,
@@ -1120,8 +1067,8 @@ async def sync_repositories(
     "/{org_name}/repositories",
     summary="List repositories for an organization",
     responses={
+        **LIST_ERRORS,
         404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while querying repositories"},
     },
 )
 async def get_organization_repositories(
@@ -1184,8 +1131,8 @@ async def get_organization_repositories(
     "/{org_name}/findings",
     summary="List security findings for an organization",
     responses={
+        **LIST_ERRORS,
         404: {"description": "Organization with the specified name was not found"},
-        500: {"description": "Internal server error while querying findings"},
     },
 )
 async def get_organization_findings(

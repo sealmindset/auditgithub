@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from src.api.database import get_db
 from src.api.models import User, UserRepositoryAccess, Repository, AuthAuditLog
 from src.auth.dependencies import require_admin, get_db_user, require_super_admin
+from src.api.schemas.common import LIST_ERRORS, CRUD_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 from loguru import logger
 
 router = APIRouter(prefix="/api/users", tags=["user-management"])
@@ -119,7 +120,7 @@ class UserRepositoryResponse(BaseModel):
     response_model=List[UserResponse],
     summary="List all users",
     responses={
-        401: {"description": "Not authenticated"},
+        **LIST_ERRORS,
         403: {"description": "Insufficient permissions - admin role required"},
     },
 )
@@ -131,7 +132,8 @@ async def list_users(
     """
     List all users.
 
-    Only admins can view user list.
+    Returns all registered users, sorted by creation date descending.
+    Optionally includes deactivated accounts. Requires **admin** role.
 
     Args:
         current_user: Current admin user (from dependency)
@@ -171,9 +173,8 @@ async def list_users(
     response_model=UserResponse,
     summary="Get user details by ID",
     responses={
-        401: {"description": "Not authenticated"},
+        **CRUD_ERRORS,
         403: {"description": "Cannot view other users' details without admin role"},
-        404: {"description": "User not found"},
     },
 )
 async def get_user(
@@ -182,10 +183,10 @@ async def get_user(
     db: Session = Depends(get_db)
 ):
     """
-    Get user details.
+    Get user details by UUID.
 
-    Users can view their own details.
-    Admins can view any user's details.
+    Users can view their own details. Admins can view any user's details.
+    Requires **authenticated** session; viewing other users requires **admin** role.
 
     Args:
         user_id: User UUID
@@ -233,10 +234,9 @@ async def get_user(
     response_model=UserResponse,
     summary="Update user role",
     responses={
+        **CRUD_ERRORS,
         400: {"description": "Invalid role value"},
-        401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions to modify this user's role"},
-        404: {"description": "User not found"},
     },
 )
 async def update_user_role(
@@ -246,10 +246,11 @@ async def update_user_role(
     db: Session = Depends(get_db)
 ):
     """
-    Update user role.
+    Update a user's role.
 
-    Admins can update roles except Super Admins.
-    Only Super Admins can modify Super Admin roles.
+    Admins can update roles for all users except Super Admins.
+    Only Super Admins can assign or revoke the super_admin role.
+    Requires **admin** role (or **super_admin** to modify super_admin users).
 
     Args:
         user_id: User UUID
@@ -261,9 +262,9 @@ async def update_user_role(
         Updated user details
 
     Raises:
+        HTTPException 400: If role is invalid
         HTTPException 403: If admin tries to modify Super Admin
         HTTPException 404: If user not found
-        HTTPException 400: If role is invalid
     """
     # Validate role
     valid_roles = ['user', 'developer', 'analyst', 'manager', 'admin', 'super_admin']
@@ -341,10 +342,9 @@ async def update_user_role(
     response_model=UserResponse,
     summary="Update user access type",
     responses={
+        **CRUD_ERRORS,
         400: {"description": "Invalid access type value"},
-        401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - admin role required"},
-        404: {"description": "User not found"},
     },
 )
 async def update_user_access_type(
@@ -354,7 +354,9 @@ async def update_user_access_type(
     db: Session = Depends(get_db)
 ):
     """
-    Update user access type (UI only, API only, or both).
+    Update a user's access type (UI only, API only, or both).
+
+    Controls how the user can interact with the platform. Requires **admin** role.
 
     Args:
         user_id: User UUID
@@ -366,8 +368,8 @@ async def update_user_access_type(
         Updated user details
 
     Raises:
-        HTTPException 404: If user not found
         HTTPException 400: If access type is invalid
+        HTTPException 404: If user not found
     """
     # Validate access type
     valid_access_types = ['ui_only', 'api_only', 'both']
@@ -415,10 +417,11 @@ async def update_user_access_type(
     status_code=status.HTTP_201_CREATED,
     summary="Assign repository to user",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Repository already assigned to this user"},
-        401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - admin role required"},
         404: {"description": "User or repository not found"},
+        409: {"description": "Repository already assigned to this user (duplicate)"},
     },
 )
 async def assign_repository(
@@ -428,7 +431,10 @@ async def assign_repository(
     db: Session = Depends(get_db)
 ):
     """
-    Assign repository to user.
+    Assign a repository to a user.
+
+    Creates an access record linking the user to the specified repository.
+    Requires **admin** role.
 
     Args:
         user_id: User UUID
@@ -440,8 +446,8 @@ async def assign_repository(
         Success message
 
     Raises:
-        HTTPException 404: If user or repository not found
         HTTPException 400: If repository already assigned
+        HTTPException 404: If user or repository not found
     """
     # Find user
     user = db.query(User).filter(User.id == user_id).first()
@@ -494,7 +500,7 @@ async def assign_repository(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unassign repository from user",
     responses={
-        401: {"description": "Not authenticated"},
+        **DELETE_ERRORS,
         403: {"description": "Insufficient permissions - admin role required"},
         404: {"description": "Repository assignment not found"},
     },
@@ -506,7 +512,10 @@ async def unassign_repository(
     db: Session = Depends(get_db)
 ):
     """
-    Unassign repository from user.
+    Remove a repository assignment from a user.
+
+    Deletes the access record linking the user to the repository.
+    Requires **admin** role.
 
     Args:
         user_id: User UUID
@@ -548,7 +557,7 @@ async def unassign_repository(
     response_model=List[UserRepositoryResponse],
     summary="List repositories assigned to a user",
     responses={
-        401: {"description": "Not authenticated"},
+        **LIST_ERRORS,
         403: {"description": "Cannot view other users' repositories without admin role"},
     },
 )
@@ -558,10 +567,11 @@ async def list_user_repositories(
     db: Session = Depends(get_db)
 ):
     """
-    List repositories assigned to user.
+    List repositories assigned to a user.
 
-    Users can view their own repositories.
-    Admins can view any user's repositories.
+    Users can view their own repository assignments. Admins can view any
+    user's assignments. Requires **authenticated** session; viewing other
+    users requires **admin** role.
 
     Args:
         user_id: User UUID

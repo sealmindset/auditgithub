@@ -10,6 +10,7 @@ import uuid
 from pydantic import BaseModel, Field
 from datetime import datetime
 from src.rbac.dependencies import require_permissions
+from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 import os
 
 router = APIRouter(
@@ -42,7 +43,7 @@ def _get_current_organization_id(db: Session) -> Optional[str]:
 
 @router.get("/",
     summary="List all projects with summary stats",
-    responses={401: {"description": "Not authenticated"}, 500: {"description": "Database query error"}})
+    responses={**LIST_ERRORS})
 async def get_projects(
     db: Session = Depends(get_tenant_db),
     organization_id: Optional[str] = Query(None, description="Filter by organization ID")
@@ -120,7 +121,7 @@ async def get_projects(
 
 @router.get("/{project_id}",
     summary="Get project details with security metrics",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_project_details(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get basic details for a specific project including finding counts by severity.
@@ -191,7 +192,7 @@ async def get_project_details(project_id: str, db: Session = Depends(get_tenant_
 
 @router.get("/{project_id}/secrets",
     summary="Get secret findings for a project",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_project_secrets(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get secret findings for a project detected by TruffleHog and other scanners.
@@ -224,7 +225,7 @@ async def get_project_secrets(project_id: str, db: Session = Depends(get_tenant_
 
 @router.get("/{project_id}/sast",
     summary="Get SAST findings for a project",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_project_sast(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get SAST (Semgrep/CodeQL) findings for a project.
@@ -327,7 +328,7 @@ class ContributorResponse(BaseModel):
 
 @router.get("/{project_id}/contributors", response_model=ContributorsResponse,
     summary="Get project contributors with summary data",
-    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid project ID format"}, 404: {"description": "Repository not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_contributors(
     project_id: str,
     db: Session = Depends(get_tenant_db),
@@ -400,7 +401,7 @@ def get_project_contributors(
 
 @router.get("/{project_id}/contributors/{contributor_id}", response_model=ContributorDetail,
     summary="Get detailed contributor information",
-    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid ID format"}, 404: {"description": "Contributor not found"}})
+    responses={**CRUD_ERRORS})
 def get_contributor_detail(
     project_id: str,
     contributor_id: str,
@@ -463,7 +464,7 @@ class LanguageStatResponse(BaseModel):
 
 @router.get("/{project_id}/languages", response_model=List[LanguageStatResponse],
     summary="Get language statistics for a project",
-    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_languages(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get language statistics and security finding counts per language for a project.
@@ -545,7 +546,7 @@ class DependencyResponse(BaseModel):
 
 @router.get("/{project_id}/dependencies", response_model=List[DependencyResponse],
     summary="Get project dependencies with vulnerabilities",
-    responses={401: {"description": "Not authenticated"}, 400: {"description": "Invalid UUID format"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 def get_project_dependencies(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get dependencies (SBOM) for a project enriched with vulnerability data and AI analysis.
@@ -647,7 +648,7 @@ def get_project_dependencies(project_id: str, db: Session = Depends(get_tenant_d
 
 @router.get("/{project_id}/terraform",
     summary="Get Terraform/IaC findings for a project",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_project_terraform(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get Terraform and infrastructure-as-code findings for a project.
@@ -680,7 +681,7 @@ async def get_project_terraform(project_id: str, db: Session = Depends(get_tenan
 
 @router.get("/{project_id}/oss",
     summary="Get OSS dependency findings for a project",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_project_oss(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get OSS/dependency vulnerability findings for a project.
@@ -713,7 +714,7 @@ async def get_project_oss(project_id: str, db: Session = Depends(get_tenant_db))
 
 @router.get("/{project_id}/runs",
     summary="Get scan run history for a project",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}})
+    responses={**CRUD_ERRORS})
 async def get_project_runs(project_id: str, db: Session = Depends(get_tenant_db)):
     """
     Get scan run history for a project sorted by most recent first.
@@ -756,7 +757,7 @@ class SecurityReportRequest(BaseModel):
 
 @router.post("/{project_id}/security-report",
     summary="Generate AI-powered security assessment report",
-    responses={401: {"description": "Not authenticated"}, 404: {"description": "Project not found"}, 500: {"description": "AI analysis or report generation error"}})
+    responses={**CREATE_ERRORS, 404: {"description": "Project not found"}})
 async def generate_security_report(
     project_id: str,
     request: SecurityReportRequest,

@@ -16,6 +16,7 @@ from ..scheduler import get_scheduler
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
 from src.auth.dependencies import get_current_user
+from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
@@ -57,10 +58,7 @@ class TriggerResponse(BaseModel):
     response_model=SchedulerStatusResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get scheduler status",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 async def get_scheduler_status():
     """
@@ -77,10 +75,7 @@ async def get_scheduler_status():
     "/jobs",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="List all scheduled jobs",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**LIST_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 async def list_jobs():
     """
@@ -109,11 +104,7 @@ async def list_jobs():
     "/jobs/{job_name}",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get status for a specific job",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-        404: {"description": "Job not found"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}, 404: {"description": "Job not found"}},
 )
 async def get_job_status(job_name: str):
     """
@@ -139,12 +130,7 @@ async def get_job_status(job_name: str):
     response_model=TriggerResponse,
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Manually trigger a job",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-        404: {"description": "Job not found"},
-        500: {"description": "Internal error during job execution"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}, 404: {"description": "Job not found"}, 500: {"description": "Internal error during job execution"}},
 )
 async def trigger_job(job_name: str):
     """
@@ -181,11 +167,7 @@ async def trigger_job(job_name: str):
     "/start",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Start the scheduler",
-    responses={
-        400: {"description": "Scheduler is disabled in configuration"},
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 400: {"description": "Scheduler is disabled in configuration"}, 403: {"description": "Missing admin:manage permission"}},
 )
 async def start_scheduler():
     """
@@ -210,10 +192,7 @@ async def start_scheduler():
     "/stop",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Stop the scheduler",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 async def stop_scheduler():
     """
@@ -231,10 +210,7 @@ async def stop_scheduler():
     "/next-runs",
     dependencies=[Depends(require_permissions("admin:manage"))],
     summary="Get next scheduled run times",
-    responses={
-        401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
-    },
+    responses={**LIST_ERRORS, 403: {"description": "Missing admin:manage permission"}},
 )
 async def get_next_runs():
     """

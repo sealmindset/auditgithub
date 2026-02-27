@@ -14,6 +14,7 @@ from ..dependencies import get_tenant_db, require_permissions
 from .. import models
 from ..utils.github_actions_service import GitHubActionsService, sync_all_repositories_cicd
 from ..config import settings
+from ..schemas.common import LIST_ERRORS, CRUD_ERRORS, CREATE_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,12 @@ class SyncResponse(BaseModel):
 # Deployment Endpoints
 # =============================================================================
 
-@router.get("/deployments", summary="List deployment history", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 500: {"description": "Internal server error"}})
+@router.get(
+    "/deployments",
+    summary="List deployment history",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    responses={**LIST_ERRORS},
+)
 async def list_deployments(
     repository_name: Optional[str] = None,
     environment: Optional[str] = None,
@@ -91,15 +97,21 @@ async def list_deployments(
     """
     List deployment history with optional filters.
 
+    Returns a paginated list of deployments across all repositories in
+    the current organization. Results can be narrowed by repository name,
+    target environment, deployment status, and time window.
+
+    **Required permissions:** `findings:read`
+
     Args:
-        repository_name: Filter by repository name
-        environment: Filter by environment (prod, staging, etc.)
-        status: Filter by deployment status
-        days_back: How many days of history to return
-        limit: Maximum number of results
+        repository_name: Filter by repository name.
+        environment: Filter by environment (e.g. production, staging).
+        status: Filter by deployment status (success, failure, in_progress).
+        days_back: Number of days of history to return (default 90).
+        limit: Maximum number of results to return (default 100).
 
     Returns:
-        List of deployments
+        List of deployments with applied filter metadata.
     """
     from ...ai_agent.tools.db_tools import search_deployments
     from ..database import get_request_org_id
@@ -132,7 +144,12 @@ async def list_deployments(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/deployments/repository/{repository_id}", summary="Get repository deployment status", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 404: {"description": "Repository not found"}, 500: {"description": "Internal server error"}})
+@router.get(
+    "/deployments/repository/{repository_id}",
+    summary="Get repository deployment status",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    responses={**CRUD_ERRORS, 404: {"description": "Repository not found"}},
+)
 async def get_repository_deployments(
     repository_id: str,
     environment: Optional[str] = None,
@@ -141,12 +158,18 @@ async def get_repository_deployments(
     """
     Get deployment status for a specific repository.
 
+    Retrieves current deployment information for each environment
+    associated with the given repository, optionally filtered to a
+    single environment.
+
+    **Required permissions:** `findings:read`
+
     Args:
-        repository_id: Repository UUID
-        environment: Optional environment filter
+        repository_id: Repository UUID.
+        environment: Optional environment filter (e.g. production, staging).
 
     Returns:
-        Deployment status information
+        Deployment status information including per-environment details.
     """
     from ...ai_agent.tools.db_tools import get_repository_deployment_status
 
@@ -181,7 +204,12 @@ async def get_repository_deployments(
 # Workflow Run Endpoints
 # =============================================================================
 
-@router.get("/workflow-runs", summary="List CI/CD workflow runs", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 500: {"description": "Internal server error"}})
+@router.get(
+    "/workflow-runs",
+    summary="List CI/CD workflow runs",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    responses={**LIST_ERRORS},
+)
 async def list_workflow_runs(
     repository_name: Optional[str] = None,
     workflow_name: Optional[str] = None,
@@ -195,17 +223,23 @@ async def list_workflow_runs(
     """
     List CI/CD workflow runs with optional filters.
 
+    Returns a paginated list of GitHub Actions workflow runs across all
+    repositories in the current organization. Results can be narrowed by
+    repository, workflow name, branch, run status, and conclusion.
+
+    **Required permissions:** `findings:read`
+
     Args:
-        repository_name: Filter by repository name
-        workflow_name: Filter by workflow/pipeline name
-        branch: Filter by branch
-        status: Filter by status (queued, in_progress, completed)
-        conclusion: Filter by conclusion (success, failure, cancelled)
-        days_back: How many days of history to return
-        limit: Maximum number of results
+        repository_name: Filter by repository name.
+        workflow_name: Filter by workflow/pipeline name.
+        branch: Filter by Git branch.
+        status: Filter by status (queued, in_progress, completed).
+        conclusion: Filter by conclusion (success, failure, cancelled).
+        days_back: Number of days of history to return (default 30).
+        limit: Maximum number of results to return (default 100).
 
     Returns:
-        List of workflow runs
+        List of workflow runs with applied filter metadata.
     """
     from ...ai_agent.tools.db_tools import search_workflow_runs
     from ..database import get_request_org_id
@@ -246,7 +280,18 @@ async def list_workflow_runs(
 # Sync Endpoints
 # =============================================================================
 
-@router.post("/sync", response_model=SyncResponse, summary="Sync CI/CD data from GitHub Actions", dependencies=[Depends(require_permissions("findings:write"))], responses={400: {"description": "Organization ID required"}, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 404: {"description": "Organization or repository not found"}, 500: {"description": "GitHub token not configured or sync error"}})
+@router.post(
+    "/sync",
+    response_model=SyncResponse,
+    summary="Sync CI/CD data from GitHub Actions",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    responses={
+        **CREATE_ERRORS,
+        400: {"description": "Organization ID required"},
+        404: {"description": "Organization or repository not found"},
+        500: {"description": "GitHub token not configured or sync error"},
+    },
+)
 async def sync_cicd_data(
     request: SyncRequest,
     background_tasks: BackgroundTasks,
@@ -255,15 +300,20 @@ async def sync_cicd_data(
     """
     Sync CI/CD data from GitHub Actions.
 
-    This endpoint fetches workflow runs and deployments from GitHub API
-    and stores them in the database for analysis.
+    Fetches workflow runs and deployments from the GitHub API and stores
+    them in the database for analysis. When a specific repository is
+    provided, the sync runs synchronously and returns statistics. When no
+    repository is specified, the sync runs in the background for all
+    repositories in the organization.
+
+    **Required permissions:** `findings:write`
 
     Args:
-        request: Sync request with organization/repository filters
-        background_tasks: FastAPI background tasks
+        request: Sync request with organization/repository filters and days_back window.
+        background_tasks: FastAPI background tasks runner.
 
     Returns:
-        Sync status and statistics
+        Sync status and statistics.
     """
     from ..database import get_request_org_id
 
@@ -356,7 +406,12 @@ async def sync_cicd_data(
 # Statistics Endpoints
 # =============================================================================
 
-@router.get("/stats", summary="Get CI/CD statistics", dependencies=[Depends(require_permissions("findings:read"))], responses={401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}, 500: {"description": "Internal server error"}})
+@router.get(
+    "/stats",
+    summary="Get CI/CD statistics",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    responses={**LIST_ERRORS},
+)
 async def get_cicd_stats(
     days_back: int = 30,
     db: Session = Depends(get_tenant_db)
@@ -364,11 +419,17 @@ async def get_cicd_stats(
     """
     Get CI/CD statistics for the organization.
 
+    Returns aggregate statistics about deployments and workflow runs,
+    including breakdowns by status, conclusion, and environment for the
+    specified time window.
+
+    **Required permissions:** `findings:read`
+
     Args:
-        days_back: How many days of history to analyze
+        days_back: Number of days of history to analyze (default 30).
 
     Returns:
-        Statistics about deployments and workflow runs
+        Statistics about deployments and workflow runs.
     """
     from ..database import get_request_org_id
     from datetime import datetime, timedelta

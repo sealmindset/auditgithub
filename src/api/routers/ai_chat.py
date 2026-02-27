@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from ..database import get_db
 from src.services.ai_chat_service import AIChatService
+from src.api.schemas.common import CREATE_ERRORS, LIST_ERRORS, CRUD_ERRORS, DELETE_ERRORS
 from models.ai_conversation import AIConversation, AIMessage, MessageRole
 import logging
 
@@ -86,6 +87,7 @@ class MessageHistoryResponse(BaseModel):
     summary="Send message to AI assistant",
     description="Send a message to the AI security architect and get a response with context-aware analysis",
     responses={
+        **CREATE_ERRORS,
         404: {"description": "Repository or project not found"},
         500: {"description": "Failed to process AI message"},
     },
@@ -98,7 +100,7 @@ async def send_ai_message(
     current_user = Depends(get_current_user)
 ):
     """
-    Send a message to the AI security architect
+    Send a message to the AI security architect.
 
     The AI will analyze your question with context from:
     - Repository code and structure
@@ -107,9 +109,11 @@ async def send_ai_message(
     - External security research (when needed)
 
     Focus areas:
-    - security_architecture: General security architecture and design
-    - zero_trust: Zero-trust architecture principles
-    - vulnerabilities: Specific vulnerability analysis
+    - **security_architecture** -- General security architecture and design
+    - **zero_trust** -- Zero-trust architecture principles
+    - **vulnerabilities** -- Specific vulnerability analysis
+
+    **Required permissions:** authenticated user with project access.
     """
     try:
         # Get organization ID from current user
@@ -147,9 +151,10 @@ async def send_ai_message(
 @router.get(
     "/projects/{project_id}/repositories/{repository_id}/ai-conversations",
     response_model=List[ConversationHistoryResponse],
-    summary="Get conversation history",
+    summary="List AI conversations for a repository",
     description="Get list of AI conversations for this repository",
     responses={
+        **LIST_ERRORS,
         500: {"description": "Failed to fetch conversations"},
     },
 )
@@ -161,10 +166,12 @@ async def get_conversations(
     current_user = Depends(get_current_user)
 ):
     """
-    Get list of AI conversations for this repository.
+    List AI conversations for a repository.
 
     Returns conversations ordered by last message date descending,
     filtered by project and repository.
+
+    **Required permissions:** authenticated user with project access.
     """
     try:
         conversations = (
@@ -206,6 +213,7 @@ async def get_conversations(
     summary="Get conversation messages",
     description="Get all messages in a conversation",
     responses={
+        **CRUD_ERRORS,
         404: {"description": "Conversation not found"},
         500: {"description": "Failed to fetch messages"},
     },
@@ -222,6 +230,8 @@ async def get_conversation_messages(
 
     Returns all messages in chronological order with their citations.
     Verifies the conversation belongs to the current user's organization.
+
+    **Required permissions:** authenticated user with project access.
     """
     try:
         # Verify conversation exists and belongs to user's organization
@@ -290,11 +300,11 @@ async def get_conversation_messages(
 @router.delete(
     "/projects/{project_id}/repositories/{repository_id}/ai-conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete conversation",
+    summary="Delete an AI conversation",
     description="Delete an AI conversation and all its messages",
     responses={
+        **DELETE_ERRORS,
         404: {"description": "Conversation not found"},
-        500: {"description": "Failed to delete conversation"},
     },
 )
 async def delete_conversation(
@@ -309,6 +319,8 @@ async def delete_conversation(
 
     Permanently removes the conversation and all associated messages
     and citations. Verifies ownership via organization_id.
+
+    **Required permissions:** authenticated user with project access.
     """
     try:
         conversation = (
@@ -345,9 +357,10 @@ async def delete_conversation(
 
 @router.get(
     "/projects/{project_id}/repositories/{repository_id}/ai-context",
-    summary="Get AI context summary",
+    summary="Get AI context summary for a repository",
     description="Get a summary of the context available for AI conversations",
     responses={
+        **CRUD_ERRORS,
         500: {"description": "Failed to get context summary"},
     },
 )
@@ -362,6 +375,8 @@ async def get_ai_context_summary(
 
     Returns a summary of repository data, scan results, and security
     metrics available for AI conversations.
+
+    **Required permissions:** authenticated user with project access.
     """
     try:
         from services.ai_rag_service import AIRAGService

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.api.database import get_db
 from src.api.models import User, UserInvitation
+from src.api.schemas.common import CREATE_ERRORS, LIST_ERRORS, DELETE_ERRORS, CRUD_ERRORS
 from src.auth.dependencies import require_admin, get_db_user
 from src.auth.invitations import (
     create_invitation,
@@ -102,6 +103,7 @@ class ValidateInvitationResponse(BaseModel):
     status_code=status.HTTP_201_CREATED,
     summary="Send a user invitation",
     responses={
+        **CREATE_ERRORS,
         400: {"description": "Invalid role/access type, or user already exists"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - admin role required"},
@@ -187,6 +189,7 @@ async def send_invitation(
     response_model=List[InvitationResponse],
     summary="List all pending invitations",
     responses={
+        **LIST_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - admin role required"},
     },
@@ -198,7 +201,8 @@ async def list_invitations(
     """
     List all pending invitations.
 
-    Only admins can view invitations.
+    Requires the **admin** role. Returns all invitations with a status of
+    ``pending``, including the inviter's email and expiration timestamp.
 
     Args:
         current_user: Current admin user (from dependency)
@@ -230,6 +234,7 @@ async def list_invitations(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke a pending invitation",
     responses={
+        **DELETE_ERRORS,
         400: {"description": "Invitation cannot be revoked (already accepted or expired)"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - admin role required"},
@@ -277,6 +282,7 @@ async def revoke_invitation(
     response_model=ValidateInvitationResponse,
     summary="Validate an invitation token",
     responses={
+        400: {"description": "Bad request - malformed token"},
         500: {"description": "Internal server error"},
     },
 )
@@ -285,19 +291,22 @@ async def validate_invitation(
     db: Session = Depends(get_db)
 ):
     """
-    Validate invitation token (public endpoint).
+    Validate an invitation token (public endpoint -- no authentication required).
 
-    Used by invitation acceptance page to display invitation details
-    before user authenticates.
+    Used by the invitation acceptance page to display invitation details
+    before the user authenticates. Returns ``valid=false`` with a message
+    when the token is invalid, expired, or already consumed rather than
+    raising an HTTP error.
+
+    **Permissions:** none (public).
 
     Args:
         token: Invitation token from email link
         db: Database session
 
     Returns:
-        Invitation details if valid
-
-    Note: This is a public endpoint (no auth required)
+        Invitation details if valid, or a ``valid=false`` payload with a
+        descriptive message otherwise.
     """
     invitation = get_invitation_by_token(db, token)
 
