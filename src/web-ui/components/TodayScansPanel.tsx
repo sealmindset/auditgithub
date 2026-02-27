@@ -21,8 +21,7 @@ import {
     AlertTriangle
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface TodayScan {
     schedule_id: string

@@ -21,8 +21,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Loader2, Bot, User, Sparkles, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface AIRecommendation {
   frequency: string

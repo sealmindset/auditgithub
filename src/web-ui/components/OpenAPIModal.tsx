@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Download, Copy, Check, FileCode2 } from "lucide-react"
+import { API_BASE } from "@/lib/api"
 
 interface OpenAPISpec {
     spec_content: string
@@ -26,8 +27,6 @@ interface OpenAPIModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
 }
-
-const API_BASE = "http://localhost:8000"
 
 export function OpenAPIModal({ projectId, open, onOpenChange }: OpenAPIModalProps) {
     const [spec, setSpec] = useState<OpenAPISpec | null>(null)

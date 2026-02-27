@@ -1,22 +1,36 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { AlertCircle, Shield } from "lucide-react"
+import { API_BASE } from "@/lib/api"
+import { useAuth } from "@/contexts/AuthContext"
 
-export default function LoginPage() {
+function LoginForm() {
+  const { isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get("redirect") || "/"
+
   const [showBreakGlass, setShowBreakGlass] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
+  // If already authenticated, redirect away from login
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace(redirectTo)
+    }
+  }, [isAuthenticated, isLoading, redirectTo, router])
+
   const handleEntraLogin = () => {
-    // Redirect to Entra ID OAuth flow
-    window.location.href = "http://localhost:8000/auth/login/entra"
+    window.location.href = `${API_BASE}/auth/login/entra`
   }
 
   const handleBreakGlassLogin = async (e: React.FormEvent) => {
@@ -29,15 +43,14 @@ export default function LoginPage() {
       formData.append("email", email)
       formData.append("password", password)
 
-      const res = await fetch("http://localhost:8000/auth/break-glass/login", {
+      const res = await fetch(`${API_BASE}/auth/break-glass/login`, {
         method: "POST",
         body: formData,
         credentials: "include"
       })
 
       if (res.ok) {
-        // Redirect to homepage
-        window.location.href = "/"
+        window.location.href = redirectTo
       } else {
         const data = await res.json()
         setError(data.detail || "Invalid credentials")
@@ -47,6 +60,11 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Don't render the login form if already authenticated (redirect in flight)
+  if (!isLoading && isAuthenticated) {
+    return null
   }
 
   return (
@@ -197,5 +215,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

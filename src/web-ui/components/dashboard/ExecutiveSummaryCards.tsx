@@ -19,8 +19,7 @@ import {
     WifiOff
 } from "lucide-react"
 import { FeedbackButton } from "./FeedbackButton"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface ImmediateAction {
     title: string

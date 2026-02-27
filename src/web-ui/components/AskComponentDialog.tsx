@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Sparkles, ShieldAlert, ShieldCheck, AlertTriangle } from "lucide-react"
 import ReactMarkdown from "react-markdown"
+import { API_BASE } from "@/lib/api"
 
 interface ComponentAnalysis {
     analysis_text: string
@@ -31,8 +32,6 @@ interface AskComponentDialogProps {
     existingAnalysis?: ComponentAnalysis | null
     onAnalysisComplete?: (analysis: ComponentAnalysis) => void
 }
-
-const API_BASE = "http://localhost:8000"
 
 export function AskComponentDialog({
     packageName,

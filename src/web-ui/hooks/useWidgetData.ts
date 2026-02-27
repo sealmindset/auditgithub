@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface UseWidgetDataOptions<T> {
   /** Auto-refresh interval in milliseconds (default: none) */

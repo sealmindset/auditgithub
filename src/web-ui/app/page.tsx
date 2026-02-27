@@ -32,8 +32,7 @@ import { FindingTrendsWidget } from "@/components/dashboard/FindingTrendsWidget"
 import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget"
 import { DashboardCustomizer } from "@/components/dashboard/DashboardCustomizer"
 import { useDashboardLayout } from "@/hooks/useDashboardLayout"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface HeroMetricsData {
     repositories: number

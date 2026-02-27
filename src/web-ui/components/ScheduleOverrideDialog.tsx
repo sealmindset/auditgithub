@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Lock, Unlock, Bot, User, Clock, Calendar, History, Info, Settings2, ChevronDown, ChevronRight } from "lucide-react"
 import type { Schedule } from "@/components/SchedulerCalendar"
+import { API_BASE } from "@/lib/api"
 
 // Scanner info type from API
 interface ScannerInfo {
@@ -26,8 +27,6 @@ interface ScannerInfo {
     category: string
     description: string
 }
-
-const API_BASE = "http://localhost:8000"
 
 // Override history item type
 interface OverrideHistoryItem {

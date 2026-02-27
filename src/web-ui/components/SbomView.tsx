@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/tooltip"
 
 import { AskComponentDialog } from "./AskComponentDialog"
+import { API_BASE } from "@/lib/api"
 
 interface Dependency {
     id: string
@@ -32,8 +33,6 @@ interface Dependency {
 interface SbomViewProps {
     projectId: string
 }
-
-const API_BASE = "http://localhost:8000"
 
 export function SbomView({ projectId }: SbomViewProps) {
     const [dependencies, setDependencies] = useState<Dependency[]>([])

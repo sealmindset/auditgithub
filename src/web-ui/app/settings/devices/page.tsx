@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Monitor, Trash2, Edit2, AlertCircle, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
+import { API_BASE } from "@/lib/api"
 
 interface DeviceAuthorization {
   id: string
@@ -36,7 +37,7 @@ export default function MyDevicesPage() {
 
   const fetchDevices = async () => {
     try {
-      const res = await fetch("http://localhost:8000/auth/device/authorizations", {
+      const res = await fetch(`${API_BASE}/auth/device/authorizations`, {
         credentials: "include"
       })
 
@@ -77,7 +78,7 @@ export default function MyDevicesPage() {
 
     try {
       const res = await fetch(
-        `http://localhost:8000/auth/device/authorizations/${selectedDevice.id}`,
+        `${API_BASE}/auth/device/authorizations/${selectedDevice.id}`,
         {
           method: "DELETE",
           credentials: "include"
@@ -117,7 +118,7 @@ export default function MyDevicesPage() {
 
     try {
       const res = await fetch(
-        `http://localhost:8000/auth/device/authorizations/${selectedDevice.id}`,
+        `${API_BASE}/auth/device/authorizations/${selectedDevice.id}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

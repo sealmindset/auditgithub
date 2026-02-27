@@ -16,14 +16,13 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Pencil } from "lucide-react"
+import { API_BASE } from "@/lib/api"
 
 interface SeverityEditorProps {
     findingId: string
     currentSeverity: string
     onUpdate: () => void
 }
-
-const API_BASE = "http://localhost:8000"
 
 const SEVERITIES = ["Critical", "High", "Medium", "Low", "Info"]
 

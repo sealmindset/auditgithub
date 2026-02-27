@@ -9,6 +9,8 @@ Supports dynamic provider registration:
 Providers are registered based on which environment variables are set.
 """
 
+import os
+
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -57,10 +59,12 @@ class Settings(BaseSettings):
 
     # CORS configuration
     cors_origins: list[str] = [
-        "http://localhost:3000",  # Next.js dev server
-        "http://localhost:3001",  # Alternative dev port
-        "http://localhost:8001",  # Sandbox API
-        "http://localhost:8080",  # Swagger Editor
+        o.strip()
+        for o in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://localhost:3001,http://localhost:8001,http://localhost:8080"
+        ).split(",")
+        if o.strip()
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]

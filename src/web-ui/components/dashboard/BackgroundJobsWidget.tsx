@@ -19,8 +19,7 @@ import {
 import { formatDistanceToNow, format } from "date-fns"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface JobStatus {
   description: string

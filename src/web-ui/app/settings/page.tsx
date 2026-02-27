@@ -13,11 +13,10 @@ import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import AuthConfigTab from "@/components/AuthConfigTab"
 import dynamic from "next/dynamic"
+import { API_BASE } from "@/lib/api"
 
 // Dynamically import My Devices page
 const MyDevicesPage = dynamic(() => import("./devices/page"), { ssr: false })
-
-const API_BASE = "http://localhost:8000"
 
 interface CriblConfig {
     id: string

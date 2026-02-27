@@ -18,6 +18,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import ReactMarkdown from "react-markdown"
+import { API_BASE } from "@/lib/api"
 
 interface RepositoryResult {
     repository: string
@@ -115,7 +116,7 @@ export function ZeroDayView() {
         try {
             const scopeToSend = selectedScopes.includes("all") ? null : selectedScopes
 
-            const response = await fetch("http://localhost:8000/ai/zero-day", {
+            const response = await fetch(`${API_BASE}/ai/zero-day`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -181,7 +182,7 @@ export function ZeroDayView() {
             }
 
             // For PDF and DOCX, call backend API
-            const response = await fetch(`http://localhost:8000/ai/zero-day/export/${format}`, {
+            const response = await fetch(`${API_BASE}/ai/zero-day/export/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(exportData)
@@ -303,7 +304,7 @@ export function ZeroDayView() {
             }
 
             // For PDF and DOCX, call backend API
-            const response = await fetch(`http://localhost:8000/ai/zero-day/export/repos/${format}`, {
+            const response = await fetch(`${API_BASE}/ai/zero-day/export/repos/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(exportData)

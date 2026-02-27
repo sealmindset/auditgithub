@@ -51,8 +51,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { ContributorProfileModal } from "@/components/contributor-profile-modal"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface AttackSurfaceSummary {
   total_repos: number

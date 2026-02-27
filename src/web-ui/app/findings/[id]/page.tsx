@@ -17,8 +17,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 export default function FindingDetailsPage() {
     const params = useParams()

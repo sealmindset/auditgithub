@@ -40,6 +40,7 @@ import {
     Code
 } from "lucide-react"
 import { DownloadControl } from "./DownloadControl"
+import { API_BASE } from "@/lib/api"
 
 // =============================================================================
 // Types
@@ -234,8 +235,6 @@ interface CredentialUrlTestResult {
 interface APIAuditViewProps {
     projectId: string
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 // =============================================================================
 // Component

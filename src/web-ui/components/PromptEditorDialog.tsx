@@ -8,6 +8,7 @@ import { PlayCircle, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { API_BASE } from "@/lib/api"
 
 interface PromptEditorDialogProps {
     projectId: string
@@ -41,8 +42,8 @@ export function PromptEditorDialog({
         setLoadingPrompt(true)
         try {
             const url = promptEndpoint.includes("{projectId}")
-                ? `http://localhost:8000${promptEndpoint.replace("{projectId}", projectId)}`
-                : `http://localhost:8000${promptEndpoint}`
+                ? `${API_BASE}${promptEndpoint.replace("{projectId}", projectId)}`
+                : `${API_BASE}${promptEndpoint}`
 
             const res = await fetch(url, {
                 method: promptEndpoint.includes("architecture/prompt") ? "POST" : "GET",
@@ -69,7 +70,7 @@ export function PromptEditorDialog({
         setValidating(true)
         setResponse("")
         try {
-            const url = `http://localhost:8000${validateEndpoint}`
+            const url = `${API_BASE}${validateEndpoint}`
             const res = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

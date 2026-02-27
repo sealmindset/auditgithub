@@ -25,6 +25,7 @@ import {
   Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { API_BASE } from "@/lib/api"
 
 interface Message {
   id: string;
@@ -115,7 +116,7 @@ export function AskAIModal({
     setIsLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/projects/${projectId}/repositories/${repositoryId}/ai-chat`, {
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}/repositories/${repositoryId}/ai-chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

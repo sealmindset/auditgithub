@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText } from "lucide-react"
 import Link from "next/link"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 function getDaysSince(date: string | null): number | null {
     if (!date) return null

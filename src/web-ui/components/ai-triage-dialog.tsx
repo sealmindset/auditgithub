@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, Save, Check } from "lucide-react"
+import { API_BASE } from "@/lib/api"
 
 interface AiTriageDialogProps {
     finding: any
@@ -28,7 +29,7 @@ export function AiTriageDialog({ finding, onDescriptionUpdated }: AiTriageDialog
     const analyzeFinding = async () => {
         setLoading(true)
         try {
-            const res = await fetch("http://localhost:8000/ai/triage", {
+            const res = await fetch(`${API_BASE}/ai/triage`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -68,7 +69,7 @@ ${analysis.reasoning}
 *Original Description:*
 ${finding.description || 'No original description provided.'}`
 
-            const res = await fetch(`http://localhost:8000/findings/${finding.id}`, {
+            const res = await fetch(`${API_BASE}/findings/${finding.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

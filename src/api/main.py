@@ -333,8 +333,8 @@ def custom_openapi():
 
     # Add servers
     openapi_schema["servers"] = [
-        {"url": "http://localhost:8000", "description": "Local development"},
-        {"url": "https://api.auditgh.local", "description": "Production"},
+        {"url": os.getenv("API_SERVER_URL", "http://localhost:8000"), "description": "Local development"},
+        {"url": os.getenv("API_SERVER_URL_PROD", "https://api.auditgh.local"), "description": "Production"},
     ]
 
     app.openapi_schema = openapi_schema
@@ -373,7 +373,7 @@ if is_sandbox():
         }
         openapi_schema["security"] = [{"ApiKeyAuth": []}]
         openapi_schema["servers"] = [
-            {"url": "http://localhost:8001", "description": "Sandbox"},
+            {"url": os.getenv("SANDBOX_API_URL", "http://localhost:8001"), "description": "Sandbox"},
         ]
 
         app.openapi_schema = openapi_schema
@@ -534,6 +534,7 @@ if is_sandbox():
     @app.get("/", summary="Sandbox Developer Portal", tags=["default"], include_in_schema=False, response_class=HTMLResponse)
     async def root():
         """Sandbox developer portal landing page."""
+        swagger_editor_url = os.getenv("SWAGGER_EDITOR_URL", "http://localhost:8080")
         return HTMLResponse(content="""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -585,7 +586,7 @@ code { background: #334155; padding: 2px 6px; border-radius: 4px; font-size: 0.8
            "Try It Out". Authenticate with sandbox API keys.</p>
         <span class="url">localhost:8001/docs</span>
     </a>
-    <a class="card" href="http://localhost:8080" target="_blank">
+    <a class="card" href="__SWAGGER_EDITOR_URL__" target="_blank">
         <h2>Swagger Editor</h2>
         <p>Edit and validate the OpenAPI specification.
            Generate client SDKs in Python, TypeScript, Go, and more.</p>
@@ -632,7 +633,7 @@ code { background: #334155; padding: 2px 6px; border-radius: 4px; font-size: 0.8
     To reset manually: <code>POST /api/sandbox/reset</code> (admin key required).
 </div>
 </body>
-</html>""")
+</html>""".replace("__SWAGGER_EDITOR_URL__", swagger_editor_url))
 else:
     @app.get("/", summary="API root", tags=["default"], include_in_schema=False)
     async def root():

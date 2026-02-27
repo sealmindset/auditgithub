@@ -16,8 +16,7 @@ import {
 } from "recharts"
 import { Shield, TrendingUp, TrendingDown, Calendar, GitBranch } from "lucide-react"
 import { FeedbackButton } from "./FeedbackButton"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface SeverityDataPoint {
     name: string

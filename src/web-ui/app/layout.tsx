@@ -2,13 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { TenantProvider } from "@/contexts/TenantContext";
-import { AppSidebar } from "@/components/app-sidebar";
-import { ModeToggle } from "@/components/mode-toggle";
-import { OrganizationSelector } from "@/components/OrganizationSelector";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { QuickSearch } from "@/components/QuickSearch";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthShell } from "@/components/AuthShell";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -31,24 +26,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TenantProvider>
-            <SidebarProvider>
-              <div className="flex min-h-screen w-full">
-                <AppSidebar />
-                <main className="flex-1 overflow-y-auto bg-background">
-                  <div className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6">
-                    <SidebarTrigger />
-                    <OrganizationSelector />
-                    <Breadcrumbs />
-                    <div className="flex-1" />
-                    <QuickSearch />
-                    <ModeToggle />
-                  </div>
-                  {children}
-                </main>
-              </div>
-            </SidebarProvider>
-          </TenantProvider>
+          <AuthProvider>
+            <AuthShell>{children}</AuthShell>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import Cookies from "js-cookie";
+import { API_BASE } from "@/lib/api"
 
 // Types
 export interface Tenant {
@@ -45,7 +46,7 @@ interface TenantProviderProps {
 
 export function TenantProvider({
     children,
-    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    apiBaseUrl = API_BASE
 }: TenantProviderProps) {
     const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
     const [tenants, setTenants] = useState<Tenant[]>([]);

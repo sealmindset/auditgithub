@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sparkles, Send, Loader2, Save, Check, MessageSquare, User, Bot, History, RotateCcw, Lightbulb } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { API_BASE } from "@/lib/api"
 
 interface ConversationMessage {
     role: 'user' | 'assistant'
@@ -56,7 +57,7 @@ export function AskAIDialog({ findingId, trigger, onDescriptionUpdated }: AskAID
     const fetchVersionHistory = async () => {
         setLoadingVersions(true)
         try {
-            const res = await fetch(`http://localhost:8000/findings/${findingId}/description-versions`)
+            const res = await fetch(`${API_BASE}/findings/${findingId}/description-versions`)
             if (res.ok) {
                 const data = await res.json()
                 setVersions(data.versions || [])
@@ -72,7 +73,7 @@ export function AskAIDialog({ findingId, trigger, onDescriptionUpdated }: AskAID
     const restoreVersion = async (versionId: string) => {
         setRestoringVersion(versionId)
         try {
-            const res = await fetch(`http://localhost:8000/findings/${findingId}/restore-description`, {
+            const res = await fetch(`${API_BASE}/findings/${findingId}/restore-description`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ version_id: versionId })
@@ -153,7 +154,7 @@ ${newAnalysis}
 
 *This description was enhanced by AI analysis. Review and validate findings before taking action.*`
 
-            const res = await fetch(`http://localhost:8000/findings/${findingId}`, {
+            const res = await fetch(`${API_BASE}/findings/${findingId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -198,7 +199,7 @@ ${newAnalysis}
                 ? `${currentPrompt}\n\nIMPORTANT: Generate a complete, standalone revised description that incorporates this request. The response should be a full security analysis description, not just the additions.`
                 : currentPrompt
             
-            const response = await fetch("http://localhost:8000/ai/analyze-finding", {
+            const response = await fetch(`${API_BASE}/ai/analyze-finding`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ finding_id: findingId, prompt: apiPrompt || undefined }),
@@ -288,7 +289,7 @@ ${analysis}
 
 *This description was enhanced by AI analysis. Review and validate findings before taking action.*`
 
-            const res = await fetch(`http://localhost:8000/findings/${findingId}`, {
+            const res = await fetch(`${API_BASE}/findings/${findingId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

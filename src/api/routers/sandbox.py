@@ -37,10 +37,10 @@ def list_sandbox_keys(db: Session = Depends(get_db)):
             "key": k.key_value,
             "description": k.description,
             "examples": {
-                "curl": f'curl -H "X-API-Key: {k.key_value}" http://localhost:8001/api/repositories',
+                "curl": f'curl -H "X-API-Key: {k.key_value}" {os.getenv("SANDBOX_API_URL", "http://localhost:8001")}/api/repositories',
                 "python": (
                     f'import requests\n'
-                    f'r = requests.get("http://localhost:8001/api/repositories",\n'
+                    f'r = requests.get("{os.getenv("SANDBOX_API_URL", "http://localhost:8001")}/api/repositories",\n'
                     f'    headers={{"X-API-Key": "{k.key_value}"}})\n'
                     f'print(r.json())'
                 ),

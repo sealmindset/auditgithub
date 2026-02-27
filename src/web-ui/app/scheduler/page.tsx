@@ -13,8 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { ScanActivityGraph } from "@/components/ScanActivityGraph"
 import { TodayScansPanel } from "@/components/TodayScansPanel"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 // Schedule type from API
 interface Schedule {

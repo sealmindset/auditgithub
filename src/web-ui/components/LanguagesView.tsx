@@ -6,6 +6,7 @@ import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Loader2 } from "lucide-react"
+import { API_BASE } from "@/lib/api"
 
 interface LanguageStat {
     name: string
@@ -24,8 +25,6 @@ interface LanguageStat {
 interface LanguagesViewProps {
     projectId: string
 }
-
-const API_BASE = "http://localhost:8000"
 
 export function LanguagesView({ projectId }: LanguagesViewProps) {
     const [languages, setLanguages] = useState<LanguageStat[]>([])

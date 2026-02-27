@@ -18,8 +18,7 @@ import { LanguagesView } from "@/components/LanguagesView"
 import { SbomView } from "@/components/SbomView"
 import { APIAuditView } from "@/components/APIAuditView"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 export default function ProjectPage() {
     const params = useParams()

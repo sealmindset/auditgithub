@@ -17,8 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, ShieldOff, Trash2, AlertTriangle, Copy, Check } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface ExceptionDialogProps {
     finding: any

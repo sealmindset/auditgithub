@@ -24,8 +24,7 @@ import { formatDistanceToNow } from "date-fns"
 import { CreateApiKeyDialog } from "@/components/api-keys/CreateApiKeyDialog"
 import { RevokeApiKeyDialog } from "@/components/api-keys/RevokeApiKeyDialog"
 import { RotateApiKeyDialog } from "@/components/api-keys/RotateApiKeyDialog"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface ApiKeyItem {
   id: string

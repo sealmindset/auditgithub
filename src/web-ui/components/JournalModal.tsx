@@ -38,8 +38,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface JournalEntry {
   id: string

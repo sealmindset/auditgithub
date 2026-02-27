@@ -20,8 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, AlertCircle, Lock, Unlock } from "lucide-react"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface Schedule {
   id: string

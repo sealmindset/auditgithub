@@ -42,6 +42,10 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 
+import { useAuth } from "@/contexts/AuthContext"
+import { requiredRoleForPath, meetsMinimumRole } from "@/lib/rbac"
+import { UserNav } from "@/components/UserNav"
+
 interface NavSubItem {
     title: string
     url: string
@@ -147,6 +151,36 @@ function isPathActive(pathname: string, itemUrl: string): boolean {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const pathname = usePathname()
     const [zdaOpen, setZdaOpen] = React.useState(true)
+    const { user } = useAuth()
+
+    const userRole = user?.role ?? "user"
+
+    /** Filter nav items by the user's role. */
+    const filteredGroups = React.useMemo(() => {
+        return data.navMain
+            .map((group) => {
+                const filteredItems = group.items.reduce<NavItem[]>((acc, item) => {
+                    if (item.isExpandable && item.items) {
+                        // For expandable items, filter children first
+                        const visibleChildren = item.items.filter((sub) =>
+                            meetsMinimumRole(userRole, requiredRoleForPath(sub.url)),
+                        )
+                        // Only show parent if at least one child is visible
+                        if (visibleChildren.length > 0) {
+                            acc.push({ ...item, items: visibleChildren })
+                        }
+                    } else if (item.url) {
+                        if (meetsMinimumRole(userRole, requiredRoleForPath(item.url))) {
+                            acc.push(item)
+                        }
+                    }
+                    return acc
+                }, [])
+
+                return { ...group, items: filteredItems }
+            })
+            .filter((group) => group.items.length > 0)
+    }, [userRole])
 
     return (
         <Sidebar {...props}>
@@ -157,7 +191,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </div>
             </SidebarHeader>
             <SidebarContent>
-                {data.navMain.map((group) => (
+                {filteredGroups.map((group) => (
                     <SidebarGroup key={group.title}>
                         <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
                         <SidebarGroupContent>
@@ -210,6 +244,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     </SidebarGroup>
                 ))}
             </SidebarContent>
+            <UserNav />
             <SidebarRail />
         </Sidebar>
     )

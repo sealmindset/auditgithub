@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, LayoutGrid, List, Clock, FileCode, Archive, ShieldAlert } from "lucide-react"
 import Link from "next/link"
 import { ProjectScorecard } from "@/components/project-scorecard"
-
-const API_BASE = "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface Finding {
     id: string

@@ -23,8 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Loader2, Copy, Check, AlertTriangle, ChevronRight, ChevronLeft } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+import { API_BASE } from "@/lib/api"
 
 interface ToolCategory {
   display_name: string

@@ -4,6 +4,8 @@ Invitation Management API
 Endpoints for admins to manage user invitations.
 Allows sending, listing, and revoking invitations.
 """
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
@@ -167,8 +169,8 @@ async def send_invitation(
         )
 
         # Generate invitation link
-        # TODO: Get base URL from settings
-        invitation_link = f"http://localhost:3000/invite/{invitation.invite_token}"
+        app_url = os.getenv("APP_URL", "http://localhost:3000")
+        invitation_link = f"{app_url}/invite/{invitation.invite_token}"
 
         return SendInvitationResponse(
             message="Invitation sent successfully",
