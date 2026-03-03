@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "agh-cli"
+version = "0.1.0"
+description = "AuditGH security scanning CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "requests>=2.28.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+agh = "agh_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agh_cli*", "agh_config*", "agh_formatters*"]
+
+[tool.setuptools.py-modules]
+modules = ["agh_cli", "agh_config", "agh_formatters"]

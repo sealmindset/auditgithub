@@ -1,0 +1,27 @@
+# AGH Pre-Commit Hooks
+# Install: pip install pre-commit && pre-commit install --hook-type pre-commit --hook-type pre-push
+#
+# Hooks:
+#   agh-secrets (pre-commit): Scans staged files for secrets via gitleaks (~2-5s)
+#   agh-policy  (pre-push):   Full policy gate evaluation before push
+
+repos:
+  - repo: local
+    hooks:
+      - id: agh-secrets
+        name: AGH Secrets Scan
+        entry: gitleaks detect --source . --no-git --verbose
+        language: system
+        stages: [pre-commit]
+        pass_filenames: false
+        always_run: true
+        description: Scan staged files for secrets using gitleaks
+
+      - id: agh-policy
+        name: AGH Policy Check
+        entry: python3 cli/agh_cli.py policy check
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+        description: Evaluate security policy gates before push

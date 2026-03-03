@@ -1,0 +1,127 @@
+{
+  "name": "auditgh",
+  "displayName": "AuditGH Security Scanner",
+  "description": "Inline security findings, policy gates, and AGH server integration for VS Code",
+  "version": "0.1.0",
+  "publisher": "auditgh",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Testing",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "sast",
+    "secrets",
+    "vulnerability",
+    "iac",
+    "scanning"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agh.scanCurrentFile",
+        "title": "AGH: Scan Current File"
+      },
+      {
+        "command": "agh.scanWorkspace",
+        "title": "AGH: Scan Workspace"
+      },
+      {
+        "command": "agh.showFindings",
+        "title": "AGH: Show Findings"
+      },
+      {
+        "command": "agh.fetchServerFindings",
+        "title": "AGH: Fetch Server Findings"
+      },
+      {
+        "command": "agh.login",
+        "title": "AGH: Login"
+      },
+      {
+        "command": "agh.checkPolicy",
+        "title": "AGH: Check Policy"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agh-explorer",
+          "title": "AuditGH",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "agh-explorer": [
+        {
+          "id": "agh.findingsTree",
+          "name": "Findings",
+          "type": "tree"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AuditGH",
+      "properties": {
+        "agh.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "AGH API server URL"
+        },
+        "agh.organizationId": {
+          "type": "string",
+          "default": "",
+          "description": "AGH Organization ID"
+        },
+        "agh.autoScanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically scan files on save"
+        },
+        "agh.scanners": {
+          "type": "array",
+          "default": [
+            "gitleaks",
+            "semgrep",
+            "bandit",
+            "checkov",
+            "trivy"
+          ],
+          "items": {
+            "type": "string",
+            "enum": [
+              "gitleaks",
+              "semgrep",
+              "bandit",
+              "checkov",
+              "trivy"
+            ]
+          },
+          "description": "Scanners to use for local scanning"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
