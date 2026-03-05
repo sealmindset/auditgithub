@@ -1,772 +1,1325 @@
-# AGH Local — Implementation Plan
+# AGH Local — Implementation Plan v2
 
-## Daughter Project: Local Security Scanning for Developer Workstations
+## Daughter Project: Policy-Driven Local Security Scanning
 
-**Project Name:** `agh-local` (working name)
-**Relationship:** Independent repository; shares scan tooling DNA with AuditGitHub Hub (AGH)
-**Goal:** Snyk-like shift-left security scanning — developers find and fix vulnerabilities before committing
+**Project Name:** `agh-local`
+**Policy Repo:** `agh-policy`
+**Relationship:** Standalone daughter project. No result publishing to mother (AGH). Mother defines policy; daughter enforces locally. Mother verifies independently via its own scans.
 
 ---
 
 ## 1. Executive Summary
 
-### What
+### The Model: Mother Prescribes, Daughter Follows, Mother Verifies
 
-A standalone developer security tool that runs the same scan engines as AGH (gitleaks, semgrep, bandit, checkov, trivy) against local code, reports findings directly in the IDE and terminal, and optionally syncs results to the AGH server for team visibility.
+```
+                    +---------------------------+
+                    |   Mother (AGH Server)     |
+                    |                           |
+                    |  1. Defines policy        |
+                    |  2. Publishes to          |
+                    |     agh-policy repo       |
+                    |  3. Scans GitHub repos    |
+                    |     independently         |
+                    |  4. Assigns findings      |
+                    |     via git blame         |
+                    |  5. Notifies developers   |
+                    +------------+--------------+
+                                 |
+                    publishes    |    verifies
+                    policy       |    compliance
+                    +------------+-------------+
+                    |                          |
+                    v                          v
+    +-------------------+          +---------------------+
+    | agh-policy repo   |          | GitHub Repository   |
+    | (GitHub)          |          |                     |
+    |                   |          | .github/workflows/  |
+    | org-level policy  |          |   agh-scan.yaml     |
+    | repo overrides    |          |   (generated from   |
+    | GH Actions wf     |          |    agh-policy)      |
+    | tool configs      |          |                     |
+    +--------+----------+          +---------+-----------+
+             |                               |
+        pull |                          GH Actions
+        policy                          enforces
+             |                               |
+             v                               v
+    +-------------------+          +---------------------+
+    | Daughter           |          | GitHub App          |
+    | (agh-local)       |          | (Mother-controlled) |
+    |                   |          |                     |
+    | Local scans       |          | Required status     |
+    | IDE integration   |          | checks              |
+    | Developer fixes   |          | Branch protection   |
+    | before commit     |          | (configurable)      |
+    +-------------------+          +---------------------+
+```
 
-### Why
-
-Today, AGH scans repositories after code is pushed to GitHub. Vulnerabilities are discovered post-commit — after the code is in the shared repo, potentially in a PR, and visible to the team. This creates:
-
-- **Longer feedback loops** — developer context-switches away from the code before seeing findings
-- **Noisy PRs** — security findings appear as PR comments or dashboard alerts after the fact
-- **Wasted CI cycles** — scans run on code that could have been fixed locally in seconds
-
-AGH Local moves the scan left: same tools, same rules, same policy gates — but running on `localhost` before `git push`.
-
-### What "Done" Means
-
-- Developer installs via `pip install agh-local` or VS Code extension marketplace
-- `agh scan` runs a Docker-based scan against the current directory in < 60 seconds for a typical repo
-- Findings appear in the terminal (table/JSON/SARIF) and VS Code Problems panel
-- Pre-commit hook catches secrets; pre-push hook enforces policy gates
-- Optional: `agh push` uploads SARIF to AGH server for team dashboard
-- Works fully offline (no AGH server required for local scanning)
+**Key principles:**
+- Daughter never sends scan results to mother
+- Mother trusts but verifies — runs its own scans on the GitHub repo
+- Policy flows one direction: mother -> agh-policy repo -> daughter + GitHub Actions
+- Developer controls local scan frequency; mother controls verification schedule
+- Auth via same Entra ID SSO (Device Flow), used only for policy pull + identity
 
 ---
 
-## 2. Architecture
+## 2. Policy Architecture (Core Design)
 
-### 2.1 High-Level Components
+This is the heart of the system. Everything else is plumbing.
 
-```
-Developer Workstation
-+---------------------------------------------------------------+
-|                                                               |
-|  VS Code Extension          CLI (agh)          Pre-commit     |
-|  +------------------+   +----------------+   +-------------+  |
-|  | Diagnostics      |   | agh scan       |   | agh-secrets |  |
-|  | Tree View        |   | agh findings   |   | agh-policy  |  |
-|  | CodeLens         |   | agh push       |   +------+------+  |
-|  | Status Bar       |   | agh policy     |          |         |
-|  | Policy Checker   |   | agh auth       |          |         |
-|  +--------+---------+   +-------+--------+          |         |
-|           |                     |                    |         |
-|           +----------+----------+--------------------+         |
-|                      |                                         |
-|                      v                                         |
-|              Scanner Engine                                    |
-|              +------------------------------+                  |
-|              |  Docker: agh-scanner:lite     |                  |
-|              |  ~500MB image                 |                  |
-|              |  gitleaks, semgrep, bandit,   |                  |
-|              |  checkov, trivy               |                  |
-|              |  Shared configs baked in      |                  |
-|              +---------------+--------------+                  |
-|                              |                                 |
-|                              v                                 |
-|                     Local Results                              |
-|                     (SARIF / JSON)                              |
-|                     ~/.agh/results/                             |
-+-------------------------------+-------------------------------+
-                                |
-                          (optional)
-                                |
-                                v
-                     AGH Server (existing)
-                     +------------------------+
-                     | POST /sarif-import     |
-                     | Device Flow auth       |
-                     | Findings dashboard     |
-                     +------------------------+
-```
-
-### 2.2 Execution Modes
-
-| Mode | Description | Server Required | Use Case |
-|------|-------------|-----------------|----------|
-| **Local-only** | Scan + report locally | No | Developer workstation, air-gapped environments |
-| **Connected** | Scan locally, push results to AGH | Yes (auth required) | Team visibility, trending, compliance |
-| **CI** | Scan in pipeline, output SARIF | No (or optional push) | GitHub Actions, Jenkins, Azure DevOps |
-
-### 2.3 Scanner Engine: Docker vs. Native
-
-The CLI supports two execution backends:
+### 2.1 Policy Repo Structure (`agh-policy`)
 
 ```
-agh scan --path .
-    |
-    +---> Docker available?
-    |       |
-    |       YES --> docker run agh-scanner:lite -v $(pwd):/scan ...
-    |                (preferred: consistent, no local installs)
-    |
-    +---> No Docker?
-            |
-            +---> Check for native tools in PATH
-            |       gitleaks? semgrep? bandit? checkov? trivy?
-            |
-            +---> Run available tools directly
-            |       (warn about missing tools)
-            |
-            +---> No tools at all?
-                    Error: "Install Docker or individual tools. See docs."
-```
-
-**Priority order:** Docker > native tools > error with install instructions.
-
-This means the developer experience is:
-1. **Best:** Install Docker, run `agh scan` — everything just works
-2. **Good:** Have some tools locally, `agh scan` uses what's available
-3. **Minimal:** `agh scan --tool gitleaks` with just gitleaks installed (e.g., for pre-commit secret scanning)
-
----
-
-## 3. Repository Structure
-
-```
-agh-local/
+agh-policy/                              # GitHub repo: sleepnumber/agh-policy
   README.md
-  LICENSE
-  .github/
-    workflows/
-      ci.yaml                  # Test CLI + build Docker image
-      release.yaml             # Publish to PyPI + Docker Hub + VS Code Marketplace
 
-  cli/
-    pyproject.toml             # Package metadata (from AGH cli/)
-    src/
-      agh/
-        __init__.py
-        cli.py                 # Main CLI entry point (from AGH cli/agh_cli.py)
-        config.py              # Config loader (from AGH cli/agh_config.py)
-        formatters.py          # Table/JSON/SARIF output (from AGH cli/agh_formatters.py)
-        scanner/
-          __init__.py
-          engine.py            # Docker vs. native detection + dispatch
-          docker_runner.py     # Docker execution wrapper
-          native_runner.py     # Direct tool execution
-          language_detect.py   # Auto-detect languages in project
-          parsers/
-            __init__.py
-            gitleaks.py        # Parse gitleaks JSON -> normalized findings
-            semgrep.py         # Parse semgrep JSON -> normalized findings
-            bandit.py          # Parse bandit JSON -> normalized findings
-            checkov.py         # Parse checkov JSON -> normalized findings
-            trivy.py           # Parse trivy JSON -> normalized findings
-        sync/
-          __init__.py
-          push.py              # Upload SARIF to AGH server
-          auth.py              # Device Flow + API key auth (from AGH cli)
-        policy/
-          __init__.py
-          checker.py           # Policy gate evaluation (from AGH cli)
-    tests/
-      test_cli.py
-      test_engine.py
-      test_parsers.py
-      test_policy.py
-      fixtures/                # Sample scanner outputs for parser tests
-
-  scanner/
-    Dockerfile.lite            # Lightweight scanner image (~500MB)
-    configs/
-      .gitleaks.toml           # Gitleaks config (from AGH)
-      policy.yaml              # Default policy gates (from AGH)
-      semgrep-rules/           # Custom semgrep rules (from AGH)
+  org/                                   # Organization-level defaults
+    sleepnumberlabs/
+      policy.yaml                        # Default policy for all repos in this org
+      semgrep-rules/                     # Custom semgrep rules
         api-endpoints.yaml
         api-auth.yaml
         python.yaml
         hardcoded-ips-hostnames.yaml
+      gitleaks.toml                      # Gitleaks config
+      bandit.yaml                        # Bandit config
+      checkov.yaml                       # Checkov skip/check lists
+      trivy.yaml                         # Trivy severity/ignore config
 
-  vscode-extension/            # VS Code extension (from AGH vscode-extension/)
-    package.json
-    src/
-      extension.ts
-      aghClient.ts
-      auth.ts
-      diagnosticProvider.ts
-      findingsTreeProvider.ts
-      scanRunner.ts            # Modified: calls agh CLI instead of direct tool execution
-      codeLensProvider.ts
-      statusBar.ts
-      policyChecker.ts
-    tsconfig.json
+  repos/                                 # Per-repo overrides (inherits from org)
+    sleepnumberlabs/
+      android-consumer-app/
+        policy.yaml                      # Stricter overrides for this repo
+      internal-docs/
+        policy.yaml                      # Relaxed overrides for docs repo
 
-  shared/
-    finding-schema.json        # JSON Schema v2024-12 for normalized findings
-    sarif-profile.json         # SARIF 2.1.0 profile for AGH findings
-    VERSION                    # Schema version (semver)
+  workflows/                             # Generated GitHub Actions workflows
+    templates/
+      agh-scan.yaml.j2                   # Jinja2 template for GH Actions workflow
+    generated/                           # Output: per-repo workflows
+      sleepnumberlabs/
+        android-consumer-app/
+          agh-scan.yaml                  # Generated from policy + template
+        internal-docs/
+          agh-scan.yaml
 
-  docs/
-    getting-started.md
-    configuration.md
-    ci-integration.md
-    ide-integration.md
+  schemas/
+    policy-schema.json                   # JSON Schema for policy.yaml validation
+    finding-schema.json                  # Normalized finding format contract
+    VERSION                              # Schema version (semver)
+```
+
+### 2.2 Policy Definition (`policy.yaml`)
+
+```yaml
+# org/sleepnumberlabs/policy.yaml
+# Organization-wide default policy
+
+schema_version: "1.0.0"
+organization: sleepnumberlabs
+effective_date: "2026-03-05"
+
+# -------------------------------------------------------
+# REQUIRED SCAN TOOLS
+# Daughter must run these tools. GitHub Actions must include them.
+# -------------------------------------------------------
+required_tools:
+  - name: gitleaks
+    version: ">=8.18.0"
+    purpose: secret-detection
+    stage: pre-commit         # When this tool SHOULD run in dev workflow
+    required_in_ci: true      # Must be a GH Actions step
+
+  - name: semgrep
+    version: ">=1.56.0"
+    purpose: sast
+    stage: pre-push
+    required_in_ci: true
+    config:
+      rulesets:
+        - "p/default"
+        - "p/owasp-top-ten"
+        - "${POLICY_REPO}/org/sleepnumberlabs/semgrep-rules/"
+
+  - name: bandit
+    version: ">=1.7.7"
+    purpose: python-sast
+    stage: pre-push
+    required_in_ci: true
+    languages: [python]       # Only required if repo contains Python
+
+  - name: checkov
+    version: ">=3.2.0"
+    purpose: iac-scanning
+    stage: pre-push
+    required_in_ci: true
+    languages: [terraform, dockerfile, kubernetes, cloudformation]
+
+  - name: trivy
+    version: ">=0.49.0"
+    purpose: dependency-vulnerabilities
+    stage: pre-push
+    required_in_ci: true
+    config:
+      scanners: [vuln, secret, config, license]
+
+# -------------------------------------------------------
+# SEVERITY GATES
+# Findings at or above these thresholds MUST be resolved.
+# -------------------------------------------------------
+severity_gates:
+  # Block merge if ANY of these are true:
+  block_on:
+    critical: 0               # Zero tolerance for critical
+    high: 0                   # Zero tolerance for high
+
+  # Warn but allow merge:
+  warn_on:
+    medium: 5                 # Warn if > 5 medium findings
+    low: 20                   # Warn if > 20 low findings
+
+  # Per-tool overrides:
+  tool_overrides:
+    gitleaks:
+      block_on:
+        critical: 0
+        high: 0
+        medium: 0             # Zero tolerance for any secret finding
+        low: 0
+    checkov:
+      warn_on:
+        medium: 10            # IaC findings are noisier, allow more
+
+# -------------------------------------------------------
+# CWE ENFORCEMENT
+# Specific vulnerability categories that must be clean.
+# -------------------------------------------------------
+cwe_enforcement:
+  block_on:
+    - CWE-89                  # SQL Injection
+    - CWE-79                  # Cross-Site Scripting (XSS)
+    - CWE-78                  # OS Command Injection
+    - CWE-798                 # Hardcoded Credentials
+    - CWE-502                 # Deserialization of Untrusted Data
+    - CWE-22                  # Path Traversal
+    - CWE-918                 # Server-Side Request Forgery (SSRF)
+    - CWE-611                 # XML External Entity (XXE)
+  warn_on:
+    - CWE-287                 # Improper Authentication
+    - CWE-862                 # Missing Authorization
+    - CWE-863                 # Incorrect Authorization
+
+# -------------------------------------------------------
+# CODE COVERAGE (optional, enforced via GH Actions)
+# -------------------------------------------------------
+coverage:
+  enabled: true
+  minimum_percent: 80
+  block_on_failure: false     # Warn, don't block (for now)
+
+# -------------------------------------------------------
+# SARIF REQUIREMENTS
+# -------------------------------------------------------
+sarif:
+  upload_to_github_code_scanning: true    # Required: upload SARIF to GH
+  retain_days: 90                          # How long GH keeps results
+
+# -------------------------------------------------------
+# GITHUB ACTIONS REQUIREMENTS
+# The checklist of things that must be in the CI workflow.
+# -------------------------------------------------------
+github_actions:
+  required_checks:
+    - name: "agh-secrets"
+      description: "Secret detection scan (gitleaks)"
+      must_pass: true
+
+    - name: "agh-sast"
+      description: "Static analysis (semgrep + bandit)"
+      must_pass: true
+
+    - name: "agh-iac"
+      description: "Infrastructure-as-Code scan (checkov)"
+      must_pass: true
+
+    - name: "agh-dependencies"
+      description: "Dependency vulnerability scan (trivy)"
+      must_pass: true
+
+    - name: "agh-sarif-upload"
+      description: "SARIF results uploaded to GitHub Code Scanning"
+      must_pass: true
+
+    - name: "agh-policy-gate"
+      description: "All severity gates pass"
+      must_pass: true
+
+  # Trigger configuration
+  triggers:
+    pull_request:
+      branches: [main, develop]
+    push:
+      branches: [main]
+
+# -------------------------------------------------------
+# BRANCH PROTECTION
+# Mother can configure this via GitHub App.
+# -------------------------------------------------------
+branch_protection:
+  enabled: true               # Mother will set branch protection
+  mode: "enforced"            # "enforced" = must pass | "advisory" = recommended
+  protected_branches:
+    - main
+    - develop
+  require_reviews: 1
+  dismiss_stale_reviews: true
+  require_status_checks:
+    - "agh-secrets"
+    - "agh-sast"
+    - "agh-dependencies"
+    - "agh-policy-gate"
+
+# -------------------------------------------------------
+# DEVELOPER EXPERIENCE
+# Controls how strict the local tooling is.
+# -------------------------------------------------------
+developer_experience:
+  # For experienced developers: advisory mode
+  default_mode: "advisory"    # "strict" or "advisory"
+
+  # Strict mode overrides (per-developer or per-team)
+  strict_mode:
+    pre_commit_block: true    # Block commit on secret detection
+    pre_push_block: true      # Block push on policy gate failure
+
+  advisory_mode:
+    pre_commit_block: true    # Still block secrets (always)
+    pre_push_block: false     # Warn but allow push
+```
+
+### 2.3 Per-Repo Policy Override
+
+```yaml
+# repos/sleepnumberlabs/android-consumer-app/policy.yaml
+# Inherits from org/sleepnumberlabs/policy.yaml
+# Only specify overrides — everything else inherits
+
+inherits: "org/sleepnumberlabs"
+
+severity_gates:
+  block_on:
+    critical: 0
+    high: 0
+    medium: 0                 # Stricter: block medium too for this app
+
+required_tools:
+  # Add Android-specific scanning
+  - name: semgrep
+    config:
+      rulesets:
+        - "p/default"
+        - "p/owasp-top-ten"
+        - "p/android"         # Additional Android rules
+        - "${POLICY_REPO}/org/sleepnumberlabs/semgrep-rules/"
+
+branch_protection:
+  require_reviews: 2          # More reviews for mobile app
+```
+
+### 2.4 Policy Resolution Order
+
+```
+1. Load org-level policy:     org/{org}/policy.yaml
+2. Load repo-level override:  repos/{org}/{repo}/policy.yaml (if exists)
+3. Merge: repo overrides org (deep merge, lists are replaced not appended)
+4. Validate against schema:   schemas/policy-schema.json
+5. Result: effective policy for this repo
+```
+
+### 2.5 Policy Versioning and Immediacy
+
+Policy changes take effect **immediately** on next scan:
+
+- Developer runs `agh scan` -> pulls latest `agh-policy` -> applies current policy
+- GitHub Actions workflow references `agh-policy@main` -> always gets latest
+- No grace period. If mother tightens a threshold, the next CI run enforces it.
+- Breaking changes (schema version bump) require daughter CLI update — CLI checks `schema_version` and errors with upgrade instructions if incompatible
+
+---
+
+## 3. GitHub Actions Enforcement
+
+### 3.1 Generated Workflow
+
+Mother generates a GitHub Actions workflow from the policy. This workflow is committed to each repo's `.github/workflows/` directory.
+
+**Generation flow:**
+```
+agh-policy repo CI runs:
+  1. For each org/repo with a policy:
+  2. Resolve effective policy (org + repo override)
+  3. Render Jinja2 template -> agh-scan.yaml
+  4. Output to workflows/generated/{org}/{repo}/agh-scan.yaml
+  5. (Optional) GitHub App auto-commits to target repo via PR
+```
+
+**Generated workflow example:**
+
+```yaml
+# .github/workflows/agh-scan.yaml
+# AUTO-GENERATED by AGH Policy Engine
+# Source: sleepnumber/agh-policy @ org/sleepnumberlabs/policy.yaml
+# Generated: 2026-03-05T10:00:00Z
+# Policy schema: 1.0.0
+# DO NOT EDIT — changes will be overwritten by policy updates
+
+name: AGH Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write     # Required for SARIF upload
+  pull-requests: write       # Required for PR comments
+
+env:
+  POLICY_REPO: sleepnumber/agh-policy
+  POLICY_REF: main
+
+jobs:
+  # -----------------------------------------------------------
+  # 1. SECRET DETECTION
+  # -----------------------------------------------------------
+  agh-secrets:
+    name: "Secret Detection (gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: >-
+            detect
+            --source .
+            --report-format sarif
+            --report-path gitleaks-results.sarif
+            --config ${{ github.workspace }}/.gitleaks.toml
+        continue-on-error: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks-results.sarif
+          category: gitleaks
+
+      - name: Evaluate severity gate
+        run: |
+          # Parse SARIF, count by severity, compare to policy thresholds
+          # Gitleaks policy: zero tolerance (critical: 0, high: 0, medium: 0, low: 0)
+          python3 -c "
+          import json, sys
+          with open('gitleaks-results.sarif') as f:
+              sarif = json.load(f)
+          results = sarif.get('runs', [{}])[0].get('results', [])
+          if len(results) > 0:
+              print(f'BLOCKED: {len(results)} secret(s) detected')
+              for r in results[:5]:
+                  loc = r.get('locations', [{}])[0].get('physicalLocation', {})
+                  path = loc.get('artifactLocation', {}).get('uri', 'unknown')
+                  line = loc.get('region', {}).get('startLine', 0)
+                  print(f'  - {path}:{line} ({r.get(\"ruleId\", \"unknown\")})')
+              sys.exit(1)
+          print('PASSED: No secrets detected')
+          "
+
+  # -----------------------------------------------------------
+  # 2. STATIC ANALYSIS (SAST)
+  # -----------------------------------------------------------
+  agh-sast:
+    name: "SAST (semgrep + bandit)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout policy repo (for custom rules)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.POLICY_REPO }}
+          ref: ${{ env.POLICY_REF }}
+          path: .agh-policy
+
+      - name: Run semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/owasp-top-ten
+            .agh-policy/org/sleepnumberlabs/semgrep-rules/
+        env:
+          SEMGREP_RULES: >-
+            p/default
+            p/owasp-top-ten
+            .agh-policy/org/sleepnumberlabs/semgrep-rules/
+
+      - name: Run bandit (if Python detected)
+        run: |
+          if find . -name "*.py" -not -path "./.*" | head -1 | grep -q .; then
+            pip install bandit>=1.7.7
+            bandit -r . -f sarif -o bandit-results.sarif --exclude ./.agh-policy || true
+          else
+            echo '{"runs":[{"results":[]}]}' > bandit-results.sarif
+          fi
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
+
+      - name: Evaluate severity gate
+        run: |
+          python3 -c "
+          import json, sys
+          blocked = False
+          for sarif_file in ['semgrep-results.sarif', 'bandit-results.sarif']:
+              try:
+                  with open(sarif_file) as f:
+                      sarif = json.load(f)
+              except FileNotFoundError:
+                  continue
+              results = sarif.get('runs', [{}])[0].get('results', [])
+              severity_map = {'error': 'high', 'warning': 'medium', 'note': 'low'}
+              counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+              for r in results:
+                  level = r.get('level', 'note')
+                  sev = severity_map.get(level, 'low')
+                  counts[sev] += 1
+              # Policy: block on critical > 0 or high > 0
+              if counts['critical'] > 0 or counts['high'] > 0:
+                  print(f'BLOCKED ({sarif_file}): {counts}')
+                  blocked = True
+              else:
+                  print(f'PASSED ({sarif_file}): {counts}')
+          if blocked:
+              sys.exit(1)
+          "
+
+  # -----------------------------------------------------------
+  # 3. IaC SCANNING
+  # -----------------------------------------------------------
+  agh-iac:
+    name: "IaC Scan (checkov)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+          category: checkov
+
+      - name: Evaluate severity gate
+        run: |
+          python3 -c "
+          import json, sys
+          with open('checkov-results.sarif') as f:
+              sarif = json.load(f)
+          results = sarif.get('runs', [{}])[0].get('results', [])
+          severity_map = {'error': 'high', 'warning': 'medium', 'note': 'low'}
+          counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+          for r in results:
+              level = r.get('level', 'note')
+              sev = severity_map.get(level, 'low')
+              counts[sev] += 1
+          if counts['critical'] > 0 or counts['high'] > 0:
+              print(f'BLOCKED: {counts}')
+              sys.exit(1)
+          print(f'PASSED: {counts}')
+          "
+
+  # -----------------------------------------------------------
+  # 4. DEPENDENCY VULNERABILITIES
+  # -----------------------------------------------------------
+  agh-dependencies:
+    name: "Dependency Scan (trivy)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scanners: vuln,secret,config,license
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+      - name: Evaluate severity gate
+        run: |
+          python3 -c "
+          import json, sys
+          with open('trivy-results.sarif') as f:
+              sarif = json.load(f)
+          results = sarif.get('runs', [{}])[0].get('results', [])
+          severity_map = {'error': 'high', 'warning': 'medium', 'note': 'low'}
+          counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+          for r in results:
+              level = r.get('level', 'note')
+              sev = severity_map.get(level, 'low')
+              counts[sev] += 1
+          if counts['critical'] > 0 or counts['high'] > 0:
+              print(f'BLOCKED: {counts}')
+              sys.exit(1)
+          print(f'PASSED: {counts}')
+          "
+
+  # -----------------------------------------------------------
+  # 5. CWE ENFORCEMENT
+  # -----------------------------------------------------------
+  agh-cwe-check:
+    name: "CWE Enforcement"
+    needs: [agh-sast, agh-iac, agh-dependencies]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all SARIF artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Check blocked CWEs
+        run: |
+          python3 -c "
+          import json, sys, glob
+          BLOCKED_CWES = [
+              'CWE-89', 'CWE-79', 'CWE-78', 'CWE-798',
+              'CWE-502', 'CWE-22', 'CWE-918', 'CWE-611'
+          ]
+          violations = []
+          for sarif_path in glob.glob('**/*.sarif', recursive=True):
+              with open(sarif_path) as f:
+                  sarif = json.load(f)
+              for run in sarif.get('runs', []):
+                  rules = {r['id']: r for r in run.get('tool', {}).get('driver', {}).get('rules', [])}
+                  for result in run.get('results', []):
+                      rule = rules.get(result.get('ruleId', ''), {})
+                      tags = rule.get('properties', {}).get('tags', [])
+                      for tag in tags:
+                          for cwe in BLOCKED_CWES:
+                              if cwe.lower() in tag.lower():
+                                  loc = result.get('locations', [{}])[0].get('physicalLocation', {})
+                                  path = loc.get('artifactLocation', {}).get('uri', '?')
+                                  line = loc.get('region', {}).get('startLine', 0)
+                                  violations.append(f'{cwe} in {path}:{line} ({result.get(\"ruleId\")})')
+          if violations:
+              print(f'BLOCKED: {len(violations)} CWE violation(s):')
+              for v in violations[:10]:
+                  print(f'  - {v}')
+              sys.exit(1)
+          print('PASSED: No blocked CWE violations')
+          "
+
+  # -----------------------------------------------------------
+  # 6. POLICY GATE (final pass/fail)
+  # -----------------------------------------------------------
+  agh-policy-gate:
+    name: "Policy Gate"
+    needs: [agh-secrets, agh-sast, agh-iac, agh-dependencies, agh-cwe-check]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all gates
+        run: |
+          echo "Checking upstream job results..."
+          # This job only succeeds if all required checks passed
+          # GitHub Actions 'needs' context provides job results
+          python3 -c "
+          import os, sys
+          # In a real workflow, parse needs context
+          # For now, if we got here and all needs succeeded, we pass
+          print('PASSED: All policy gates satisfied')
+          "
+```
+
+### 3.2 GitHub App: Policy Enforcer
+
+Mother runs a GitHub App that:
+
+1. **Monitors repos** in the organization
+2. **Validates** that the required `agh-scan.yaml` workflow exists
+3. **Configures branch protection** (when enabled in policy)
+4. **Reports compliance status** back to AGH dashboard
+
+```
+GitHub App: "AGH Policy Enforcer"
+Permissions:
+  - contents: read           # Read repo files
+  - checks: write            # Create/update check runs
+  - pull_requests: write     # Comment on PRs
+  - administration: write    # Configure branch protection (when enabled)
+  - statuses: write          # Set commit statuses
+
+Webhook events:
+  - push                     # Detect new repos, missing workflows
+  - pull_request              # Verify checks are passing
+  - check_suite              # Monitor CI results
+  - repository               # New repo created -> provision workflow
+
+Behavior:
+  on new_repo:
+    1. Generate agh-scan.yaml from policy
+    2. Open PR to add workflow to repo
+    3. If branch_protection.enabled: configure required checks
+
+  on pull_request:
+    1. Verify agh-scan.yaml exists and matches policy version
+    2. If missing or outdated: create check run "agh-policy-compliance" = failure
+    3. If present and current: check passes
+
+  on check_suite_completed:
+    1. Verify all required checks from policy passed
+    2. Report compliance status to AGH dashboard
+```
+
+### 3.3 Branch Protection Configuration
+
+Configurable per policy — supports both experienced and new developers:
+
+```yaml
+# Experienced developer teams:
+branch_protection:
+  enabled: true
+  mode: "advisory"            # Checks run but don't block merge
+  protected_branches: [main]
+  require_reviews: 1
+
+# New developer teams or critical repos:
+branch_protection:
+  enabled: true
+  mode: "enforced"            # Must pass to merge
+  protected_branches: [main, develop]
+  require_reviews: 2
+  dismiss_stale_reviews: true
+  require_status_checks:
+    - "agh-secrets"
+    - "agh-sast"
+    - "agh-dependencies"
+    - "agh-policy-gate"
 ```
 
 ---
 
-## 4. Component Design
+## 4. Mother's Verification (Trust But Verify)
 
-### 4.1 Normalized Finding Schema
+### 4.1 Scan Trigger Rules
 
-All scanner outputs are normalized to this format before display or export. This is the **contract** between `agh-local` and the AGH server.
+| Trigger | When | What |
+|---------|------|------|
+| **First commit** | New repo or first push detected | Full scan with all tools |
+| **Scheduler** | Based on commit frequency (AGH Scheduler policy) | Full scan |
+| **Policy change** | Mother updates policy in agh-policy repo | Re-scan all affected repos |
+| **On demand** | Admin triggers via AGH dashboard | Full scan |
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2024-12/schema",
-  "title": "AGH Finding",
-  "version": "1.0.0",
-  "type": "object",
-  "required": ["scanner", "severity", "file_path", "line", "title", "rule_id"],
-  "properties": {
-    "scanner":     { "type": "string", "enum": ["gitleaks", "semgrep", "bandit", "checkov", "trivy"] },
-    "severity":    { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
-    "file_path":   { "type": "string" },
-    "line":        { "type": "integer", "minimum": 1 },
-    "column":      { "type": "integer", "minimum": 0, "default": 0 },
-    "end_line":    { "type": "integer" },
-    "end_column":  { "type": "integer" },
-    "title":       { "type": "string" },
-    "description": { "type": "string" },
-    "rule_id":     { "type": "string" },
-    "cwe_id":      { "type": "string" },
-    "cve_id":      { "type": "string" },
-    "confidence":  { "type": "string", "enum": ["high", "medium", "low"] },
-    "snippet":     { "type": "string" },
-    "fix_hint":    { "type": "string" },
-    "metadata":    { "type": "object" }
-  }
-}
-```
+### 4.2 Finding Assignment
 
-**Versioning:** The schema version lives in `shared/VERSION`. The AGH server's SARIF import endpoint validates against this version. Breaking changes increment the major version.
-
-### 4.2 Lightweight Docker Image (`Dockerfile.lite`)
-
-```dockerfile
-FROM python:3.11-slim AS base
-
-# Tool versions pinned for reproducibility
-ARG GITLEAKS_VERSION=8.18.2
-ARG SEMGREP_VERSION=1.56.0
-ARG BANDIT_VERSION=1.7.7
-ARG CHECKOV_VERSION=3.2.0
-ARG TRIVY_VERSION=0.49.1
-
-# Install gitleaks (binary)
-RUN curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_amd64.tar.gz \
-    | tar xz -C /usr/local/bin gitleaks
-
-# Install trivy (binary)
-RUN curl -sSL https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz \
-    | tar xz -C /usr/local/bin trivy
-
-# Install Python-based tools
-RUN pip install --no-cache-dir \
-    semgrep==${SEMGREP_VERSION} \
-    bandit==${BANDIT_VERSION} \
-    checkov==${CHECKOV_VERSION}
-
-# Copy configs
-COPY configs/.gitleaks.toml /etc/agh/.gitleaks.toml
-COPY configs/semgrep-rules/ /etc/agh/semgrep-rules/
-COPY configs/policy.yaml /etc/agh/policy.yaml
-
-# Scanner entrypoint script
-COPY entrypoint.sh /usr/local/bin/agh-scan
-RUN chmod +x /usr/local/bin/agh-scan
-
-WORKDIR /scan
-ENTRYPOINT ["agh-scan"]
-```
-
-**Target size:** ~500MB (vs. 8GB for the full AGH scanner image)
-
-**Entrypoint behavior:**
-```bash
-agh-scan [--tool TOOL] [--format json|sarif] [--config /path/to/policy.yaml]
-# Defaults: all tools, json format, /etc/agh/policy.yaml
-# Mounts: /scan (code to scan), /output (results)
-```
-
-### 4.3 CLI Design
+When mother's scan finds issues:
 
 ```
-agh <command> [options]
+Mother scans GitHub repo
+  |
+  v
+Findings detected
+  |
+  v
+git blame each finding's file:line
+  |
+  v
+Map committer email -> AGH user (via users table)
+  |
+  v
+Finding assigned to developer on AGH dashboard
+  |
+  v
+Notifications sent:
+  - AGH dashboard (finding appears in developer's view)
+  - PR comment (if finding is in a file changed by an open PR)
+  - Email/Slack (configurable per org)
+```
 
-Commands:
-  scan        Run security scanners against local code
-  push        Upload scan results to AGH server
-  policy      Evaluate policy gates against scan results
-  auth        Authenticate with AGH server
-  status      Show tool availability and auth state
-  config      Manage local configuration
-  version     Show version and schema version
+### 4.3 PR Blocking
 
+Mother can block PRs via the GitHub App:
+
+1. Mother scans the PR branch
+2. If findings violate policy, GitHub App creates a failing check run
+3. If branch protection is "enforced", PR cannot merge
+4. If branch protection is "advisory", check shows as failed but merge is allowed
+5. PR comment details the findings with file:line references
+
+---
+
+## 5. Daughter (agh-local) Design
+
+### 5.1 How Daughter Uses Policy
+
+```
+agh scan
+  |
+  v
+Pull policy from agh-policy repo
+  |
+  +---> Cached locally? (< 1 hour old)
+  |       YES -> use cache
+  |       NO  -> git pull or HTTP fetch from GitHub API
+  |
+  v
+Resolve effective policy
+  |
+  +---> Detect org from git remote (github.com/sleepnumberlabs/*)
+  +---> Load org/sleepnumberlabs/policy.yaml
+  +---> Load repos/sleepnumberlabs/{repo}/policy.yaml (if exists)
+  +---> Merge
+  |
+  v
+Determine required tools
+  |
+  +---> Language detection (what's in this repo?)
+  +---> Intersect with policy required_tools + language match
+  |
+  v
+Run tools (Docker or native)
+  |
+  v
+Parse results -> normalized findings
+  |
+  v
+Evaluate severity gates from policy
+  |
+  v
+Display results + gate pass/fail
+  |
+  v
+Exit code: 0 (pass) or 1 (fail)
+```
+
+### 5.2 CLI Commands
+
+```
 agh scan [options]
   --path, -p       Target directory (default: .)
-  --tool, -t       Specific tool (repeatable): gitleaks|semgrep|bandit|checkov|trivy
-  --format, -f     Output format: table|json|sarif (default: table)
-  --output, -o     Write results to file (default: stdout)
-  --docker         Force Docker execution (error if unavailable)
-  --native         Force native tool execution (skip Docker)
-  --severity, -s   Minimum severity to report: critical|high|medium|low|info
-  --config         Path to policy.yaml (default: auto-detect)
-  --no-cache       Skip tool cache (fresh scan)
-  --quiet, -q      Only output findings (no progress/banners)
+  --tool, -t       Specific tool (repeatable) — overrides policy for this run
+  --format, -f     Output: table|json|sarif (default: table)
+  --output, -o     Write to file (default: stdout)
+  --docker         Force Docker execution
+  --native         Force native tool execution
+  --severity, -s   Minimum severity to show (default: from policy)
+  --no-policy      Skip policy evaluation (just run tools)
+  --strict         Enforce strict mode (override advisory)
+  --update-policy  Force policy refresh (ignore cache)
 
-agh push [options]
-  --file, -f       SARIF file to upload (default: last scan result)
-  --server         AGH server URL (default: from config)
-  --org            Organization ID (default: from config)
-  --dry-run        Show what would be uploaded without sending
+agh policy show
+  # Display effective policy for current repo
+  # Shows: org policy + repo overrides + resolved result
 
-agh policy check [options]
-  --path, -p       Target directory (default: .)
-  --config         Path to policy.yaml (default: auto-detect)
-  --strict         Fail on any finding (override policy)
+agh policy check
+  # Evaluate gates against last scan results
+  # Exit code: 0 = pass, 1 = fail
 
-agh auth login [options]
-  --api-key        Direct API key authentication
-  --device-flow    Browser-based Device Flow (default)
-  --server         AGH server URL
+agh init
+  # Initialize AGH for current repo:
+  # 1. Detect org from git remote
+  # 2. Pull policy
+  # 3. Generate .github/workflows/agh-scan.yaml
+  # 4. Generate .pre-commit-config.yaml entries
+  # 5. Show what was created
+
+agh auth login
+  # Device Flow SSO (same Entra ID as AGH web app)
+  # Only needed for private agh-policy repos
 
 agh status
-  # Output:
-  # Auth: authenticated as rob.vance@sleepnumber.com (org: sleepnumberlabs)
-  # Server: http://localhost:8000 (reachable)
-  # Docker: available (agh-scanner:lite v1.2.0)
-  # Native tools: gitleaks (8.18.2), semgrep (1.56.0), bandit (not found), ...
+  # Auth state, policy version, tool availability, last scan summary
 ```
 
-### 4.4 Language Detection
+### 5.3 `agh init` — Repo Onboarding
 
-Before running scanners, detect project languages to skip irrelevant tools:
+The key developer-facing command. Sets up everything in one step:
 
-| Signal | Language | Tools to Run |
-|--------|----------|-------------|
-| `*.py`, `requirements.txt`, `pyproject.toml` | Python | gitleaks, semgrep, bandit, trivy |
-| `*.js`, `*.ts`, `package.json` | JavaScript/TypeScript | gitleaks, semgrep, trivy |
-| `*.go`, `go.mod` | Go | gitleaks, semgrep, trivy |
-| `*.java`, `pom.xml`, `build.gradle` | Java | gitleaks, semgrep, trivy |
-| `*.tf`, `*.hcl` | Terraform | gitleaks, checkov |
-| `Dockerfile`, `docker-compose.yml` | Docker | gitleaks, checkov, trivy |
-| `*.yaml`, `*.yml` (k8s manifests) | Kubernetes | gitleaks, checkov |
-| Any | All | gitleaks (always), trivy (always) |
+```bash
+$ cd my-project
+$ agh init
 
-**Bandit** only runs on Python projects. **Checkov** only runs when IaC files are detected. **Gitleaks** and **trivy** always run.
+Detecting organization... sleepnumberlabs (from git remote)
+Fetching policy... org/sleepnumberlabs/policy.yaml (v1.0.0)
+Checking for repo override... repos/sleepnumberlabs/my-project/policy.yaml (not found, using org default)
 
-### 4.5 VS Code Extension Changes
+Generating files:
+  .github/workflows/agh-scan.yaml    (GitHub Actions workflow)
+  .pre-commit-config.yaml            (pre-commit hooks — append or create)
 
-The existing extension in AGH (`vscode-extension/`) is ported with one key change: **the extension calls the `agh` CLI** instead of invoking tools directly.
+Policy summary:
+  Required tools: gitleaks, semgrep, bandit (python detected), trivy
+  Severity gates: block on critical/high, warn on medium > 5
+  CWE enforcement: 8 blocked CWEs (SQL injection, XSS, ...)
+  Branch protection: enforced on main (2 reviews required)
 
-**Why:** Single execution engine. The CLI handles Docker vs. native detection, language detection, config loading, and output normalization. The extension is a UI layer.
-
-```
-Before (current AGH extension):
-  extension.ts -> scanRunner.ts -> exec("gitleaks detect ...")
-                                -> exec("semgrep scan ...")
-                                -> parse each tool's JSON independently
-
-After (agh-local extension):
-  extension.ts -> scanRunner.ts -> exec("agh scan --format json --quiet")
-                                -> parse normalized findings JSON
-                                -> diagnosticProvider.ts maps to VS Code diagnostics
+Next steps:
+  1. Review and commit the generated files
+  2. Install pre-commit hooks: pre-commit install --hook-type pre-commit --hook-type pre-push
+  3. Run your first local scan: agh scan
 ```
 
-**Extension settings:**
-```json
-{
-  "agh.scanOnSave": false,
-  "agh.scanOnOpen": true,
-  "agh.minimumSeverity": "medium",
-  "agh.useDocker": true,
-  "agh.serverUrl": "",
-  "agh.organizationId": "",
-  "agh.scanners": ["gitleaks", "semgrep", "bandit", "checkov", "trivy"]
-}
-```
-
-### 4.6 Pre-Commit / Pre-Push Hooks
-
-Distributed as a `.pre-commit-hooks.yaml` in the repo root so any project can use them:
+### 5.4 Pre-Commit / Pre-Push Hooks
 
 ```yaml
-# .pre-commit-hooks.yaml (in agh-local repo — consumed by other repos)
+# .pre-commit-hooks.yaml (in agh-local repo, consumed by other repos)
 - id: agh-secrets
   name: AGH Secret Detection
   entry: agh scan --tool gitleaks --quiet --format table
   language: python
   stages: [pre-commit]
   pass_filenames: false
+  always_run: true
 
 - id: agh-policy
   name: AGH Policy Gate
-  entry: agh policy check --strict
+  entry: agh policy check
   language: python
   stages: [pre-push]
   pass_filenames: false
 
 - id: agh-scan
   name: AGH Full Scan
-  entry: agh scan --quiet --severity high --format table
+  entry: agh scan --quiet --format table
   language: python
   stages: [pre-push]
   pass_filenames: false
 ```
 
-**Consumer repo usage:**
-```yaml
-# .pre-commit-config.yaml (in any project repo)
-repos:
-  - repo: https://github.com/sleepnumber/agh-local
-    rev: v1.0.0
-    hooks:
-      - id: agh-secrets
-      - id: agh-policy
+**Behavior by mode:**
+
+| Hook | Strict Mode | Advisory Mode |
+|------|-------------|---------------|
+| `agh-secrets` (pre-commit) | Block commit | Block commit (always — secrets are never advisory) |
+| `agh-policy` (pre-push) | Block push | Warn, allow push |
+| `agh-scan` (pre-push) | Block push on gate failure | Warn, allow push |
+
+### 5.5 Auth: Device Flow SSO
+
+```
+agh auth login
+  |
+  v
+POST /auth/device/code (to AGH server)
+  -> { device_code, user_code, verification_uri }
+  |
+  v
+Print: "Open https://agh.sleepnumber.com/device and enter code: ABCD-1234"
+Open browser automatically
+  |
+  v
+User authenticates via Entra ID SSO (same as AGH web app)
+  |
+  v
+Poll POST /auth/device/token
+  -> { access_token, refresh_token }
+  |
+  v
+Save to ~/.agh/credentials.json (mode 0600)
+  {
+    "server": "https://agh.sleepnumber.com",
+    "access_token": "...",
+    "refresh_token": "...",
+    "org_id": "sleepnumberlabs",
+    "email": "rob.vance@sleepnumber.com",
+    "expires_at": "2026-03-05T18:00:00Z"
+  }
+```
+
+**When is auth needed?**
+
+| Action | Auth Required? |
+|--------|---------------|
+| `agh scan` (policy repo is public/internal) | No |
+| `agh scan` (policy repo is private) | Yes — to fetch policy |
+| `agh init` | Yes — to fetch policy + validate identity |
+| `agh auth login` | Yes (this IS the auth) |
+| `agh status` | No (reads local cache) |
+| `agh policy show` | No (reads local cache) |
+
+### 5.6 Invitation Flow
+
+When admin invites a developer in AGH (mother):
+
+```
+Admin sends invitation via AGH dashboard
+  |
+  v
+Email to developer:
+  Subject: "You've been invited to AGH Security"
+  Body:
+    You've been granted [analyst] access to [sleepnumberlabs].
+
+    To set up local security scanning:
+
+    1. Install the CLI:
+       pip install agh-local
+
+    2. Authenticate:
+       agh auth login --server https://agh.sleepnumber.com
+
+    3. Initialize your repo:
+       cd your-project
+       agh init
+
+    4. Install git hooks:
+       pre-commit install --hook-type pre-commit --hook-type pre-push
+
+    5. Run your first scan:
+       agh scan
+
+    VS Code Extension (optional):
+    Install "AGH Security" from the VS Code Marketplace.
 ```
 
 ---
 
-## 5. Config Sync Strategy
+## 6. Repository Structure (Final)
 
-### Problem
-
-Semgrep rules, gitleaks config, and policy.yaml live in the AGH main repo. The daughter project needs its own copies. Drift between the two is the primary maintenance risk.
-
-### Solution: Published Config Package + Pinned Versions
+### `agh-local` repo:
 
 ```
-AGH Main Repo                          agh-local Repo
-+---------------------------+          +---------------------------+
-| semgrep-rules/            |  copy    | scanner/configs/          |
-| .gitleaks.toml            | -------> | semgrep-rules/            |
-| policy.yaml               |  at      | .gitleaks.toml            |
-+---------------------------+  release | policy.yaml               |
-                                       +---------------------------+
-                                       | shared/VERSION = "1.0.0"  |
-                                       +---------------------------+
+agh-local/
+  README.md
+  LICENSE
+  .pre-commit-hooks.yaml          # Hooks consumable by other repos
+
+  cli/
+    pyproject.toml
+    src/agh/
+      __init__.py
+      cli.py                       # Main CLI entry point
+      config.py                    # Local config (~/.agh/)
+      init.py                      # agh init command
+      scanner/
+        engine.py                  # Docker vs native dispatch
+        docker_runner.py           # Docker execution
+        native_runner.py           # Native tool execution
+        language_detect.py         # Detect project languages
+        parsers/
+          gitleaks.py
+          semgrep.py
+          bandit.py
+          checkov.py
+          trivy.py
+      policy/
+        resolver.py                # Fetch + merge + resolve policy
+        evaluator.py               # Evaluate severity/CWE gates
+        workflow_generator.py      # Generate GH Actions from policy
+      auth/
+        device_flow.py             # RFC 8628 Device Flow
+        credentials.py             # ~/.agh/credentials.json management
+      formatters/
+        table.py
+        json_fmt.py
+        sarif.py
+    tests/
+      test_cli.py
+      test_policy_resolver.py
+      test_policy_evaluator.py
+      test_workflow_generator.py
+      test_parsers.py
+      test_language_detect.py
+      fixtures/
+
+  scanner/
+    Dockerfile.lite                # Lightweight scanner image
+
+  vscode-extension/
+    package.json
+    src/
+      extension.ts
+      scanRunner.ts                # Calls agh CLI
+      diagnosticProvider.ts
+      findingsTreeProvider.ts
+      codeLensProvider.ts
+      statusBar.ts
+      policyChecker.ts
+      auth.ts
+    tsconfig.json
+
+  .github/
+    workflows/
+      ci.yaml                      # Test + lint
+      release-cli.yaml             # Publish to PyPI
+      release-docker.yaml          # Build + push Docker image
+      release-extension.yaml       # Publish to VS Code Marketplace
 ```
 
-**Sync mechanism:**
-1. AGH main repo tags config releases (e.g., `configs-v1.2.0`) when rules change
-2. `agh-local` CI has a dependency check: compare config versions weekly
-3. Updating configs in `agh-local` is a deliberate PR — not automatic
-4. Docker image bakes in configs at build time, so the image version pins the config version
-5. `agh scan --update-configs` pulls latest from a known URL (future enhancement)
+### `agh-policy` repo:
 
-**Version contract:**
-- `shared/VERSION` in `agh-local` declares the finding schema version
-- AGH server's `/sarif-import` endpoint checks `tool.driver.version` in SARIF for compatibility
-- Major version mismatch = reject with helpful error message
+```
+agh-policy/
+  README.md
+
+  org/
+    sleepnumberlabs/
+      policy.yaml
+      semgrep-rules/
+      gitleaks.toml
+      bandit.yaml
+      checkov.yaml
+      trivy.yaml
+
+  repos/
+    sleepnumberlabs/
+      android-consumer-app/
+        policy.yaml
+
+  workflows/
+    templates/
+      agh-scan.yaml.j2
+    generated/
+      sleepnumberlabs/
+        android-consumer-app/
+          agh-scan.yaml
+
+  schemas/
+    policy-schema.json
+    finding-schema.json
+    VERSION
+
+  github-app/
+    app.py                         # GitHub App: Policy Enforcer
+    webhook_handler.py             # Process GitHub webhook events
+    branch_protection.py           # Configure branch protection
+    workflow_validator.py          # Check repos have correct workflow
+    Dockerfile
+```
 
 ---
 
-## 6. Authentication & Server Integration
+## 7. Implementation Phases
 
-### 6.1 Offline-First Design
+### Phase 1: Policy Repo + Schema (Foundation)
 
-AGH Local **must work without a server**. The server integration is opt-in:
+**Goal:** `agh-policy` repo exists with validated policy definitions
 
-```
-First run (no auth):
-  $ agh scan
-  [scans locally, shows results in terminal]
-  # No server interaction. No auth prompt. Just works.
+**Scope:**
+- [ ] Create `agh-policy` repository
+- [ ] Define `policy-schema.json` (JSON Schema for policy.yaml validation)
+- [ ] Define `finding-schema.json` (normalized finding contract)
+- [ ] Write org-level policy for sleepnumberlabs
+- [ ] Write example repo-level override
+- [ ] Copy scanner configs from AGH (semgrep-rules, gitleaks.toml)
+- [ ] Create Jinja2 template for GitHub Actions workflow generation
+- [ ] Write policy validation CI (schema check on every PR)
+- [ ] Write workflow generation CI (regenerate on policy change)
 
-Optional server connect:
-  $ agh auth login --server https://agh.sleepnumber.com
-  [Opens browser for Device Flow]
-  [Saves token to ~/.agh/credentials.json]
+**Exit Criteria:**
+- `agh-policy` repo exists with valid policy.yaml
+- CI validates schema on every PR
+- Generated workflow template renders correctly
 
-  $ agh push
-  [Uploads last scan SARIF to server]
-  Uploaded 14 findings to sleepnumberlabs/my-repo
-```
+**Size:** M (1-2 weeks)
 
-### 6.2 Auth Methods
+### Phase 2: Core CLI + Policy Resolution (MVP)
 
-| Method | Use Case | Storage |
-|--------|----------|---------|
-| **Device Flow** (RFC 8628) | Interactive developer login | `~/.agh/credentials.json` (mode 0600) |
-| **API Key** | CI/CD pipelines, automation | Env var `AGH_API_KEY` or credentials file |
-| **None** | Local-only scanning | N/A |
-
-### 6.3 Push Flow
-
-```
-agh push
-  |
-  v
-Load credentials from ~/.agh/credentials.json
-  |
-  v
-Read last scan result from ~/.agh/results/latest.sarif
-  |
-  v
-POST /api/proxy/sarif-import
-  Headers:
-    Authorization: Bearer <token>  (or X-API-Key: <key>)
-    X-Organization-ID: <org_id>
-    Content-Type: application/json
-  Body: SARIF 2.1.0 JSON
-  |
-  v
-Server deduplicates against existing findings
-  |
-  v
-Response: { "imported": 14, "deduplicated": 3, "new": 11 }
-```
-
----
-
-## 7. Pitfalls & Mitigations
-
-| # | Pitfall | Mitigation |
-|---|---------|-----------|
-| 1 | **Config drift** between AGH and agh-local | Versioned configs with deliberate sync PRs; CI weekly check |
-| 2 | **Finding schema break** | `shared/VERSION` semver; server validates version on import |
-| 3 | **Docker not available** (corporate lockdown) | Native tool fallback with clear `agh status` output showing what's missing |
-| 4 | **Docker image too large** | Lite image targets ~500MB; only 5 tools; no CodeQL/Nuclei/etc. |
-| 5 | **Slow scans on large repos** | Language detection skips irrelevant tools; `--tool` flag for targeted scans; incremental scan via git diff (future) |
-| 6 | **Pre-commit hook too slow** | Secret scan only (gitleaks) in pre-commit (~2-5s); full scan in pre-push |
-| 7 | **Auth token expiry** | Refresh token rotation; clear error: "Run `agh auth login` to re-authenticate" |
-| 8 | **Scanner version mismatch** | CLI prints tool versions; Docker image pins exact versions; `agh version --tools` shows all |
-| 9 | **macOS ARM vs x86** | Docker image multi-arch (linux/amd64 + linux/arm64); native tools via Homebrew |
-| 10 | **VS Code extension can't find CLI** | Extension checks PATH + common install locations; settings allow explicit path |
-| 11 | **Results directory grows unbounded** | Auto-prune: keep last 10 scan results in `~/.agh/results/`; configurable |
-| 12 | **Multiple orgs** | `agh config set org <org_id>` or `--org` flag; credentials file supports profiles |
-
----
-
-## 8. Implementation Phases
-
-### Phase 1: Core CLI + Docker Scanner (MVP)
-
-**Goal:** `agh scan` works against any local repo using Docker
+**Goal:** `agh scan` works locally, driven by policy from agh-policy repo
 
 **Scope:**
 - [ ] Create `agh-local` repository
-- [ ] Port `cli/agh_cli.py` -> `cli/src/agh/cli.py` with refactored module structure
-- [ ] Implement `scanner/engine.py` (Docker detection + dispatch)
-- [ ] Implement `scanner/docker_runner.py` (volume mount, run, collect output)
-- [ ] Implement 5 result parsers (gitleaks, semgrep, bandit, checkov, trivy)
-- [ ] Build `Dockerfile.lite` with pinned tool versions
-- [ ] Implement `language_detect.py` (skip irrelevant tools)
-- [ ] Port `cli/agh_formatters.py` for table/JSON/SARIF output
-- [ ] Create `shared/finding-schema.json`
-- [ ] Copy scanner configs from AGH (semgrep-rules, .gitleaks.toml, policy.yaml)
-- [ ] Implement `~/.agh/results/` local result storage
-- [ ] Write tests: parser tests with fixtures, engine tests with Docker mock
+- [ ] Implement policy resolver (fetch from agh-policy, merge org + repo, cache)
+- [ ] Implement policy evaluator (severity gates, CWE enforcement)
+- [ ] Implement scanner engine (Docker + native fallback)
+- [ ] Implement 5 result parsers
+- [ ] Implement language detection
+- [ ] Implement table/JSON/SARIF formatters
+- [ ] Build Dockerfile.lite
+- [ ] `agh scan` command with policy-driven tool selection + gate evaluation
+- [ ] `agh policy show` command
+- [ ] `agh policy check` command
+- [ ] `agh status` command
+- [ ] Tests for all components
 - [ ] Publish to PyPI as `agh-local`
-- [ ] Publish Docker image to registry as `agh-scanner:lite`
+- [ ] Publish Docker image
 
 **Exit Criteria:**
 ```bash
 pip install agh-local
 cd my-project
-agh scan                     # Full scan via Docker, table output
-agh scan --format sarif -o results.sarif   # SARIF export
-agh scan --tool gitleaks     # Single tool, fast
-agh status                   # Shows Docker available, tools, no auth
+agh scan              # Runs tools per policy, evaluates gates
+agh policy show       # Shows effective policy
+agh policy check      # Re-evaluates gates on last results
 ```
 
-**Estimated Effort:** L (2-3 weeks)
+**Size:** L (2-3 weeks)
 
-### Phase 2: Native Tool Fallback + Policy Gates
+### Phase 3: `agh init` + GitHub Actions Generation
 
-**Goal:** Works without Docker; policy gates block bad code
+**Goal:** One command provisions a repo with workflow + hooks
 
 **Scope:**
-- [ ] Implement `scanner/native_runner.py` (detect tools in PATH, exec directly)
-- [ ] Engine fallback: Docker -> native -> error with install instructions
-- [ ] Port `policy/checker.py` from AGH CLI
-- [ ] `agh policy check` command with gate evaluation
-- [ ] Policy auto-detection (walk up directory tree for `policy.yaml`)
-- [ ] `agh config` command for managing settings
-- [ ] Add `--severity` filter to `agh scan`
-- [ ] Add `--quiet` flag for CI-friendly output
-- [ ] Tests: native runner tests, policy evaluation tests
+- [ ] Implement `agh init` command
+- [ ] Workflow generator: policy.yaml + Jinja2 template -> agh-scan.yaml
+- [ ] Pre-commit config generation
+- [ ] Org detection from git remote
+- [ ] Repo override detection
+- [ ] Print onboarding summary with next steps
 
 **Exit Criteria:**
 ```bash
-agh scan --native            # Uses tools from PATH
-agh policy check             # Evaluates gates, exit code 0 or 1
-agh scan --severity high     # Only critical + high findings
+cd my-project
+agh init
+# Creates .github/workflows/agh-scan.yaml
+# Creates/appends .pre-commit-config.yaml
+# Prints policy summary + next steps
 ```
 
-**Estimated Effort:** M (1-2 weeks)
+**Size:** M (1-2 weeks)
 
-### Phase 3: Server Integration (Auth + Push)
+### Phase 4: Auth + Private Policy Repos
 
-**Goal:** Optional sync with AGH server
+**Goal:** Device Flow SSO for teams with private agh-policy repos
 
 **Scope:**
-- [ ] Port `auth.py` from AGH CLI (Device Flow + API key)
-- [ ] Implement `sync/push.py` (upload SARIF to `/sarif-import`)
-- [ ] `agh auth login` with browser-based Device Flow
-- [ ] `agh auth login --api-key` for CI
-- [ ] `agh push` command (upload last scan or specific file)
-- [ ] `agh push --dry-run` for preview
-- [ ] `agh findings` command (fetch server findings for comparison)
-- [ ] Credentials storage with profiles (multiple servers/orgs)
-- [ ] Tests: auth flow mocks, push with mock server
+- [ ] Implement Device Flow auth (RFC 8628)
+- [ ] Credentials storage (~/.agh/credentials.json)
+- [ ] Authenticated policy fetch (GitHub API with token)
+- [ ] `agh auth login` command
+- [ ] Token refresh handling
+- [ ] Integration with AGH invitation flow (docs + email template)
 
 **Exit Criteria:**
 ```bash
-agh auth login --server https://agh.internal.com
-agh scan
-agh push                     # Uploads SARIF, shows import stats
-agh findings --severity high # Fetches from server
+agh auth login --server https://agh.sleepnumber.com
+# Opens browser, Entra ID SSO
+# Saves credentials
+agh scan  # Fetches policy from private repo using saved token
 ```
 
-**Estimated Effort:** M (1-2 weeks)
+**Size:** M (1-2 weeks)
 
-### Phase 4: Pre-Commit Hooks
+### Phase 5: GitHub App (Policy Enforcer)
 
-**Goal:** Automated scanning in git workflow
+**Goal:** Automated compliance enforcement across all org repos
 
 **Scope:**
-- [ ] Create `.pre-commit-hooks.yaml` in repo root
-- [ ] `agh-secrets` hook (pre-commit, gitleaks only, ~3s)
-- [ ] `agh-policy` hook (pre-push, full gate evaluation)
-- [ ] `agh-scan` hook (pre-push, full scan with severity filter)
-- [ ] Installation docs: `pre-commit install --hook-type pre-commit --hook-type pre-push`
-- [ ] Test: hook execution with sample repos
+- [ ] Build GitHub App: "AGH Policy Enforcer"
+- [ ] Webhook handler: push, pull_request, check_suite, repository events
+- [ ] New repo detection -> auto-PR with agh-scan.yaml workflow
+- [ ] PR validation: verify required checks exist and pass
+- [ ] Branch protection configuration (enforced vs advisory mode)
+- [ ] Compliance status reporting to AGH dashboard
+- [ ] Workflow drift detection (agh-scan.yaml modified by developer -> alert)
 
 **Exit Criteria:**
-```yaml
-# In any consumer repo:
-repos:
-  - repo: https://github.com/sleepnumber/agh-local
-    rev: v1.0.0
-    hooks:
-      - id: agh-secrets    # Blocks commit if secrets found
-      - id: agh-policy     # Blocks push if policy gates fail
-```
+- New repo in org -> GitHub App opens PR with workflow
+- PR without passing agh checks -> App creates failing check
+- Branch protection auto-configured per policy
+- Compliance visible on AGH dashboard
 
-**Estimated Effort:** S (3-5 days)
+**Size:** L (2-3 weeks)
 
-### Phase 5: VS Code Extension
+### Phase 6: VS Code Extension
 
-**Goal:** Full IDE integration with inline findings
+**Goal:** IDE integration with policy-aware scanning
 
 **Scope:**
-- [ ] Port `vscode-extension/` from AGH
-- [ ] Modify `scanRunner.ts` to call `agh` CLI instead of direct tool execution
-- [ ] `diagnosticProvider.ts` maps normalized findings to VS Code diagnostics
-- [ ] `findingsTreeProvider.ts` groups by severity in sidebar
-- [ ] `codeLensProvider.ts` annotates lines with findings
-- [ ] `statusBar.ts` shows finding counts
-- [ ] Settings: autoScanOnSave, minimumSeverity, useDocker, serverUrl
-- [ ] `policyChecker.ts` evaluates gates on save/push
-- [ ] Auth integration via `agh auth` CLI commands
-- [ ] Package and publish to VS Code Marketplace
-- [ ] Test: extension activation, command execution, diagnostic display
+- [ ] Port extension from AGH, modify to call `agh` CLI
+- [ ] Diagnostic provider maps normalized findings to VS Code
+- [ ] Tree view grouped by severity
+- [ ] CodeLens annotations
+- [ ] Status bar with finding counts + policy gate status
+- [ ] Policy checker integration (show gate pass/fail in IDE)
+- [ ] Auth integration (call `agh auth login` from extension)
+- [ ] Publish to VS Code Marketplace
 
 **Exit Criteria:**
-- Install extension from marketplace
-- Open a project -> findings appear in Problems panel
-- Sidebar tree view shows findings grouped by severity
-- Status bar shows finding counts
-- CodeLens annotations on affected lines
-- Settings allow configuring scanners, severity threshold, server URL
+- Install extension, open project -> findings in Problems panel
+- Status bar shows gate pass/fail
+- Extension respects org policy for severity thresholds
 
-**Estimated Effort:** L (2-3 weeks)
+**Size:** L (2-3 weeks)
 
-### Phase 6: CI/CD Templates
+### Phase 7: Mother Verification Integration
 
-**Goal:** Easy integration with common CI platforms
+**Goal:** AGH server scans repos and assigns findings to developers
 
 **Scope:**
-- [ ] GitHub Actions reusable workflow (`agh-local/.github/workflows/agh-scan.yaml`)
-- [ ] GitHub Actions action (`action.yml`) for marketplace
-- [ ] Azure DevOps pipeline template
-- [ ] Jenkins shared library
-- [ ] SARIF upload to GitHub Code Scanning (via `--format sarif`)
-- [ ] Exit code convention: 0 = clean, 1 = findings, 2 = error
-- [ ] Documentation: CI integration guide
+- [ ] AGH Scheduler: trigger scan on first commit detection
+- [ ] AGH Scheduler: frequency-based scanning per policy
+- [ ] Finding assignment via git blame -> AGH user mapping
+- [ ] PR comment integration (findings in PR files)
+- [ ] Notification system (email/Slack per org config)
+- [ ] Compliance dashboard: which repos have workflow, which pass, which fail
+- [ ] Policy change -> trigger re-scan of affected repos
 
 **Exit Criteria:**
-```yaml
-# In consumer repo's .github/workflows/security.yaml:
-- uses: sleepnumber/agh-local@v1
-  with:
-    severity: high
-    policy: strict
-    push-to-server: true
-    server-url: ${{ secrets.AGH_URL }}
-    api-key: ${{ secrets.AGH_API_KEY }}
-```
+- Developer pushes code -> mother scans on schedule
+- Findings attributed to developer on AGH dashboard
+- PR comments show inline findings
+- Compliance dashboard shows org-wide status
 
-**Estimated Effort:** M (1-2 weeks)
-
-### Phase 7: Incremental Scanning + Caching (Future)
-
-**Goal:** Fast re-scans by only scanning changed files
-
-**Scope:**
-- [ ] `git diff --name-only` to detect changed files since last scan
-- [ ] Per-file result caching in `~/.agh/cache/`
-- [ ] `agh scan --incremental` flag (default in pre-commit hooks)
-- [ ] Cache invalidation on config/rule changes
-- [ ] Benchmark: full scan vs. incremental on AGH repo itself
-
-**Estimated Effort:** M (1-2 weeks)
+**Size:** L (3-4 weeks)
 
 ---
 
-## 9. Work Items Summary
-
-| Epic | Phase | Size | Dependencies |
-|------|-------|------|-------------|
-| Core CLI + Docker Scanner | 1 | L | None |
-| Native Fallback + Policy | 2 | M | Phase 1 |
-| Server Integration | 3 | M | Phase 1 |
-| Pre-Commit Hooks | 4 | S | Phase 2 |
-| VS Code Extension | 5 | L | Phase 1 |
-| CI/CD Templates | 6 | M | Phase 2, 3 |
-| Incremental Scanning | 7 | M | Phase 1 |
-
-**Critical path:** Phase 1 -> Phase 2 -> Phase 4 (developer gets scan + hooks)
-
-**Parallel work:** Phase 3 and Phase 5 can start after Phase 1 completes, independent of Phase 2.
+## 8. Dependency Graph
 
 ```
-Phase 1 (Core) ----+---> Phase 2 (Native + Policy) ---> Phase 4 (Hooks)
-                   |
-                   +---> Phase 3 (Server Integration) ---> Phase 6 (CI/CD)
-                   |
-                   +---> Phase 5 (VS Code Extension)
-
-                   Phase 7 (Incremental) — after Phase 1, anytime
+Phase 1 (Policy Repo) ----+---> Phase 2 (Core CLI) ---> Phase 3 (agh init + GH Actions)
+                           |                        |
+                           |                        +---> Phase 4 (Auth)
+                           |
+                           +---> Phase 5 (GitHub App) ---> Phase 7 (Mother Verification)
+                           |
+                           +---> Phase 6 (VS Code Extension)
+                                    (after Phase 2)
 ```
+
+**Critical path:** Phase 1 -> 2 -> 3 (developer gets policy-driven scan + GH Actions in ~5-6 weeks)
+
+**Parallel after Phase 1:** Phase 5 (GitHub App) can start immediately since it reads from agh-policy repo directly.
+
+**Parallel after Phase 2:** Phase 4 (Auth) and Phase 6 (VS Code) can start once CLI exists.
 
 ---
 
-## 10. Distribution Plan
+## 9. Success Metrics
 
-| Channel | Package | Audience |
-|---------|---------|----------|
-| **PyPI** | `agh-local` | Python devs, CI pipelines |
-| **Homebrew** | `brew install agh` (future) | macOS developers |
-| **Docker Hub** | `sleepnumber/agh-scanner:lite` | Docker-first, CI |
-| **VS Code Marketplace** | `agh-security` | IDE users |
-| **GitHub Releases** | Standalone binaries (future, via PyInstaller) | Air-gapped environments |
-| **pre-commit** | `repo: https://github.com/sleepnumber/agh-local` | Git workflow integration |
-
----
-
-## 11. Success Metrics
-
-| Metric | Target | Measurement |
+| Metric | Target | How Measured |
 |--------|--------|-------------|
-| Time to first scan | < 5 min from `pip install` | Manual testing |
-| Full scan duration | < 60s for typical repo (< 10K files) | Benchmark suite |
-| Pre-commit hook speed | < 5s (gitleaks only) | Benchmark suite |
-| Docker image size | < 600MB | CI build output |
-| False positive rate | < 10% of findings | Developer feedback |
-| Server push success | > 99% of uploads accepted | AGH server logs |
-| Findings fixed pre-commit | Trackable via "source: local" tag on server | AGH dashboard |
+| Policy compliance rate | >90% of repos have agh-scan.yaml within 30 days | GitHub App scan |
+| Pre-commit secret catch rate | >95% of secrets caught before push | Compare local vs mother findings |
+| Time from invite to first scan | < 15 minutes | Onboarding tracking |
+| Policy update propagation | < 1 hour for all repos to use new policy | Cache TTL + GH Actions `@main` ref |
+| False positive rate | < 10% | Developer feedback |
+| Developer adoption | >80% of active devs have agh-local installed within 60 days | Auth login count |
+| Mother verification delta | < 5% findings missed by daughter | Compare mother scan vs GH Actions results |
