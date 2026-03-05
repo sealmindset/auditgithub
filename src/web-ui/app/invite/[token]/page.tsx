@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Mail, User, Shield, Clock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface Invitation {
   valid: boolean
@@ -30,7 +30,7 @@ export default function InviteAcceptPage() {
 
     const fetchInvitation = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/invitations/validate/${token}`)
+        const res = await apiFetch(`${API_BASE}/api/invitations/validate/${token}`)
 
         if (res.ok) {
           const data = await res.json()
@@ -53,10 +53,20 @@ export default function InviteAcceptPage() {
     fetchInvitation()
   }, [token])
 
-  const handleAccept = () => {
-    // Redirect to Entra ID OAuth flow
-    // The callback will check for invite_token in session storage
-    window.location.href = `${API_BASE}/auth/login/entra`
+  const handleAccept = async () => {
+    // Fetch first available provider and redirect to its login
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/providers`)
+      const data = await res.json()
+      const provider = data.providers?.[0]?.name
+      if (provider) {
+        window.location.href = `${API_BASE}/auth/accept-invite?token=${token}&provider=${provider}`
+      } else {
+        window.location.href = "/login"
+      }
+    } catch {
+      window.location.href = "/login"
+    }
   }
 
   if (loading) {

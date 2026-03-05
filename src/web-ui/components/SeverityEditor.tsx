@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Pencil } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface SeverityEditorProps {
     findingId: string
@@ -35,7 +35,7 @@ export function SeverityEditor({ findingId, currentSeverity, onUpdate }: Severit
     const handleUpdate = async () => {
         setLoading(true)
         try {
-            const res = await fetch(`${API_BASE}/findings/${findingId}`, {
+            const res = await apiFetch(`${API_BASE}/findings/${findingId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

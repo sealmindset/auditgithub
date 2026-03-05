@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 /**
  * Log Forwarding Proxy API Route
  * 
@@ -56,7 +57,7 @@ async function getCriblConfig(): Promise<CriblConfig | null> {
     }
     
     try {
-        const res = await fetch(`${API_BASE}/cribl/config`, {
+        const res = await apiFetch(`${API_BASE}/cribl/config`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
             cache: 'no-store'
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
         // Forward to Cribl with auth token
         // Note: The actual auth token is stored in the backend and used there
         // We forward to our backend which then forwards to Cribl
-        const forwardRes = await fetch(`${API_BASE}/cribl/forward`, {
+        const forwardRes = await apiFetch(`${API_BASE}/cribl/forward`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

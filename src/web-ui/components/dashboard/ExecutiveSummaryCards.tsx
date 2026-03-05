@@ -19,7 +19,7 @@ import {
     WifiOff
 } from "lucide-react"
 import { FeedbackButton } from "./FeedbackButton"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ImmediateAction {
     title: string
@@ -70,7 +70,7 @@ export function ExecutiveSummaryCards() {
     const fetchData = async () => {
         try {
             setError(null)
-            const response = await fetch(`${API_BASE}/analytics/executive-summary`)
+            const response = await apiFetch(`${API_BASE}/analytics/executive-summary`)
             if (response.ok) {
                 setData(await response.json())
             } else {

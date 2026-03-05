@@ -9,7 +9,7 @@ import React, {
   useRef,
   type ReactNode,
 } from "react";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, apiFetch } from "@/lib/api";
 import { meetsMinimumRole, type RoleName } from "@/lib/rbac";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchMe = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
+      const res = await apiFetch(`${API_BASE}/auth/me`, {
         credentials: "include",
       });
 
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, { credentials: "include" });
+      await apiFetch(`${API_BASE}/auth/logout`, { credentials: "include" });
     } catch {
       // Best-effort – redirect regardless
     }

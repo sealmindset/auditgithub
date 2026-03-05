@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Download, Copy, Check, FileCode2 } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface OpenAPISpec {
     spec_content: string
@@ -45,7 +45,7 @@ export function OpenAPIModal({ projectId, open, onOpenChange }: OpenAPIModalProp
         setError(null)
 
         try {
-            const res = await fetch(`${API_BASE}/projects/${projectId}/api-audit/openapi/view`)
+            const res = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/openapi/view`)
             if (res.ok) {
                 setSpec(await res.json())
             } else if (res.status === 404) {

@@ -51,7 +51,7 @@ async def get_current_user_from_session(request: Request) -> User:
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    # Check session metadata for expiry
+    # Check session metadata for expiry (optional — metadata store may not be populated)
     session_id = request.cookies.get('session')  # Starlette session cookie
     if session_id:
         from src.auth.session import get_session_metadata, update_last_activity, delete_session
@@ -59,34 +59,26 @@ async def get_current_user_from_session(request: Request) -> User:
 
         metadata = get_session_metadata(session_id)
 
-        if not metadata:
-            # Session metadata missing - treat as expired
-            request.session.clear()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session expired (metadata not found)",
-                headers={"WWW-Authenticate": "Bearer"}
+        if metadata:
+            # Check expiry
+            is_expired, reason = metadata.is_expired(
+                settings.session_absolute_timeout_hours,
+                settings.session_idle_timeout_minutes
             )
 
-        # Check expiry
-        is_expired, reason = metadata.is_expired(
-            settings.session_absolute_timeout_hours,
-            settings.session_idle_timeout_minutes
-        )
+            if is_expired:
+                # Clear session and raise 401
+                request.session.clear()
+                delete_session(session_id)
 
-        if is_expired:
-            # Clear session and raise 401
-            request.session.clear()
-            delete_session(session_id)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"Session expired ({reason} timeout)",
+                    headers={"WWW-Authenticate": "Bearer"}
+                )
 
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Session expired ({reason} timeout)",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-
-        # Update last activity (async to avoid blocking request)
-        update_last_activity(session_id)
+            # Update last activity
+            update_last_activity(session_id)
 
     # Return User model
     return User(**user_data)

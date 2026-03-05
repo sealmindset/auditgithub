@@ -24,7 +24,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // Types
 interface FileWithSeverity {
@@ -127,7 +127,7 @@ function ContributorModal({
     useEffect(() => {
         if (isOpen && contributorId) {
             setLoading(true)
-            fetch(`${API_BASE}/projects/${projectId}/contributors/${contributorId}`)
+            apiFetch(`${API_BASE}/projects/${projectId}/contributors/${contributorId}`)
                 .then(res => res.json())
                 .then(data => setDetail(data))
                 .catch(console.error)
@@ -336,7 +336,7 @@ export function ContributorsView({ projectId }: ContributorsViewProps) {
     const [modalOpen, setModalOpen] = useState(false)
 
     useEffect(() => {
-        fetch(`${API_BASE}/projects/${projectId}/contributors`)
+        apiFetch(`${API_BASE}/projects/${projectId}/contributors`)
             .then(res => {
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status}`)

@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Sparkles, ShieldAlert, ShieldCheck, AlertTriangle } from "lucide-react"
 import ReactMarkdown from "react-markdown"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ComponentAnalysis {
     analysis_text: string
@@ -49,7 +49,7 @@ export function AskComponentDialog({
         setLoading(true)
         setError(null)
         try {
-            const res = await fetch(`${API_BASE}/ai/analyze-component`, {
+            const res = await apiFetch(`${API_BASE}/ai/analyze-component`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

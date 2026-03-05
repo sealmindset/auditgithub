@@ -16,7 +16,7 @@ import {
 } from "recharts"
 import { Shield, TrendingUp, TrendingDown, Calendar, GitBranch } from "lucide-react"
 import { FeedbackButton } from "./FeedbackButton"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface SeverityDataPoint {
     name: string
@@ -106,8 +106,8 @@ export function SeverityChart() {
         const fetchData = async () => {
             try {
                 const [severityRes, repoGrowthRes] = await Promise.all([
-                    fetch(`${API_BASE}/analytics/severity-distribution`),
-                    fetch(`${API_BASE}/analytics/repo-growth`)
+                    apiFetch(`${API_BASE}/analytics/severity-distribution`),
+                    apiFetch(`${API_BASE}/analytics/repo-growth`)
                 ])
 
                 if (severityRes.ok) {

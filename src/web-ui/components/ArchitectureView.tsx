@@ -13,7 +13,7 @@ import { PromptEditorDialog } from "@/components/PromptEditorDialog"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { AskAIModal } from "@/components/AskAIModal"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ArchitectureViewProps {
     projectId: string
@@ -43,7 +43,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
     useEffect(() => {
         const fetchConfig = async () => {
             try {
-                const res = await fetch(`${API_BASE}/ai/config`)
+                const res = await apiFetch(`${API_BASE}/ai/config`)
                 if (res.ok) {
                     const data = await res.json()
                     // Format provider name nicely (e.g. "anthropic_foundry" -> "Anthropic Foundry")
@@ -63,7 +63,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
     useEffect(() => {
         const fetchArchitecture = async () => {
             try {
-                const res = await fetch(`${API_BASE}/ai/architecture/${projectId}`)
+                const res = await apiFetch(`${API_BASE}/ai/architecture/${projectId}`)
                 if (res.ok) {
                     const data = await res.json()
                     if (data.report) setReport(data.report)
@@ -82,7 +82,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
         setError(null)
 
         try {
-            const res = await fetch(`${API_BASE}/ai/architecture`, {
+            const res = await apiFetch(`${API_BASE}/ai/architecture`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ project_id: projectId })
@@ -109,7 +109,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
     const saveChanges = async () => {
         setSaving(true)
         try {
-            const res = await fetch(`${API_BASE}/ai/architecture/${projectId}`, {
+            const res = await apiFetch(`${API_BASE}/ai/architecture/${projectId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -139,7 +139,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
     // Fetch versions
     const fetchVersions = async () => {
         try {
-            const res = await fetch(`${API_BASE}/ai/architecture/${projectId}/versions`)
+            const res = await apiFetch(`${API_BASE}/ai/architecture/${projectId}/versions`)
             if (res.ok) {
                 setVersions(await res.json())
             }
@@ -154,7 +154,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
 
     const saveVersion = async () => {
         try {
-            const res = await fetch(`${API_BASE}/ai/architecture/${projectId}/versions`, {
+            const res = await apiFetch(`${API_BASE}/ai/architecture/${projectId}/versions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ description: newVersionDesc })
@@ -175,7 +175,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
         if (!confirm("Are you sure? This will overwrite current changes.")) return
 
         try {
-            const res = await fetch(`${API_BASE}/ai/architecture/${projectId}/restore/${versionId}`, {
+            const res = await apiFetch(`${API_BASE}/ai/architecture/${projectId}/restore/${versionId}`, {
                 method: "POST"
             })
 
@@ -183,7 +183,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
 
             toast({ title: "Restored", description: "Architecture restored to previous version." })
             // Refresh current view
-            const archRes = await fetch(`${API_BASE}/ai/architecture/${projectId}`)
+            const archRes = await apiFetch(`${API_BASE}/ai/architecture/${projectId}`)
             if (archRes.ok) {
                 const data = await archRes.json()
                 setReport(data.report)
@@ -296,7 +296,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                 size="sm"
                                 onClick={async () => {
                                     try {
-                                        const res = await fetch(`${API_BASE}/git-sync/push-diagram`, {
+                                        const res = await apiFetch(`${API_BASE}/git-sync/push-diagram`, {
                                             method: "POST",
                                             headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify({
@@ -340,7 +340,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                 onClick={async () => {
                                     console.log("Git README button clicked", { projectId, organization })
                                     try {
-                                        const res = await fetch(`${API_BASE}/git-sync/push-readme`, {
+                                        const res = await apiFetch(`${API_BASE}/git-sync/push-readme`, {
                                             method: "POST",
                                             headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify({
@@ -390,7 +390,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                     onClick={async () => {
                                         setLoading(true)
                                         try {
-                                            const res = await fetch(`${API_BASE}/ai/architecture/refine`, {
+                                            const res = await apiFetch(`${API_BASE}/ai/architecture/refine`, {
                                                 method: "POST",
                                                 headers: { "Content-Type": "application/json" },
                                                 body: JSON.stringify({ project_id: projectId, code: diagramCode })

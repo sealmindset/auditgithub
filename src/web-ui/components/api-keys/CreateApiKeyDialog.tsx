@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Loader2, Copy, Check, AlertTriangle, ChevronRight, ChevronLeft } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ToolCategory {
   display_name: string
@@ -66,12 +66,12 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
   // Fetch tool categories on mount
   useEffect(() => {
     if (open) {
-      fetch(`${API_BASE}/api/api-keys/tool-categories`, { credentials: "include" })
+      apiFetch(`${API_BASE}/api/api-keys/tool-categories`, { credentials: "include" })
         .then((res) => res.json())
         .then(setToolCategories)
         .catch(() => {})
 
-      fetch(`${API_BASE}/api/repositories`, { credentials: "include" })
+      apiFetch(`${API_BASE}/api/repositories`, { credentials: "include" })
         .then((res) => res.json())
         .then((data) => {
           const repos = Array.isArray(data) ? data : data.repositories || []
@@ -127,7 +127,7 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
         body.allowed_repository_ids = selectedRepoIds
       }
 
-      const res = await fetch(`${API_BASE}/api/api-keys`, {
+      const res = await apiFetch(`${API_BASE}/api/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

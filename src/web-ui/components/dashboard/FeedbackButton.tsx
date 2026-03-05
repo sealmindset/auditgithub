@@ -9,7 +9,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface FeedbackButtonProps {
     componentId: string
@@ -33,7 +33,7 @@ export function FeedbackButton({
 
         setIsSubmitting(true)
         try {
-            await fetch(`${API_BASE}/feedback/component`, {
+            await apiFetch(`${API_BASE}/feedback/component`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

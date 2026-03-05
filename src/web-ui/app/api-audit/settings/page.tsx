@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Loader2, Trash2, Plus, Globe, BookOpen } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // Type definitions
 type PathWord = {
@@ -52,8 +52,8 @@ export default function ApiAuditSettingsPage() {
         setLoading(true)
         try {
             const [wordsRes, urisRes] = await Promise.all([
-                fetch(`${API_BASE}/api-audit/dictionary`),
-                fetch(`${API_BASE}/api-audit/uri-library`)
+                apiFetch(`${API_BASE}/api-audit/dictionary`),
+                apiFetch(`${API_BASE}/api-audit/uri-library`)
             ])
 
             if (wordsRes.ok) setPathWords(await wordsRes.json())
@@ -70,7 +70,7 @@ export default function ApiAuditSettingsPage() {
         if (!newWord.trim()) return
         setAddingWord(true)
         try {
-            const res = await fetch(`${API_BASE}/api-audit/dictionary`, {
+            const res = await apiFetch(`${API_BASE}/api-audit/dictionary`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ word: newWord, category: newCategory || null })
@@ -93,7 +93,7 @@ export default function ApiAuditSettingsPage() {
     const handleDeleteWord = async (word: string) => {
         if (!confirm(`Are you sure you want to delete "${word}"?`)) return
         try {
-            const res = await fetch(`${API_BASE}/api-audit/dictionary/${encodeURIComponent(word)}`, {
+            const res = await apiFetch(`${API_BASE}/api-audit/dictionary/${encodeURIComponent(word)}`, {
                 method: "DELETE"
             })
             if (res.ok) {
@@ -111,7 +111,7 @@ export default function ApiAuditSettingsPage() {
         if (!newUri.trim()) return
         setAddingUri(true)
         try {
-            const res = await fetch(`${API_BASE}/api-audit/uri-library`, {
+            const res = await apiFetch(`${API_BASE}/api-audit/uri-library`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ uri: newUri, description: newDescription || null, source: "manual" })
@@ -134,7 +134,7 @@ export default function ApiAuditSettingsPage() {
     const handleDeleteUri = async (id: string) => {
         if (!confirm("Are you sure you want to delete this URI?")) return
         try {
-            const res = await fetch(`${API_BASE}/api-audit/uri-library/${id}`, {
+            const res = await apiFetch(`${API_BASE}/api-audit/uri-library/${id}`, {
                 method: "DELETE"
             })
             if (res.ok) {

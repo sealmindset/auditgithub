@@ -22,7 +22,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import ReactMarkdown from "react-markdown"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface RepositoryResult {
     repository: string
@@ -127,7 +127,7 @@ export function ZDAReportsView() {
             }
 
             // For PDF and DOCX, call backend API
-            const response = await fetch(`${API_BASE}/ai/zero-day/export/${format}`, {
+            const response = await apiFetch(`${API_BASE}/ai/zero-day/export/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(exportData)
@@ -239,7 +239,7 @@ export function ZDAReportsView() {
             }
 
             // For PDF and DOCX, call backend API
-            const response = await fetch(`${API_BASE}/ai/zero-day/export/repos/${format}`, {
+            const response = await apiFetch(`${API_BASE}/ai/zero-day/export/repos/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(exportData)

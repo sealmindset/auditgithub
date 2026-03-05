@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface JournalEntry {
   id: string
@@ -81,7 +81,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
     if (!findingId) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/investigation`)
+      const res = await apiFetch(`${API_BASE}/findings/${findingId}/investigation`)
       if (res.ok) {
         const data = await res.json()
         setEntries(data.journal_entries || [])
@@ -111,7 +111,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
   // Update investigation status
   const handleStatusChange = async (newStatus: string) => {
     try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/investigation/status`, {
+      const res = await apiFetch(`${API_BASE}/findings/${findingId}/investigation/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus === "none" ? null : newStatus }),
@@ -134,7 +134,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
     if (!newNote.trim()) return
     setIsSubmitting(true)
     try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/journal`, {
+      const res = await apiFetch(`${API_BASE}/findings/${findingId}/journal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -159,7 +159,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
     if (!aiQuestion.trim()) return
     setIsAskingAI(true)
     try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/journal/ask-ai`, {
+      const res = await apiFetch(`${API_BASE}/findings/${findingId}/journal/ask-ai`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -196,7 +196,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
     if (!editingEntryId || !editingText.trim()) return
     setIsUpdating(true)
     try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/journal/${editingEntryId}`, {
+      const res = await apiFetch(`${API_BASE}/findings/${findingId}/journal/${editingEntryId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -220,7 +220,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
     if (!deleteEntryId) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`${API_BASE}/findings/${findingId}/journal/${deleteEntryId}`, {
+      const res = await apiFetch(`${API_BASE}/findings/${findingId}/journal/${deleteEntryId}`, {
         method: "DELETE",
       })
       if (res.ok) {

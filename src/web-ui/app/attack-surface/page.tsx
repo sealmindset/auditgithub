@@ -51,7 +51,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { ContributorProfileModal } from "@/components/contributor-profile-modal"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface AttackSurfaceSummary {
   total_repos: number
@@ -196,12 +196,12 @@ export default function AttackSurfacePage() {
     const fetchData = async () => {
       try {
         const [summaryRes, secretsRes, abandonedRes, staleRes, highRiskRes, irRes] = await Promise.all([
-          fetch(`${API_BASE}/attack-surface/summary`),
-          fetch(`${API_BASE}/attack-surface/secrets?limit=20`),
-          fetch(`${API_BASE}/attack-surface/abandoned?limit=200`),
-          fetch(`${API_BASE}/attack-surface/stale-contributors?limit=200`),
-          fetch(`${API_BASE}/attack-surface/high-risk-repos?limit=200`),
-          fetch(`${API_BASE}/attack-surface/incident-response`),
+          apiFetch(`${API_BASE}/attack-surface/summary`),
+          apiFetch(`${API_BASE}/attack-surface/secrets?limit=20`),
+          apiFetch(`${API_BASE}/attack-surface/abandoned?limit=200`),
+          apiFetch(`${API_BASE}/attack-surface/stale-contributors?limit=200`),
+          apiFetch(`${API_BASE}/attack-surface/high-risk-repos?limit=200`),
+          apiFetch(`${API_BASE}/attack-surface/incident-response`),
         ])
 
         if (summaryRes.ok) setSummary(await summaryRes.json())

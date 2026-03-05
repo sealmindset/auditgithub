@@ -18,7 +18,7 @@ import { LanguagesView } from "@/components/LanguagesView"
 import { SbomView } from "@/components/SbomView"
 import { APIAuditView } from "@/components/APIAuditView"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 export default function ProjectPage() {
     const params = useParams()
@@ -37,12 +37,12 @@ export default function ProjectPage() {
         const fetchData = async () => {
             try {
                 const [projRes, secretsRes, sastRes, terraformRes, ossRes, runsRes] = await Promise.all([
-                    fetch(`${API_BASE}/projects/${id}`),
-                    fetch(`${API_BASE}/projects/${id}/secrets`),
-                    fetch(`${API_BASE}/projects/${id}/sast`),
-                    fetch(`${API_BASE}/projects/${id}/terraform`),
-                    fetch(`${API_BASE}/projects/${id}/oss`),
-                    fetch(`${API_BASE}/projects/${id}/runs`)
+                    apiFetch(`${API_BASE}/projects/${id}`),
+                    apiFetch(`${API_BASE}/projects/${id}/secrets`),
+                    apiFetch(`${API_BASE}/projects/${id}/sast`),
+                    apiFetch(`${API_BASE}/projects/${id}/terraform`),
+                    apiFetch(`${API_BASE}/projects/${id}/oss`),
+                    apiFetch(`${API_BASE}/projects/${id}/runs`)
                 ])
 
                 if (projRes.ok) setProject(await projRes.json())

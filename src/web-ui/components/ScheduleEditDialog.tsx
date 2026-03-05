@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, AlertCircle, Lock, Unlock } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface Schedule {
   id: string
@@ -96,7 +96,7 @@ export function ScheduleEditDialog({
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/schedules/${schedule.repository_id}`, {
+      const res = await apiFetch(`${API_BASE}/schedules/${schedule.repository_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

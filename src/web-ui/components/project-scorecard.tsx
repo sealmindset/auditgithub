@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ShieldAlert, Plus, GitFork, Calendar, Loader2 } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface Project {
     id: string
@@ -26,7 +26,7 @@ export function ProjectScorecard() {
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const res = await fetch(`${API_BASE}/projects/`)
+                const res = await apiFetch(`${API_BASE}/projects/`)
                 if (res.ok) {
                     const data = await res.json()
                     setProjects(data)

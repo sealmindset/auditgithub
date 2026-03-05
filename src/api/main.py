@@ -213,25 +213,16 @@ from src.auth.rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add SessionMiddleware for OAuth flow state management
-from starlette.middleware.sessions import SessionMiddleware
+# Initialize OAuth providers with OIDC discovery
 from src.auth.providers import init_oauth
 from src.auth.config import settings as auth_settings
-
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=auth_settings.session_secret,
-    max_age=3600,  # 1 hour session
-    https_only=False  # Set to False for local dev, change to True in production
-)
-
-# Initialize OAuth providers with OIDC discovery
 init_oauth()
 
 from .database import engine
 from . import models
+import src.rbac.models  # noqa: F401 — register RBAC tables with Base.metadata
 
-# Create database tables (includes Tenant model)
+# Create database tables (includes Tenant model and RBAC tables)
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
@@ -514,6 +505,16 @@ if is_sandbox():
 else:
     from src.api.middleware.auth import AuthenticationMiddleware
     app.add_middleware(AuthenticationMiddleware)
+
+# Add SessionMiddleware for OAuth flow state management
+# Must be added AFTER AuthenticationMiddleware so it wraps it (runs before it)
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth_settings.session_secret,
+    max_age=3600,  # 1 hour session
+    https_only=False  # Set to False for local dev, change to True in production
+)
 
 # Add security headers middleware (CSP, HSTS, X-Frame-Options, etc.)
 app.add_middleware(

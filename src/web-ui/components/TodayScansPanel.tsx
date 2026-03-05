@@ -21,7 +21,7 @@ import {
     AlertTriangle
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface TodayScan {
     schedule_id: string
@@ -270,7 +270,7 @@ export function TodayScansPanel() {
 
     const fetchData = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/schedules/today`, {
+            const res = await apiFetch(`${API_BASE}/schedules/today`, {
                 credentials: "include"
             })
             if (!res.ok) throw new Error("Failed to fetch today's scans")
@@ -300,7 +300,7 @@ export function TodayScansPanel() {
     const handleTriggerScan = async (repoId: string) => {
         setTriggeringRepo(repoId)
         try {
-            const res = await fetch(`${API_BASE}/schedules/${repoId}/trigger`, {
+            const res = await apiFetch(`${API_BASE}/schedules/${repoId}/trigger`, {
                 method: "POST",
                 credentials: "include"
             })

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { AlertTriangle, Copy, Check, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface RotateApiKeyDialogProps {
   open: boolean
@@ -42,7 +42,7 @@ export function RotateApiKeyDialog({
   const handleRotate = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/api/api-keys/${keyId}/rotate`, {
+      const res = await apiFetch(`${API_BASE}/api/api-keys/${keyId}/rotate`, {
         method: "POST",
         credentials: "include",
       })

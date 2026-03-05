@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import AuthConfigTab from "@/components/AuthConfigTab"
 import dynamic from "next/dynamic"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // Dynamically import My Devices page
 const MyDevicesPage = dynamic(() => import("./devices/page"), { ssr: false })
@@ -83,7 +83,7 @@ export default function SettingsPage() {
         const fetchSettings = async () => {
             setLoading(true)
             try {
-                const res = await fetch(`${API_BASE}/settings/`, {
+                const res = await apiFetch(`${API_BASE}/settings/`, {
                     credentials: 'include'
                 })
                 if (res.ok) {
@@ -102,7 +102,7 @@ export default function SettingsPage() {
         
         const fetchCriblConfig = async () => {
             try {
-                const res = await fetch(`${API_BASE}/cribl/config`, {
+                const res = await apiFetch(`${API_BASE}/cribl/config`, {
                     credentials: 'include'
                 })
                 if (res.ok) {
@@ -130,7 +130,7 @@ export default function SettingsPage() {
     const handleSave = async () => {
         setSaving(true)
         try {
-            const res = await fetch(`${API_BASE}/settings/`, {
+            const res = await apiFetch(`${API_BASE}/settings/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -159,7 +159,7 @@ export default function SettingsPage() {
         setVerifyingOpenAI(true)
         setOpenaiStatus(null)
         try {
-            const res = await fetch(`${API_BASE}/settings/verify/openai`, {
+            const res = await apiFetch(`${API_BASE}/settings/verify/openai`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -178,7 +178,7 @@ export default function SettingsPage() {
         setVerifyingJira(true)
         setJiraStatus(null)
         try {
-            const res = await fetch(`${API_BASE}/settings/verify/jira`, {
+            const res = await apiFetch(`${API_BASE}/settings/verify/jira`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -200,7 +200,7 @@ export default function SettingsPage() {
     const handleSaveCribl = async () => {
         setSavingCribl(true)
         try {
-            const res = await fetch(`${API_BASE}/cribl/config`, {
+            const res = await apiFetch(`${API_BASE}/cribl/config`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -241,7 +241,7 @@ export default function SettingsPage() {
         setTestingCribl(true)
         setCriblTestResult(null)
         try {
-            const res = await fetch(`${API_BASE}/cribl/test`, {
+            const res = await apiFetch(`${API_BASE}/cribl/test`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -264,7 +264,7 @@ export default function SettingsPage() {
         setTestingMinio(true)
         setMinioTestResult(null)
         try {
-            const res = await fetch(`${API_BASE}/cribl/test-minio`, {
+            const res = await apiFetch(`${API_BASE}/cribl/test-minio`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include'

@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Lock, Unlock, Bot, User, Clock, Calendar, History, Info, Settings2, ChevronDown, ChevronRight } from "lucide-react"
 import type { Schedule } from "@/components/SchedulerCalendar"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // Scanner info type from API
 interface ScannerInfo {
@@ -177,7 +177,7 @@ export function ScheduleOverrideDialog({
         setHistoryError(null)
 
         try {
-            const res = await fetch(`${API_BASE}/schedules/${schedule.repository_id}/history`)
+            const res = await apiFetch(`${API_BASE}/schedules/${schedule.repository_id}/history`)
             if (!res.ok) {
                 throw new Error("Failed to fetch history")
             }
@@ -196,7 +196,7 @@ export function ScheduleOverrideDialog({
         setScannersError(null)
 
         try {
-            const res = await fetch(`${API_BASE}/schedules/scanners`)
+            const res = await apiFetch(`${API_BASE}/schedules/scanners`)
             if (!res.ok) {
                 throw new Error("Failed to fetch scanners")
             }

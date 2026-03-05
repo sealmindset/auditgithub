@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, CheckCircle2, AlertTriangle } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface Remediation {
     id?: string
@@ -49,7 +49,7 @@ export function AiRemediationCard({
         setLoading(true)
         setError(null)
         try {
-            const response = await fetch(`${API_BASE}/ai/remediate`, {
+            const response = await apiFetch(`${API_BASE}/ai/remediate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -84,7 +84,7 @@ export function AiRemediationCard({
 
         try {
             setLoading(true)
-            const response = await fetch(`${API_BASE}/ai/remediate/${remediation.id}`, {
+            const response = await apiFetch(`${API_BASE}/ai/remediate/${remediation.id}`, {
                 method: "DELETE"
             })
 

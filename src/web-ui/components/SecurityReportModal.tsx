@@ -45,7 +45,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface SecurityReportModalProps {
     projectId: string
@@ -138,7 +138,7 @@ export function SecurityReportModal({ projectId, projectName, isOpen, onClose }:
         setError(null)
 
         try {
-            const res = await fetch(`${API_BASE}/projects/${projectId}/security-report`, {
+            const res = await apiFetch(`${API_BASE}/projects/${projectId}/security-report`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

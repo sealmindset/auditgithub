@@ -40,7 +40,7 @@ import {
     Code
 } from "lucide-react"
 import { DownloadControl } from "./DownloadControl"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // =============================================================================
 // Types
@@ -313,7 +313,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
     // Check if initial auto-test has already been completed for this project
     const checkInitialTestStatus = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-test-status`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-test-status`)
             if (response.ok) {
                 const data = await response.json()
                 setInitialTestCompleted(data.initial_test_completed || false)
@@ -326,7 +326,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
     // Mark initial auto-test as complete
     const markInitialTestComplete = async (totalTested: number, totalFound: number) => {
         try {
-            await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-test-status/mark-complete?total_tested=${totalTested}&total_found=${totalFound}`, {
+            await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-test-status/mark-complete?total_tested=${totalTested}&total_found=${totalFound}`, {
                 method: 'POST'
             })
             setInitialTestCompleted(true)
@@ -369,7 +369,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
     // Fetch existing test results from database
     const fetchCredentialTestResults = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-results`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-results`)
             if (response.ok) {
                 const data = await response.json()
                 const resultsMap: Record<string, CredentialUrlTestResult> = {}
@@ -398,7 +398,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 minute timeout
             
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-test`, {
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-test`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -419,7 +419,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                 console.log(`[testCredentialUrl] Response for ${url}:`, data)
                 if (data.success && data.result_id) {
                     // Fetch the full result
-                    const detailResponse = await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-results/${data.result_id}`)
+                    const detailResponse = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-results/${data.result_id}`)
                     if (detailResponse.ok) {
                         const detailData = await detailResponse.json()
                         setCredentialTestResults(prev => ({
@@ -469,7 +469,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
             // Always fetch full details to ensure we have auth_request_headers with credential values
             console.log(`[openReportModal] Fetching full details for ${result.id}`)
             try {
-                const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-results/${result.id}`)
+                const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-results/${result.id}`)
                 console.log(`[openReportModal] API response status: ${response.status}`)
                 if (response.ok) {
                     const data = await response.json()
@@ -560,7 +560,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
     
     const fetchSwaggerServerCredentials = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/swagger-server-credentials`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/swagger-server-credentials`)
             if (response.ok) {
                 const data = await response.json()
                 setSwaggerServerCredentials(data.mappings || [])
@@ -572,7 +572,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const fetchCredentialUrlCorrelations = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-correlations`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/credential-url-correlations`)
             if (response.ok) {
                 const data = await response.json()
                 setCredentialUrlCorrelations(data.correlations || [])
@@ -584,7 +584,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const fetchInboundCorrelations = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/inbound-url-correlations`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/inbound-url-correlations`)
             if (response.ok) {
                 const data = await response.json()
                 setInboundCorrelations(data.correlations || [])
@@ -596,7 +596,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const fetchOutboundCorrelations = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/outbound-url-correlations`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/outbound-url-correlations`)
             if (response.ok) {
                 const data = await response.json()
                 setOutboundCorrelations(data.correlations || [])
@@ -608,7 +608,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const fetchServerCredCorrelations = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/server-credential-correlations`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/server-credential-correlations`)
             if (response.ok) {
                 const data = await response.json()
                 setServerCredCorrelations(data.correlations || [])
@@ -620,7 +620,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const fetchMatchedCredentials = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/matched-credentials`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/matched-credentials`)
             if (response.ok) {
                 const data = await response.json()
                 setMatchedCredentials(data.credentials || [])
@@ -632,7 +632,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const fetchSwaggerFiles = async () => {
         try {
-            const response = await fetch(`${API_BASE}/projects/${projectId}/api-audit/swagger-files`)
+            const response = await apiFetch(`${API_BASE}/projects/${projectId}/api-audit/swagger-files`)
             if (response.ok) {
                 const data = await response.json()
                 setSwaggerFiles(data.files || [])
@@ -647,8 +647,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
         setError(null)
         try {
             const [auditRes, specRes] = await Promise.all([
-                fetch(`${API_BASE}/projects/${projectId}/api-audit/full-report`),
-                fetch(`${API_BASE}/projects/${projectId}/api-audit/openapi/view`)
+                apiFetch(`${API_BASE}/projects/${projectId}/api-audit/full-report`),
+                apiFetch(`${API_BASE}/projects/${projectId}/api-audit/openapi/view`)
             ])
 
             if (auditRes.ok) {

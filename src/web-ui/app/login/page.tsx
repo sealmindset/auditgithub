@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { AlertCircle, Shield } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { AlertCircle, Shield, Loader2 } from "lucide-react"
+import { API_BASE, apiFetch } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
+
+interface Provider {
+  name: string
+  display_name: string
+}
 
 function LoginForm() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -16,6 +21,8 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect") || "/"
 
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [providersLoading, setProvidersLoading] = useState(true)
   const [showBreakGlass, setShowBreakGlass] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -29,8 +36,17 @@ function LoginForm() {
     }
   }, [isAuthenticated, isLoading, redirectTo, router])
 
-  const handleEntraLogin = () => {
-    window.location.href = `${API_BASE}/auth/login/entra`
+  // Fetch available OIDC providers
+  useEffect(() => {
+    apiFetch(`${API_BASE}/auth/providers`)
+      .then(res => res.json())
+      .then(data => setProviders(data.providers || []))
+      .catch(() => setProviders([]))
+      .finally(() => setProvidersLoading(false))
+  }, [])
+
+  const handleProviderLogin = (providerName: string) => {
+    window.location.href = `${API_BASE}/auth/login/${providerName}`
   }
 
   const handleBreakGlassLogin = async (e: React.FormEvent) => {
@@ -43,10 +59,9 @@ function LoginForm() {
       formData.append("email", email)
       formData.append("password", password)
 
-      const res = await fetch(`${API_BASE}/auth/break-glass/login`, {
+      const res = await apiFetch(`${API_BASE}/auth/break-glass/login`, {
         method: "POST",
         body: formData,
-        credentials: "include"
       })
 
       if (res.ok) {
@@ -84,20 +99,26 @@ function LoginForm() {
             <>
               {/* Normal Login */}
               <div className="space-y-4">
-                <Button
-                  onClick={handleEntraLogin}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-lg"
-                  size="lg"
-                >
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="currentColor"
-                    viewBox="0 0 23 23"
-                  >
-                    <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" />
-                  </svg>
-                  Sign in with Microsoft
-                </Button>
+                {providersLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                  </div>
+                ) : providers.length > 0 ? (
+                  providers.map((provider) => (
+                    <Button
+                      key={provider.name}
+                      onClick={() => handleProviderLogin(provider.name)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-lg"
+                      size="lg"
+                    >
+                      Sign in with {provider.display_name}
+                    </Button>
+                  ))
+                ) : (
+                  <p className="text-center text-sm text-gray-500">
+                    No SSO providers configured. Use emergency access below.
+                  </p>
+                )}
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -112,7 +133,7 @@ function LoginForm() {
 
                 <div className="text-center">
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    Don't have access? Contact your administrator for an invitation.
+                    Don&apos;t have access? Contact your administrator for an invitation.
                   </p>
                   <button
                     onClick={() => setShowBreakGlass(true)}
@@ -133,7 +154,7 @@ function LoginForm() {
                     Emergency Break Glass Access
                   </p>
                   <p className="text-xs text-red-700 dark:text-red-400">
-                    This is emergency access only for when Entra ID is unavailable.
+                    This is emergency access only for when SSO is unavailable.
                     All actions will be audited and logged.
                   </p>
                 </div>

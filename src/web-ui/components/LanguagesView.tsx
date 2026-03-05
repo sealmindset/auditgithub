@@ -6,7 +6,7 @@ import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Loader2 } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface LanguageStat {
     name: string
@@ -33,7 +33,7 @@ export function LanguagesView({ projectId }: LanguagesViewProps) {
     useEffect(() => {
         const fetchLanguages = async () => {
             try {
-                const res = await fetch(`${API_BASE}/projects/${projectId}/languages`)
+                const res = await apiFetch(`${API_BASE}/projects/${projectId}/languages`)
                 if (res.ok) {
                     const data = await res.json()
                     setLanguages(data)

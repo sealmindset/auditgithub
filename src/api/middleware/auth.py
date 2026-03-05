@@ -34,6 +34,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     PUBLIC_PREFIXES = [
         "/auth/",
         "/invite/",
+        "/health",
         "/api/docs",
         "/api/redoc",
         "/api/openapi.json",
@@ -75,25 +76,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         if not user_data:
             # User not authenticated
-            logger.info(f"Unauthenticated request to {request.url.path}, redirecting to login")
+            logger.info(f"Unauthenticated request to {request.url.path}")
 
-            # Determine if this is an API request or UI request
-            if request.url.path.startswith('/api/'):
-                # API request - return 401 JSON
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={
-                        "detail": "Authentication required",
-                        "login_url": "/auth/login/entra"
-                    }
-                )
-            else:
-                # UI request - redirect to login page
-                # Store original URL to redirect back after login
-                return RedirectResponse(
-                    url=f"/login?next={request.url.path}",
-                    status_code=303
-                )
+            # Return 401 JSON for all API requests (frontend is a separate app)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "detail": "Authentication required",
+                    "login_url": "/login"
+                }
+            )
 
         # User is authenticated - proceed with request
         return await call_next(request)

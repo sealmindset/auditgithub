@@ -32,7 +32,7 @@ import { FindingTrendsWidget } from "@/components/dashboard/FindingTrendsWidget"
 import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget"
 import { DashboardCustomizer } from "@/components/dashboard/DashboardCustomizer"
 import { useDashboardLayout } from "@/hooks/useDashboardLayout"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface HeroMetricsData {
     repositories: number
@@ -103,9 +103,9 @@ export default function DashboardPage() {
     const fetchHollywoodData = useCallback(async () => {
         try {
             const [heroRes, radarRes, insightsRes] = await Promise.all([
-                fetch(`${API_BASE}/analytics/hero-metrics${orgParam ? `?${orgParam}` : ""}`),
-                fetch(`${API_BASE}/analytics/threat-radar${orgParam ? `?${orgParam}` : ""}`),
-                fetch(`${API_BASE}/analytics/ai-insights?limit=8${orgParam ? `&${orgParam}` : ""}`)
+                apiFetch(`${API_BASE}/analytics/hero-metrics${orgParam ? `?${orgParam}` : ""}`),
+                apiFetch(`${API_BASE}/analytics/threat-radar${orgParam ? `?${orgParam}` : ""}`),
+                apiFetch(`${API_BASE}/analytics/ai-insights?limit=8${orgParam ? `&${orgParam}` : ""}`)
             ])
 
             if (heroRes.ok) {
@@ -133,7 +133,7 @@ export default function DashboardPage() {
 
     const fetchLegacyData = useCallback(async () => {
         try {
-            const recentRes = await fetch(`${API_BASE}/analytics/recent-findings${orgParam ? `?${orgParam}` : ""}`)
+            const recentRes = await apiFetch(`${API_BASE}/analytics/recent-findings${orgParam ? `?${orgParam}` : ""}`)
             if (recentRes.ok) setRecentFindings(await recentRes.json())
         } catch (error) {
             console.error("Failed to fetch recent findings:", error)

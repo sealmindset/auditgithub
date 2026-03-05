@@ -17,7 +17,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 export default function FindingDetailsPage() {
     const params = useParams()
@@ -32,7 +32,7 @@ export default function FindingDetailsPage() {
 
     const fetchFinding = async () => {
         try {
-            const res = await fetch(`${API_BASE}/findings/${id}`)
+            const res = await apiFetch(`${API_BASE}/findings/${id}`)
             if (!res.ok) throw new Error("Finding not found")
             const data = await res.json()
             setFinding(data)
@@ -47,7 +47,7 @@ export default function FindingDetailsPage() {
     const handleToggleIncludeInReport = async (checked: boolean) => {
         setIsTogglingReport(true)
         try {
-            const res = await fetch(`${API_BASE}/findings/${id}/include-in-report`, {
+            const res = await apiFetch(`${API_BASE}/findings/${id}/include-in-report`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ include_in_report: checked }),
@@ -189,7 +189,7 @@ export default function FindingDetailsPage() {
                             <CardTitle>Details</CardTitle>
                             <AskAIDialog findingId={finding.id} onDescriptionUpdated={() => {
                                 // Refresh finding data after description update
-                                fetch(`${API_BASE}/findings/${id}`)
+                                apiFetch(`${API_BASE}/findings/${id}`)
                                     .then(res => res.json())
                                     .then(data => setFinding(data))
                             }} />

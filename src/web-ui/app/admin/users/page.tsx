@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Users, UserPlus, Mail, Shield, Loader2, AlertCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface User {
   id: string
@@ -56,7 +56,7 @@ export default function AdminUsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/users`, {
+      const res = await apiFetch(`${API_BASE}/api/users`, {
         credentials: "include"
       })
 
@@ -84,7 +84,7 @@ export default function AdminUsersPage() {
 
   const fetchInvitations = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/invitations`, {
+      const res = await apiFetch(`${API_BASE}/api/invitations`, {
         credentials: "include"
       })
 
@@ -103,7 +103,7 @@ export default function AdminUsersPage() {
     setInviteLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE}/api/invitations`, {
+      const res = await apiFetch(`${API_BASE}/api/invitations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

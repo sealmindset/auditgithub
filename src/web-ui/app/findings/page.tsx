@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, LayoutGrid, List, Clock, FileCode, Archive, ShieldAlert } from "lucide-react"
 import Link from "next/link"
 import { ProjectScorecard } from "@/components/project-scorecard"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface Finding {
     id: string
@@ -342,7 +342,7 @@ export default function FindingsPage() {
                         order_by: "severity"
                     })
 
-                    const res = await fetch(`${API_BASE}/findings/paginated?${params}`, {
+                    const res = await apiFetch(`${API_BASE}/findings/paginated?${params}`, {
                         credentials: 'include'
                     })
 

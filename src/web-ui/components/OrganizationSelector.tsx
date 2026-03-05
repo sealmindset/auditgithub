@@ -43,7 +43,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // =============================================================================
 // Types
@@ -97,7 +97,7 @@ export function OrganizationSelector({
                 setError(null);
 
                 // Fetch organizations
-                const orgsResponse = await fetch(`${API_BASE}/organizations/`);
+                const orgsResponse = await apiFetch(`${API_BASE}/organizations/`);
 
                 if (!orgsResponse.ok) {
                     throw new Error("Failed to fetch organizations");
@@ -126,7 +126,7 @@ export function OrganizationSelector({
                 // Select the org on the API side and update state
                 if (orgToSelect) {
                     try {
-                        const selectResponse = await fetch(`${API_BASE}/organizations/${orgToSelect.name}/select`, {
+                        const selectResponse = await apiFetch(`${API_BASE}/organizations/${orgToSelect.name}/select`, {
                             method: "POST"
                         });
                         if (selectResponse.ok) {
@@ -176,7 +176,7 @@ export function OrganizationSelector({
             setIsSelecting(true);
             setError(null);
 
-            const response = await fetch(`${API_BASE}/organizations/${orgName}/select`, {
+            const response = await apiFetch(`${API_BASE}/organizations/${orgName}/select`, {
                 method: "POST"
             });
 

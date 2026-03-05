@@ -34,7 +34,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface OIDCProvider {
     id: string
@@ -115,7 +115,7 @@ export default function AuthConfigTab() {
 
     const loadProviders = async () => {
         try {
-            const res = await fetch(`${API_BASE}/auth/providers`)
+            const res = await apiFetch(`${API_BASE}/auth/providers`)
             if (res.ok) {
                 const data = await res.json()
                 setProviders(data.providers || [])
@@ -127,7 +127,7 @@ export default function AuthConfigTab() {
 
     const loadUsers = async () => {
         try {
-            const res = await fetch(`${API_BASE}/auth/users`)
+            const res = await apiFetch(`${API_BASE}/auth/users`)
             if (res.ok) {
                 const data = await res.json()
                 setUsers(data.users || [])
@@ -139,7 +139,7 @@ export default function AuthConfigTab() {
 
     const loadRoles = async () => {
         try {
-            const res = await fetch(`${API_BASE}/rbac/roles`)
+            const res = await apiFetch(`${API_BASE}/rbac/roles`)
             if (res.ok) {
                 const data = await res.json()
                 setRoles(data.roles || [])
@@ -204,7 +204,7 @@ export default function AuthConfigTab() {
     const handleTestProvider = async (providerId: string) => {
         setTestingProvider(true)
         try {
-            const res = await fetch(`${API_BASE}/auth/providers/${providerId}/test`, {
+            const res = await apiFetch(`${API_BASE}/auth/providers/${providerId}/test`, {
                 method: "POST"
             })
             const data = await res.json()
@@ -229,7 +229,7 @@ export default function AuthConfigTab() {
         if (!confirm("Are you sure you want to delete this OIDC provider?")) return
 
         try {
-            const res = await fetch(`${API_BASE}/auth/providers/${providerId}`, {
+            const res = await apiFetch(`${API_BASE}/auth/providers/${providerId}`, {
                 method: "DELETE"
             })
 
@@ -252,7 +252,7 @@ export default function AuthConfigTab() {
     const handleInviteUser = async () => {
         setInvitingUser(true)
         try {
-            const res = await fetch(`${API_BASE}/auth/users/invite`, {
+            const res = await apiFetch(`${API_BASE}/auth/users/invite`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -291,7 +291,7 @@ export default function AuthConfigTab() {
 
     const handleToggleUserActive = async (userId: string, isActive: boolean) => {
         try {
-            const res = await fetch(`${API_BASE}/auth/users/${userId}`, {
+            const res = await apiFetch(`${API_BASE}/auth/users/${userId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ is_active: !isActive })

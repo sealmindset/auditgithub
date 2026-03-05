@@ -19,7 +19,7 @@ import {
 import { formatDistanceToNow, format } from "date-fns"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface JobStatus {
   description: string
@@ -74,7 +74,7 @@ export function BackgroundJobsWidget() {
   const handleTrigger = async (jobName: string) => {
     setTriggering(jobName)
     try {
-      const res = await fetch(`${API_BASE}/scheduler/jobs/${jobName}/trigger`, {
+      const res = await apiFetch(`${API_BASE}/scheduler/jobs/${jobName}/trigger`, {
         method: "POST",
         credentials: "include"
       })

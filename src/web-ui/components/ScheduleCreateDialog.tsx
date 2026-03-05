@@ -21,7 +21,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Loader2, Bot, User, Sparkles, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface AIRecommendation {
   frequency: string
@@ -105,7 +105,7 @@ export function ScheduleCreateDialog({
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/schedules/${repositoryId}/recommend`, {
+      const res = await apiFetch(`${API_BASE}/schedules/${repositoryId}/recommend`, {
         credentials: "include",
       })
 
@@ -137,7 +137,7 @@ export function ScheduleCreateDialog({
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/schedules`, {
+      const res = await apiFetch(`${API_BASE}/schedules`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

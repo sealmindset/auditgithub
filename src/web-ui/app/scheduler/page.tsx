@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { ScanActivityGraph } from "@/components/ScanActivityGraph"
 import { TodayScansPanel } from "@/components/TodayScansPanel"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // Schedule type from API
 interface Schedule {
@@ -79,7 +79,7 @@ export default function SchedulerPage() {
     // Fetch schedules on mount
     const fetchSchedules = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/schedules`, {
+            const res = await apiFetch(`${API_BASE}/schedules`, {
                 credentials: 'include'
             })
             if (res.ok) {
@@ -102,7 +102,7 @@ export default function SchedulerPage() {
     const fetchRepositories = useCallback(async () => {
         try {
             setReposLoading(true)
-            const res = await fetch(`${API_BASE}/schedules/repositories`, {
+            const res = await apiFetch(`${API_BASE}/schedules/repositories`, {
                 credentials: 'include'
             })
             if (res.ok) {
@@ -145,7 +145,7 @@ export default function SchedulerPage() {
         )
 
         try {
-            const res = await fetch(`${API_BASE}/schedules/${data.repoId}`, {
+            const res = await apiFetch(`${API_BASE}/schedules/${data.repoId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -205,7 +205,7 @@ export default function SchedulerPage() {
         )
 
         try {
-            const res = await fetch(`${API_BASE}/schedules/${repoId}/lock`, {
+            const res = await apiFetch(`${API_BASE}/schedules/${repoId}/lock`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -262,7 +262,7 @@ export default function SchedulerPage() {
         )
 
         try {
-            const res = await fetch(`${API_BASE}/schedules/${repoId}/lock`, {
+            const res = await apiFetch(`${API_BASE}/schedules/${repoId}/lock`, {
                 method: "DELETE",
                 credentials: 'include',
             })
@@ -323,7 +323,7 @@ export default function SchedulerPage() {
         )
 
         try {
-            const res = await fetch(`${API_BASE}/schedules/${repoId}`, {
+            const res = await apiFetch(`${API_BASE}/schedules/${repoId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
@@ -413,7 +413,7 @@ export default function SchedulerPage() {
     // Handle triggering an immediate scan
     const handleTriggerScan = useCallback(async (repoId: string) => {
         try {
-            const res = await fetch(`${API_BASE}/schedules/${repoId}/trigger`, {
+            const res = await apiFetch(`${API_BASE}/schedules/${repoId}/trigger`, {
                 method: "POST",
                 credentials: 'include',
             })
@@ -445,7 +445,7 @@ export default function SchedulerPage() {
         setApplyingAI(true)
         try {
             console.log('[AI Schedule] Fetching:', `${API_BASE}/schedules/batch/apply-ai`)
-            const res = await fetch(`${API_BASE}/schedules/batch/apply-ai`, {
+            const res = await apiFetch(`${API_BASE}/schedules/batch/apply-ai`, {
                 method: "POST",
                 credentials: 'include',
             })
@@ -501,7 +501,7 @@ export default function SchedulerPage() {
     const handleRefreshAISchedules = useCallback(async () => {
         setRefreshingAI(true)
         try {
-            const res = await fetch(`${API_BASE}/schedules/batch/refresh-ai`, {
+            const res = await apiFetch(`${API_BASE}/schedules/batch/refresh-ai`, {
                 method: "POST",
                 credentials: 'include',
             })

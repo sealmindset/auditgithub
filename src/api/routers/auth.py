@@ -12,6 +12,7 @@ Implements:
 - /auth/revoke - Revoke current user's token
 """
 
+import os
 from fastapi import APIRouter, Request, HTTPException, Depends, status, Form
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel, Field
@@ -73,8 +74,12 @@ async def login(provider: str, request: Request):
             detail=f"Invalid provider '{provider}'. Available: {settings.registered_provider_names}"
         )
 
-    # Get callback URL for this provider
-    redirect_uri = str(request.url_for('callback', provider=provider))
+    # Build callback URL using APP_URL so it routes through the frontend proxy
+    app_url = os.environ.get('APP_URL', '').rstrip('/')
+    if app_url:
+        redirect_uri = f"{app_url}/api/proxy/auth/callback/{provider}"
+    else:
+        redirect_uri = str(request.url_for('callback', provider=provider))
 
     # Build extra authorization params
     extra_params = {}
@@ -377,8 +382,9 @@ async def callback(provider: str, request: Request):
 
             logger.info(f"Login successful: {user.email} (role={user.role}, provider={provider})")
 
-            # Redirect to homepage with 303 See Other (POST-redirect-GET pattern)
-            return RedirectResponse(url='/', status_code=303)
+            # Redirect to frontend homepage with 303 See Other (POST-redirect-GET pattern)
+            app_url = os.environ.get('APP_URL', 'http://localhost:3000')
+            return RedirectResponse(url=app_url, status_code=303)
 
         finally:
             db.close()

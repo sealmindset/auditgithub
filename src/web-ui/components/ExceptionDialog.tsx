@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, ShieldOff, Trash2, AlertTriangle, Copy, Check } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ExceptionDialogProps {
     finding: any
@@ -75,7 +75,7 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
         setExceptionRule(null)
 
         try {
-            const res = await fetch(`${API_BASE}/findings/exception/generate`, {
+            const res = await apiFetch(`${API_BASE}/findings/exception/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -109,7 +109,7 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
         setDryRunResult(null)
 
         try {
-            const res = await fetch(`${API_BASE}/findings/exception/delete/dry-run`, {
+            const res = await apiFetch(`${API_BASE}/findings/exception/delete/dry-run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -141,7 +141,7 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
         setDeleting(true)
 
         try {
-            const res = await fetch(`${API_BASE}/findings/exception/delete`, {
+            const res = await apiFetch(`${API_BASE}/findings/exception/delete`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

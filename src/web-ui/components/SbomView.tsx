@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/tooltip"
 
 import { AskComponentDialog } from "./AskComponentDialog"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface Dependency {
     id: string
@@ -41,7 +41,7 @@ export function SbomView({ projectId }: SbomViewProps) {
     useEffect(() => {
         const fetchDependencies = async () => {
             try {
-                const res = await fetch(`${API_BASE}/projects/${projectId}/dependencies`)
+                const res = await apiFetch(`${API_BASE}/projects/${projectId}/dependencies`)
                 if (res.ok) {
                     const data = await res.json()
                     setDependencies(data)

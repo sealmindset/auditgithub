@@ -24,7 +24,7 @@ import { formatDistanceToNow } from "date-fns"
 import { CreateApiKeyDialog } from "@/components/api-keys/CreateApiKeyDialog"
 import { RevokeApiKeyDialog } from "@/components/api-keys/RevokeApiKeyDialog"
 import { RotateApiKeyDialog } from "@/components/api-keys/RotateApiKeyDialog"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ApiKeyItem {
   id: string
@@ -57,7 +57,7 @@ export default function ApiKeysPage() {
 
   const fetchKeys = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/api-keys`, { credentials: "include" })
+      const res = await apiFetch(`${API_BASE}/api/api-keys`, { credentials: "include" })
       if (res.ok) {
         const data = await res.json()
         setKeys(data)

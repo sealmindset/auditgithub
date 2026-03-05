@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface RevokeApiKeyDialogProps {
   open: boolean
@@ -37,7 +37,7 @@ export function RevokeApiKeyDialog({
   const handleRevoke = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/api/api-keys/${keyId}`, {
+      const res = await apiFetch(`${API_BASE}/api/api-keys/${keyId}`, {
         method: "DELETE",
         credentials: "include",
       })

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText } from "lucide-react"
 import Link from "next/link"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 function getDaysSince(date: string | null): number | null {
     if (!date) return null
@@ -106,7 +106,7 @@ export default function RepositoriesPage() {
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const res = await fetch(`${API_BASE}/projects/`)
+                const res = await apiFetch(`${API_BASE}/projects/`)
                 if (res.ok) {
                     const data = await res.json()
                     setProjects(data)

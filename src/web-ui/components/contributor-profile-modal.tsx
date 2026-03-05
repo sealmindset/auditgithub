@@ -28,7 +28,7 @@ import {
     Shield,
     Users,
 } from "lucide-react"
-import { API_BASE } from "@/lib/api"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 // Types matching the API response
 interface ContributorAlias {
@@ -150,7 +150,7 @@ export function ContributorProfileModal({
             setError(null)
             setNotFound(false)
             
-            fetch(`${API_BASE}/contributor-profiles/lookup-by-email?email=${encodeURIComponent(email)}`)
+            apiFetch(`${API_BASE}/contributor-profiles/lookup-by-email?email=${encodeURIComponent(email)}`)
                 .then(res => {
                     if (!res.ok) {
                         throw new Error(`HTTP ${res.status}`)
