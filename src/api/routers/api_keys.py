@@ -238,7 +238,14 @@ async def create_api_key(
 
     The raw key value is returned only once in the response. Store it securely.
     Non-admin users are subject to restrictions on expiration and rate limits.
+    Requires at least analyst role (user role cannot create API keys).
     """
+    if db_user.role == 'user':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API key generation requires at least analyst role"
+        )
+
     # Validate admin-only fields
     _validate_admin_only_fields(body, db_user)
 

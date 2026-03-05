@@ -64,12 +64,14 @@ export function useWidgetData<T>(
 
     try {
       // Build URL with org param if present
-      const url = new URL(`${API_BASE}${endpoint}`)
+      const params = new URLSearchParams()
       if (currentOrg) {
-        url.searchParams.set("org", currentOrg)
+        params.set("org", currentOrg)
       }
+      const qs = params.toString()
+      const url = `${API_BASE}${endpoint}${qs ? `?${qs}` : ""}`
 
-      const response = await fetch(url.toString(), {
+      const response = await fetch(url, {
         credentials: "include",
       })
 

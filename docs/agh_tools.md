@@ -144,4 +144,4 @@
 
   ---
   Total: 28 tools across 10 categories, orchestrated from scripts/scanning/scan_repos.py with category-specific execution modules in execution/. All tools output JSON for
-   programmatic ingestion and Markdown for human review, with findings persisted to PostgreSQL for trending and aggregation.
+   programmatic ingestion and Markdown for human review, with findings persisted to PostgreSQL for trending and aggregation.    

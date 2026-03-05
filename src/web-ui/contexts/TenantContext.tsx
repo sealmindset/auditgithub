@@ -60,7 +60,7 @@ export function TenantProvider({
             setIsLoading(true);
             setError(null);
 
-            const response = await fetch(`${apiBaseUrl}/tenants`);
+            const response = await fetch(`${apiBaseUrl}/tenants`, { credentials: "include" });
 
             if (!response.ok) {
                 throw new Error(`Failed to fetch tenants: ${response.statusText}`);

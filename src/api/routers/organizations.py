@@ -137,21 +137,38 @@ async def ensure_agent_initialized():
 )
 async def list_organizations(
     include_inactive: bool = Query(False, description="Include inactive organizations"),
-    db: Session = Depends(get_tenant_db)
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    List all registered organizations.
+    List organizations the current user can access.
 
-    Returns organizations sorted by default status, then name.
-    Includes computed counts for repositories and findings per organization.
-    No special permissions are required to list organizations.
+    Super admins and admins see all organizations.
+    Manager, analyst, and user roles only see orgs they are assigned to.
     """
     from sqlalchemy import func
 
-    # Direct database query - more reliable than agent
     query = db.query(models.Organization)
     if not include_inactive:
         query = query.filter(models.Organization.is_active == True)
+
+    # Non-admin users: filter to assigned organizations only
+    if current_user.role not in ("super_admin", "admin"):
+        # Look up the DB user to get the UUID
+        db_user = db.query(models.User).filter(models.User.email == current_user.email).first()
+        if db_user:
+            assigned_org_ids = [
+                row.organization_id
+                for row in db.query(models.UserOrganizationAccess.organization_id)
+                .filter(models.UserOrganizationAccess.user_id == db_user.id)
+                .all()
+            ]
+            if assigned_org_ids:
+                query = query.filter(models.Organization.id.in_(assigned_org_ids))
+            else:
+                # No assignments → no orgs visible
+                return []
+
     orgs = query.order_by(
         models.Organization.is_default.desc(),
         models.Organization.name

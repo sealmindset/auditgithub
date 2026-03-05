@@ -5,10 +5,10 @@ AuditGH uses multiple AI agents to enhance security scanning with intelligent an
 ## Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AuditGH AI Agent System                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           AuditGH AI Agent System                          │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
 │  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────┐ │
 │  │  Organization Agent │    │  Credential Matcher │    │  API Discovery  │ │
 │  │  (ai_org_agent.py)  │    │ (ai_credential_     │    │ (ai_api_        │ │
@@ -20,7 +20,7 @@ AuditGH uses multiple AI agents to enhance security scanning with intelligent an
 │  └─────────────────────┘    └─────────────────────┘    └─────────────────┘ │
 │           │                          │                          │          │
 │           └──────────────────────────┼──────────────────────────┘          │
-│                                      │                                      │
+│                                      │                                     │
 │                    ┌─────────────────────────────────┐                     │
 │                    │    Credential URL Test Agent    │                     │
 │                    │  (ai_credential_url_agent.py)   │                     │
@@ -32,19 +32,19 @@ AuditGH uses multiple AI agents to enhance security scanning with intelligent an
 │                    │  • Risk assessment              │                     │
 │                    │  • Executive summaries          │                     │
 │                    └─────────────────────────────────┘                     │
-│                                      │                                      │
+│                                      │                                     │
 │           ┌──────────────────────────┼──────────────────────────┐          │
 │           │                          │                          │          │
 │           ▼                          ▼                          ▼          │
-│  ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐│
-│  │  Self-Annealing │    │    LLM Provider     │    │   Scheduler        ││
-│  │  Agent          │    │ (Claude/GPT/Ollama) │    │   Service          ││
-│  │                 │    │                     │    │                    ││
-│  │  • Data repair  │    │  • Analysis         │    │  • Cron jobs       ││
-│  │  • DOE approach │    │  • Summaries        │    │  • Auto-triggers   ││
-│  │  • Quality score│    │  • Recommendations  │    │  • Job management  ││
-│  └─────────────────┘    └─────────────────────┘    └─────────────────────┘│
-└─────────────────────────────────────────────────────────────────────────────┘
+│  ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐ │
+│  │  Self-Annealing │    │    LLM Provider     │    │   Scheduler         │ │
+│  │  Agent          │    │ (Claude/GPT/Ollama) │    │   Service           │ │
+│  │                 │    │                     │    │                     │ │
+│  │  • Data repair  │    │  • Analysis         │    │  • Cron jobs        │ │
+│  │  • DOE approach │    │  • Summaries        │    │  • Auto-triggers    │ │
+│  │  • Quality score│    │  • Recommendations  │    │  • Job management   │ │
+│  └─────────────────┘    └─────────────────────┘    └─────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

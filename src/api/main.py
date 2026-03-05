@@ -226,7 +226,7 @@ import src.rbac.models  # noqa: F401 — register RBAC tables with Base.metadata
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -267,6 +267,7 @@ app.include_router(cribl.router)
 app.include_router(git_sync.router)
 app.include_router(ai_chat.router)
 app.include_router(api_keys.router)  # API key management
+app.include_router(sarif_import.router)  # SARIF import (MegaLinter, CodeQL, etc.)
 
 # Register sandbox router (only active when SANDBOX_MODE=true)
 if is_sandbox():
@@ -406,6 +407,24 @@ async def startup_event():
         logger.info("Cribl logger initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize Cribl logger: {e}")
+
+    # Verify OIDC providers are reachable
+    try:
+        from src.auth.providers import verify_oidc_providers
+        oidc_results = await verify_oidc_providers()
+        summary = oidc_results.get("_summary", "unknown")
+        if summary == "all_healthy":
+            logger.info("All OIDC providers verified healthy")
+        elif summary == "no_providers_configured":
+            logger.warning("No OIDC providers configured — authentication limited to API keys / AUTH_DISABLED")
+        else:
+            for name, info in oidc_results.items():
+                if name == "_summary":
+                    continue
+                if info.get("status") != "healthy":
+                    logger.error(f"OIDC provider '{name}' UNHEALTHY: {info.get('error', 'unknown')}")
+    except Exception as e:
+        logger.warning(f"OIDC provider verification failed: {e}")
 
     # Initialize RBAC roles and permissions
     try:
@@ -696,6 +715,35 @@ async def health_check():
         loguru_logger.bind(event_type="HEALTH_CHECK", checks=health_status["checks"]).warning(f"Health check: {health_status['status']}")
 
     return health_status
+
+
+@app.get(
+    "/health/oidc",
+    summary="OIDC provider health check",
+    tags=["default"],
+    response_model=None,
+    responses={
+        200: {"description": "All OIDC providers healthy"},
+        503: {"description": "One or more OIDC providers unreachable or misconfigured"},
+    },
+)
+async def oidc_health_check():
+    """Check connectivity and configuration of all OIDC identity providers.
+
+    Re-verifies each provider's discovery URL and JWKS endpoint in real time.
+    Returns per-provider status with actionable error messages that distinguish
+    between AGH code issues and OIDC provider issues.
+    """
+    from src.auth.providers import verify_oidc_providers
+
+    results = await verify_oidc_providers()
+    summary = results.get("_summary", "unknown")
+
+    status_code = 200 if summary in ("all_healthy", "no_providers_configured") else 503
+
+    from starlette.responses import JSONResponse
+    return JSONResponse(content=results, status_code=status_code)
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -30,3 +30,5 @@ class User(BaseModel):
     name: str
     sub: str  # Subject claim (unique user ID)
     provider: str  # "entra" or "okta"
+    role: str = "user"  # RBAC role from session (super_admin, admin, manager, analyst, user)
+    access_type: str = "both"  # ui_only, api_only, both

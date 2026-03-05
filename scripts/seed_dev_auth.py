@@ -24,24 +24,37 @@ from loguru import logger
 
 
 # Mock OIDC pre-seeded users that we create invitations for
+# Must match the users seeded in mocksvcs/mock_oidc/store.py
 DEV_INVITATIONS = [
     {
-        "email": "admin@zapper.local",
+        "email": "superadmin@zapper.local",
         "role": "super_admin",
         "access_type": "both",
-        "description": "Bootstrap admin (matches mock-oidc mock-admin user)",
+        "description": "Super Admin (matches mock-oidc mock-super-admin user)",
+    },
+    {
+        "email": "admin@zapper.local",
+        "role": "admin",
+        "access_type": "both",
+        "description": "Admin (matches mock-oidc mock-admin user)",
+    },
+    {
+        "email": "manager@zapper.local",
+        "role": "manager",
+        "access_type": "both",
+        "description": "Manager (matches mock-oidc mock-manager user)",
     },
     {
         "email": "analyst@zapper.local",
         "role": "analyst",
         "access_type": "both",
-        "description": "Test analyst (matches mock-oidc mock-analyst user)",
+        "description": "Analyst (matches mock-oidc mock-analyst user)",
     },
     {
         "email": "user@zapper.local",
         "role": "user",
         "access_type": "ui_only",
-        "description": "Test read-only user (matches mock-oidc mock-user user)",
+        "description": "Read-only user (matches mock-oidc mock-user user)",
     },
 ]
 

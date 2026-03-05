@@ -508,6 +508,34 @@ class UserRepositoryAccess(Base):
 
 
 # =============================================================================
+# USER ORGANIZATION ACCESS - Organization-level permissions
+# =============================================================================
+
+class UserOrganizationAccess(Base):
+    """Maps users to organizations they can access.
+
+    Super admins and admins implicitly have access to ALL organizations.
+    Manager, analyst, and user roles must be explicitly assigned.
+    """
+    __tablename__ = "user_organization_access"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization")
+    assigner = relationship("User", foreign_keys=[assigned_by])
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'organization_id', name='uq_user_org_access'),
+    )
+
+
+# =============================================================================
 # AUTH AUDIT LOG - Authentication event logging
 # =============================================================================
 

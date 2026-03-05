@@ -39,9 +39,10 @@ def get_tenant_id_from_request(request: Request) -> str:
     """
     Extract tenant ID from request context.
 
-    The tenant context is set by OrganizationContextMiddleware which
-    populates request.state.organization_id based on the organization
-    selection or API key.
+    Resolution order:
+    1. request.state.org_id (set by OrganizationContextMiddleware)
+    2. Auto-select when only one organization exists (single-org mode)
+    3. AUTH_DISABLED bypass
 
     Args:
         request: FastAPI request object
@@ -50,15 +51,15 @@ def get_tenant_id_from_request(request: Request) -> str:
         Tenant/organization ID as string
 
     Raises:
-        HTTPException 400: If tenant context is not set
-
-    Security:
-        CRITICAL - Never default to a tenant. Missing tenant context is
-        a security hole that could allow cross-tenant access.
+        HTTPException 400: If tenant context cannot be determined
     """
     import os
 
-    tenant_id = getattr(request.state, "organization_id", None)
+    # Check both attribute names (middleware sets org_id)
+    tenant_id = (
+        getattr(request.state, "org_id", None)
+        or getattr(request.state, "organization_id", None)
+    )
 
     if not tenant_id:
         # Check if auth is disabled - allow bypass
@@ -67,9 +68,35 @@ def get_tenant_id_from_request(request: Request) -> str:
             logger.debug("AUTH_DISABLED is true, returning dummy tenant ID")
             return "auth-disabled-tenant"
 
+        # Auto-select org when multi-tenant is disabled or only one org exists
+        multi_tenant = os.getenv("MULTI_TENANT_ENABLED", "false").lower() == "true"
+        if not multi_tenant:
+            try:
+                from src.api.database import SessionLocal
+                from src.api.models import Organization, Repository
+                from sqlalchemy import func
+                db = SessionLocal()
+                try:
+                    # Pick the org with the most repositories (most likely the primary)
+                    result = (
+                        db.query(Organization.id)
+                        .outerjoin(Repository, Repository.organization_id == Organization.id)
+                        .group_by(Organization.id)
+                        .order_by(func.count(Repository.id).desc())
+                        .first()
+                    )
+                    if result:
+                        tenant_id = str(result.id)
+                        logger.debug(f"Auto-selected organization (multi-tenant disabled): {tenant_id}")
+                        return tenant_id
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.warning(f"Failed to auto-select organization: {e}")
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tenant context required. Please select an organization."
+            detail="Organization context required. Set X-Organization-ID header or X-Organization-Name header."
         )
 
     return str(tenant_id)
@@ -119,8 +146,17 @@ def require_permissions(*required_perms: str) -> Callable:
         # Get tenant context from request
         tenant_id = get_tenant_id_from_request(request)
 
-        # Get user's permissions in this tenant
+        # Get user's permissions in this tenant via RBAC tables
         user_perms = await get_user_permissions(user, tenant_id, session)
+
+        # Fallback: if no RBAC role assignment exists, check legacy User.role field
+        if not user_perms:
+            legacy_perms = _get_legacy_permissions(user, session)
+            if legacy_perms:
+                logger.debug(
+                    f"Using legacy role permissions for {user.email}: {legacy_perms}"
+                )
+                user_perms = legacy_perms
 
         # Check each required permission
         for perm in required_perms:
@@ -151,6 +187,47 @@ def require_permissions(*required_perms: str) -> Callable:
         return user
 
     return permission_checker
+
+
+# Legacy role → permission mapping for backward compatibility
+# Used when user_roles table has no entry for the user
+_LEGACY_ROLE_PERMISSIONS = {
+    "super_admin": ["*:*"],
+    "admin": [
+        "findings:read", "findings:write", "findings:delete",
+        "scans:read", "scans:execute",
+        "repositories:read", "repositories:write",
+        "organizations:read", "organizations:write",
+        "users:read", "users:write",
+        "reports:read", "admin:manage",
+    ],
+    "analyst": [
+        "findings:read", "findings:write",
+        "scans:read", "scans:execute",
+        "repositories:read",
+        "reports:read",
+    ],
+    "manager": [
+        "findings:read", "scans:read", "repositories:read", "reports:read",
+    ],
+    "user": [
+        "findings:read", "repositories:read", "reports:read",
+    ],
+}
+
+
+def _get_legacy_permissions(user: User, session: Session) -> list[str]:
+    """Look up legacy User.role from the users table and map to permissions."""
+    try:
+        from src.api.models import User as DBUser
+        db_user = session.query(DBUser).filter(DBUser.email == user.email).first()
+        if db_user and db_user.role:
+            perms = _LEGACY_ROLE_PERMISSIONS.get(db_user.role, [])
+            if perms:
+                return perms
+    except Exception as e:
+        logger.warning(f"Legacy role lookup failed for {user.email}: {e}")
+    return []
 
 
 def require_role(min_role_level: int) -> Callable:

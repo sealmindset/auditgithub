@@ -22,6 +22,7 @@ from ..models import Tenant
 from ..database_router import database_router
 from src.api.schemas.common import LIST_ERRORS, CREATE_ERRORS, CRUD_ERRORS, DELETE_ERRORS
 from src.rbac.dependencies import require_permissions
+from src.auth.dependencies import require_admin, get_current_user
 
 router = APIRouter(prefix="/tenants", tags=["Tenants"])
 
@@ -102,12 +103,11 @@ class ProvisionResponse(BaseModel):
 @router.get(
     "",
     response_model=TenantListResponse,
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(get_current_user)],
     summary="List all tenants",
     responses={
         **LIST_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
     },
 )
 def list_tenants(
@@ -152,13 +152,13 @@ def list_tenants(
     "",
     response_model=TenantResponse,
     status_code=201,
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(require_admin)],
     summary="Create a new tenant",
     responses={
         **CREATE_ERRORS,
         400: {"description": "Invalid slug format"},
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
+        403: {"description": "Requires admin or super_admin role"},
         409: {"description": "Tenant slug or GitHub org already exists"},
     },
 )
@@ -249,12 +249,12 @@ def create_tenant(
 @router.get(
     "/health",
     response_model=TenantHealthResponse,
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(require_admin)],
     summary="Get tenant migration health",
     responses={
         **LIST_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
+        403: {"description": "Requires admin or super_admin role"},
     },
 )
 def get_tenant_health(db: Session = Depends(get_metadata_db)):
@@ -308,12 +308,12 @@ def get_tenant_health(db: Session = Depends(get_metadata_db)):
 @router.get(
     "/{slug}",
     response_model=TenantResponse,
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(require_admin)],
     summary="Get tenant by slug",
     responses={
         **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
+        403: {"description": "Requires admin or super_admin role"},
         404: {"description": "Tenant not found"},
     },
 )
@@ -347,12 +347,12 @@ def get_tenant(slug: str, db: Session = Depends(get_metadata_db)):
 @router.put(
     "/{slug}",
     response_model=TenantResponse,
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(require_admin)],
     summary="Update a tenant",
     responses={
         **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
+        403: {"description": "Requires admin or super_admin role"},
         404: {"description": "Tenant not found"},
     },
 )
@@ -408,12 +408,12 @@ def update_tenant(
 @router.post(
     "/{slug}/provision",
     response_model=ProvisionResponse,
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(require_admin)],
     summary="Provision tenant database",
     responses={
         **CRUD_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
+        403: {"description": "Requires admin or super_admin role"},
         404: {"description": "Tenant not found"},
     },
 )
@@ -451,12 +451,12 @@ def provision_tenant(
 
 @router.delete(
     "/{slug}",
-    dependencies=[Depends(require_permissions("admin:manage"))],
+    dependencies=[Depends(require_admin)],
     summary="Deactivate a tenant",
     responses={
         **DELETE_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Missing admin:manage permission"},
+        403: {"description": "Requires admin or super_admin role"},
         404: {"description": "Tenant not found"},
     },
 )
