@@ -13,13 +13,15 @@ Implements:
 """
 
 import os
-from fastapi import APIRouter, Request, HTTPException, Depends, status, Form
+import httpx
+from fastapi import APIRouter, Request, HTTPException, Depends, Query, status, Form
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel, Field
+from typing import Optional
 from src.auth.providers import oauth
 from src.auth.config import settings
 from src.auth.tokens import rotate_refresh_token, revoke_token, generate_access_token
-from src.auth.dependencies import get_current_user
+from src.auth.dependencies import get_current_user, require_admin
 from src.auth.models import User
 from src.auth.break_glass import verify_break_glass_password
 from src.auth.invitations import accept_invitation, get_invitation_by_token
@@ -442,6 +444,109 @@ async def get_current_user_info(request: Request):
 
     # Return user info (email, name, sub, provider)
     return user
+
+
+# ============================================================================
+# Directory Sync — Fetch users from OIDC provider for invite modal
+# ============================================================================
+
+
+@router.get(
+    "/directory/users",
+    summary="Fetch users from OIDC provider directory",
+    responses={
+        200: {"description": "List of directory users"},
+        403: {"description": "Admin role required"},
+        502: {"description": "Failed to reach OIDC provider"},
+    },
+)
+async def get_directory_users(
+    q: Optional[str] = Query(None, description="Search filter for name/email"),
+    all: bool = Query(False, description="Include already-managed users"),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Fetch users from configured OIDC providers' /users endpoints.
+
+    Used by the admin invite modal to show directory users for selection.
+    Only available for providers that expose a /users endpoint (e.g., mock-oidc).
+
+    Args:
+        q: Optional search string to filter by name or email
+        all: If True, return all directory users including those already in the DB
+        current_user: Current admin user (from dependency)
+
+    Returns:
+        dict with users list and source indicator
+    """
+    directory_users = []
+
+    for provider_config in settings.oidc_providers:
+        # Determine the base URL for fetching users
+        # Use external_base_url if available, otherwise derive from discovery URL
+        base_url = provider_config.get("external_base_url", "")
+        if not base_url:
+            # Try to derive from discovery URL (strip /.well-known/...)
+            discovery = provider_config.get("discovery_url", "")
+            if "/.well-known/" in discovery:
+                base_url = discovery.split("/.well-known/")[0]
+
+        if not base_url:
+            continue
+
+        # For mock-oidc, use the internal URL for server-to-server calls
+        internal_url = provider_config.get("discovery_url", "")
+        if "/.well-known/" in internal_url:
+            internal_url = internal_url.split("/.well-known/")[0]
+
+        users_url = f"{internal_url}/users" if internal_url else f"{base_url}/users"
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(users_url)
+                resp.raise_for_status()
+                provider_users = resp.json()
+
+                for u in provider_users:
+                    directory_users.append({
+                        "sub": u.get("sub", ""),
+                        "email": u.get("email", ""),
+                        "name": u.get("name", ""),
+                        "provider": provider_config["name"],
+                    })
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch directory users from {provider_config['name']}: {e}")
+            continue
+
+    if not directory_users:
+        return {"users": [], "source": "none"}
+
+    # Filter out already-managed users unless all=True
+    if not all:
+        db = SessionLocal()
+        try:
+            from src.api.models import User as DBUser
+            existing_emails = {
+                u.email.lower()
+                for u in db.query(DBUser.email).all()
+            }
+            directory_users = [
+                u for u in directory_users
+                if u["email"].lower() not in existing_emails
+            ]
+        finally:
+            db.close()
+
+    # Apply search filter
+    if q:
+        q_lower = q.lower()
+        directory_users = [
+            u for u in directory_users
+            if q_lower in u["email"].lower() or q_lower in u["name"].lower()
+        ]
+
+    return {"users": directory_users, "source": "oidc"}
 
 
 # ============================================================================

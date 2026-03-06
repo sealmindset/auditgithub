@@ -7,6 +7,7 @@ import requests
 from ..dependencies import get_tenant_db
 from .. import models
 from src.rbac.dependencies import require_permissions
+from src.auth.dependencies import require_super_admin
 
 router = APIRouter(
     prefix="/settings",
@@ -178,14 +179,136 @@ def verify_jira(req: VerifyRequest):
         headers = {"Accept": "application/json"}
         
         response = requests.get(api_url, auth=auth, headers=headers, timeout=10)
-        
+
         if response.status_code == 200:
             user_data = response.json()
             return {
-                "valid": True, 
+                "valid": True,
                 "message": f"Authenticated as {user_data.get('displayName', 'User')}"
             }
         else:
             return {"valid": False, "message": f"Authentication failed: {response.status_code}"}
     except Exception as e:
         return {"valid": False, "message": str(e)}
+
+
+# ============================================================================
+# Session Timeout Settings (SuperAdmin only)
+# ============================================================================
+
+# Bounds for session timeout settings
+SESSION_BOUNDS = {
+    "inactivity_timeout_minutes": {"min": 5, "max": 480},
+    "absolute_timeout_hours": {"min": 1, "max": 72},
+}
+
+
+class SessionSettingsUpdate(BaseModel):
+    """Request model for updating session timeout settings."""
+    inactivity_timeout_minutes: Optional[int] = Field(
+        None, ge=5, le=480,
+        description="Session inactivity timeout in minutes (5-480)"
+    )
+    absolute_timeout_hours: Optional[int] = Field(
+        None, ge=1, le=72,
+        description="Maximum session duration in hours (1-72)"
+    )
+
+
+@router.get(
+    "/session",
+    dependencies=[Depends(require_super_admin)],
+    summary="Get session timeout settings",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Super admin role required"},
+    },
+)
+def get_session_settings(db: Session = Depends(get_tenant_db)):
+    """Get current session timeout settings and allowed bounds.
+
+    Requires **super_admin** role. Returns the current inactivity
+    and absolute timeout values along with the min/max bounds.
+    """
+    from src.auth.config import settings as auth_settings
+
+    # Check for DB-persisted override
+    config = db.query(models.SystemConfig).filter(
+        models.SystemConfig.key == "SESSION_SETTINGS"
+    ).first()
+
+    if config:
+        import json
+        stored = json.loads(config.value) if isinstance(config.value, str) else config.value
+        inactivity = stored.get("inactivity_timeout_minutes", auth_settings.session_idle_timeout_minutes)
+        absolute = stored.get("absolute_timeout_hours", auth_settings.session_absolute_timeout_hours)
+    else:
+        inactivity = auth_settings.session_idle_timeout_minutes
+        absolute = auth_settings.session_absolute_timeout_hours
+
+    return {
+        "inactivity_timeout_minutes": inactivity,
+        "absolute_timeout_hours": absolute,
+        "bounds": SESSION_BOUNDS,
+    }
+
+
+@router.put(
+    "/session",
+    dependencies=[Depends(require_super_admin)],
+    summary="Update session timeout settings",
+    responses={
+        400: {"description": "Values out of allowed bounds"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Super admin role required"},
+    },
+)
+def update_session_settings(
+    update: SessionSettingsUpdate,
+    db: Session = Depends(get_tenant_db),
+):
+    """Update session timeout settings.
+
+    Requires **super_admin** role. Persists to database and updates
+    the in-memory auth config so changes take effect immediately.
+    Validates values against allowed bounds.
+    """
+    import json
+    from src.auth.config import settings as auth_settings
+
+    # Load current values
+    config = db.query(models.SystemConfig).filter(
+        models.SystemConfig.key == "SESSION_SETTINGS"
+    ).first()
+
+    if config:
+        current = json.loads(config.value) if isinstance(config.value, str) else config.value
+    else:
+        current = {
+            "inactivity_timeout_minutes": auth_settings.session_idle_timeout_minutes,
+            "absolute_timeout_hours": auth_settings.session_absolute_timeout_hours,
+        }
+
+    # Apply updates
+    if update.inactivity_timeout_minutes is not None:
+        current["inactivity_timeout_minutes"] = update.inactivity_timeout_minutes
+    if update.absolute_timeout_hours is not None:
+        current["absolute_timeout_hours"] = update.absolute_timeout_hours
+
+    # Persist to DB
+    if config:
+        config.value = json.dumps(current)
+    else:
+        config = models.SystemConfig(key="SESSION_SETTINGS", value=json.dumps(current))
+        db.add(config)
+    db.commit()
+
+    # Update in-memory auth settings so changes take effect immediately
+    auth_settings.session_idle_timeout_minutes = current["inactivity_timeout_minutes"]
+    auth_settings.session_absolute_timeout_hours = current["absolute_timeout_hours"]
+
+    return {
+        "inactivity_timeout_minutes": current["inactivity_timeout_minutes"],
+        "absolute_timeout_hours": current["absolute_timeout_hours"],
+        "bounds": SESSION_BOUNDS,
+    }

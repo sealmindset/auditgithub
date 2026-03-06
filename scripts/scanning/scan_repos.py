@@ -2808,7 +2808,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
     # -------------------------------------------------------------------------
     try:
         logging.info(f"Ingesting results for {repo_name}...")
-        ingest_script = os.path.join(os.path.dirname(__file__), "ingest_scans.py")
+        ingest_script = os.path.join(os.path.dirname(__file__), "..", "maintenance", "ingest_scans.py")
         # Use ORIGINAL repo_name for database (matches GitHub API) and safe path for --repo-dir
         # Named arguments safely handle repo names starting with '-'
         cmd = [sys.executable, ingest_script, "--repo-name", repo_name, "--repo-dir", repo_report_dir]
@@ -6294,19 +6294,17 @@ def main():
 
                     # Import ingestion module
                     sys.path.insert(0, '/app')
-                    from ingest_reports import ingest_all_organizations
+                    sys.path.insert(0, '/app/scripts/maintenance')
+                    from ingest_scans import ingest_reports
 
-                    # Run ingestion for all organizations
+                    # Run ingestion for scanned reports
                     logging.info(f"Ingesting reports from: {config.REPORT_DIR}")
-                    results = ingest_all_organizations()
-
-                    # Report results
-                    if results:
-                        for org_name, stats in results.items():
-                            logging.info(f"  ✅ {org_name}: {stats['repos']} repos, {stats['findings']} findings")
-                        logging.info("✅ Auto-ingest completed successfully")
-                    else:
-                        logging.warning("⚠️  No data ingested (no organizations found)")
+                    org_id = getattr(config, 'ORGANIZATION_ID', None)
+                    ingest_reports(
+                        report_dir=config.REPORT_DIR,
+                        organization_id=org_id
+                    )
+                    logging.info("Auto-ingest completed successfully")
 
                     logging.info("=" * 80)
 

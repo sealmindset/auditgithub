@@ -11,7 +11,10 @@ from sqlalchemy import text
 from typing import Tuple, Optional, Dict, Any
 
 # Add src to path to import models
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+# Resolve to repo root /app in Docker or ../../ from scripts/maintenance/
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(_repo_root, 'src'))
+sys.path.insert(0, _repo_root)
 
 from api.database import SessionLocal, engine, Base
 from api.database_router import database_router

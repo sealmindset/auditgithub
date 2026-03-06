@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, UserPlus, Mail, Shield, Loader2, AlertCircle } from "lucide-react"
+import { Users, UserPlus, Mail, Shield, Loader2, AlertCircle, Search, CheckCircle2, AlertTriangle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { API_BASE, apiFetch } from "@/lib/api"
@@ -38,6 +38,13 @@ interface Invitation {
   expires_at: string
 }
 
+interface DirectoryUser {
+  sub: string
+  email: string
+  name: string
+  provider: string
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [invitations, setInvitations] = useState<Invitation[]>([])
@@ -47,11 +54,18 @@ export default function AdminUsersPage() {
   const [inviteRole, setInviteRole] = useState("user")
   const [inviteAccessType, setInviteAccessType] = useState("ui_only")
   const [inviteLoading, setInviteLoading] = useState(false)
+  const [directoryUsers, setDirectoryUsers] = useState<DirectoryUser[]>([])
+  const [directorySearch, setDirectorySearch] = useState("")
+  const [directoryLoading, setDirectoryLoading] = useState(false)
+  const [directoryAvailable, setDirectoryAvailable] = useState(false)
+  const [directoryEmails, setDirectoryEmails] = useState<Set<string>>(new Set())
+  const [inviteTab, setInviteTab] = useState<"directory" | "manual">("directory")
   const { toast } = useToast()
 
   useEffect(() => {
     fetchUsers()
     fetchInvitations()
+    fetchDirectoryEmails()
   }, [])
 
   const fetchUsers = async () => {
@@ -95,6 +109,51 @@ export default function AdminUsersPage() {
     } catch (error) {
       console.error("Failed to fetch invitations:", error)
     }
+  }
+
+  const fetchDirectoryEmails = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/directory/users?all=true`, {
+        credentials: "include"
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.source === "oidc") {
+          setDirectoryAvailable(true)
+          setDirectoryEmails(new Set(data.users.map((u: DirectoryUser) => u.email.toLowerCase())))
+        }
+      }
+    } catch {
+      // Directory not available, that's fine
+    }
+  }
+
+  const searchDirectory = async (query: string) => {
+    setDirectorySearch(query)
+    if (!query.trim()) {
+      setDirectoryUsers([])
+      return
+    }
+    setDirectoryLoading(true)
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/directory/users?q=${encodeURIComponent(query)}`, {
+        credentials: "include"
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setDirectoryUsers(data.users || [])
+      }
+    } catch {
+      setDirectoryUsers([])
+    } finally {
+      setDirectoryLoading(false)
+    }
+  }
+
+  const selectDirectoryUser = (dirUser: DirectoryUser) => {
+    setInviteEmail(dirUser.email)
+    setDirectoryUsers([])
+    setDirectorySearch("")
   }
 
   const handleSendInvite = async () => {
@@ -269,6 +328,7 @@ export default function AdminUsersPage() {
                     <TableHead>Role</TableHead>
                     <TableHead>Access Type</TableHead>
                     <TableHead>Auth Provider</TableHead>
+                    {directoryAvailable && <TableHead>Directory</TableHead>}
                     <TableHead>Last Login</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -290,6 +350,21 @@ export default function AdminUsersPage() {
                       </TableCell>
                       <TableCell>{getAccessTypeBadge(user.access_type)}</TableCell>
                       <TableCell className="capitalize">{user.auth_provider}</TableCell>
+                      {directoryAvailable && (
+                        <TableCell>
+                          {directoryEmails.has(user.email.toLowerCase()) ? (
+                            <Badge variant="outline" className="text-green-600 border-green-300">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Verified
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-amber-600 border-amber-300">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              Not in IdP
+                            </Badge>
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell className="text-sm text-gray-600">
                         {user.last_login_at
                           ? formatDistanceToNow(new Date(user.last_login_at), { addSuffix: true })
@@ -314,27 +389,119 @@ export default function AdminUsersPage() {
       </Card>
 
       {/* Invite Dialog */}
-      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-        <DialogContent>
+      <Dialog open={inviteDialogOpen} onOpenChange={(open) => {
+        setInviteDialogOpen(open)
+        if (!open) {
+          setInviteEmail("")
+          setDirectorySearch("")
+          setDirectoryUsers([])
+          setInviteTab("directory")
+        }
+      }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Invite New User</DialogTitle>
             <DialogDescription>
-              Send an invitation to a new user. They'll receive a link to join the platform.
+              Send an invitation to a new user. They&apos;ll receive a link to join the platform.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="user@example.com"
-                className="mt-2"
-                disabled={inviteLoading}
-              />
-            </div>
+            {/* Tab selector */}
+            {directoryAvailable && (
+              <div className="flex border-b">
+                <button
+                  onClick={() => setInviteTab("directory")}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    inviteTab === "directory"
+                      ? "border-blue-600 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Directory
+                </button>
+                <button
+                  onClick={() => setInviteTab("manual")}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    inviteTab === "manual"
+                      ? "border-blue-600 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Pre-stage (Manual)
+                </button>
+              </div>
+            )}
+
+            {/* Directory search tab */}
+            {inviteTab === "directory" && directoryAvailable ? (
+              <div>
+                <Label>Search Directory</Label>
+                <div className="relative mt-2">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    value={directorySearch}
+                    onChange={(e) => searchDirectory(e.target.value)}
+                    placeholder="Search by name or email..."
+                    className="pl-9"
+                    disabled={inviteLoading}
+                  />
+                </div>
+                {directoryLoading && (
+                  <div className="flex justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                )}
+                {directoryUsers.length > 0 && (
+                  <div className="mt-2 max-h-40 overflow-y-auto border rounded-md">
+                    {directoryUsers.map((dirUser) => (
+                      <button
+                        key={dirUser.sub}
+                        onClick={() => selectDirectoryUser(dirUser)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 border-b last:border-b-0"
+                      >
+                        <p className="font-medium text-sm">{dirUser.name}</p>
+                        <p className="text-xs text-gray-500">{dirUser.email}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {inviteEmail && (
+                  <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                    <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium">{inviteEmail}</span>
+                    <button
+                      onClick={() => setInviteEmail("")}
+                      className="ml-auto text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                {inviteTab === "manual" && (
+                  <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Pre-staging requires IdP enrollment. This user must be added to
+                      the identity provider before they can sign in. Use Directory mode
+                      if the user already exists in your IdP.
+                    </p>
+                  </div>
+                )}
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  className="mt-2"
+                  disabled={inviteLoading}
+                />
+              </div>
+            )}
             <div>
               <Label htmlFor="role">Role</Label>
               <Select value={inviteRole} onValueChange={setInviteRole} disabled={inviteLoading}>
