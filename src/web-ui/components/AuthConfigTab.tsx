@@ -521,7 +521,7 @@ export default function AuthConfigTab() {
                             </TableHeader>
                             <TableBody>
                                 {providers.map((provider) => (
-                                    <TableRow key={provider.id}>
+                                    <TableRow key={provider.name || provider.id}>
                                         <TableCell className="font-medium">{provider.name}</TableCell>
                                         <TableCell>
                                             {provider.provider_type === "entra" ? "Microsoft Entra ID" : "Okta"}
@@ -537,7 +537,7 @@ export default function AuthConfigTab() {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    onClick={() => handleTestProvider(provider.id)}
+                                                    onClick={() => handleTestProvider(provider.id || provider.name)}
                                                     disabled={testingProvider}
                                                 >
                                                     Test
@@ -552,7 +552,7 @@ export default function AuthConfigTab() {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    onClick={() => handleDeleteProvider(provider.id)}
+                                                    onClick={() => handleDeleteProvider(provider.id || provider.name)}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>

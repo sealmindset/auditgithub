@@ -1,0 +1,23 @@
+[
+    {
+        "login": "Muffinoota",
+        "id": 16392448,
+        "node_id": "MDQ6VXNlcjE2MzkyNDQ4",
+        "avatar_url": "https://avatars.githubusercontent.com/u/16392448?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/Muffinoota",
+        "html_url": "https://github.com/Muffinoota",
+        "followers_url": "https://api.github.com/users/Muffinoota/followers",
+        "following_url": "https://api.github.com/users/Muffinoota/following{/other_user}",
+        "gists_url": "https://api.github.com/users/Muffinoota/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/Muffinoota/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/Muffinoota/subscriptions",
+        "organizations_url": "https://api.github.com/users/Muffinoota/orgs",
+        "repos_url": "https://api.github.com/users/Muffinoota/repos",
+        "events_url": "https://api.github.com/users/Muffinoota/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/Muffinoota/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+    }
+]

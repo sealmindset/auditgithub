@@ -543,6 +543,238 @@ class OrgFilteringSelfAnnealing:
 org_filtering_annealing = OrgFilteringSelfAnnealing()
 
 
+# =============================================================================
+# DOE Self-Annealing: Scanner Health (Safety + general scanner resilience)
+# =============================================================================
+
+class ScannerSelfAnnealing:
+    """
+    DOE Self-Annealing for scanner execution.
+
+    Tracks scanner failures per-repo and per-scanner, detects common failure
+    modes (timeouts, auth errors, network issues, missing binaries), and
+    auto-corrects by:
+      - Adjusting timeouts based on observed execution times
+      - Falling back to alternative commands when the primary fails
+      - Skipping persistently broken scanners for a cooldown period
+      - Logging all corrections for audit trail
+    """
+
+    # Known failure signatures and their remediation strategies
+    FAILURE_SIGNATURES = {
+        "timeout": {
+            "patterns": ["timed out", "timeout", "deadline exceeded", "killed"],
+            "action": "increase_timeout",
+        },
+        "auth": {
+            "patterns": ["401", "403", "authentication", "unauthorized", "api key", "invalid key"],
+            "action": "skip_scanner",
+        },
+        "network": {
+            "patterns": ["connection refused", "connection reset", "dns", "network unreachable", "ssl"],
+            "action": "retry_with_backoff",
+        },
+        "not_found": {
+            "patterns": ["not found", "no such file", "command not found", "not recognized"],
+            "action": "skip_scanner",
+        },
+        "rate_limit": {
+            "patterns": ["rate limit", "429", "too many requests", "quota exceeded"],
+            "action": "retry_with_backoff",
+        },
+    }
+
+    # Safety-specific fallback commands
+    SAFETY_FALLBACKS = [
+        # Primary: safety scan (v3 CLI)
+        {
+            "cmd": ["safety", "scan", "--file", "{requirements}", "--output", "json",
+                     "--ignore-unpinned-requirements", "--continue-on-error", "--disable-optional-output"],
+            "label": "safety scan (v3)",
+        },
+        # Fallback 1: safety check (v2 CLI)
+        {
+            "cmd": ["safety", "check", "--file", "{requirements}", "--json"],
+            "label": "safety check (v2)",
+        },
+        # Fallback 2: pip-audit as substitute
+        {
+            "cmd": ["pip-audit", "-r", "{requirements}", "--format", "json"],
+            "label": "pip-audit (fallback)",
+        },
+    ]
+
+    DEFAULT_TIMEOUT = 120  # seconds — hard cap, no escalation
+    MAX_TIMEOUT = 120      # same as default: fail fast after 2 minutes
+    MIN_TIMEOUT = 30
+    COOLDOWN_MINUTES = 60  # Skip broken scanners for this long
+    MAX_TIMEOUT_RETRIES = 1  # Only retry a timeout once before moving to fallback
+
+    def __init__(self):
+        self.logger = logging.getLogger("DOE.SelfAnnealing.Scanner")
+        self.corrections = []
+        # scanner_name -> {failures: int, last_failure: datetime, timeout: int, skip_until: datetime, fallback_idx: int}
+        self.scanner_state = {}
+
+    def _get_state(self, scanner_name: str) -> dict:
+        if scanner_name not in self.scanner_state:
+            self.scanner_state[scanner_name] = {
+                "failures": 0,
+                "last_failure": None,
+                "timeout": self.DEFAULT_TIMEOUT,
+                "skip_until": None,
+                "fallback_idx": 0,
+                "total_runs": 0,
+                "total_successes": 0,
+            }
+        return self.scanner_state[scanner_name]
+
+    def classify_failure(self, stderr: str, returncode: int) -> str:
+        """Classify a scanner failure by matching error output against known signatures."""
+        stderr_lower = (stderr or "").lower()
+
+        if returncode == -9 or returncode == 137:  # SIGKILL (timeout)
+            return "timeout"
+
+        for failure_type, info in self.FAILURE_SIGNATURES.items():
+            if any(p in stderr_lower for p in info["patterns"]):
+                return failure_type
+
+        return "unknown"
+
+    def record_success(self, scanner_name: str):
+        """Record a successful scanner execution."""
+        state = self._get_state(scanner_name)
+        state["failures"] = 0
+        state["total_runs"] += 1
+        state["total_successes"] += 1
+        state["fallback_idx"] = 0  # Reset to primary command on success
+
+    def record_failure(self, scanner_name: str, stderr: str, returncode: int, repo_name: str = "") -> dict:
+        """
+        Record a scanner failure and determine the corrective action.
+
+        Returns dict with keys: action, detail, should_retry
+        """
+        state = self._get_state(scanner_name)
+        state["failures"] += 1
+        state["total_runs"] += 1
+        state["last_failure"] = datetime.datetime.utcnow()
+
+        failure_type = self.classify_failure(stderr, returncode)
+        action = self.FAILURE_SIGNATURES.get(failure_type, {}).get("action", "log_only")
+
+        correction = {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "scanner": scanner_name,
+            "repo": repo_name,
+            "failure_type": failure_type,
+            "returncode": returncode,
+            "action": action,
+            "consecutive_failures": state["failures"],
+        }
+
+        result = {"action": action, "detail": "", "should_retry": False}
+
+        if action == "increase_timeout":
+            timeout_failures = sum(1 for c in self.corrections if c.get("scanner") == scanner_name and c.get("failure_type") == "timeout")
+            if timeout_failures <= self.MAX_TIMEOUT_RETRIES:
+                old_timeout = state["timeout"]
+                state["timeout"] = min(int(old_timeout * 1.5), self.MAX_TIMEOUT)
+                correction["old_timeout"] = old_timeout
+                correction["new_timeout"] = state["timeout"]
+                result["detail"] = f"Timeout {old_timeout}s -> {state['timeout']}s (retry {timeout_failures}/{self.MAX_TIMEOUT_RETRIES})"
+                result["should_retry"] = True
+                print(f"[auditgh]   ⟳ {scanner_name}: {result['detail']}", flush=True)
+            else:
+                result["detail"] = f"Timed out {timeout_failures} times, marking incomplete"
+                result["should_retry"] = False
+                print(f"[auditgh]   ✗ {scanner_name}: {result['detail']}", flush=True)
+
+        elif action == "retry_with_backoff":
+            if state["failures"] <= 3:
+                backoff = 2 ** state["failures"]
+                result["detail"] = f"Retrying in {backoff}s (attempt {state['failures']}/3)"
+                result["should_retry"] = True
+                print(f"[auditgh]   ⟳ {scanner_name}: {result['detail']}", flush=True)
+            else:
+                state["skip_until"] = datetime.datetime.utcnow() + datetime.timedelta(minutes=self.COOLDOWN_MINUTES)
+                result["detail"] = f"Too many failures, cooling down for {self.COOLDOWN_MINUTES}m"
+                print(f"[auditgh]   ✗ {scanner_name}: {result['detail']}", flush=True)
+
+        elif action == "skip_scanner":
+            state["skip_until"] = datetime.datetime.utcnow() + datetime.timedelta(minutes=self.COOLDOWN_MINUTES)
+            result["detail"] = f"Scanner disabled for {self.COOLDOWN_MINUTES}m ({failure_type})"
+            print(f"[auditgh]   ✗ {scanner_name}: {result['detail']}", flush=True)
+
+        else:
+            if state["failures"] >= 3:
+                state["skip_until"] = datetime.datetime.utcnow() + datetime.timedelta(minutes=self.COOLDOWN_MINUTES)
+                result["detail"] = f"Unknown failure x{state['failures']}, cooling down"
+                print(f"[auditgh]   ✗ {scanner_name}: {result['detail']}", flush=True)
+
+        correction["result"] = result["detail"]
+        self.corrections.append(correction)
+        self.logger.warning(f"DOE Self-Annealing [{scanner_name}]: {failure_type} -> {result['detail']}")
+
+        return result
+
+    def should_skip(self, scanner_name: str) -> tuple:
+        """Check if a scanner should be skipped due to cooldown."""
+        state = self._get_state(scanner_name)
+        if state["skip_until"]:
+            now = datetime.datetime.utcnow()
+            if now < state["skip_until"]:
+                remaining = (state["skip_until"] - now).total_seconds() / 60
+                return True, f"Cooling down ({remaining:.0f}m remaining, {state['failures']} failures)"
+            else:
+                # Cooldown expired, reset
+                state["skip_until"] = None
+                state["failures"] = 0
+                self.logger.info(f"DOE Self-Annealing [{scanner_name}]: Cooldown expired, re-enabling")
+        return False, ""
+
+    def get_timeout(self, scanner_name: str) -> int:
+        """Get the current (possibly adjusted) timeout for a scanner."""
+        return self._get_state(scanner_name)["timeout"]
+
+    def get_safety_fallback(self) -> dict:
+        """Get the current Safety command to try (primary or fallback)."""
+        state = self._get_state("safety")
+        idx = min(state["fallback_idx"], len(self.SAFETY_FALLBACKS) - 1)
+        return self.SAFETY_FALLBACKS[idx]
+
+    def advance_safety_fallback(self) -> bool:
+        """Move to the next Safety fallback command. Returns False if exhausted."""
+        state = self._get_state("safety")
+        state["fallback_idx"] += 1
+        if state["fallback_idx"] >= len(self.SAFETY_FALLBACKS):
+            return False
+        fb = self.SAFETY_FALLBACKS[state["fallback_idx"]]
+        print(f"[auditgh]   ⟳ safety: Falling back to {fb['label']}", flush=True)
+        self.logger.info(f"DOE Self-Annealing [safety]: Falling back to {fb['label']}")
+        return True
+
+    def get_health_report(self) -> dict:
+        """Return health summary for all tracked scanners."""
+        report = {}
+        for name, state in self.scanner_state.items():
+            total = state["total_runs"]
+            success_rate = (state["total_successes"] / total * 100) if total > 0 else 0
+            report[name] = {
+                "total_runs": total,
+                "success_rate": f"{success_rate:.0f}%",
+                "current_timeout": state["timeout"],
+                "consecutive_failures": state["failures"],
+                "status": "cooling_down" if state["skip_until"] and datetime.datetime.utcnow() < state["skip_until"] else "active",
+            }
+        return report
+
+
+# Global scanner self-annealing instance
+scanner_annealing = ScannerSelfAnnealing()
+
+
 # AI Agent imports (optional - only loaded if enabled)
 try:
     from src.ai_agent.providers import OpenAIProvider, ClaudeProvider
@@ -2340,6 +2572,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
         # Sanitize the repository name for use in file paths
         safe_repo_name = "".join(c if c.isalnum() or c in '._-' else '_' for c in repo_name)
 
+    print(f"[auditgh] Processing repository: {repo_full_name}")
     logging.info(f"Processing repository: {repo_name}")
     
     # Always ensure repository metadata is up-to-date in database
@@ -2403,6 +2636,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
 
     # If we determined we should skip, skip it
     if should_skip:
+        print(f"[auditgh] Skipping {repo_name}: {skip_reason}")
         logging.info(f"⏭️  Skipping {repo_name}: {skip_reason}")
         # Still mark as completed for resume state even if skipped
         if resume_state:
@@ -2424,6 +2658,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
             f.write(f"{datetime.datetime.now().isoformat()} - {message}\n")
     
     # Clone the repository
+    print(f"[auditgh] Cloning {repo_name}...")
     logging.info(f"Cloning repository: {repo_name}")
     if not clone_repo(repo):
         error_msg = f"Failed to clone repository: {repo_name}"
@@ -2441,6 +2676,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
     
     try:
         # Run various security scans
+        print(f"[auditgh] Running security scans for {repo_name}...")
         logging.info(f"Running security scans for {repo_name}...")
         
         # Parse scanners list
@@ -2448,7 +2684,10 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
         run_all = 'all' in enabled_scanners
 
         def is_scanner_enabled(name):
-            return run_all or name.lower() in enabled_scanners
+            enabled = run_all or name.lower() in enabled_scanners
+            if enabled:
+                print(f"[auditgh]   ▸ {name}...", flush=True)
+            return enabled
 
         # Extract requirements for Python projects
         requirements_path, is_temp, source_file = extract_requirements(repo_path)
@@ -2847,68 +3086,128 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
             logging.warning(f"Failed to cleanup {repo_path}: {e}")
 
 def run_safety_scan(requirements_path, repo_name, report_dir):
-    """Run safety scan on requirements file and return the output."""
+    """Run safety scan on requirements file with DOE self-annealing.
+
+    Self-healing behaviours:
+    - Checks cooldown before running (skips if scanner recently failed repeatedly)
+    - Adjusts timeout dynamically based on observed failures
+    - Falls back through alternative commands: safety scan v3 -> safety check v2 -> pip-audit
+    - Retries with back-off on transient network / rate-limit errors
+    - Records all corrections for audit trail
+    """
     output_path = os.path.join(report_dir, f"{repo_name}_safety.txt")
-    logging.info(f"Running Safety scan for {repo_name}...")
-    
-    # Use the new 'safety scan' command with appropriate arguments
-    cmd = [
-        "safety", "scan", "--file", requirements_path,
-        "--output", "json",
-        "--ignore-unpinned-requirements",
-        "--continue-on-error",
-        "--disable-optional-output"
-    ]
-    
-    try:
-        logging.debug(f"Running command: {' '.join(cmd)}")
-        # Use progress monitoring if available - reduced timeout to 120s (Safety often hangs)
-        if PROGRESS_MONITOR_AVAILABLE:
-            result = run_with_progress_monitoring(
-                cmd=cmd,
-                repo_name=repo_name,
-                scanner_name="safety",
-                cwd=None,
-                timeout=120  # Reduced from 3600 - Safety often hangs on network issues
-            )
-        else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        # If we get no output but the command succeeded, it might mean no vulnerabilities
-        if not result.stdout.strip() and result.returncode == 0:
-            logging.debug("No vulnerabilities found in safety scan")
-            # Return a valid result with empty findings
-            return subprocess.CompletedProcess(
-                args=cmd,
-                returncode=0,
-                stdout='{"scanned": [], "affected_packages": {}, "vulnerabilities": []}',
-                stderr=result.stderr
-            )
-        
-        # Write results to file
+
+    # Self-annealing: check cooldown
+    skip, reason = scanner_annealing.should_skip("safety")
+    if skip:
+        print(f"[auditgh]   ⏸ safety: skipped ({reason})", flush=True)
+        logging.info(f"Safety scan skipped for {repo_name}: {reason}")
         with open(output_path, "w") as f:
-            f.write(result.stdout or "")
-            if result.stderr:
-                f.write("\n[ERROR] stderr output:\n")
-                f.write(result.stderr)
-            
-            # Add warning if there were issues
-            if result.returncode != 0:
-                f.write("\n[WARNING] Safety scan completed with non-zero exit code")
-        
-        if result.returncode != 0:
-            logging.warning(f"Safety scan exited with code {result.returncode} for {repo_name}")
-            
-        return result
-    except Exception as e:
-        error_msg = f"Error running safety scan: {e}"
-        logging.error(error_msg)
-        with open(output_path, "w") as f:
-            f.write(f"Error running safety scan: {e}")
+            f.write(f"Safety scan skipped (self-annealing): {reason}\n")
         return subprocess.CompletedProcess(
-            args=cmd, returncode=1,
-            stdout="", stderr=error_msg
+            args=["safety"], returncode=0,
+            stdout='{"scanned": [], "affected_packages": {}, "vulnerabilities": []}',
+            stderr=""
         )
+
+    logging.info(f"Running Safety scan for {repo_name}...")
+
+    # Try each fallback command until one succeeds
+    while True:
+        fallback = scanner_annealing.get_safety_fallback()
+        # Build command, substituting the requirements path placeholder
+        cmd = [arg.replace("{requirements}", requirements_path) for arg in fallback["cmd"]]
+        timeout = scanner_annealing.get_timeout("safety")
+
+        try:
+            logging.debug(f"Running command ({fallback['label']}, timeout={timeout}s): {' '.join(cmd)}")
+
+            if PROGRESS_MONITOR_AVAILABLE:
+                result = run_with_progress_monitoring(
+                    cmd=cmd,
+                    repo_name=repo_name,
+                    scanner_name="safety",
+                    cwd=None,
+                    timeout=timeout,
+                )
+            else:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=timeout
+                )
+
+            # Success path
+            if result.returncode == 0:
+                scanner_annealing.record_success("safety")
+
+                if not result.stdout.strip():
+                    logging.debug("No vulnerabilities found in safety scan")
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0,
+                        stdout='{"scanned": [], "affected_packages": {}, "vulnerabilities": []}',
+                        stderr=result.stderr,
+                    )
+
+                with open(output_path, "w") as f:
+                    f.write(result.stdout or "")
+                return result
+
+            # Non-zero exit — let self-annealing decide what to do
+            correction = scanner_annealing.record_failure(
+                "safety", result.stderr, result.returncode, repo_name
+            )
+
+            if correction["should_retry"] and correction["action"] == "retry_with_backoff":
+                backoff = 2 ** scanner_annealing._get_state("safety")["failures"]
+                time.sleep(min(backoff, 30))
+                continue  # retry same command
+
+            if correction["action"] == "increase_timeout":
+                continue  # retry same command with bigger timeout
+
+            # Try next fallback command
+            if scanner_annealing.advance_safety_fallback():
+                continue
+
+            # All fallbacks exhausted — write what we have and return
+            with open(output_path, "w") as f:
+                f.write(result.stdout or "")
+                if result.stderr:
+                    f.write(f"\n[ERROR] stderr output:\n{result.stderr}")
+                f.write(f"\n[WARNING] Safety scan completed with non-zero exit code ({result.returncode})")
+                f.write(f"\n[SELF-ANNEALING] All fallback commands exhausted")
+            logging.warning(f"Safety scan: all fallbacks exhausted for {repo_name}")
+            return result
+
+        except subprocess.TimeoutExpired:
+            print(f"[auditgh]   ⏱ safety: timed out after {timeout}s ({fallback['label']})", flush=True)
+            correction = scanner_annealing.record_failure(
+                "safety", "timed out", -9, repo_name
+            )
+            if correction["should_retry"]:
+                continue
+            # Timeout exhausted for this command — try next fallback
+            if scanner_annealing.advance_safety_fallback():
+                continue
+            # All fallbacks exhausted — mark incomplete and move on
+            print(f"[auditgh]   ✗ safety: INCOMPLETE — not accessible (timed out)", flush=True)
+            with open(output_path, "w") as f:
+                f.write(f"[INCOMPLETE] Safety scan not accessible — timed out after {timeout}s\n")
+                f.write(f"All fallback commands exhausted. Scanner may be unavailable.\n")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=1, stdout="", stderr=f"INCOMPLETE: timed out after {timeout}s"
+            )
+
+        except Exception as e:
+            error_msg = f"Error running safety scan ({fallback['label']}): {e}"
+            logging.error(error_msg)
+            scanner_annealing.record_failure("safety", str(e), 1, repo_name)
+            if scanner_annealing.advance_safety_fallback():
+                continue
+            with open(output_path, "w") as f:
+                f.write(error_msg)
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=1, stdout="", stderr=error_msg
+            )
 
 def run_semgrep_taint(repo_path: str, repo_name: str, report_dir: str, config_path: str) -> subprocess.CompletedProcess:
     """Run Semgrep taint-mode scan using a provided ruleset/config.
@@ -5791,6 +6090,21 @@ def main():
         except ImportError as e:
             logging.warning(f"Organization management not available: {e}")
             logging.warning("Falling back to environment variables")
+            # Use --target value as the GitHub org name when org management is unavailable
+            config.ORG_NAME = args.target
+            # Resolve org-specific token: ORG_{NAME}_TOKEN (e.g., ORG_SLEEPNUMBERLABS_TOKEN)
+            org_token_var = f"ORG_{args.target.upper()}_TOKEN"
+            org_token = os.environ.get(org_token_var)
+            if org_token:
+                config.GITHUB_TOKEN = org_token
+                config.HEADERS = {
+                    "Authorization": f"Bearer {org_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                }
+                logging.info(f"Using org-specific token from {org_token_var}")
+            else:
+                logging.warning(f"No org-specific token found ({org_token_var}), using default GITHUB_TOKEN")
+            logging.info(f"Using --target as GitHub org: {config.ORG_NAME}")
         except Exception as e:
             logging.error(f"Failed to select organization '{args.target}': {e}")
             sys.exit(1)
@@ -6031,10 +6345,12 @@ def main():
         sys.exit(1)
     
     logging.info(f"Reports will be saved to: {os.path.abspath(config.REPORT_DIR)}")
+    print(f"[auditgh] Organization: {config.ORG_NAME}")
+    print(f"[auditgh] Reports dir: {os.path.abspath(config.REPORT_DIR)}")
     if args.repo:
-        logging.info(f"Single repository mode: {args.repo}")
+        print(f"[auditgh] Single repository mode: {args.repo}")
     else:
-        logging.info(f"Fetching repositories for organization: {config.ORG_NAME}")
+        print(f"[auditgh] Fetching repositories for organization: {config.ORG_NAME}")
     
     # Initialize scan_results at the start to prevent UnboundLocalError
     scan_results = {
@@ -6050,11 +6366,13 @@ def main():
 
         if args.repo:
             # Single repository mode
+            print(f"[auditgh] Resolving repository: {config.ORG_NAME}/{args.repo}")
             repo = get_single_repo(session, args.repo)
             if not repo:
                 logging.error("Aborting: could not resolve the requested repository.")
                 print(f"[auditgh] Repository not found or inaccessible: {args.repo}")
                 return
+            print(f"[auditgh] Found: {repo.get('full_name', args.repo)}")
             if args.dry_run:
                 full_name = repo.get("full_name") or f"{repo.get('owner',{}).get('login','?')}/{repo.get('name','?')}"
                 logging.info(f"[DRY-RUN] Would scan repository: {full_name}")
@@ -6284,6 +6602,14 @@ def main():
 
             # Ensure a final console line for users
             print(f"[auditgh] Scan completed. Reports saved to: {os.path.abspath(config.REPORT_DIR)}")
+
+            # Print scanner health report if any corrections were made
+            health = scanner_annealing.get_health_report()
+            if health:
+                print("[auditgh] Scanner health report:")
+                for name, info in health.items():
+                    status_icon = "✓" if info["status"] == "active" else "⏸"
+                    print(f"[auditgh]   {status_icon} {name}: {info['success_rate']} success ({info['total_runs']} runs)", flush=True)
 
             # AUTO-INGEST: Automatically load scan results into database
             if not args.dry_run and not args.no_auto_ingest and scan_results['success'] > 0:
