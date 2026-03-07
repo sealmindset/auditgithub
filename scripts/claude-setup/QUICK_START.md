@@ -129,10 +129,10 @@ claude
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--base-url` | Foundry base URL | `https://snapistg.sleepnumber.com/anthropic` |
+| `--base-url` | Foundry base URL | `https://snapistg-scus.azure.sleepnumber.com/anthropic` |
 | `--sonnet-model` | Sonnet model name | `cogdep-aifoundry-dev-eus2-claude-sonnet-4-5` |
 | `--haiku-model` | Haiku model name | `cogdep-aifoundry-dev-eus2-claude-haiku-4-5` |
-| `--opus-model` | Opus model name | `cogdep-aifoundry-dev-eus2-claude-opus-4-5` |
+| `--opus-model` | Opus model name | `cogdep-aifoundry-dev-eus2-claude-opus-4-6` |
 | `--skip-token` | Skip token generation | `false` |
 | `--debug` | Enable debug logging | `false` |
 

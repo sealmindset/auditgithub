@@ -50,10 +50,10 @@ pbpaste > ~/.claude/settings.json
   "apiKeyHelper": "~/.claude/get-claude-token.sh",
   "env": {
     "CLAUDE_CODE_USE_FOUNDRY": "1",
-    "ANTHROPIC_FOUNDRY_BASE_URL": "https://snapistg.sleepnumber.com/anthropic",
+    "ANTHROPIC_FOUNDRY_BASE_URL": "https://snapistg-scus.azure.sleepnumber.com/anthropic",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "cogdep-aifoundry-dev-eus2-claude-sonnet-4-5",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "cogdep-aifoundry-dev-eus2-claude-haiku-4-5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cogdep-aifoundry-dev-eus2-claude-opus-4-5"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cogdep-aifoundry-dev-eus2-claude-opus-4-6"
   }
 }
 ```
@@ -200,7 +200,7 @@ Generated programmatically:
 
 ```python
 settings = {
-    "apiKeyHelper": str(TOKEN_SCRIPT),
+    "apiKeyHelper": "~/.claude/get-claude-token.sh",
     "env": {
         "CLAUDE_CODE_USE_FOUNDRY": "1",
         "ANTHROPIC_FOUNDRY_BASE_URL": base_url,

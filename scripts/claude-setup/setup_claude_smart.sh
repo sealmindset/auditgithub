@@ -26,10 +26,10 @@ SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 TOKEN_FILE="${CLAUDE_DIR}/claudekey.txt"
 
 # Default configuration
-BASE_URL="${ANTHROPIC_FOUNDRY_BASE_URL:-https://snapistg.sleepnumber.com/anthropic}"
+BASE_URL="${ANTHROPIC_FOUNDRY_BASE_URL:-https://snapistg-scus.azure.sleepnumber.com/anthropic}"
 SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-cogdep-aifoundry-dev-eus2-claude-sonnet-4-5}"
 HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-cogdep-aifoundry-dev-eus2-claude-haiku-4-5}"
-OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-cogdep-aifoundry-dev-eus2-claude-opus-4-5}"
+OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-cogdep-aifoundry-dev-eus2-claude-opus-4-6}"
 
 SKIP_TOKEN=false
 UPDATE_ONLY=false
@@ -328,7 +328,7 @@ update_settings() {
     local temp_new="${SETTINGS_FILE}.new"
     cat > "$temp_new" << EOF
 {
-  "apiKeyHelper": "$TOKEN_SCRIPT",
+  "apiKeyHelper": "~/.claude/get-claude-token.sh",
   "env": {
     "CLAUDE_CODE_USE_FOUNDRY": "1",
     "ANTHROPIC_FOUNDRY_BASE_URL": "$BASE_URL",

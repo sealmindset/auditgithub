@@ -74,7 +74,7 @@ The generated Azure access token (refreshed by the script).
 
 ```
 --base-url URL       Anthropic Foundry base URL
-                     Default: https://snapistg.sleepnumber.com/anthropic
+                     Default: https://snapistg-scus.azure.sleepnumber.com/anthropic
 
 --sonnet-model NAME  Sonnet model name
                      Default: cogdep-aifoundry-dev-eus2-claude-sonnet-4-5
@@ -83,7 +83,7 @@ The generated Azure access token (refreshed by the script).
                      Default: cogdep-aifoundry-dev-eus2-claude-haiku-4-5
 
 --opus-model NAME    Opus model name
-                     Default: cogdep-aifoundry-dev-eus2-claude-opus-4-5
+                     Default: cogdep-aifoundry-dev-eus2-claude-opus-4-6
 
 --skip-token         Skip token generation (setup configuration only)
 
@@ -125,10 +125,10 @@ cat > ~/.claude/settings.json << 'EOF'
   "apiKeyHelper": "~/.claude/get-claude-token.sh",
   "env": {
     "CLAUDE_CODE_USE_FOUNDRY": "1",
-    "ANTHROPIC_FOUNDRY_BASE_URL": "https://snapistg.sleepnumber.com/anthropic",
+    "ANTHROPIC_FOUNDRY_BASE_URL": "https://snapistg-scus.azure.sleepnumber.com/anthropic",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "cogdep-aifoundry-dev-eus2-claude-sonnet-4-5",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "cogdep-aifoundry-dev-eus2-claude-haiku-4-5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cogdep-aifoundry-dev-eus2-claude-opus-4-5"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cogdep-aifoundry-dev-eus2-claude-opus-4-6"
   }
 }
 EOF

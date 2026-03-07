@@ -32,10 +32,10 @@ TOKEN_SCRIPT = CLAUDE_DIR / "get-claude-token.sh"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 TOKEN_FILE = CLAUDE_DIR / "claudekey.txt"
 
-DEFAULT_BASE_URL = "https://snapistg.sleepnumber.com/anthropic"
+DEFAULT_BASE_URL = "https://snapistg-scus.azure.sleepnumber.com/anthropic"
 DEFAULT_SONNET_MODEL = "cogdep-aifoundry-dev-eus2-claude-sonnet-4-5"
 DEFAULT_HAIKU_MODEL = "cogdep-aifoundry-dev-eus2-claude-haiku-4-5"
-DEFAULT_OPUS_MODEL = "cogdep-aifoundry-dev-eus2-claude-opus-4-5"
+DEFAULT_OPUS_MODEL = "cogdep-aifoundry-dev-eus2-claude-opus-4-6"
 
 TOKEN_SCRIPT_CONTENT = """#!/bin/bash
 if ! az account get-access-token > /dev/null 2>&1; then
@@ -180,7 +180,7 @@ def create_settings_json(
     logger.info(f"Creating settings file: {SETTINGS_FILE}")
 
     settings: dict[str, Any] = {
-        "apiKeyHelper": str(TOKEN_SCRIPT),
+        "apiKeyHelper": "~/.claude/get-claude-token.sh",
         "env": {
             "CLAUDE_CODE_USE_FOUNDRY": "1",
             "ANTHROPIC_FOUNDRY_BASE_URL": base_url,
