@@ -77,3 +77,6 @@ gitleaks_reports/
 hardcoded/
 detailed_secrets_reports/
 secrets/
+
+# Azure login screenshots
+scripts/azure-login/screenshots/*.png
