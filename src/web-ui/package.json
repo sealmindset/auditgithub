@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:agent1": "npx playwright test --project=auth-navigation",
+    "test:e2e:agent2": "npx playwright test --project=dashboard-analytics",
+    "test:e2e:agent3": "npx playwright test --project=data-management",
+    "test:e2e:report": "npx playwright show-report"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -46,6 +52,7 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.10",
     "@types/node": "^20",

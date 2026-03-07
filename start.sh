@@ -3,6 +3,9 @@
 # AuditGitHub Startup Script
 # This script handles clean startup across different operating systems
 
+# az login --use-device-code
+# sn-openai-dev-01
+
 set -e  # Exit on error
 
 # Colors for output
