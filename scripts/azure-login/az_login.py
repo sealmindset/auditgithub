@@ -7,17 +7,32 @@ Orchestrates the full Azure CLI device-code login flow:
 2. Extracts the device code from CLI output
 3. Opens a Playwright-driven browser to enter the code
 4. Selects the target account
-5. Pauses for user MFA input
-6. Sets the target Azure subscription
-7. Verifies the login
+5. Optionally auto-fills password (with --auto-password)
+6. Pauses for user MFA input
+7. Sets the target Azure subscription
+8. Verifies the login
 
 Usage:
+    # Manual password entry in browser (default)
     python scripts/azure-login/az_login.py
+
+    # Secure password prompt with auto-fill (recommended)
+    python scripts/azure-login/az_login.py --auto-password
+
+    # Custom email and subscription
     python scripts/azure-login/az_login.py --email user@company.com --subscription "my-sub"
+
+    # Debug mode
     python scripts/azure-login/az_login.py --debug
+
+Security:
+    - Passwords are never stored in files or environment variables
+    - The --auto-password flag prompts securely (no echo) and only keeps password in memory
+    - Without --auto-password, password must be entered manually in the browser window
 """
 
 import argparse
+import getpass
 import json
 import logging
 import os
@@ -239,12 +254,21 @@ class DeviceCodeCapture:
 def automate_device_login(
     device_code: str,
     email: str,
+    password: str | None = None,
     headless: bool = False,
     slow_mo: int = DEFAULT_SLOW_MO,
     mfa_timeout: int = DEFAULT_TIMEOUT,
 ) -> bool:
     """
     Drive the browser through the device-code login flow.
+
+    Args:
+        device_code: The Azure device code to enter
+        email: The email address to select
+        password: Optional password to auto-fill (if None, user must enter manually)
+        headless: Run browser in headless mode
+        slow_mo: Delay between browser actions in milliseconds
+        mfa_timeout: Timeout for MFA completion in seconds
 
     Returns True if authentication completed successfully.
     """
@@ -279,27 +303,32 @@ def automate_device_login(
 
             # ── Step 2: Enter the device code ──
             logger.info(f"Entering device code: {device_code}")
-            code_input = page.wait_for_selector(
-                SELECTORS["code_input"], state="visible", timeout=15000
-            )
-            if not code_input:
+
+            # Use locator for better reliability with dynamic pages
+            code_input_locator = page.locator(SELECTORS["code_input"])
+            try:
+                code_input_locator.wait_for(state="visible", timeout=15000)
+            except Exception:
                 logger.error("Could not find code input field")
                 _save_screenshot(page, "error_no_code_input")
                 return False
 
-            code_input.fill(device_code)
+            # Enter code character by character with delay
+            code_input_locator.click()
+            code_input_locator.fill("")  # Clear first
+            time.sleep(0.5)
+            code_input_locator.type(device_code, delay=100)  # Type with delay between chars
             logger.info("Device code entered")
 
             # ── Step 3: Click Next ──
             logger.info("Clicking Next button")
-            next_btn = page.wait_for_selector(
-                SELECTORS["next_button"], state="visible", timeout=10000
-            )
-            if next_btn:
-                next_btn.click()
-            else:
+            try:
+                next_btn_locator = page.locator(SELECTORS["next_button"])
+                next_btn_locator.wait_for(state="visible", timeout=10000)
+                next_btn_locator.click()
+            except Exception:
                 logger.warning("Next button not found, pressing Enter instead")
-                code_input.press("Enter")
+                code_input_locator.press("Enter")
 
             # Small wait for page transition
             page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -317,11 +346,11 @@ def automate_device_login(
             page.wait_for_load_state("domcontentloaded", timeout=15000)
             time.sleep(2)
 
-            # ── Step 5: Handle MFA ──
-            logger.info("Checking if MFA is required...")
-            mfa_result = _handle_mfa(page, mfa_timeout)
+            # ── Step 5: Handle password and MFA ──
+            logger.info("Checking for password prompt and MFA...")
+            mfa_result = _handle_mfa(page, mfa_timeout, password)
             if not mfa_result:
-                logger.error("MFA flow did not complete successfully")
+                logger.error("Authentication flow did not complete successfully")
                 _save_screenshot(page, "error_mfa")
                 return False
 
@@ -442,10 +471,16 @@ def _select_account(page, email: str) -> bool:
     return False
 
 
-def _handle_mfa(page, timeout: int) -> bool:
+def _handle_mfa(page, timeout: int, password: str | None = None) -> bool:
     """
-    Handle the MFA step. This requires manual user interaction.
-    The script polls the page waiting for navigation past the MFA screen.
+    Handle password entry and MFA step.
+
+    Args:
+        page: Playwright page object
+        timeout: Timeout in seconds
+        password: Optional password to auto-fill
+
+    Returns True if authentication completed successfully.
     """
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -464,13 +499,30 @@ def _handle_mfa(page, timeout: int) -> bool:
     # Also check for password page (some orgs require password + MFA)
     password_input = page.query_selector('input[type="password"]')
     if password_input:
-        logger.info(
-            "\n"
-            "╔══════════════════════════════════════════════════════════════╗\n"
-            "║  PASSWORD REQUIRED — Please enter your password in the     ║\n"
-            "║  browser window.                                           ║\n"
-            "╚══════════════════════════════════════════════════════════════╝"
-        )
+        if password:
+            # Auto-fill password
+            logger.info("Auto-filling password...")
+            try:
+                password_locator = page.locator('input[type="password"]')
+                password_locator.fill(password)
+                time.sleep(0.5)
+                # Click the sign-in/next button
+                sign_in_btn = page.locator(SELECTORS["next_button"])
+                sign_in_btn.click()
+                logger.info("Password submitted")
+            except Exception as exc:
+                logger.error(f"Failed to auto-fill password: {exc}")
+                return False
+        else:
+            # Manual password entry
+            logger.info(
+                "\n"
+                "╔══════════════════════════════════════════════════════════════╗\n"
+                "║  PASSWORD REQUIRED — Please enter your password in the     ║\n"
+                "║  browser window.                                           ║\n"
+                "╚══════════════════════════════════════════════════════════════╝"
+            )
+
         # Wait for navigation away from password page
         try:
             page.wait_for_selector(
@@ -722,6 +774,7 @@ def _list_subscriptions() -> None:
 def run(
     email: str = DEFAULT_EMAIL,
     subscription: str = DEFAULT_SUBSCRIPTION,
+    password: str | None = None,
     headless: bool = False,
     slow_mo: int = DEFAULT_SLOW_MO,
     mfa_timeout: int = DEFAULT_TIMEOUT,
@@ -729,6 +782,15 @@ def run(
 ) -> bool:
     """
     Execute the full Azure device-code login flow.
+
+    Args:
+        email: Azure account email
+        subscription: Azure subscription name
+        password: Optional password to auto-fill
+        headless: Run browser in headless mode
+        slow_mo: Browser action delay in milliseconds
+        mfa_timeout: MFA timeout in seconds
+        debug: Enable debug logging
 
     Returns True if all steps completed successfully.
     """
@@ -768,6 +830,7 @@ def run(
     browser_ok = automate_device_login(
         device_code=device_code,
         email=email,
+        password=password,
         headless=headless,
         slow_mo=slow_mo,
         mfa_timeout=mfa_timeout,
@@ -849,6 +912,12 @@ def parse_args() -> argparse.Namespace:
         help=f"Browser action delay in ms (default: {DEFAULT_SLOW_MO})",
     )
     parser.add_argument(
+        "--auto-password",
+        action="store_true",
+        default=False,
+        help="Prompt for password and auto-fill (more secure than manual browser entry)",
+    )
+    parser.add_argument(
         "--headless",
         action="store_true",
         default=False,
@@ -872,9 +941,36 @@ def main() -> None:
     args = parse_args()
     setup_logging(debug=args.debug, log_file=args.log_file)
 
+    # Prompt for password if auto-password is enabled
+    password = None
+    if args.auto_password:
+        try:
+            # Check if we have a TTY for interactive input
+            if not sys.stdin.isatty():
+                logger.error(
+                    "Cannot prompt for password in non-interactive mode.\n"
+                    "Please run this script in an interactive terminal or remove --auto-password flag."
+                )
+                sys.exit(1)
+
+            password = getpass.getpass(f"Enter password for {args.email}: ")
+            if not password:
+                logger.error("Password cannot be empty")
+                sys.exit(1)
+        except KeyboardInterrupt:
+            logger.info("\nPassword prompt cancelled")
+            sys.exit(1)
+        except EOFError:
+            logger.error(
+                "\nPassword prompt failed (no TTY available).\n"
+                "Run this script in an interactive terminal."
+            )
+            sys.exit(1)
+
     success = run(
         email=args.email,
         subscription=args.subscription,
+        password=password,
         headless=args.headless,
         slow_mo=args.slow_mo,
         mfa_timeout=args.timeout,
