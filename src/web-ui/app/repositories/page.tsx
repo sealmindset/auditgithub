@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText } from "lucide-react"
+import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText, Activity } from "lucide-react"
 import Link from "next/link"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { API_BASE, apiFetch } from "@/lib/api"
@@ -121,6 +121,16 @@ export default function RepositoriesPage() {
         fetchProjects()
     }, [])
 
+    const deploymentStatusConfig: Record<string, { label: string; color: string }> = {
+        production: { label: "Production", color: "bg-green-500 hover:bg-green-600" },
+        staging: { label: "Staging", color: "bg-blue-500 hover:bg-blue-600" },
+        development: { label: "Development", color: "bg-yellow-500 hover:bg-yellow-600" },
+        deprecated: { label: "Deprecated", color: "bg-orange-500 hover:bg-orange-600" },
+        archived: { label: "Archived", color: "bg-gray-500 hover:bg-gray-600" },
+        decommissioned: { label: "Decommissioned", color: "bg-red-500 hover:bg-red-600" },
+        unknown: { label: "Unknown", color: "" },
+    }
+
     const columns: ColumnDef<any>[] = [
         {
             accessorKey: "name",
@@ -129,11 +139,19 @@ export default function RepositoriesPage() {
             ),
             cell: ({ row }) => {
                 const isArchived = row.original.is_archived
+                const deploymentStatus = row.original.deployment_status as string | null
+                const config = deploymentStatus ? deploymentStatusConfig[deploymentStatus] : null
                 return (
                     <div className="flex items-center gap-2">
                         <Link href={`/projects/${row.original.id}`} className="font-medium text-blue-600 hover:underline">
                             {row.getValue("name")}
                         </Link>
+                        {deploymentStatus && deploymentStatus !== "unknown" && config && (
+                            <Badge className={`text-xs text-white ${config.color}`}>
+                                <Activity className="h-3 w-3 mr-1" />
+                                {config.label}
+                            </Badge>
+                        )}
                         {isArchived && (
                             <Badge variant="secondary" className="text-xs">
                                 <Archive className="h-3 w-3 mr-1" />

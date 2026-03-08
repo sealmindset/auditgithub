@@ -17,6 +17,7 @@ import { ContributorsView } from "@/components/ContributorsView"
 import { LanguagesView } from "@/components/LanguagesView"
 import { SbomView } from "@/components/SbomView"
 import { APIAuditView } from "@/components/APIAuditView"
+import { OperationsView } from "@/components/OperationsView"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { API_BASE, apiFetch } from "@/lib/api"
 
@@ -209,6 +210,7 @@ export default function ProjectPage() {
                     <TabsTrigger value="languages">Languages</TabsTrigger>
                     <TabsTrigger value="sbom">SBOM</TabsTrigger>
                     <TabsTrigger value="api-audit">API Audit</TabsTrigger>
+                    <TabsTrigger value="operations">Operations</TabsTrigger>
                 </TabsList>
                 <TabsContent value="overview" className="space-y-4">
                     <ProjectOverview
@@ -256,6 +258,10 @@ export default function ProjectPage() {
 
                 <TabsContent value="api-audit" className="mt-6">
                     <APIAuditView projectId={params.id as string} />
+                </TabsContent>
+
+                <TabsContent value="operations" className="mt-6">
+                    <OperationsView projectId={params.id as string} />
                 </TabsContent>
             </Tabs>
 

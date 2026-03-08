@@ -1,6 +1,7 @@
 """
 GitHub API client for AuditGH.
 """
+import base64
 import logging
 import time
 from typing import Dict, List, Optional, Tuple
@@ -202,3 +203,98 @@ class GitHubAPI:
         except requests.HTTPError as e:
             self.logger.warning("Failed to fetch commit activity for %s: %s", repo_name, e)
             return []
+
+    def get_file_tree(self, repo_name: str, path: str = "", depth: int = 2) -> List[Dict[str, str]]:
+        """Get file/directory listing at a given path.
+
+        Args:
+            repo_name: Repository name (without org prefix)
+            path: Path within the repository (empty string for root)
+            depth: How many levels deep to recurse (default 2)
+
+        Returns:
+            List of dicts with keys: name, path, type, size
+        """
+        try:
+            endpoint = f'repos/{self.org_name}/{repo_name}/contents/{path}'.rstrip('/')
+            response = self._make_request('GET', endpoint)
+
+            items = response.json()
+            if not isinstance(items, list):
+                # Single file was returned instead of a directory listing
+                items = [items]
+
+            results = []
+            for item in items:
+                entry = {
+                    'name': item.get('name', ''),
+                    'path': item.get('path', ''),
+                    'type': item.get('type', ''),
+                    'size': item.get('size', 0),
+                }
+                results.append(entry)
+
+                # Recurse into directories if depth allows
+                if item.get('type') == 'dir' and depth > 1:
+                    try:
+                        children = self.get_file_tree(
+                            repo_name, item['path'], depth=depth - 1
+                        )
+                        results.extend(children)
+                    except requests.HTTPError:
+                        self.logger.debug(
+                            "Could not recurse into %s/%s", repo_name, item['path']
+                        )
+
+            return results
+
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                self.logger.debug("Path not found: %s/%s/%s", self.org_name, repo_name, path)
+            else:
+                self.logger.warning("Failed to fetch file tree for %s/%s: %s", repo_name, path, e)
+            return []
+
+    def get_file_content(self, repo_name: str, file_path: str) -> Optional[str]:
+        """Get the text content of a file (base64 decoded).
+
+        Args:
+            repo_name: Repository name (without org prefix)
+            file_path: Full path to the file within the repository
+
+        Returns:
+            Decoded text content of the file, or None if not found or binary.
+        """
+        try:
+            endpoint = f'repos/{self.org_name}/{repo_name}/contents/{file_path}'
+            response = self._make_request('GET', endpoint)
+
+            data = response.json()
+
+            # Only decode file type entries with base64 encoding
+            if data.get('type') != 'file':
+                self.logger.debug("Path is not a file: %s/%s", repo_name, file_path)
+                return None
+
+            encoding = data.get('encoding', '')
+            content = data.get('content', '')
+
+            if encoding == 'base64' and content:
+                try:
+                    return base64.b64decode(content).decode('utf-8')
+                except (UnicodeDecodeError, ValueError):
+                    self.logger.debug("Binary or non-UTF-8 file: %s/%s", repo_name, file_path)
+                    return None
+
+            # Some small files may be returned directly
+            if encoding == 'none' or encoding == '':
+                return content if content else None
+
+            return None
+
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                self.logger.debug("File not found: %s/%s", repo_name, file_path)
+            else:
+                self.logger.warning("Failed to fetch file content for %s/%s: %s", repo_name, file_path, e)
+            return None

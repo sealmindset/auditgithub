@@ -15,6 +15,7 @@ from .base import (
     Severity,
     RemediationAction
 )
+from src.services.prompt_loader import get_prompt, render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -125,11 +126,14 @@ class OllamaProvider(AIProvider):
         """Analyze stuck scan using Ollama."""
         try:
             prompt = self._build_analysis_prompt(diagnostic_data, historical_data)
-            
+
+            sys_data = get_prompt("devsecops-analyst-system")
+            system_msg = sys_data["content"] if sys_data else "You are an expert DevSecOps engineer. Output valid JSON only."
+
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are an expert DevSecOps engineer. Output valid JSON only."},
+                    {"role": "system", "content": system_msg},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2,
@@ -264,16 +268,25 @@ Example format:
         scanner: str
     ) -> Dict[str, Any]:
         """Triage finding using Ollama."""
-        prompt = f"""Triage this finding: {title} ({severity}) from {scanner}.
+        prompt = render_prompt("finding-triage", variables={
+            "title": title, "description": description,
+            "severity": severity, "scanner": scanner
+        })
+        if not prompt:
+            logger.error("Prompt 'finding-triage' not found in any tier")
+            prompt = f"""Triage this finding: {title} ({severity}) from {scanner}.
 Description: {description}
 
 Output JSON: {{ "priority": "...", "confidence": 0.0-1.0, "reasoning": "..." }}
 """
+
+        sys_data = get_prompt("security-analyst-json-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security analyst. Output valid JSON."
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a security analyst. Output valid JSON."},
+                    {"role": "system", "content": system_msg},
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"}
@@ -288,8 +301,11 @@ Output JSON: {{ "priority": "...", "confidence": 0.0-1.0, "reasoning": "..." }}
         user_prompt: Optional[str] = None
     ) -> str:
         """Analyze finding using Ollama."""
+        sys_data = get_prompt("security-engineer-analysis-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security expert."
+
         finding_context = json.dumps(finding, indent=2)
-        
+
         if user_prompt:
             prompt = f"Finding: {finding_context}\n\nQuestion: {user_prompt}"
         else:
@@ -299,7 +315,7 @@ Output JSON: {{ "priority": "...", "confidence": 0.0-1.0, "reasoning": "..." }}
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a security expert."},
+                    {"role": "system", "content": system_msg},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=self.max_tokens
@@ -315,14 +331,23 @@ Output JSON: {{ "priority": "...", "confidence": 0.0-1.0, "reasoning": "..." }}
         package_manager: str
     ) -> Dict[str, Any]:
         """Analyze component using Ollama."""
-        prompt = f"""Analyze component: {package_name} {version} ({package_manager}).
+        prompt = render_prompt("component-analysis", variables={
+            "package_name": package_name, "version": version,
+            "package_manager": package_manager
+        })
+        if not prompt:
+            logger.error("Prompt 'component-analysis' not found in any tier")
+            prompt = f"""Analyze component: {package_name} {version} ({package_manager}).
 Output JSON: {{ "analysis_text": "...", "vulnerability_summary": "...", "severity": "...", "exploitability": "...", "fixed_version": "..." }}
 """
+
+        sys_data = get_prompt("security-analyst-json-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security researcher. Output valid JSON."
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a security researcher. Output valid JSON."},
+                    {"role": "system", "content": system_msg},
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"}

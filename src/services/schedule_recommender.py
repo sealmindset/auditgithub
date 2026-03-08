@@ -14,6 +14,7 @@ from src.github.models import (
     ScheduleInput,
     ScheduleRecommendation,
 )
+from src.services.prompt_loader import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,17 @@ Commit Patterns (last 90 days):
             f"- {severity}: {count}"
             for severity, count in input.finding_counts.items()
         ]) or "No findings"
+
+        # Try managed prompt first
+        managed = render_prompt("schedule-recommendation", variables={
+            "repository_name": input.repository_name,
+            "risk_score": f"{input.risk_score:.2f}",
+            "last_scan_date": str(input.last_scan_date or 'Never'),
+            "commit_context": commit_context,
+            "finding_context": finding_context,
+        })
+        if managed:
+            return managed
 
         prompt = f"""You are an expert DevSecOps engineer optimizing security scan schedules.
 

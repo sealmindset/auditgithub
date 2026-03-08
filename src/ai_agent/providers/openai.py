@@ -21,6 +21,7 @@ from .base import (
     Severity,
     RemediationAction
 )
+from src.services.prompt_loader import get_prompt, render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,15 @@ class OpenAIProvider(AIProvider):
         super().__init__(api_key, model, max_tokens)
         self.client = AsyncOpenAI(api_key=api_key)
         logger.info(f"Initialized OpenAI provider with model: {model}")
-    
+
+    def _get_db_session(self):
+        """Get a database session for prompt loading. Returns None if unavailable."""
+        try:
+            from src.api.database import SessionLocal
+            return SessionLocal()
+        except Exception:
+            return None
+
     async def analyze_stuck_scan(
         self,
         diagnostic_data: Dict[str, Any],
@@ -73,7 +82,11 @@ class OpenAIProvider(AIProvider):
         try:
             # Build the prompt
             prompt = self._build_analysis_prompt(diagnostic_data, historical_data)
-            
+
+            # Load managed system prompt
+            sys_data = get_prompt("openai-stuck-scan-system")
+            system_msg = sys_data["content"] if sys_data else "You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice."
+
             # Call OpenAI API with function calling for structured output
             # Use max_completion_tokens for newer models (GPT-5+), fallback to max_tokens for older models
             api_params = {
@@ -81,7 +94,7 @@ class OpenAIProvider(AIProvider):
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice."
+                        "content": system_msg
                     },
                     {
                         "role": "user",
@@ -198,19 +211,13 @@ class OpenAIProvider(AIProvider):
         Analyze and triage a finding using OpenAI.
         """
         try:
-            prompt = f"""You are a security analyst. Triage this security finding.
-
-Title: {title}
-Description: {description}
-Reported Severity: {severity}
-Scanner: {scanner}
-
-Analyze the finding and provide a JSON response with:
-1. "priority": Recommended priority (Critical, High, Medium, Low, Info).
-2. "confidence": Confidence score (0.0 - 1.0).
-3. "reasoning": Explanation for the priority rating.
-4. "false_positive_probability": Estimated probability this is a false positive (0.0 - 1.0).
-"""
+            prompt = render_prompt("openai-finding-triage", variables={
+                "title": title, "description": description,
+                "severity": severity, "scanner": scanner
+            })
+            if not prompt:
+                logger.error("Prompt 'openai-finding-triage' not found in any tier")
+                prompt = f"Triage this security finding and return JSON with priority, confidence, reasoning, false_positive_probability: {title} ({severity}) from {scanner}"
             is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
 
             if is_reasoning_model:
@@ -289,8 +296,10 @@ Code Snippet:
 {finding.get('code_snippet', 'No code snippet')}
 ```
 """
-            
-            system_prompt = "You are a senior security engineer. Analyze the provided security finding."
+
+            # Load managed system prompt
+            sys_data = get_prompt("security-engineer-analysis-system")
+            system_prompt = sys_data["content"] if sys_data else "You are a senior security engineer. Analyze the provided security finding."
             
             if user_prompt:
                 user_msg = f"""Finding Details:
@@ -355,19 +364,13 @@ Provide a detailed analysis of this finding including:
         Analyze a software component for vulnerabilities and risks using OpenAI.
         """
         try:
-            prompt = f"""You are a software security researcher. Analyze this component for security risks.
-
-Component: {package_name}
-Version: {version}
-Package Manager: {package_manager}
-
-Perform a security assessment and provide a JSON response with:
-1. "analysis_text": A detailed Markdown summary of known vulnerabilities, security posture, and risks associated with this specific version. Mention if it's outdated or end-of-life.
-2. "vulnerability_summary": A concise 1-sentence summary of the most critical issues (e.g., "Contains 2 critical CVEs related to RCE").
-3. "severity": Overall risk severity (Critical, High, Medium, Low, Safe).
-4. "exploitability": Is it susceptible to compromise? (High, Moderate, Low, Theoretical). Mention if PoC code exists.
-5. "fixed_version": The recommended version to upgrade to (e.g., "1.2.3" or "None").
-"""
+            prompt = render_prompt("component-analysis", variables={
+                "package_name": package_name, "version": version,
+                "package_manager": package_manager
+            })
+            if not prompt:
+                logger.error("Prompt 'component-analysis' not found in any tier")
+                prompt = f"Analyze component {package_name}@{version} ({package_manager}) for security risks. Return JSON with analysis_text, vulnerability_summary, severity, exploitability, fixed_version."
             is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
 
             if is_reasoning_model:
@@ -441,14 +444,14 @@ Perform a security assessment and provide a JSON response with:
             Human-readable explanation
         """
         try:
-            prompt = f"""Explain in 2-3 sentences why this security scan timed out:
-
-Repository: {repo_name}
-Scanner: {scanner}
-Timeout: {timeout_duration} seconds
-Context: {json.dumps(context, indent=2)}
-
-Provide a clear, non-technical explanation suitable for developers."""
+            prompt = render_prompt("timeout-explanation", variables={
+                "repo_name": repo_name, "scanner": scanner,
+                "timeout_duration": str(timeout_duration),
+                "context": json.dumps(context, indent=2)
+            })
+            if not prompt:
+                logger.error("Prompt 'timeout-explanation' not found in any tier")
+                prompt = f"Explain in 2-3 sentences why the {scanner} scan of {repo_name} timed out after {timeout_duration}s. Context: {json.dumps(context)}"
 
             api_params = {
                 "model": self.model,
@@ -494,21 +497,13 @@ Provide a clear, non-technical explanation suitable for developers."""
         Generate a remediation plan for a specific vulnerability using OpenAI.
         """
         try:
-            prompt = f"""You are a security expert. Provide a remediation plan for this vulnerability.
-
-Vulnerability: {vuln_type}
-Description: {description}
-Language: {language}
-
-Context (Code or Dependency):
-```
-{context}
-```
-
-Provide a JSON response with exactly these fields:
-1. "remediation": A detailed explanation of how to fix the issue (in Markdown).
-2. "diff": A unified diff showing the code changes (if applicable). If no code change is possible (e.g. config change), return an empty string.
-"""
+            prompt = render_prompt("remediation-generation", variables={
+                "vuln_type": vuln_type, "description": description,
+                "context": context, "language": language
+            })
+            if not prompt:
+                logger.error("Prompt 'remediation-generation' not found in any tier")
+                prompt = f"Provide a JSON remediation plan (remediation, diff) for {vuln_type} in {language}: {description}"
             is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
 
             if is_reasoning_model:

@@ -11,6 +11,13 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from src.rbac.dependencies import require_permissions
 from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS
+from src.api.schemas.repository_operations import (
+    RepositoryOperationsCreate,
+    RepositoryOperationsUpdate,
+    RepositoryOperationsResponse,
+    DiscoveryRunResponse,
+    AcceptSuggestionsRequest,
+)
 import os
 
 router = APIRouter(
@@ -95,6 +102,11 @@ async def get_projects(
         # Check if architecture report and diagram are both present
         has_architecture = bool(p.architecture_report and p.architecture_diagram)
 
+        # Get deployment status from repository_operations (1:1 relationship)
+        deployment_status = None
+        if p.operations:
+            deployment_status = p.operations.deployment_status
+
         results.append({
             "id": str(p.id),
             "name": p.name,
@@ -110,6 +122,7 @@ async def get_projects(
             "is_private": p.is_private,
             "max_severity": max_severity,
             "has_architecture": has_architecture,
+            "deployment_status": deployment_status,
             "stats": {
                 "open_findings": open_findings,
                 "stars": p.stargazers_count or 0,
@@ -1475,4 +1488,325 @@ def _serialize_api_audit(a) -> Dict:
         "test_mode": a.test_mode,
         "tested_at": a.tested_at.isoformat() if a.tested_at else None,
         "test_duration_seconds": a.test_duration_seconds
+    }
+
+
+# =============================================================================
+# REPOSITORY OPERATIONS CONTEXT ENDPOINTS
+# =============================================================================
+
+def _resolve_project(project_id: str, db: Session) -> models.Repository:
+    """Resolve a project by UUID or name, raising 404 if not found."""
+    try:
+        p_uuid = uuid.UUID(project_id)
+        project = db.query(models.Repository).filter(models.Repository.id == p_uuid).first()
+    except ValueError:
+        project = db.query(models.Repository).filter(models.Repository.name == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+def _ops_to_response(ops: models.RepositoryOperations) -> dict:
+    """Serialize a RepositoryOperations model instance to a response dict."""
+    return {
+        "id": str(ops.id),
+        "repository_id": str(ops.repository_id),
+        "deployment_status": ops.deployment_status,
+        "deployment_status_notes": ops.deployment_status_notes,
+        "environment_urls": ops.environment_urls or [],
+        "hosting_platform": ops.hosting_platform,
+        "hosting_detail": ops.hosting_detail,
+        "deployment_method": ops.deployment_method,
+        "deployment_method_detail": ops.deployment_method_detail,
+        "team_owner": ops.team_owner,
+        "team_contact_email": ops.team_contact_email,
+        "team_slack_channel": ops.team_slack_channel,
+        "business_criticality": ops.business_criticality,
+        "business_criticality_notes": ops.business_criticality_notes,
+        "compliance_frameworks": ops.compliance_frameworks or [],
+        "data_classification": ops.data_classification,
+        "regulatory_notes": ops.regulatory_notes,
+        "last_compliance_audit_at": ops.last_compliance_audit_at,
+        "cicd_platform": ops.cicd_platform,
+        "cicd_pipeline_url": ops.cicd_pipeline_url,
+        "container_registry": ops.container_registry,
+        "iac_type": ops.iac_type,
+        "iac_path": ops.iac_path,
+        "monitoring_url": ops.monitoring_url,
+        "alerting_url": ops.alerting_url,
+        "logging_url": ops.logging_url,
+        "last_discovery_at": ops.last_discovery_at,
+        "last_discovery_status": ops.last_discovery_status,
+        "discovery_confidence": float(ops.discovery_confidence) if ops.discovery_confidence is not None else None,
+        "custom_metadata": ops.custom_metadata or {},
+        "notes": ops.notes,
+        "created_by": ops.created_by,
+        "updated_by": ops.updated_by,
+        "created_at": ops.created_at,
+        "updated_at": ops.updated_at,
+    }
+
+
+def _default_ops_response(repository_id: str) -> dict:
+    """Return a default operations response when no record exists yet."""
+    return {
+        "id": None,
+        "repository_id": repository_id,
+        "deployment_status": "unknown",
+        "deployment_status_notes": None,
+        "environment_urls": [],
+        "hosting_platform": None,
+        "hosting_detail": None,
+        "deployment_method": None,
+        "deployment_method_detail": None,
+        "team_owner": None,
+        "team_contact_email": None,
+        "team_slack_channel": None,
+        "business_criticality": "medium",
+        "business_criticality_notes": None,
+        "compliance_frameworks": [],
+        "data_classification": None,
+        "regulatory_notes": None,
+        "last_compliance_audit_at": None,
+        "cicd_platform": None,
+        "cicd_pipeline_url": None,
+        "container_registry": None,
+        "iac_type": None,
+        "iac_path": None,
+        "monitoring_url": None,
+        "alerting_url": None,
+        "logging_url": None,
+        "last_discovery_at": None,
+        "last_discovery_status": None,
+        "discovery_confidence": None,
+        "custom_metadata": {},
+        "notes": None,
+        "created_by": None,
+        "updated_by": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+@router.get("/{project_id}/operations",
+    summary="Get repository operations context",
+    responses={**CRUD_ERRORS})
+async def get_operations(project_id: str, db: Session = Depends(get_tenant_db)):
+    """
+    Get the operations context for a repository.
+    Returns defaults if no operations record exists yet (does not 404).
+    """
+    project = _resolve_project(project_id, db)
+    ops = db.query(models.RepositoryOperations).filter(
+        models.RepositoryOperations.repository_id == project.id
+    ).first()
+    if not ops:
+        return _default_ops_response(str(project.id))
+    return _ops_to_response(ops)
+
+
+@router.put("/{project_id}/operations",
+    summary="Create or update repository operations context",
+    responses={**CRUD_ERRORS})
+async def upsert_operations(
+    project_id: str,
+    body: RepositoryOperationsCreate,
+    db: Session = Depends(get_tenant_db),
+):
+    """
+    Create or update (upsert) the operations context for a repository.
+    If no record exists, one is created. If it exists, all provided fields are updated.
+    """
+    project = _resolve_project(project_id, db)
+    ops = db.query(models.RepositoryOperations).filter(
+        models.RepositoryOperations.repository_id == project.id
+    ).first()
+
+    data = body.model_dump(exclude_unset=True)
+    # Serialize environment_urls list of dicts for JSONB storage
+    if "environment_urls" in data and data["environment_urls"] is not None:
+        data["environment_urls"] = [eu.model_dump() if hasattr(eu, "model_dump") else eu for eu in body.environment_urls] if body.environment_urls else []
+
+    if not ops:
+        ops = models.RepositoryOperations(repository_id=project.id, **data)
+        db.add(ops)
+    else:
+        for key, value in data.items():
+            setattr(ops, key, value)
+    db.commit()
+    db.refresh(ops)
+    return _ops_to_response(ops)
+
+
+@router.patch("/{project_id}/operations",
+    summary="Partial update repository operations context",
+    responses={**CRUD_ERRORS})
+async def patch_operations(
+    project_id: str,
+    body: RepositoryOperationsUpdate,
+    db: Session = Depends(get_tenant_db),
+):
+    """
+    Partially update the operations context for a repository.
+    Only provided (non-None) fields are updated. Creates the record if it doesn't exist.
+    """
+    project = _resolve_project(project_id, db)
+    ops = db.query(models.RepositoryOperations).filter(
+        models.RepositoryOperations.repository_id == project.id
+    ).first()
+
+    data = body.model_dump(exclude_unset=True)
+    # Serialize environment_urls for JSONB storage
+    if "environment_urls" in data and data["environment_urls"] is not None:
+        data["environment_urls"] = [eu.model_dump() if hasattr(eu, "model_dump") else eu for eu in body.environment_urls] if body.environment_urls else []
+
+    if not ops:
+        ops = models.RepositoryOperations(repository_id=project.id, **data)
+        db.add(ops)
+    else:
+        for key, value in data.items():
+            setattr(ops, key, value)
+    db.commit()
+    db.refresh(ops)
+    return _ops_to_response(ops)
+
+
+@router.post("/{project_id}/operations/discover",
+    summary="Trigger AI discovery for repository operations",
+    responses={**CRUD_ERRORS})
+async def trigger_discovery(
+    project_id: str,
+    db: Session = Depends(get_tenant_db),
+):
+    """
+    Trigger an AI discovery run for the repository's operations context.
+    Creates a discovery run in 'pending' status. The actual AI processing
+    will be handled by a separate background service.
+    """
+    project = _resolve_project(project_id, db)
+
+    discovery = models.RepositoryOpsDiscovery(
+        repository_id=project.id,
+        status="pending",
+        triggered_by="api",
+    )
+    db.add(discovery)
+    db.commit()
+    db.refresh(discovery)
+
+    return {
+        "id": str(discovery.id),
+        "repository_id": str(discovery.repository_id),
+        "status": discovery.status,
+        "started_at": discovery.started_at,
+        "completed_at": discovery.completed_at,
+        "suggestions": discovery.suggestions or [],
+        "evidence_files": discovery.evidence_files or [],
+        "triggered_by": discovery.triggered_by,
+        "error_message": discovery.error_message,
+        "tokens_used": discovery.tokens_used,
+        "created_at": discovery.created_at,
+    }
+
+
+@router.get("/{project_id}/operations/discoveries",
+    summary="List AI discovery runs for a repository",
+    responses={**CRUD_ERRORS})
+async def list_discoveries(
+    project_id: str,
+    db: Session = Depends(get_tenant_db),
+):
+    """
+    List all AI discovery runs for a repository, ordered by most recent first.
+    """
+    project = _resolve_project(project_id, db)
+    discoveries = db.query(models.RepositoryOpsDiscovery).filter(
+        models.RepositoryOpsDiscovery.repository_id == project.id
+    ).order_by(models.RepositoryOpsDiscovery.created_at.desc()).all()
+
+    return [
+        {
+            "id": str(d.id),
+            "repository_id": str(d.repository_id),
+            "status": d.status,
+            "started_at": d.started_at,
+            "completed_at": d.completed_at,
+            "suggestions": d.suggestions or [],
+            "evidence_files": d.evidence_files or [],
+            "triggered_by": d.triggered_by,
+            "error_message": d.error_message,
+            "tokens_used": d.tokens_used,
+            "created_at": d.created_at,
+        }
+        for d in discoveries
+    ]
+
+
+@router.post("/{project_id}/operations/discoveries/{discovery_id}/accept",
+    summary="Accept or reject AI discovery suggestions",
+    responses={**CRUD_ERRORS})
+async def accept_suggestions(
+    project_id: str,
+    discovery_id: str,
+    body: AcceptSuggestionsRequest,
+    db: Session = Depends(get_tenant_db),
+):
+    """
+    Accept or reject suggestions from an AI discovery run.
+    Accepted suggestions are applied to the repository operations context.
+    """
+    project = _resolve_project(project_id, db)
+
+    try:
+        d_uuid = uuid.UUID(discovery_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid discovery ID format")
+
+    discovery = db.query(models.RepositoryOpsDiscovery).filter(
+        models.RepositoryOpsDiscovery.id == d_uuid,
+        models.RepositoryOpsDiscovery.repository_id == project.id,
+    ).first()
+    if not discovery:
+        raise HTTPException(status_code=404, detail="Discovery run not found")
+
+    if discovery.status != "completed":
+        raise HTTPException(status_code=400, detail=f"Discovery run is '{discovery.status}', must be 'completed' to accept suggestions")
+
+    # Get or create the operations record
+    ops = db.query(models.RepositoryOperations).filter(
+        models.RepositoryOperations.repository_id == project.id
+    ).first()
+    if not ops:
+        ops = models.RepositoryOperations(repository_id=project.id)
+        db.add(ops)
+
+    # Build a lookup of suggestions by field
+    suggestions = discovery.suggestions or []
+    suggestion_map = {s["field"]: s for s in suggestions if isinstance(s, dict)}
+
+    # Process decisions
+    for decision in body.decisions:
+        if decision.field in suggestion_map:
+            suggestion_map[decision.field]["accepted"] = decision.accepted
+            if decision.accepted:
+                value = decision.override_value if decision.override_value is not None else suggestion_map[decision.field].get("value")
+                if hasattr(ops, decision.field):
+                    setattr(ops, decision.field, value)
+
+    # Update the suggestions back on the discovery record
+    discovery.suggestions = list(suggestion_map.values())
+
+    db.commit()
+    db.refresh(ops)
+    db.refresh(discovery)
+
+    return {
+        "operations": _ops_to_response(ops),
+        "discovery": {
+            "id": str(discovery.id),
+            "repository_id": str(discovery.repository_id),
+            "status": discovery.status,
+            "suggestions": discovery.suggestions or [],
+        },
     }

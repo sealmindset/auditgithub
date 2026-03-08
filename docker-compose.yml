@@ -248,16 +248,18 @@ services:
     restart: unless-stopped
 
   # =============================================================================
-  # MailHog Service - Email Testing SMTP Server
+  # Mailpit Service - Email Testing SMTP Server
   # =============================================================================
   # Lightweight SMTP server for testing email invitations in development.
   # Catches all outgoing emails and displays them in a web UI.
   # Web UI available at http://localhost:8025
   # SMTP server runs on port 1025 (non-privileged port)
+  # Replaces MailHog (abandoned, amd64-only) with Mailpit (multi-arch, active).
+  # Service name kept as "mailhog" for backward-compat with SMTP_HOST references.
   # =============================================================================
   mailhog:
-    image: mailhog/mailhog:latest
-    container_name: auditgh_mailhog
+    image: axllent/mailpit:latest
+    container_name: auditgh_mailpit
     ports:
       - "1025:1025"   # SMTP server
       - "8025:8025"   # Web UI

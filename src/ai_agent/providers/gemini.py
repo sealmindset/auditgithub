@@ -24,6 +24,7 @@ from .base import (
     Severity,
     RemediationAction
 )
+from src.services.prompt_loader import get_prompt, render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,8 @@ class GeminiProvider(AIProvider):
     ) -> AIAnalysis:
         """Analyze a stuck scan using Gemini."""
         prompt = self._build_analysis_prompt(diagnostic_data, historical_data)
-        system = "You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice in JSON format."
+        sys_data = get_prompt("gemini-stuck-scan-system")
+        system = sys_data["content"] if sys_data else "You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice in JSON format."
         
         try:
             content = await self._call_api_with_retry(prompt, system)
@@ -166,21 +168,37 @@ class GeminiProvider(AIProvider):
             )
 
     async def explain_timeout(self, repo_name: str, scanner: str, timeout_duration: int, context: Dict[str, Any]) -> str:
-        prompt = f"""Explain in 2-3 sentences why this security scan timed out:
+        prompt = render_prompt("timeout-explanation", variables={
+            "repo_name": repo_name, "scanner": scanner,
+            "timeout_duration": str(timeout_duration),
+            "context_json": json.dumps(context, indent=2)
+        })
+        if not prompt:
+            logger.error("Prompt 'timeout-explanation' not found in any tier")
+            prompt = f"""Explain in 2-3 sentences why this security scan timed out:
 Repository: {repo_name}
 Scanner: {scanner}
 Timeout: {timeout_duration} seconds
 Context: {json.dumps(context, indent=2)}
 Provide a clear, non-technical explanation suitable for developers."""
-        
+
+        sys_data = get_prompt("devsecops-assistant-system")
+        system_msg = sys_data["content"] if sys_data else "You are a helpful DevSecOps assistant."
+
         try:
-            return await self._call_api_with_retry(prompt, "You are a helpful DevSecOps assistant.")
+            return await self._call_api_with_retry(prompt, system_msg)
         except Exception as e:
             logger.error(f"Failed to generate explanation: {e}")
             return f"The {scanner} scanner exceeded the timeout while scanning {repo_name}."
 
     async def generate_remediation(self, vuln_type: str, description: str, context: str, language: str) -> Dict[str, str]:
-        prompt = f"""You are an expert secure coding assistant.
+        prompt = render_prompt("remediation-generation", variables={
+            "vuln_type": vuln_type, "description": description,
+            "language": language, "context": context
+        })
+        if not prompt:
+            logger.error("Prompt 'remediation-generation' not found in any tier")
+            prompt = f"""You are an expert secure coding assistant.
 Vulnerability: {vuln_type}
 Description: {description}
 Language: {language}
@@ -194,8 +212,11 @@ Task:
 
 Return ONLY valid JSON with fields: "remediation" (string) and "diff" (string).
 """
+
+        sys_data = get_prompt("secure-coding-assistant-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security expert. Output valid JSON only."
         try:
-            content = await self._call_api_with_retry(prompt, "You are a security expert. Output valid JSON only.")
+            content = await self._call_api_with_retry(prompt, system_msg)
             content = self._clean_json_block(content)
             return json.loads(content)
         except Exception as e:
@@ -203,7 +224,13 @@ Return ONLY valid JSON with fields: "remediation" (string) and "diff" (string).
             return {"remediation": f"Error generating remediation: {e}", "diff": ""}
 
     async def triage_finding(self, title: str, description: str, severity: str, scanner: str) -> Dict[str, Any]:
-        prompt = f"""Analyze security finding: {title}
+        prompt = render_prompt("finding-triage", variables={
+            "title": title, "description": description,
+            "severity": severity, "scanner": scanner
+        })
+        if not prompt:
+            logger.error("Prompt 'finding-triage' not found in any tier")
+            prompt = f"""Analyze security finding: {title}
 Description: {description}
 Severity: {severity}
 Scanner: {scanner}
@@ -211,8 +238,11 @@ Scanner: {scanner}
 Determine Priority, Confidence, False Positive Probability, and Reasoning.
 Output JSON with keys: priority, confidence, false_positive_probability, reasoning.
 """
+
+        sys_data = get_prompt("security-analyst-json-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security analyst. Output valid JSON only."
         try:
-            content = await self._call_api_with_retry(prompt, "You are a security analyst. Output valid JSON only.")
+            content = await self._call_api_with_retry(prompt, system_msg)
             content = self._clean_json_block(content)
             return json.loads(content)
         except Exception as e:
@@ -220,20 +250,32 @@ Output JSON with keys: priority, confidence, false_positive_probability, reasoni
             return {"priority": severity}
 
     async def analyze_finding(self, finding: Dict[str, Any], user_prompt: Optional[str] = None) -> str:
+        sys_data = get_prompt("security-engineer-analysis-system")
+        system_msg = sys_data["content"] if sys_data else "You are a senior security engineer."
+
         finding_context = json.dumps(finding, indent=2)
         if user_prompt:
             prompt = f"Finding Details:\n{finding_context}\n\nUser Question: {user_prompt}"
         else:
             prompt = f"Finding Details:\n{finding_context}\n\nProvide a detailed analysis."
-            
-        return await self._call_api_with_retry(prompt, "You are a senior security engineer.")
+
+        return await self._call_api_with_retry(prompt, system_msg)
 
     async def analyze_component(self, package_name: str, version: str, package_manager: str) -> Dict[str, Any]:
-        prompt = f"""Analyze component: {package_name} version {version} ({package_manager}) for security risks.
+        prompt = render_prompt("component-analysis", variables={
+            "package_name": package_name, "version": version,
+            "package_manager": package_manager
+        })
+        if not prompt:
+            logger.error("Prompt 'component-analysis' not found in any tier")
+            prompt = f"""Analyze component: {package_name} version {version} ({package_manager}) for security risks.
 Return JSON with: analysis_text, vulnerability_summary, severity, exploitability, fixed_version.
 """
+
+        sys_data = get_prompt("security-analyst-json-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security researcher. Output valid JSON only."
         try:
-            content = await self._call_api_with_retry(prompt, "You are a security researcher. Output valid JSON only.")
+            content = await self._call_api_with_retry(prompt, system_msg)
             content = self._clean_json_block(content)
             return json.loads(content)
         except Exception as e:

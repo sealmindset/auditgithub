@@ -102,6 +102,7 @@ class Repository(Base):
     dependencies = relationship("Dependency", back_populates="repository")
     api_endpoints = relationship("APIEndpoint", back_populates="repository", cascade="all, delete-orphan")
     openapi_spec = relationship("OpenAPISpec", back_populates="repository", uselist=False, cascade="all, delete-orphan")
+    operations = relationship("RepositoryOperations", back_populates="repository", uselist=False, cascade="all, delete-orphan")
 
     # Unique constraint: name must be unique within an organization
     __table_args__ = (
@@ -1572,3 +1573,112 @@ class DeploymentArtifact(Base):
 
     def __repr__(self):
         return f"<DeploymentArtifact(name='{self.artifact_name}', type='{self.artifact_type}')>"
+
+
+# =============================================================================
+# REPOSITORY OPERATIONS - Deployment, hosting, compliance & infrastructure context
+# =============================================================================
+
+class RepositoryOperations(Base):
+    """
+    1:1 operations context for a repository.
+    Tracks deployment status, hosting platform, compliance frameworks,
+    infrastructure details, and AI discovery metadata.
+    """
+    __tablename__ = "repository_operations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('repository_operations_api_id_seq'), unique=True)
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, unique=True)
+
+    # Deployment Status
+    deployment_status = Column(String(32), server_default="unknown")
+    deployment_status_notes = Column(Text)
+
+    # Environment URLs (JSONB array of {name, url, is_primary})
+    environment_urls = Column(JSONB, server_default="[]")
+
+    # Hosting & Platform
+    hosting_platform = Column(String(64))
+    hosting_detail = Column(Text)
+    deployment_method = Column(String(64))
+    deployment_method_detail = Column(Text)
+
+    # Team & Ownership
+    team_owner = Column(String(256))
+    team_contact_email = Column(String(256))
+    team_slack_channel = Column(String(256))
+
+    # Business Criticality
+    business_criticality = Column(String(32), server_default="medium")
+    business_criticality_notes = Column(Text)
+
+    # Compliance & Governance
+    compliance_frameworks = Column(JSONB, server_default="[]")
+    data_classification = Column(String(32))
+    regulatory_notes = Column(Text)
+    last_compliance_audit_at = Column(DateTime)
+
+    # Infrastructure
+    cicd_platform = Column(String(64))
+    cicd_pipeline_url = Column(Text)
+    container_registry = Column(String(128))
+    iac_type = Column(String(64))
+    iac_path = Column(Text)
+    monitoring_url = Column(Text)
+    alerting_url = Column(Text)
+    logging_url = Column(Text)
+
+    # AI Discovery
+    last_discovery_at = Column(DateTime)
+    last_discovery_status = Column(String(32))
+    discovery_confidence = Column(Numeric(3, 2))
+
+    # Metadata
+    custom_metadata = Column(JSONB, server_default="{}")
+    notes = Column(Text)
+
+    created_by = Column(String(256))
+    updated_by = Column(String(256))
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    repository = relationship("Repository", back_populates="operations")
+
+    def __repr__(self):
+        return f"<RepositoryOperations(repository_id='{self.repository_id}', status='{self.deployment_status}')>"
+
+
+class RepositoryOpsDiscovery(Base):
+    """
+    AI discovery run history for repository operations context.
+    Each row represents one AI discovery run with its suggestions and evidence.
+    """
+    __tablename__ = "repository_ops_discoveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('repository_ops_discoveries_api_id_seq'), unique=True)
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False)
+
+    status = Column(String(32), nullable=False, server_default="pending")
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+    # AI results
+    suggestions = Column(JSONB, server_default="[]")
+    evidence_files = Column(JSONB, server_default="[]")
+    raw_ai_response = Column(Text)
+
+    # Metadata
+    triggered_by = Column(String(256))
+    error_message = Column(Text)
+    tokens_used = Column(Integer)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    # Relationships
+    repository = relationship("Repository", backref="ops_discoveries")
+
+    def __repr__(self):
+        return f"<RepositoryOpsDiscovery(repository_id='{self.repository_id}', status='{self.status}')>"

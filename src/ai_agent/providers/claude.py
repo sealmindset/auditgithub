@@ -22,6 +22,7 @@ from .base import (
     Severity,
     RemediationAction
 )
+from src.services.prompt_loader import get_prompt, render_prompt, get_prompt_with_system
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,15 @@ class ClaudeProvider(AIProvider):
         super().__init__(api_key, validated_model, max_tokens)
         self.client = AsyncAnthropic(api_key=api_key)
         logger.info(f"Initialized Claude provider with model: {validated_model}")
-    
+
+    def _get_db_session(self):
+        """Get a database session for prompt loading. Returns None if unavailable."""
+        try:
+            from src.api.database import SessionLocal
+            return SessionLocal()
+        except Exception:
+            return None
+
     async def analyze_stuck_scan(
         self,
         diagnostic_data: Dict[str, Any],
@@ -173,15 +182,19 @@ class ClaudeProvider(AIProvider):
             AIAnalysis object with root cause and suggestions
         """
         try:
+            # Try managed prompt for system message
+            sys_prompt_data = get_prompt("devsecops-analyst-system")
+            system_msg = sys_prompt_data["content"] if sys_prompt_data else "You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice in JSON format."
+
             # Build the prompt
             prompt = self._build_analysis_prompt(diagnostic_data, historical_data)
-            
+
             # Call Claude API
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=0.3,
-                system="You are an expert DevSecOps engineer specializing in security scanning and performance optimization. Provide practical, actionable advice in JSON format.",
+                system=system_msg,
                 messages=[
                     {
                         "role": "user",
@@ -269,20 +282,23 @@ class ClaudeProvider(AIProvider):
             Human-readable explanation
         """
         try:
-            prompt = f"""Explain in 2-3 sentences why this security scan timed out:
+            prompt = render_prompt("timeout-explanation", variables={
+                "repo_name": repo_name, "scanner": scanner,
+                "timeout_duration": str(timeout_duration),
+                "context_json": json.dumps(context, indent=2)
+            })
+            if not prompt:
+                logger.error("Prompt 'timeout-explanation' not found in any tier")
+                prompt = f"Explain why the {scanner} scan timed out on {repo_name} after {timeout_duration}s. Context: {json.dumps(context)}"
 
-Repository: {repo_name}
-Scanner: {scanner}
-Timeout: {timeout_duration} seconds
-Context: {json.dumps(context, indent=2)}
-
-Provide a clear, non-technical explanation suitable for developers."""
+            sys_data = get_prompt("devsecops-assistant-system")
+            system_msg = sys_data["content"] if sys_data else "You are a helpful DevSecOps assistant."
 
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=200,
                 temperature=0.5,
-                system="You are a helpful DevSecOps assistant.",
+                system=system_msg,
                 messages=[
                     {"role": "user", "content": prompt}
                 ]
@@ -312,37 +328,23 @@ Provide a clear, non-technical explanation suitable for developers."""
         language: str
     ) -> Dict[str, str]:
         """Generate remediation using Claude."""
-        prompt = f"""You are an expert secure coding assistant.
-Vulnerability: {vuln_type}
-Description: {description}
-Language: {language}
-
-Context:
-{context}
-
-Task:
-1. Analyze the vulnerability in the context.
-2. Provide a secure remediation explanation.
-3. If possible, provide a code diff or fixed code snippet.
-
-IMPORTANT: Return ONLY valid JSON with these exact fields:
-- "remediation": A detailed explanation of how to fix the issue (required, string)
-- "diff": A code diff or snippet showing the fix (if no code change is available, use empty string "")
-
-Output JSON format:
-{{
-    "remediation": "Your detailed explanation here...",
-    "diff": "Your code diff or snippet here (or empty string if N/A)"
-}}
-
-CRITICAL: Ensure the JSON is complete and properly closed. Do not leave any fields incomplete.
-"""
         try:
+            prompt = render_prompt("remediation-generation", variables={
+                "vuln_type": vuln_type, "description": description,
+                "language": language, "context": context
+            })
+            if not prompt:
+                logger.error("Prompt 'remediation-generation' not found in any tier")
+                prompt = f"Generate JSON remediation for {vuln_type} in {language}. Description: {description}. Context: {context}. Return JSON with 'remediation' and 'diff' fields."
+
+            sys_data = get_prompt("secure-coding-assistant-system")
+            system_msg = sys_data["content"] if sys_data else "You are a security expert. Output valid JSON only."
+
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=4000,  # Increased from self.max_tokens to ensure complete response
                 temperature=0.2,
-                system="You are a security expert. Output valid JSON only.",
+                system=system_msg,
                 messages=[{"role": "user", "content": prompt}]
             )
             content = response.content[0].text
@@ -415,32 +417,23 @@ CRITICAL: Ensure the JSON is complete and properly closed. Do not leave any fiel
         scanner: str
     ) -> Dict[str, Any]:
         """Triage finding using Claude."""
-        prompt = f"""Analyze this security finding:
-Title: {title}
-Description: {description}
-Reported Severity: {severity}
-Scanner: {scanner}
+        prompt = render_prompt("finding-triage", variables={
+            "title": title, "description": description,
+            "severity": severity, "scanner": scanner
+        })
+        if not prompt:
+            logger.error("Prompt 'finding-triage' not found in any tier")
+            prompt = f"Triage security finding. Title: {title}. Severity: {severity}. Scanner: {scanner}. Description: {description}. Return JSON with priority, confidence, false_positive_probability, reasoning."
 
-Determine:
-1. Real Priority (Critical, High, Medium, Low, Info)
-2. Confidence Score (0.0 - 1.0)
-3. False Positive Probability (0.0 - 1.0)
-4. Reasoning
+        sys_data = get_prompt("security-analyst-json-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security analyst. Output valid JSON only."
 
-Output JSON:
-{{
-    "priority": "High",
-    "confidence": 0.9,
-    "false_positive_probability": 0.1,
-    "reasoning": "..."
-}}
-"""
         try:
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=1000,
                 temperature=0.2,
-                system="You are a security analyst. Output valid JSON only.",
+                system=system_msg,
                 messages=[{"role": "user", "content": prompt}]
             )
             content = response.content[0].text
@@ -462,7 +455,8 @@ Output JSON:
     ) -> str:
         """Analyze finding using Claude."""
         finding_context = json.dumps(finding, indent=2)
-        system_prompt = "You are a senior security engineer. Analyze the provided security finding."
+        sys_data = get_prompt("security-engineer-analysis-system")
+        system_prompt = sys_data["content"] if sys_data else "You are a senior security engineer. Analyze the provided security finding."
         
         if user_prompt:
             user_msg = f"Finding Details:\n{finding_context}\n\nUser Question: {user_prompt}"
@@ -496,24 +490,23 @@ Output JSON:
         package_manager: str
     ) -> Dict[str, Any]:
         """Analyze component using Claude."""
-        prompt = f"""Analyze this component for security risks:
-Component: {package_name}
-Version: {version}
-Package Manager: {package_manager}
+        prompt = render_prompt("component-analysis", variables={
+            "package_name": package_name, "version": version,
+            "package_manager": package_manager
+        })
+        if not prompt:
+            logger.error("Prompt 'component-analysis' not found in any tier")
+            prompt = f"Analyze {package_name} v{version} ({package_manager}) for security risks. Return JSON with analysis_text, vulnerability_summary, severity, exploitability, fixed_version."
 
-Provide a JSON response with:
-1. "analysis_text": Detailed Markdown summary of vulnerabilities and risks.
-2. "vulnerability_summary": Concise 1-sentence summary.
-3. "severity": Overall risk (Critical, High, Medium, Low, Safe).
-4. "exploitability": (High, Moderate, Low, Theoretical).
-5. "fixed_version": Recommended version.
-"""
+        sys_data = get_prompt("security-analyst-json-system")
+        system_msg = sys_data["content"] if sys_data else "You are a security researcher. Output valid JSON only."
+
         try:
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=2000,
                 temperature=0.3,
-                system="You are a security researcher. Output valid JSON only.",
+                system=system_msg,
                 messages=[{"role": "user", "content": prompt}]
             )
             content = response.content[0].text
@@ -550,143 +543,14 @@ Provide a JSON response with:
         """
         # Sort config files by key for deterministic output
         configs_str = "\n".join([f"--- {k} ---\n{v}\n" for k, v in sorted(config_files.items())])
-        
-        prompt = f"""Analyze this repository and provide an End-to-End Architecture Overview.
 
-Repository: {repo_name}
-
----
-
-## ANALYSIS INSTRUCTIONS
-
-### Objective: Answer Three Key Questions
-1. **What is this repository?** - State its purpose clearly and concisely
-2. **What is it used for?** - Explain its business function and capabilities
-3. **How does it fit in the bigger picture?** - Describe integration points and role in the system
-
-### Analysis Approach
-- Analyze all provided file contents, code structure, and configuration
-- Infer purpose from code structure, naming patterns, imports, and business logic
-- Make reasonable conclusions about usage and integration based on evidence
-- Focus on telling a clear story about what this repository does and why it exists
-- **Skip disclaimers** - If something isn't clear, make your best inference from context
-
----
-
-File Structure:
-{file_structure}
-
-Configuration Files:
-{configs_str}
-
----
-
-## REPORT STRUCTURE
-
-Generate a Markdown report with these sections:
-
-### 1. High-Level Overview
-**Purpose**: State what this repository is and what it does (1-2 sentences)
-
-**Business Function**: Explain the business problem it solves or capability it provides
-
-**Integration Context**: Describe how it fits in the larger system (what calls it, what it calls, data flows)
-
-### 2. Tech Stack
-Identify technologies from observable evidence:
-- **Languages**: File extensions (.py, .js, .ts, .sql, .java, .go, etc.) and syntax
-- **Frameworks**: Import statements, package files (package.json, requirements.txt, pom.xml, go.mod)
-- **Databases**: Connection strings, ORMs, SQL dialect, schema references
-- **Infrastructure**: Docker, Kubernetes, cloud configs (AWS, Azure, GCP)
-- **Build/Deploy**: CI/CD configs, makefiles, deployment scripts
-- **Libraries**: Dependencies listed in manifest files
-
-### 3. Architecture
-Describe the actual structure based on code organization:
-- **Application Type**: Web app, API service, CLI tool, library, database scripts, microservice, monolith
-- **Code Structure**: Layers, modules, packages, directory organization
-- **Design Patterns**: Observable patterns (MVC, repository, factory, etc.) based on actual implementation
-- **Component Relationships**: How different parts interact
-
-### 4. UI/UX
-- **Frontend**: Framework (React, Vue, Angular), components, routing, state management
-- **User Interaction**: CLI arguments, web interface, API endpoints
-- **Not Applicable**: If no user interface exists
-
-### 5. Data Layer
-Document data persistence and management:
-- **Database Objects**: Tables, collections, models, schemas, views
-- **Data Access**: ORMs, query builders, raw SQL, database drivers
-- **Relationships**: Foreign keys, joins, references, associations
-- **Data Flow**: How data moves through the system
-
-### 6. API / Integration
-Document interfaces and integration points:
-- **Endpoints**: REST routes, GraphQL schemas, RPC methods, database procedures
-- **Request/Response**: Input parameters, return types, data formats (JSON, XML, etc.)
-- **Authentication**: Auth mechanisms visible in code
-- **External Integrations**: Third-party APIs, external services, message queues
-
-### 7. Error Handling
-Document implemented error management:
-- **Exception Handling**: Try/catch blocks, error classes, exception types
-- **Logging**: Log levels, logging frameworks, log destinations
-- **Validation**: Input validation, data sanitization
-- **Error Responses**: HTTP status codes, error messages, error codes
-- **Recovery**: Retry logic, fallbacks, circuit breakers (only if actually present)
-
-### 8. Business Logic Summary
-- Explain what the code accomplishes from a business perspective
-- Describe core algorithms, calculations, or data transformations
-- Reference key functions/classes and their purposes
-- Connect technical implementation to business value
-
-### 9. Dependencies
-List external dependencies the code requires:
-| Dependency | Type | Purpose |
-|------------|------|-------|
-| (name) | (npm package / Python library / Database / Service / etc.) | (What it's used for) |
-
-### 10. Deployment
-Document deployment configuration:
-- **Target Environment**: Cloud platform, on-premises, containerized, serverless
-- **Deployment Method**: CI/CD pipeline, manual deploy, infrastructure-as-code
-- **Configuration**: Environment variables, config files, secrets management
-- **Build Process**: Build tools, compilation steps, artifact generation
-
----
-
-## DOCUMENTATION STYLE
-
-**Primary Goal**: Explain what this repository is, what it's used for, and how it fits in the bigger picture.
-
-**Writing Style**:
-- **Confident and clear** - State what the code does based on analysis
-- **Business-focused** - Explain capabilities and use cases
-- **Contextual** - Describe integration points and system role
-- **Concise** - 2-3 sentences per section, focus on key points
-
-**What to Include**:
-- Purpose inferred from code structure, naming, and business logic
-- Technologies identified from file extensions, imports, syntax, config files
-- Architecture patterns observable in code organization
-- Integration points visible in function calls, API endpoints, data flows
-- Business value and use cases
-
-**What to Skip**:
-- Limitation warnings ("Unable to determine", "Cannot verify", "Missing information")
-- Gap analysis or "Not found in source" statements
-- Exhaustive technical detail - focus on the big picture
-- Disclaimers about incomplete analysis
-
----
-
-Generate a clean, professional Markdown report. Focus on clarity and business value.
-**DO NOT** generate any diagram code in this step. Focus purely on the technical analysis and report.
-
----
-*Architecture documentation generated from repository source code*
-"""
+        prompt = render_prompt("architecture-report", variables={
+            "repo_name": repo_name, "file_structure": file_structure,
+            "configs_str": configs_str
+        })
+        if not prompt:
+            logger.error("Prompt 'architecture-report' not found in any tier")
+            prompt = f"Analyze repository {repo_name} and generate an architecture overview report in Markdown. File structure: {file_structure[:500]}. Config files: {configs_str[:500]}"
         try:
             response = await self._call_api_with_retry(
                 model=self.model,
@@ -760,65 +624,21 @@ Generate a clean, professional Markdown report. Focus on clarity and business va
 - Match icons to the technologies identified in the architecture report
 """
 
-        prompt = f"""You are a Python expert specializing in the `diagrams` library.
-Based on the following Architecture Report, generate a Python script to visualize the architecture.
+        prompt = render_prompt("diagram-code-generation", variables={
+            "repo_name": repo_name, "report_content": report_content
+        })
+        if not prompt:
+            logger.error("Prompt 'diagram-code-generation' not found in any tier")
+            prompt = f"Generate a Python script using the `diagrams` library to visualize the architecture for {repo_name}. Report: {report_content[:1000]}"
 
-Repository: {repo_name}
-
-Architecture Report:
-{report_content}
-
-**IMPORTANT**:
-Generate a **Python script** using the `diagrams` library.
-- Provide the Python code inside a code block labeled `python`.
-- Import from `diagrams` and `diagrams.aws`, `diagrams.azure`, `diagrams.gcp`, `diagrams.onprem`, etc. as appropriate.
-- **NOTE**: `Internet` is located in `diagrams.onprem.network`. Use `from diagrams.onprem.network import Internet`.
-- **DO NOT** use `with Diagram(...)`. Instead, instantiate `Diagram` with `show=False`, `filename="architecture_diagram"`, and **graph_attr** for a clean layout.
-- **LAYOUT INSTRUCTIONS**:
-    - Use `graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.5", "fontsize": "14"}}` to ensure the diagram is spaced out and not cluttered.
-    - Group related components into `Cluster`s (e.g., "Database Layer", "Services", "Frontend", "Message Queue").
-- Example: `with Diagram("Architecture", show=False, filename="architecture_diagram", direction="TB", graph_attr={{"splines": "ortho", "nodesep": "1.0", "ranksep": "1.5", "fontsize": "14"}}):`
-
-{icon_selection_guide}
-
-- **DOCUMENTATION BLOCK** (REQUIRED at top of Python code):
-    - Add a comment block documenting:
-      - Files analyzed (evidence base)
-      - Technologies detected and how they were identified
-      - Components shown and their source
-      - Data flows/connections shown
-      - Any logical assumptions made
-      - Components intentionally not shown
-    - Example:
-    ```python
-    # ============================================================
-    # DOCUMENTATION BLOCK (REQUIRED)
-    # ============================================================
-    # EVIDENCE BASE:
-    #   - Files analyzed: [list files]
-    #   - Technology stack: [how determined - file extensions, imports, etc.]
-    #   - Components shown: [source for each component]
-    #   - Data flows: [source for connections/edges]
-    #
-    # ASSUMPTIONS:
-    #   - [List any logical assumptions, or "None" if fully evidenced]
-    #
-    # INTENTIONALLY NOT SHOWN:
-    #   - [Components that exist but couldn't be diagrammed]
-    #   - [External systems not defined in this repository]
-    # ============================================================
-    ```
-- Ensure the code is valid and self-contained.
-- Use generic nodes if specific cloud providers are not obvious.
-
-Return ONLY the Python code block.
-"""
+        sys_data = get_prompt("python-diagrams-expert-system")
+        system_msg = sys_data["content"] if sys_data else "You are a Python expert."
         try:
             response = await self._call_api_with_retry(
                 model=self.model,
                 max_tokens=4000,
                 temperature=0.0,  # Set to 0 for deterministic output
-                system="You are a Python expert.",
+                system=system_msg,
                 messages=[{"role": "user", "content": prompt}]
             )
             return response.content[0].text

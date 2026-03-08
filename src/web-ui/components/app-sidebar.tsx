@@ -18,6 +18,10 @@ import {
     Target,
     Calendar,
     KeyRound,
+    MessageSquareText,
+    History,
+    Bot,
+    BarChart3,
 } from "lucide-react"
 
 import {
@@ -118,6 +122,39 @@ const data: { navMain: NavGroup[] } = {
             ],
         },
         {
+            title: "AI Management",
+            url: "#",
+            items: [
+                {
+                    title: "Prompts",
+                    icon: MessageSquareText,
+                    isExpandable: true,
+                    items: [
+                        {
+                            title: "Registry",
+                            url: "/prompts",
+                            icon: MessageSquareText,
+                        },
+                        {
+                            title: "Agents",
+                            url: "/prompts/agents",
+                            icon: Bot,
+                        },
+                        {
+                            title: "Analytics",
+                            url: "/prompts/analytics",
+                            icon: BarChart3,
+                        },
+                        {
+                            title: "Audit Log",
+                            url: "/prompts/audit",
+                            icon: History,
+                        },
+                    ],
+                },
+            ],
+        },
+        {
             title: "Settings",
             url: "#",
             items: [
@@ -150,7 +187,12 @@ function isPathActive(pathname: string, itemUrl: string): boolean {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const pathname = usePathname()
-    const [zdaOpen, setZdaOpen] = React.useState(true)
+    const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
+        "Zero Day Analysis": true,
+        "Prompts": pathname.startsWith("/prompts"),
+    })
+    const toggleSection = (title: string) =>
+        setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }))
     const { user } = useAuth()
 
     const userRole = user?.role ?? "user"
@@ -200,8 +242,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                     item.isExpandable ? (
                                         <Collapsible
                                             key={item.title}
-                                            open={zdaOpen}
-                                            onOpenChange={setZdaOpen}
+                                            open={openSections[item.title] ?? false}
+                                            onOpenChange={() => toggleSection(item.title)}
                                             className="group/collapsible"
                                         >
                                             <SidebarMenuItem>

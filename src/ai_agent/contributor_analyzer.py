@@ -7,6 +7,7 @@ code ownership concerns, and remediation priorities.
 import json
 import logging
 from typing import Dict, List, Any, Optional
+from src.services.prompt_loader import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -49,34 +50,28 @@ class ContributorAnalyzer:
         # Calculate totals
         total_findings_count = sum(f.get('findings_count', 0) for f in files)
 
-        prompt = f"""Analyze this contributor's security impact for repository "{repo_name}":
-
-**Contributor:** {contributor.get('name')} ({contributor.get('email')})
-**Commits:** {contributor.get('commits')} ({contributor.get('commit_percentage', 0):.1f}% of total)
-**Last Active:** {contributor.get('last_commit_at', 'Unknown')}
-**Languages:** {', '.join(contributor.get('languages', []))}
-**Files Modified:** {len(files)}
-**Folders:** {', '.join(contributor.get('folders_contributed', [])[:10])}
-
-**Security Impact:**
-- Critical severity files: {len(critical_files)}
-- High severity files: {len(high_files)}
-- Medium severity files: {len(medium_files)}
-- Total findings in contributor's files: {total_findings_count}
-- Repository total findings: {total_findings}
-
-**Critical Files:**
-{json.dumps(critical_files[:5], indent=2) if critical_files else 'None'}
-
-**High Severity Files:**
-{json.dumps(high_files[:5], indent=2) if high_files else 'None'}
-
-Provide a concise 2-3 sentence security analysis of this contributor:
-1. Their code ownership risk (bus factor consideration)
-2. Security debt they may have introduced
-3. Priority recommendation for remediation
-
-Format as a brief professional summary. Be specific about risks but constructive."""
+        # Try managed prompt first
+        prompt = render_prompt("contributor-security-analysis", variables={
+            "repo_name": repo_name,
+            "contributor_name": contributor.get('name', 'Unknown'),
+            "contributor_email": contributor.get('email', 'Unknown'),
+            "commits": str(contributor.get('commits', 0)),
+            "commit_percentage": f"{contributor.get('commit_percentage', 0):.1f}",
+            "last_commit_at": contributor.get('last_commit_at', 'Unknown'),
+            "languages": ', '.join(contributor.get('languages', [])),
+            "files_modified": str(len(files)),
+            "folders": ', '.join(contributor.get('folders_contributed', [])[:10]),
+            "critical_count": str(len(critical_files)),
+            "high_count": str(len(high_files)),
+            "medium_count": str(len(medium_files)),
+            "total_findings_count": str(total_findings_count),
+            "total_findings": str(total_findings),
+            "critical_files_json": json.dumps(critical_files[:5], indent=2) if critical_files else 'None',
+            "high_files_json": json.dumps(high_files[:5], indent=2) if high_files else 'None',
+        })
+        if not prompt:
+            logger.error("Prompt 'contributor-security-analysis' not found in any tier")
+            prompt = f"Analyze contributor {contributor.get('name')}'s security impact for repository \"{repo_name}\"."
 
         try:
             response = await self.ai_provider.execute_prompt(prompt)

@@ -127,6 +127,7 @@ tags_metadata = [
     {"name": "cribl", "description": "Cribl Stream log forwarding configuration, testing, and status monitoring"},
     {"name": "integrations", "description": "Third-party integrations including Jira ticket creation and synchronization"},
     {"name": "feedback", "description": "User feedback submission for features, bugs, and platform improvement"},
+    {"name": "prompts", "description": "AI prompt management: versioning, usage tracking, testing, and audit logging"},
 ] + ([{"name": "Sandbox", "description": "Sandbox environment management: API keys, reset, and status"}] if is_sandbox() else [])
 
 _sandbox_description = """
@@ -221,12 +222,13 @@ init_oauth()
 from .database import engine
 from . import models
 import src.rbac.models  # noqa: F401 — register RBAC tables with Base.metadata
+import src.api.prompt_models  # noqa: F401 — register prompt management tables with Base.metadata
 
 # Create database tables (includes Tenant model and RBAC tables)
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -268,6 +270,7 @@ app.include_router(git_sync.router)
 app.include_router(ai_chat.router)
 app.include_router(api_keys.router)  # API key management
 app.include_router(sarif_import.router)  # SARIF import (MegaLinter, CodeQL, etc.)
+app.include_router(prompts.router)  # AI Prompt Management System
 
 # Register sandbox router (only active when SANDBOX_MODE=true)
 if is_sandbox():
