@@ -46,7 +46,7 @@ function LoginForm() {
   }, [])
 
   const handleProviderLogin = (providerName: string) => {
-    window.location.href = `${API_BASE}/auth/login/${providerName}`
+    window.location.href = `/api/proxy/auth/login/${providerName}`
   }
 
   const handleBreakGlassLogin = async (e: React.FormEvent) => {
