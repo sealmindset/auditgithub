@@ -63,7 +63,10 @@ import {
   FileCode,
   Activity,
   Hash,
+  Network,
 } from "lucide-react"
+
+import { OrchestrationTab } from "./orchestration-tab"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -537,6 +540,9 @@ export default function PromptDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="test" className="flex items-center gap-1">
               <FlaskConical className="h-4 w-4" /> Test
+            </TabsTrigger>
+            <TabsTrigger value="orchestration" className="flex items-center gap-1">
+              <Network className="h-4 w-4" /> Orchestration
             </TabsTrigger>
           </TabsList>
 
@@ -1089,6 +1095,13 @@ export default function PromptDetailPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* -------------------------------------------------------------- */}
+          {/* Orchestration Tab                                               */}
+          {/* -------------------------------------------------------------- */}
+          <TabsContent value="orchestration">
+            <OrchestrationTab prompt={prompt} />
           </TabsContent>
         </Tabs>
       </div>
