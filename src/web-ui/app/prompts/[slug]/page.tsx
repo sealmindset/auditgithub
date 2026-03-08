@@ -547,31 +547,31 @@ export default function PromptDetailPage() {
             {latestVersion ? (
               <>
                 {/* Prompt content */}
-                <Card>
+                <Card className="overflow-hidden">
                   <CardHeader>
                     <CardTitle className="text-base">Prompt Content</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ScrollArea className="max-h-[500px]">
-                      <pre className="whitespace-pre-wrap rounded-md bg-muted p-4 text-sm font-mono leading-relaxed">
+                    <div className="max-h-[500px] overflow-auto rounded-md bg-muted">
+                      <pre className="whitespace-pre-wrap p-4 text-sm font-mono leading-relaxed">
                         {latestVersion.content}
                       </pre>
-                    </ScrollArea>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* System message */}
                 {latestVersion.system_message && (
-                  <Card>
+                  <Card className="overflow-hidden">
                     <CardHeader>
                       <CardTitle className="text-base">System Message</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <ScrollArea className="max-h-[300px]">
-                        <pre className="whitespace-pre-wrap rounded-md bg-muted p-4 text-sm font-mono leading-relaxed">
+                      <div className="max-h-[300px] overflow-auto rounded-md bg-muted">
+                        <pre className="whitespace-pre-wrap p-4 text-sm font-mono leading-relaxed">
                           {latestVersion.system_message}
                         </pre>
-                      </ScrollArea>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -782,68 +782,97 @@ export default function PromptDetailPage() {
           {/* Usage Tab                                                       */}
           {/* -------------------------------------------------------------- */}
           <TabsContent value="usage" className="space-y-4">
-            {usagesLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : usages.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  No usage data recorded yet.
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Location</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        <TableHead className="text-right">Avg Latency (ms)</TableHead>
-                        <TableHead className="text-right">Total Tokens</TableHead>
-                        <TableHead className="text-right">Errors</TableHead>
-                        <TableHead>Last Model</TableHead>
-                        <TableHead>Last Called</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {usages.map((u) => (
-                        <TableRow key={u.id}>
-                          <TableCell>
-                            <Badge variant="outline">{u.usage_type}</Badge>
-                          </TableCell>
-                          <TableCell className="font-mono text-xs max-w-[200px] truncate">
-                            {u.location}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {u.call_count.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {u.avg_latency_ms != null ? u.avg_latency_ms.toFixed(0) : "--"}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {u.total_tokens.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {u.error_count > 0 ? (
-                              <span className="text-red-500 font-medium">{u.error_count}</span>
-                            ) : (
-                              <span className="text-muted-foreground">0</span>
-                            )}
-                          </TableCell>
-                          <TableCell>{u.last_model_used ? modelBadge(u.last_model_used) : "--"}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {u.last_called_at ? fmtDate(u.last_called_at) : "--"}
-                          </TableCell>
+            {/* Source code location */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Source Location</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {prompt.source_file ? (
+                  <div className="flex items-center gap-3 rounded-md border px-4 py-3 bg-muted/30">
+                    <FileCode className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="font-mono text-sm">{prompt.source_file}</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No source file recorded.</p>
+                )}
+                {prompt.agent_id && (
+                  <div className="flex items-center gap-3 rounded-md border px-4 py-3 bg-muted/30">
+                    <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm">
+                      Bound to agent: <span className="font-mono font-medium">{prompt.agent_id}</span>
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Runtime call metrics */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Runtime Calls</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {usagesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : usages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No runtime call data recorded yet.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Location</TableHead>
+                          <TableHead className="text-right">Calls</TableHead>
+                          <TableHead className="text-right">Avg Latency (ms)</TableHead>
+                          <TableHead className="text-right">Total Tokens</TableHead>
+                          <TableHead className="text-right">Errors</TableHead>
+                          <TableHead>Last Model</TableHead>
+                          <TableHead>Last Called</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
+                      </TableHeader>
+                      <TableBody>
+                        {usages.map((u) => (
+                          <TableRow key={u.id}>
+                            <TableCell>
+                              <Badge variant="outline">{u.usage_type}</Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs max-w-[200px] truncate">
+                              {u.location}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {u.call_count.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              {u.avg_latency_ms != null ? u.avg_latency_ms.toFixed(0) : "--"}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              {u.total_tokens.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {u.error_count > 0 ? (
+                                <span className="text-red-500 font-medium">{u.error_count}</span>
+                              ) : (
+                                <span className="text-muted-foreground">0</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{u.last_model_used ? modelBadge(u.last_model_used) : "--"}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {u.last_called_at ? fmtDate(u.last_called_at) : "--"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* -------------------------------------------------------------- */}
