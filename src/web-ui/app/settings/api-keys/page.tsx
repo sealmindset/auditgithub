@@ -18,12 +18,13 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { KeyRound, Plus, RotateCw, Trash2, Loader2, AlertCircle } from "lucide-react"
+import { KeyRound, Plus, RotateCw, Trash2, Loader2, AlertCircle, ShieldCheck, Clock, Search } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { CreateApiKeyDialog } from "@/components/api-keys/CreateApiKeyDialog"
 import { RevokeApiKeyDialog } from "@/components/api-keys/RevokeApiKeyDialog"
 import { RotateApiKeyDialog } from "@/components/api-keys/RotateApiKeyDialog"
+import { Input } from "@/components/ui/input"
 import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ApiKeyItem {
@@ -53,6 +54,7 @@ export default function ApiKeysPage() {
   const [revokeTarget, setRevokeTarget] = useState<ApiKeyItem | null>(null)
   const [rotateTarget, setRotateTarget] = useState<ApiKeyItem | null>(null)
   const [showRevoked, setShowRevoked] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   const { toast } = useToast()
 
   const fetchKeys = async () => {
@@ -84,8 +86,17 @@ export default function ApiKeysPage() {
     fetchKeys()
   }, [])
 
-  const activeKeys = keys.filter((k) => k.is_active)
-  const revokedKeys = keys.filter((k) => !k.is_active)
+  const filteredKeys = searchQuery.trim()
+    ? keys.filter(k => k.name.toLowerCase().includes(searchQuery.toLowerCase()) || k.key_prefix.toLowerCase().includes(searchQuery.toLowerCase()) || k.user_email.toLowerCase().includes(searchQuery.toLowerCase()))
+    : keys
+  const activeKeys = filteredKeys.filter((k) => k.is_active)
+  const revokedKeys = filteredKeys.filter((k) => !k.is_active)
+
+  const expiringSoon = keys.filter(k => {
+    if (!k.is_active || !k.expires_at) return false
+    const diff = new Date(k.expires_at).getTime() - Date.now()
+    return diff > 0 && diff < 7 * 24 * 60 * 60 * 1000
+  })
 
   const isExpired = (key: ApiKeyItem) => {
     if (!key.expires_at) return false
@@ -222,16 +233,85 @@ export default function ApiKeysPage() {
         </Button>
       </div>
 
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-blue-100 dark:bg-blue-900/30 p-2">
+                <KeyRound className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Keys</p>
+                <p className="text-2xl font-bold">{keys.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-green-100 dark:bg-green-900/30 p-2">
+                <ShieldCheck className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active</p>
+                <p className="text-2xl font-bold">{keys.filter(k => k.is_active).length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-red-100 dark:bg-red-900/30 p-2">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Revoked</p>
+                <p className="text-2xl font-bold">{keys.filter(k => !k.is_active).length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2">
+                <Clock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Expiring Soon</p>
+                <p className="text-2xl font-bold">{expiringSoon.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Active Keys */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5" />
-            Active Keys
-          </CardTitle>
-          <CardDescription>
-            API keys currently in use. Keys authenticate via the X-API-Key header.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5" />
+                Active Keys
+              </CardTitle>
+              <CardDescription>
+                API keys currently in use. Keys authenticate via the X-API-Key header.
+              </CardDescription>
+            </div>
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search keys..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (

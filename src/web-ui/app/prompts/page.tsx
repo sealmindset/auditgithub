@@ -416,29 +416,17 @@ export default function PromptsPage() {
             if (statusFilter === "inactive") params.set("is_active", "false")
 
             const url = `${API_BASE}/prompts/?${params.toString()}`
-            console.log("[prompts] fetching:", url)
             const res = await apiFetch(url)
-            console.log("[prompts] response:", res.status, res.statusText, "ok:", res.ok)
             if (res.ok) {
-                const raw = await res.text()
-                console.log("[prompts] raw response length:", raw.length, "preview:", raw.slice(0, 200))
-                try {
-                    const data: PromptsResponse = JSON.parse(raw)
-                    console.log("[prompts] parsed - total:", data.total, "items:", data.items?.length)
-                    setPrompts(data.items ?? [])
-                    setTotal(data.total ?? 0)
-                    setFetchError(null)
-                } catch (parseErr) {
-                    console.error("[prompts] JSON parse error:", parseErr)
-                    setFetchError(`JSON parse error: ${parseErr}`)
-                }
+                const data: PromptsResponse = await res.json()
+                setPrompts(data.items ?? [])
+                setTotal(data.total ?? 0)
+                setFetchError(null)
             } else {
                 const body = await res.text()
-                console.error("[prompts] fetch failed:", res.status, res.statusText, body)
                 setFetchError(`API returned ${res.status}: ${body.slice(0, 200)}`)
             }
         } catch (error) {
-            console.error("[prompts] fetch exception:", error)
             setFetchError(`Fetch exception: ${error}`)
         } finally {
             setLoading(false)
@@ -512,13 +500,6 @@ export default function PromptsPage() {
 
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">
-            {/* Debug banner — remove once prompts rendering is confirmed */}
-            {fetchError && (
-                <div className="rounded-md border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-400">
-                    <strong>Prompts fetch error:</strong> {fetchError}
-                </div>
-            )}
-
             {/* Header */}
             <div className="flex items-start justify-between">
                 <div>

@@ -155,23 +155,40 @@ const data: { navMain: NavGroup[] } = {
             ],
         },
         {
-            title: "Settings",
+            title: "Administration",
             url: "#",
             items: [
                 {
-                    title: "Configuration",
-                    url: "/settings",
+                    title: "User Management",
+                    url: "/admin/users",
+                    icon: Users,
+                },
+                {
+                    title: "Settings",
                     icon: Settings,
+                    isExpandable: true,
+                    items: [
+                        {
+                            title: "Configuration",
+                            url: "/settings",
+                            icon: Settings,
+                        },
+                        {
+                            title: "API Keys",
+                            url: "/settings/api-keys",
+                            icon: KeyRound,
+                        },
+                        {
+                            title: "Session",
+                            url: "/settings/session",
+                            icon: ShieldAlert,
+                        },
+                    ],
                 },
                 {
                     title: "API Audit",
                     url: "/api-audit/settings",
                     icon: FileText,
-                },
-                {
-                    title: "API Keys",
-                    url: "/settings/api-keys",
-                    icon: KeyRound,
                 },
             ],
         },
@@ -190,6 +207,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
         "Zero Day Analysis": true,
         "Prompts": pathname.startsWith("/prompts"),
+        "Settings": pathname.startsWith("/settings"),
     })
     const toggleSection = (title: string) =>
         setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }))

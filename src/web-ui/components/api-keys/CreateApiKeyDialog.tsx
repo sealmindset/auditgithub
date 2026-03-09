@@ -46,6 +46,7 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
   const [name, setName] = useState("")
   const [expiresInDays, setExpiresInDays] = useState<string>("90")
   const [rateLimit, setRateLimit] = useState("1000")
+  const [keyRole, setKeyRole] = useState<string>("analyst")
 
   // Step 2 — Tool Scope
   const [toolScopeMode, setToolScopeMode] = useState<"all" | "restrict">("all")
@@ -86,6 +87,7 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
     setName("")
     setExpiresInDays("90")
     setRateLimit("1000")
+    setKeyRole("analyst")
     setToolScopeMode("all")
     setSelectedCategories([])
     setSelectedTools([])
@@ -110,6 +112,7 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
       const body: any = {
         name,
         rate_limit_per_hour: parseInt(rateLimit) || 1000,
+        role: keyRole,
       }
 
       if (expiresInDays === "never") {
@@ -237,6 +240,23 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
                   <SelectItem value="never">No expiration</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>RBAC Role</Label>
+              <Select value={keyRole} onValueChange={setKeyRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User (Read Only)</SelectItem>
+                  <SelectItem value="analyst">Analyst (Findings Access)</SelectItem>
+                  <SelectItem value="manager">Manager (Reports Access)</SelectItem>
+                  <SelectItem value="admin">Admin (Full Access)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Determines what permissions this API key inherits via RBAC
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="rate-limit">Rate Limit (requests/hour)</Label>

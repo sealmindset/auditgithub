@@ -482,42 +482,106 @@ async def get_directory_users(
     directory_users = []
 
     for provider_config in settings.oidc_providers:
-        # Determine the base URL for fetching users
-        # Use external_base_url if available, otherwise derive from discovery URL
-        base_url = provider_config.get("external_base_url", "")
-        if not base_url:
-            # Try to derive from discovery URL (strip /.well-known/...)
-            discovery = provider_config.get("discovery_url", "")
-            if "/.well-known/" in discovery:
-                base_url = discovery.split("/.well-known/")[0]
+        provider_name = provider_config.get("name", "")
 
-        if not base_url:
-            continue
+        # --- Entra ID: use Microsoft Graph API ---
+        if provider_name == "entra":
+            try:
+                tenant_id = settings.entra_tenant_id
+                client_id = provider_config.get("client_id", "")
+                client_secret = provider_config.get("client_secret", "")
 
-        # For mock-oidc, use the internal URL for server-to-server calls
-        internal_url = provider_config.get("discovery_url", "")
-        if "/.well-known/" in internal_url:
-            internal_url = internal_url.split("/.well-known/")[0]
+                if not all([tenant_id, client_id, client_secret]):
+                    logger.warning("Entra ID directory: missing credentials, skipping")
+                    continue
 
-        users_url = f"{internal_url}/users" if internal_url else f"{base_url}/users"
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(users_url)
-                resp.raise_for_status()
-                provider_users = resp.json()
-
-                for u in provider_users:
-                    directory_users.append({
-                        "sub": u.get("sub", ""),
-                        "email": u.get("email", ""),
-                        "name": u.get("name", ""),
-                        "provider": provider_config["name"],
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    # Get an app-only token via client credentials grant
+                    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+                    token_resp = await client.post(token_url, data={
+                        "grant_type": "client_credentials",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "scope": "https://graph.microsoft.com/.default",
                     })
+                    token_resp.raise_for_status()
+                    access_token = token_resp.json().get("access_token")
 
-        except Exception as e:
-            logger.warning(f"Failed to fetch directory users from {provider_config['name']}: {e}")
-            continue
+                    if not access_token:
+                        logger.warning("Entra ID directory: no access_token in response")
+                        continue
+
+                    # Fetch users from Microsoft Graph
+                    graph_url = "https://graph.microsoft.com/v1.0/users"
+                    params = {
+                        "$select": "id,displayName,mail,userPrincipalName",
+                        "$top": "200",
+                    }
+                    if q:
+                        params["$filter"] = (
+                            f"startswith(displayName,'{q}') or "
+                            f"startswith(mail,'{q}') or "
+                            f"startswith(userPrincipalName,'{q}')"
+                        )
+
+                    graph_resp = await client.get(
+                        graph_url,
+                        params=params,
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    )
+                    graph_resp.raise_for_status()
+                    graph_data = graph_resp.json()
+
+                    for u in graph_data.get("value", []):
+                        email = u.get("mail") or u.get("userPrincipalName") or ""
+                        if not email:
+                            continue
+                        directory_users.append({
+                            "sub": u.get("id", ""),
+                            "email": email,
+                            "name": u.get("displayName", ""),
+                            "provider": "entra",
+                        })
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch directory users from Entra ID: {e}")
+                continue
+
+        # --- Generic OIDC providers (mock-oidc, etc.): call /users endpoint ---
+        else:
+            base_url = provider_config.get("external_base_url", "")
+            if not base_url:
+                discovery = provider_config.get("discovery_url", "")
+                if "/.well-known/" in discovery:
+                    base_url = discovery.split("/.well-known/")[0]
+
+            if not base_url:
+                continue
+
+            # For mock-oidc, use the internal URL for server-to-server calls
+            internal_url = provider_config.get("discovery_url", "")
+            if "/.well-known/" in internal_url:
+                internal_url = internal_url.split("/.well-known/")[0]
+
+            users_url = f"{internal_url}/users" if internal_url else f"{base_url}/users"
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(users_url)
+                    resp.raise_for_status()
+                    provider_users = resp.json()
+
+                    for u in provider_users:
+                        directory_users.append({
+                            "sub": u.get("sub", ""),
+                            "email": u.get("email", ""),
+                            "name": u.get("name", ""),
+                            "provider": provider_config["name"],
+                        })
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch directory users from {provider_config['name']}: {e}")
+                continue
 
     if not directory_users:
         return {"users": [], "source": "none"}

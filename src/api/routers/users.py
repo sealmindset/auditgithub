@@ -4,7 +4,7 @@ User Management API
 Endpoints for admins to manage users, roles, and repository access.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -111,6 +111,26 @@ class UserRepositoryResponse(BaseModel):
         }
 
 
+class AddUserFromDirectoryRequest(BaseModel):
+    """Request body for adding a user directly from the OIDC directory."""
+    email: EmailStr = Field(..., description="Email address from the OIDC directory")
+    full_name: Optional[str] = Field(None, description="Display name from the directory")
+    oidc_subject: Optional[str] = Field(None, description="OIDC 'sub' claim from the directory")
+    role: str = Field('user', description="Role to assign (user, analyst, manager, admin)")
+    access_type: str = Field('both', description="Access type (ui_only, api_only, both)")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "email": "user@example.com",
+                "full_name": "Jane Developer",
+                "oidc_subject": "mock-user-123",
+                "role": "analyst",
+                "access_type": "both"
+            }
+        }
+
+
 # =========================================================================
 # Endpoints
 # =========================================================================
@@ -166,6 +186,121 @@ async def list_users(
         )
         for user in users
     ]
+
+
+@router.post(
+    "",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add user from OIDC directory",
+    responses={
+        **CREATE_ERRORS,
+        400: {"description": "Invalid role/access type"},
+        403: {"description": "Insufficient permissions - admin role required"},
+        409: {"description": "User with this email already exists"},
+    },
+)
+async def add_user_from_directory(
+    body: AddUserFromDirectoryRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Add a user directly from the OIDC directory.
+
+    Creates a user account pre-provisioned with the given role and access type.
+    The user can then log in via OIDC without needing an invitation link.
+    Requires **admin** role.
+    """
+    # Validate role
+    valid_roles = ['user', 'developer', 'analyst', 'manager', 'admin']
+    if body.role not in valid_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}"
+        )
+
+    # Only super_admin can assign admin role directly
+    if body.role == 'admin' and current_user.role != 'super_admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Super Admins can assign the admin role"
+        )
+
+    # Validate access type
+    valid_access_types = ['ui_only', 'api_only', 'both']
+    if body.access_type not in valid_access_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid access type. Must be one of: {', '.join(valid_access_types)}"
+        )
+
+    # Check if user already exists
+    existing = db.query(User).filter(User.email == body.email).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User with email {body.email} already exists"
+        )
+
+    # Derive username from email
+    username = body.email.split("@")[0]
+    # Ensure uniqueness
+    base_username = username
+    counter = 1
+    while db.query(User).filter(User.username == username).first():
+        username = f"{base_username}{counter}"
+        counter += 1
+
+    # Create the user
+    user = User(
+        email=body.email,
+        username=username,
+        full_name=body.full_name,
+        role=body.role,
+        access_type=body.access_type,
+        auth_provider='oidc',
+        is_active=True,
+        is_invited=False,
+        oidc_subject=body.oidc_subject,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Audit log
+    audit_log = AuthAuditLog(
+        user_id=user.id,
+        email=user.email,
+        event_type='user_added_from_directory',
+        success=True,
+        extra_data={
+            'role': body.role,
+            'access_type': body.access_type,
+            'added_by': current_user.email,
+        }
+    )
+    db.add(audit_log)
+    db.commit()
+
+    logger.info(
+        f"User added from directory: {user.email} (role={body.role}) "
+        f"by {current_user.email}"
+    )
+
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        username=user.username,
+        full_name=user.full_name,
+        role=user.role,
+        access_type=user.access_type,
+        auth_provider=user.auth_provider,
+        is_active=user.is_active,
+        is_invited=False,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at
+    )
 
 
 @router.get(
