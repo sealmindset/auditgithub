@@ -3,6 +3,7 @@
 # AuditGitHub Startup Script
 # This script handles clean startup across different operating systems
 
+# VPN
 # az login --use-device-code
 # sn-openai-dev-01
 
