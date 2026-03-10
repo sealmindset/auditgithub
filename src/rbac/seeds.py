@@ -127,6 +127,13 @@ def seed_rbac_data(session: Session) -> None:
 
         # Reports permissions
         {"name": "reports:read", "resource": "reports", "action": "read", "description": "View reports"},
+
+        # Schedules permissions
+        {"name": "schedules:read", "resource": "schedules", "action": "read", "description": "View scan schedules"},
+        {"name": "schedules:create", "resource": "schedules", "action": "create", "description": "Create scan schedules"},
+        {"name": "schedules:update", "resource": "schedules", "action": "update", "description": "Update scan schedules"},
+        {"name": "schedules:override", "resource": "schedules", "action": "override", "description": "Lock/unlock schedule overrides"},
+        {"name": "schedules:trigger", "resource": "schedules", "action": "trigger", "description": "Trigger immediate scans"},
     ]
 
     # Create or update permissions
@@ -167,27 +174,33 @@ def seed_rbac_data(session: Session) -> None:
             "repositories:read", "repositories:write",
             "organizations:read", "organizations:write",
             "users:read", "users:write",
-            "reports:read"
+            "reports:read",
+            "schedules:read", "schedules:create", "schedules:update",
+            "schedules:override", "schedules:trigger",
         ],
         "analyst": [
             # Analyst can read/write findings and scans
             "findings:read", "findings:write",
             "scans:read", "scans:execute",
             "repositories:read",
-            "reports:read"
+            "reports:read",
+            "schedules:read", "schedules:create", "schedules:update",
+            "schedules:trigger",
         ],
         "manager": [
             # Manager has read-only access
             "findings:read",
             "scans:read",
             "repositories:read",
-            "reports:read"
+            "reports:read",
+            "schedules:read",
         ],
         "user": [
             # Basic user has minimal read access
             "findings:read",
             "repositories:read",
-            "reports:read"
+            "reports:read",
+            "schedules:read",
         ]
     }
 
@@ -217,6 +230,21 @@ def seed_rbac_data(session: Session) -> None:
     # Commit all changes
     session.commit()
 
+    # Flush permission cache so users pick up new permissions immediately
+    try:
+        from src.rbac.cache import redis_client
+        if redis_client:
+            cursor = 0
+            while True:
+                cursor, keys = redis_client.scan(cursor, match="permissions:*", count=100)
+                if keys:
+                    redis_client.delete(*keys)
+                if cursor == 0:
+                    break
+            logger.info("Flushed permission cache after RBAC seed")
+    except Exception as e:
+        logger.debug(f"Could not flush permission cache (non-critical): {e}")
+
     # Log summary
     roles_count = len(roles_data)
     permissions_count = len(permissions_data)
@@ -230,19 +258,16 @@ def seed_rbac_data(session: Session) -> None:
 
 def init_rbac_if_needed(session: Session) -> None:
     """
-    Initialize RBAC data if roles table is empty.
+    Initialize RBAC data if roles table is empty, and ensure new
+    permissions are added to existing installations.
 
     Convenience function that checks if RBAC is already initialized
-    before running seed_rbac_data().
+    before running seed_rbac_data(). Always runs seed_rbac_data()
+    since it is idempotent and handles adding new permissions.
 
     Args:
         session: SQLAlchemy database session
     """
-    # Check if any roles exist
-    existing_roles = session.execute(select(Role)).scalars().all()
-
-    if not existing_roles:
-        logger.info("No roles found in database. Initializing RBAC...")
-        seed_rbac_data(session)
-    else:
-        logger.info(f"RBAC already initialized ({len(existing_roles)} roles found)")
+    # Always run seed — it's idempotent and will add any missing
+    # permissions/role-mappings without duplicating existing ones.
+    seed_rbac_data(session)

@@ -200,18 +200,24 @@ _LEGACY_ROLE_PERMISSIONS = {
         "organizations:read", "organizations:write",
         "users:read", "users:write",
         "reports:read", "admin:manage",
+        "schedules:read", "schedules:create", "schedules:update",
+        "schedules:override", "schedules:trigger",
     ],
     "analyst": [
         "findings:read", "findings:write",
         "scans:read", "scans:execute",
         "repositories:read",
         "reports:read",
+        "schedules:read", "schedules:create", "schedules:update",
+        "schedules:trigger",
     ],
     "manager": [
         "findings:read", "scans:read", "repositories:read", "reports:read",
+        "schedules:read",
     ],
     "user": [
         "findings:read", "repositories:read", "reports:read",
+        "schedules:read",
     ],
 }
 

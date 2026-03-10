@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScanActivityGraph } from "@/components/ScanActivityGraph"
 import { TodayScansPanel } from "@/components/TodayScansPanel"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { useAuth } from "@/contexts/AuthContext"
 
 // Schedule type from API
 interface Schedule {
@@ -55,6 +56,8 @@ export default function SchedulerPage() {
     const [applyingAI, setApplyingAI] = useState(false)
     const [refreshingAI, setRefreshingAI] = useState(false)
     const { toast } = useToast()
+    const { hasRole } = useAuth()
+    const canManageSchedules = hasRole("analyst")
 
     // Store previous state for rollback
     const previousSchedulesRef = useRef<Schedule[]>([])
@@ -452,9 +455,16 @@ export default function SchedulerPage() {
 
             console.log('[AI Schedule] Response status:', res.status)
             if (!res.ok) {
-                const data = await res.json().catch(() => ({}))
-                console.error('[AI Schedule] Error response:', data)
-                throw new Error(data.detail || "Failed to apply AI schedules")
+                const text = await res.text().catch(() => "")
+                let detail = ""
+                try {
+                    const data = JSON.parse(text)
+                    detail = data.detail || ""
+                } catch {
+                    detail = text || ""
+                }
+                console.error(`[AI Schedule] Error ${res.status}: ${detail || "(empty response)"}`)
+                throw new Error(detail || `Failed to apply AI schedules (HTTP ${res.status})`)
             }
 
             const result = await res.json()
@@ -593,6 +603,7 @@ export default function SchedulerPage() {
                         Automatically schedule scans based on repository activity, findings, and risk profile.
                     </p>
                 </div>
+                {canManageSchedules && (
                 <div className="flex items-center gap-2">
                     {stats.unscheduled > 0 && (
                         <Button
@@ -641,6 +652,7 @@ export default function SchedulerPage() {
                         </Button>
                     )}
                 </div>
+                )}
             </div>
 
             {/* Tabs for Activity Graph, Calendar, Repository Schedules, and Scans */}

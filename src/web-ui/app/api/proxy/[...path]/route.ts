@@ -47,7 +47,19 @@ async function proxyRequest(request: Request): Promise<Response> {
     fetchOptions.body = await request.arrayBuffer();
   }
 
-  let response = await fetch(targetUrl, fetchOptions);
+  let response: Response;
+  try {
+    response = await fetch(targetUrl, fetchOptions);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return new Response(
+      JSON.stringify({ detail: `Backend unavailable: ${message}` }),
+      {
+        status: 502,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }
 
   // Follow redirects internally (e.g. FastAPI trailing slash 307)
   let redirectCount = 0;
@@ -65,14 +77,25 @@ async function proxyRequest(request: Request): Promise<Response> {
     const backendOrigin = new URL(API_BACKEND).origin;
     if (redirectUrl.origin !== backendOrigin) break;
 
-    response = await fetch(redirectUrl.toString(), {
-      ...fetchOptions,
-      // Redirects may change method (301/302 → GET), 307/308 preserve method
-      method: [307, 308].includes(response.status)
-        ? request.method
-        : "GET",
-      redirect: "manual",
-    });
+    try {
+      response = await fetch(redirectUrl.toString(), {
+        ...fetchOptions,
+        // Redirects may change method (301/302 → GET), 307/308 preserve method
+        method: [307, 308].includes(response.status)
+          ? request.method
+          : "GET",
+        redirect: "manual",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return new Response(
+        JSON.stringify({ detail: `Backend unavailable during redirect: ${message}` }),
+        {
+          status: 502,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
     redirectCount++;
   }
 
