@@ -24,7 +24,7 @@ def detect_languages(repo_path: str):
         '.py': 'python',
         '.js': 'javascript',
         '.jsx': 'javascript',
-        '.ts': 'javascript', # Treat TS as JS for CodeQL purposes usually
+        '.ts': 'javascript',
         '.tsx': 'javascript',
         '.go': 'go',
         '.java': 'java',

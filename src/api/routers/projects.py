@@ -241,7 +241,7 @@ async def get_project_secrets(project_id: str, db: Session = Depends(get_tenant_
     responses={**CRUD_ERRORS})
 async def get_project_sast(project_id: str, db: Session = Depends(get_tenant_db)):
     """
-    Get SAST (Semgrep/CodeQL) findings for a project.
+    Get SAST (Semgrep) findings for a project.
     Returns only open findings. Accepts either UUID or project name.
     """
     try:

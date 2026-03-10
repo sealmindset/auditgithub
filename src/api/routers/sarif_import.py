@@ -94,7 +94,7 @@ def _strip_file_prefix(uri: str) -> str:
     response_model=SarifImportResponse,
     summary="Import findings from a SARIF file",
     description="Accepts a SARIF 2.1.0 JSON payload and imports findings into AGH. "
-                "Supports any SARIF-producing tool (MegaLinter, CodeQL, Semgrep, etc.).",
+                "Supports any SARIF-producing tool (MegaLinter, Semgrep, etc.).",
     responses={
         404: {"description": "Repository not found"},
         400: {"description": "Invalid SARIF payload"},

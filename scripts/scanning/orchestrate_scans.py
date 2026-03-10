@@ -43,8 +43,6 @@ class Orchestrator:
             # Add lighter SAST if available
             pass
         elif self.profile == "deep":
-            # Add CodeQL or deep SAST
-            # self.scanners.append("scan_codeql.py") # Assuming this exists or will exist
             pass
             
     def run_scanner(self, script_name, repo_arg=None):

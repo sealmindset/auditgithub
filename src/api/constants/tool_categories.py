@@ -8,7 +8,7 @@ specific categories and/or individual tools.
 TOOL_CATEGORIES = {
     "sast": {
         "display_name": "Static Analysis (SAST)",
-        "tools": ["semgrep", "bandit", "codeql"]
+        "tools": ["semgrep", "bandit"]
     },
     "secrets": {
         "display_name": "Secrets Detection",

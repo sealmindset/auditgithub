@@ -1510,7 +1510,6 @@ AVAILABLE_SCANNERS: List[ScannerInfo] = [
     ScannerInfo(id="whispers", name="Whispers", category="secrets", description="Identify hardcoded secrets and passwords"),
     # SAST - Static Application Security Testing
     ScannerInfo(id="semgrep", name="Semgrep", category="sast", description="Lightweight static analysis for many languages"),
-    ScannerInfo(id="codeql", name="CodeQL", category="sast", description="GitHub's semantic code analysis engine"),
     ScannerInfo(id="horusec", name="Horusec", category="sast", description="Open-source SAST tool by ZUP"),
     ScannerInfo(id="bearer", name="Bearer", category="sast", description="Detect security risks and sensitive data flows"),
     # Dependency scanning

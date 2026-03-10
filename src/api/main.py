@@ -269,7 +269,7 @@ app.include_router(cribl.router)
 app.include_router(git_sync.router)
 app.include_router(ai_chat.router)
 app.include_router(api_keys.router)  # API key management
-app.include_router(sarif_import.router)  # SARIF import (MegaLinter, CodeQL, etc.)
+app.include_router(sarif_import.router)  # SARIF import (MegaLinter, Semgrep, etc.)
 app.include_router(prompts.router)  # AI Prompt Management System
 
 # Register sandbox router (only active when SANDBOX_MODE=true)

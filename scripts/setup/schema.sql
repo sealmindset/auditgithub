@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS findings (
     scan_run_id UUID REFERENCES scan_runs(id),
     
     -- Finding details
-    scanner_name VARCHAR(100),  -- trivy, semgrep, codeql, etc
+    scanner_name VARCHAR(100),  -- trivy, semgrep, etc
     finding_type VARCHAR(100),  -- vulnerability, secret, code_quality, etc
     severity VARCHAR(20),  -- critical, high, medium, low, info
     title TEXT NOT NULL,

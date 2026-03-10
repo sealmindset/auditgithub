@@ -1423,7 +1423,7 @@ def detect_languages(repo_path: str) -> Set[str]:
         '.py': 'python',
         '.js': 'javascript',
         '.jsx': 'javascript',
-        '.ts': 'javascript', # Treat TS as JS for CodeQL purposes usually
+        '.ts': 'javascript',
         '.tsx': 'javascript',
         '.go': 'go',
         '.java': 'java',
@@ -2729,7 +2729,6 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
         govulncheck_result = None
         bundle_audit_result = None
         dependency_check_result = None
-        codeql_result = None
         trufflehog_result = None
         nuclei_result = None
         ossgadget_result = None
@@ -2782,15 +2781,6 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
         logging.info(f"Detected languages for {repo_name}: {detected_languages}")
         logging.info(f"Detected IaC for {repo_name}: {has_iac}")
 
-        # Run CodeQL (Semantic Analysis) - Only if supported languages found
-        codeql_supported = {'python', 'javascript', 'go', 'java', 'cpp', 'csharp', 'ruby'}
-        if is_scanner_enabled('codeql') and any(lang in codeql_supported for lang in detected_languages):
-            codeql_result = run_codeql(repo_path, repo_name, repo_report_dir)
-        else:
-            if is_scanner_enabled('codeql'):
-                logging.info(f"Skipping CodeQL for {repo_name} (no supported languages found)")
-            codeql_result = None
-        
         # Run TruffleHog (Verified Secrets)
         if is_scanner_enabled('trufflehog'):
             trufflehog_result = run_trufflehog(
@@ -7105,132 +7095,6 @@ def run_trivy_fs(repo_path: str, repo_name: str, report_dir: str) -> Optional[su
         with open(output_md, 'w') as f:
             f.write(f"Error running Trivy fs: {e}\n")
         return subprocess.CompletedProcess(args=['trivy','fs',repo_path], returncode=1, stdout="", stderr=str(e))
-
-def run_codeql(repo_path: str, repo_name: str, report_dir: str) -> Optional[subprocess.CompletedProcess]:
-    """
-    Run GitHub CodeQL semantic analysis.
-    
-    Supports: Python, JavaScript/TypeScript, Go, Java.
-    """
-    os.makedirs(report_dir, exist_ok=True)
-    codeql_bin = shutil.which('codeql')
-    output_sarif = os.path.join(report_dir, f"{repo_name}_codeql.sarif")
-    output_md = os.path.join(report_dir, f"{repo_name}_codeql.md")
-    
-    if not codeql_bin:
-        with open(output_md, 'w') as f:
-            f.write("CodeQL is not installed. Please rebuild the Docker image with CodeQL support.\n")
-        return None
-        
-    # Detect language
-    languages = []
-    if any(f.endswith('.py') for r, _, fs in os.walk(repo_path) for f in fs):
-        languages.append('python')
-    if any(f.endswith(('.js', '.ts', '.jsx', '.tsx')) for r, _, fs in os.walk(repo_path) for f in fs):
-        languages.append('javascript')
-    if any(f.endswith('.go') for r, _, fs in os.walk(repo_path) for f in fs):
-        languages.append('go')
-    if any(f.endswith(('.java', '.jar')) for r, _, fs in os.walk(repo_path) for f in fs):
-        languages.append('java')
-        
-    if not languages:
-        return None
-        
-    try:
-        logging.info(f"Running CodeQL for {repo_name} (languages: {', '.join(languages)})...")
-        db_path = os.path.join(config.CLONE_DIR, f"{repo_name}_codeql_db")
-        
-        # 1. Create Database
-        # For interpreted languages (python, js), build is automatic.
-        # For compiled (go, java), we rely on autobuild or simple build commands.
-        create_cmd = [
-            codeql_bin, "database", "create",
-            db_path,
-            f"--source-root={repo_path}",
-            f"--language={','.join(languages)}",
-            "--overwrite"
-        ]
-        
-        logging.debug(f"Creating CodeQL database: {' '.join(create_cmd)}")
-        
-        if PROGRESS_MONITOR_AVAILABLE:
-            run_with_progress_monitoring(
-                cmd=create_cmd,
-                repo_name=repo_name,
-                scanner_name="codeql-create",
-                cwd=repo_path,
-                timeout=1800  # 30 mins for DB creation
-            )
-        else:
-            subprocess.run(create_cmd, capture_output=True, text=True, check=True)
-            
-        # 2. Analyze Database
-        analyze_cmd = [
-            codeql_bin, "database", "analyze",
-            db_path,
-            "--format=sarif-latest",
-            f"--output={output_sarif}",
-            "--download"  # Download queries if needed
-        ]
-        
-        # Add query packs
-        for lang in languages:
-            analyze_cmd.append(f"codeql/{lang}-queries")
-            
-        logging.debug(f"Analyzing CodeQL database: {' '.join(analyze_cmd)}")
-        
-        if PROGRESS_MONITOR_AVAILABLE:
-            result = run_with_progress_monitoring(
-                cmd=analyze_cmd,
-                repo_name=repo_name,
-                scanner_name="codeql-analyze",
-                cwd=repo_path,
-                timeout=3600  # 1 hour for analysis
-            )
-        else:
-            result = subprocess.run(analyze_cmd, capture_output=True, text=True)
-            
-        # 3. Generate Markdown Summary
-        with open(output_md, 'w') as f:
-            f.write(f"# CodeQL Security Analysis\n\n")
-            f.write(f"**Languages:** {', '.join(languages)}\n")
-            f.write(f"**Status:** {'Success' if result.returncode == 0 else 'Failed'}\n\n")
-            
-            if os.path.exists(output_sarif):
-                try:
-                    with open(output_sarif, 'r') as sf:
-                        sarif = json.load(sf)
-                    
-                    runs = sarif.get('runs', [])
-                    results_count = sum(len(run.get('results', [])) for run in runs)
-                    
-                    f.write(f"## Summary\n\n")
-                    f.write(f"- **Total Findings:** {results_count}\n\n")
-                    
-                    if results_count > 0:
-                        f.write("## Findings\n\n")
-                        for run in runs:
-                            for res in run.get('results', []):
-                                rule_id = res.get('ruleId', 'Unknown')
-                                msg = res.get('message', {}).get('text', 'No description')
-                                loc = res.get('locations', [{}])[0].get('physicalLocation', {}).get('artifactLocation', {}).get('uri', 'unknown')
-                                line = res.get('locations', [{}])[0].get('physicalLocation', {}).get('region', {}).get('startLine', '?')
-                                
-                                f.write(f"### {rule_id}\n")
-                                f.write(f"- **Location:** `{loc}:{line}`\n")
-                                f.write(f"- **Message:** {msg}\n\n")
-                except Exception as e:
-                    f.write(f"Error parsing SARIF: {e}\n")
-            else:
-                f.write("No SARIF output generated.\n")
-                
-        return result
-        
-    except Exception as e:
-        logging.error(f"CodeQL failed: {e}")
-        with open(output_md, 'w') as f:
-            f.write(f"# CodeQL Failed\n\nError: {e}\n")
-        return None
 
 def generate_ai_remediations(repo_name: str, report_dir: str, kb: Optional[KnowledgeBase]):
     """

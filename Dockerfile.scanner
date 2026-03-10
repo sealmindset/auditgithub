@@ -97,21 +97,6 @@ RUN curl -sSfLk https://raw.githubusercontent.com/anchore/syft/main/install.sh |
 # Install Grype
 RUN curl -sSfLk https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
-# Install CodeQL CLI (AMD64 only - no native ARM64 Linux binaries available)
-# On ARM64, CodeQL will be skipped and scans will proceed without it
-ENV CODEQL_VERSION=2.15.3
-ENV CODEQL_HOME=/opt/codeql
-RUN if [ "$(uname -m)" = "x86_64" ]; then \
-    echo "Installing CodeQL..." && \
-    mkdir -p ${CODEQL_HOME} && \
-    wget -q --no-check-certificate https://github.com/github/codeql-cli-binaries/releases/download/v${CODEQL_VERSION}/codeql-linux64.zip -O /tmp/codeql.zip && \
-    unzip -q /tmp/codeql.zip -d ${CODEQL_HOME} && \
-    rm /tmp/codeql.zip && \
-    ln -s ${CODEQL_HOME}/codeql/codeql /usr/local/bin/codeql && \
-    codeql pack download codeql/python-queries codeql/javascript-queries codeql/go-queries codeql/java-queries; \
-    else \
-    echo "Skipping CodeQL on non-x86_64 architecture"; \
-    fi
 
 # Install TruffleHog
 RUN curl -sSfLk https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
