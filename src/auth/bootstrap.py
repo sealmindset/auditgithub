@@ -78,7 +78,7 @@ def bootstrap_super_admins() -> None:
             db.commit()
             logger.info(f"✓ Created Entra ID super admin: {ADMIN_EMAIL}")
         else:
-            logger.info(f"✓ Entra ID super admin already exists: rob.vance@sleepnumber.com")
+            logger.info(f"✓ Entra ID super admin already exists: {ADMIN_EMAIL}")
 
         logger.success("Super Admin bootstrap completed successfully")
 
