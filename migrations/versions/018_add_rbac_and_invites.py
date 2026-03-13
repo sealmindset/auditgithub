@@ -133,7 +133,7 @@ def upgrade():
     break_glass_password = os.getenv('BREAK_GLASS_PASSWORD', 'ChangeMe123!')
     password_hash = bcrypt.hashpw(break_glass_password.encode(), bcrypt.gensalt()).decode()
 
-    # Create ravance@gmail.com with break glass password
+    # Create admin@example.com with break glass password
     op.execute(f"""
         INSERT INTO users (
             id, username, email, full_name, role, access_type,
@@ -141,9 +141,9 @@ def upgrade():
         )
         SELECT
             gen_random_uuid(),
-            'ravance',
-            'ravance@gmail.com',
-            'Rob Vance (Break Glass)',
+            'break-glass-admin',
+            'admin@example.com',
+            'Break Glass Admin',
             'super_admin',
             'both',
             '{password_hash}',
@@ -151,11 +151,11 @@ def upgrade():
             true,
             NOW()
         WHERE NOT EXISTS (
-            SELECT 1 FROM users WHERE email = 'ravance@gmail.com'
+            SELECT 1 FROM users WHERE email = 'admin@example.com'
         );
     """)
 
-    # Create rob.vance@sleepnumber.com (Entra ID)
+    # Create admin@company.example (Entra ID)
     op.execute("""
         INSERT INTO users (
             id, username, email, full_name, role, access_type,
@@ -163,16 +163,16 @@ def upgrade():
         )
         SELECT
             gen_random_uuid(),
-            'rob.vance',
-            'rob.vance@sleepnumber.com',
-            'Rob Vance',
+            'entra-admin',
+            'admin@company.example',
+            'Entra Admin',
             'super_admin',
             'both',
             'entra',
             true,
             NOW()
         WHERE NOT EXISTS (
-            SELECT 1 FROM users WHERE email = 'rob.vance@sleepnumber.com'
+            SELECT 1 FROM users WHERE email = 'admin@company.example'
         );
     """)
 

@@ -25,22 +25,25 @@ from sqlalchemy.orm import sessionmaker
 Session = sessionmaker(bind=engine)
 session = Session()
 
-if not session.query(Organization).filter_by(name="sealmindset").first():
+github_org = os.environ.get("GITHUB_ORG", "example-org")
+org_db_name = f"auditgh_{os.environ.get('GITHUB_ORG', 'example-org')}"
+
+if not session.query(Organization).filter_by(name=github_org).first():
     org = Organization(
-        name="sealmindset",
-        github_org="sealmindset",
-        display_name="Seal Mindset",
-        database_name="auditgh_sealmindset",
+        name=github_org,
+        github_org=github_org,
+        display_name=github_org,
+        database_name=org_db_name,
         is_active=True,
         is_default=True
     )
     session.add(org)
-    print("Created organization: sealmindset")
+    print(f"Created organization: {github_org}")
 else:
-    org = session.query(Organization).filter_by(name="sealmindset").first()
-    org.database_name = "auditgh_sealmindset"
+    org = session.query(Organization).filter_by(name=github_org).first()
+    org.database_name = org_db_name
     org.is_default = True
-    print("Updated organization: sealmindset (database_name set)")
+    print(f"Updated organization: {github_org} (database_name set)")
 
 session.commit()
 session.close()

@@ -8,7 +8,7 @@ from src.api.models import Organization
 host = os.environ.get("POSTGRES_HOST", "db")
 user = os.environ.get("POSTGRES_USER", "postgres")
 password = os.environ.get("POSTGRES_PASSWORD", "postgres")
-dbname = "auditgh_sealmindset"
+dbname = f"auditgh_{os.environ.get('GITHUB_ORG', 'example-org')}"
 db_url = f"postgresql://{user}:{password}@{host}/{dbname}"
 
 print(f"Connecting to {db_url}...")
@@ -29,7 +29,7 @@ master_engine = create_engine(master_db_url)
 MasterSession = sessionmaker(bind=master_engine)
 master_session = MasterSession()
 
-org = master_session.query(Organization).filter_by(name="sealmindset").first()
+org = master_session.query(Organization).filter_by(name=os.environ.get("GITHUB_ORG", "example-org")).first()
 if not org:
     print("Error: Organization not found in Master DB")
     exit(1)

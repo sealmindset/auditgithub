@@ -76,7 +76,7 @@ def check_database_connectivity() -> bool:
         return False
 
     # Check Tenant DB (sealmindset)
-    tenant_db = "auditgh_sealmindset"
+    tenant_db = f"auditgh_{os.environ.get('GITHUB_ORG', 'example-org')}"
     try:
         conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname=tenant_db)
         conn.close()

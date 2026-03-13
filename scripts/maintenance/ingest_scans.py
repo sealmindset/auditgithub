@@ -1477,7 +1477,7 @@ def ingest_single_repo(repo_name: str, repo_dir: str, tenant_slug: str = None, o
                 org_id = str(row[0])
                 logger.debug(f"Using default organization ID: {org_id}")
         
-        github_org = os.getenv("GITHUB_ORG", "sealmindset")
+        github_org = os.getenv("GITHUB_ORG", "example-org")
         repo_url = f"https://github.com/{github_org}/{repo_name}"
         
         # 1. Get or Create Repository (scoped to organization)
@@ -1696,7 +1696,7 @@ def ingest_reports(report_dir: str = "vulnerability_reports", organization_id: s
                     github_org = org_row[0] if org_row else repo_name
                 else:
                     org_id = default_org_id
-                    github_org = os.getenv("GITHUB_ORG", "sealmindset")
+                    github_org = os.getenv("GITHUB_ORG", "example-org")
                 
                 findings = _ingest_single_project(db, project_dir, repo_name, org_id, github_org)
                 total_findings += findings

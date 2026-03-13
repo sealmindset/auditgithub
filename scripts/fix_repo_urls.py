@@ -24,7 +24,7 @@ def fix_repo_urls():
             logger.info("No repositories found with missing URLs.")
             return
 
-        github_org = os.getenv("GITHUB_ORG", "sealmindset")
+        github_org = os.getenv("GITHUB_ORG", "example-org")
         logger.info(f"Found {len(repos)} repositories with missing URLs. Using org: {github_org}")
         
         for repo in repos:

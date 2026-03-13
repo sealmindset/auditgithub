@@ -149,11 +149,11 @@ class TestDatabaseConnectionHandling:
 
     @pytest.mark.quick
     def test_missing_tenant_database_error(self):
-        """Test handling of missing tenant database (org_sleepnumberlabs)."""
-        # Bug: Scanner tried to connect to org_sleepnumberlabs database
+        """Test handling of missing tenant database (org_example_org)."""
+        # Bug: Scanner tried to connect to org_example_org database
         # which doesn't exist in multi-tenant setup
 
-        # Error message: database "org_sleepnumberlabs" does not exist
+        # Error message: database "org_example_org" does not exist
 
         # The fix should:
         # 1. Check if database exists before connecting

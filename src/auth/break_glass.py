@@ -1,15 +1,19 @@
 """
 Break Glass Authentication
 
-Emergency local authentication for ravance@gmail.com when Entra ID is unavailable.
+Emergency local authentication for BREAK_GLASS_EMAIL when Entra ID is unavailable.
 All break glass access is audited and prominently displayed.
 """
+import os
+
 import bcrypt
 from sqlalchemy.orm import Session
 from typing import Optional
 from loguru import logger
 
 from src.api.models import User
+
+BREAK_GLASS_EMAIL = os.environ.get("BREAK_GLASS_EMAIL", "admin@example.com")
 
 
 def create_break_glass_user(
@@ -23,7 +27,7 @@ def create_break_glass_user(
 
     Args:
         db: Database session
-        email: User email (must be ravance@gmail.com)
+        email: User email (must be BREAK_GLASS_EMAIL)
         password: Plain text password to hash
         full_name: Display name
 
@@ -33,8 +37,8 @@ def create_break_glass_user(
     Raises:
         ValueError: If email is not allowed for break glass
     """
-    if email != "ravance@gmail.com":
-        raise ValueError("Break glass access only allowed for ravance@gmail.com")
+    if email != BREAK_GLASS_EMAIL:
+        raise ValueError(f"Break glass access only allowed for {BREAK_GLASS_EMAIL}")
 
     # Check if user already exists
     existing = db.query(User).filter(User.email == email).first()
@@ -84,8 +88,8 @@ def verify_break_glass_password(
     Raises:
         ValueError: If email is not allowed for break glass
     """
-    if email != "ravance@gmail.com":
-        raise ValueError("Break glass access only allowed for ravance@gmail.com")
+    if email != BREAK_GLASS_EMAIL:
+        raise ValueError(f"Break glass access only allowed for {BREAK_GLASS_EMAIL}")
 
     # Find user
     user = db.query(User).filter(User.email == email).first()
@@ -129,8 +133,8 @@ def update_break_glass_password(
     Raises:
         ValueError: If email is not allowed or user not found
     """
-    if email != "ravance@gmail.com":
-        raise ValueError("Break glass access only allowed for ravance@gmail.com")
+    if email != BREAK_GLASS_EMAIL:
+        raise ValueError(f"Break glass access only allowed for {BREAK_GLASS_EMAIL}")
 
     user = db.query(User).filter(User.email == email).first()
     if not user:

@@ -65,9 +65,9 @@ def client(db):
 def super_admin_user(db):
     user = DBUser(
         id=uuid.uuid4(),
-        email="ravance@gmail.com",
-        username="ravance",
-        full_name="Rob Vance",
+        email="admin@example.com",
+        username="break-glass-admin",
+        full_name="Break Glass Admin",
         role="super_admin",
         access_type="both",
         auth_provider="mock-oidc",
@@ -235,7 +235,7 @@ class TestBreakGlassLogin:
         """Correct email with wrong password should get 401."""
         res = client.post(
             "/auth/break-glass/login",
-            data={"email": "ravance@gmail.com", "password": "wrongpassword"}
+            data={"email": "admin@example.com", "password": "wrongpassword"}
         )
         assert res.status_code == 401
 

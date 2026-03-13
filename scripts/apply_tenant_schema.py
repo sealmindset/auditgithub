@@ -7,7 +7,7 @@ from src.api.database import Base
 host = os.environ.get("POSTGRES_HOST", "db")
 user = os.environ.get("POSTGRES_USER", "postgres")
 password = os.environ.get("POSTGRES_PASSWORD", "postgres")
-dbname = "auditgh_sealmindset"
+dbname = f"auditgh_{os.environ.get('GITHUB_ORG', 'example-org')}"
 db_url = f"postgresql://{user}:{password}@{host}/{dbname}"
 
 print(f"Connecting to {db_url}...")

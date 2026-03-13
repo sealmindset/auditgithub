@@ -30,6 +30,8 @@ from src.api.models import AuthAuditLog
 from loguru import logger
 from datetime import datetime
 
+BREAK_GLASS_EMAIL = os.environ.get("BREAK_GLASS_EMAIL", "admin@example.com")
+
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
@@ -147,11 +149,12 @@ async def break_glass_login(
     """
     Break glass login with local password.
 
-    Emergency authentication for ravance@gmail.com when OIDC providers are unavailable.
+    Emergency authentication when OIDC providers are unavailable.
+    Only the email specified in BREAK_GLASS_EMAIL env var is authorized.
     All break glass access is prominently logged and audited.
 
     Args:
-        email: User email (must be ravance@gmail.com)
+        email: User email (must match BREAK_GLASS_EMAIL)
         password: Local password
         request: FastAPI request object
 
@@ -159,11 +162,11 @@ async def break_glass_login(
         RedirectResponse to homepage (/) with 303 See Other status
 
     Raises:
-        HTTPException 403: If email is not ravance@gmail.com
+        HTTPException 403: If email does not match BREAK_GLASS_EMAIL
         HTTPException 401: If credentials are invalid
     """
-    # Only allow ravance@gmail.com
-    if email != "ravance@gmail.com":
+    # Only allow the configured break glass email
+    if email != BREAK_GLASS_EMAIL:
         # Audit failed attempt
         db = SessionLocal()
         try:

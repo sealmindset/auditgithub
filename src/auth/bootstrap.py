@@ -13,14 +13,17 @@ from src.api.database import SessionLocal
 from src.api.models import User
 from src.auth.break_glass import create_break_glass_user
 
+BREAK_GLASS_EMAIL = os.environ.get("BREAK_GLASS_EMAIL", "admin@example.com")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@company.example")
+
 
 def bootstrap_super_admins() -> None:
     """
     Create Super Admin accounts on first run.
 
     Creates:
-    - ravance@gmail.com (with local password for break glass)
-    - rob.vance@sleepnumber.com (Entra ID only)
+    - BREAK_GLASS_EMAIL (with local password for break glass)
+    - ADMIN_EMAIL (Entra ID only)
 
     Safe to run multiple times - checks if users exist first.
     """
@@ -29,7 +32,7 @@ def bootstrap_super_admins() -> None:
     try:
         # Check if Super Admins already exist
         existing = db.query(User).filter(
-            User.email.in_(['ravance@gmail.com', 'rob.vance@sleepnumber.com'])
+            User.email.in_([BREAK_GLASS_EMAIL, ADMIN_EMAIL])
         ).all()
 
         if len(existing) >= 2:
@@ -41,29 +44,29 @@ def bootstrap_super_admins() -> None:
         # Get break glass password from environment or use default
         break_glass_password = os.getenv('BREAK_GLASS_PASSWORD', 'ChangeMe123!')
 
-        # Check if ravance@gmail.com exists
-        ravance = db.query(User).filter(User.email == 'ravance@gmail.com').first()
+        # Check if break glass user exists
+        ravance = db.query(User).filter(User.email == BREAK_GLASS_EMAIL).first()
         if not ravance:
-            # Create ravance@gmail.com with break glass password
+            # Create break glass user with password
             try:
                 ravance = create_break_glass_user(
                     db=db,
-                    email='ravance@gmail.com',
+                    email=BREAK_GLASS_EMAIL,
                     password=break_glass_password,
                     full_name='Rob Vance (Break Glass)'
                 )
-                logger.info(f"✓ Created break glass user: ravance@gmail.com")
+                logger.info(f"✓ Created break glass user: {BREAK_GLASS_EMAIL}")
             except Exception as e:
                 logger.error(f"Failed to create break glass user: {e}")
         else:
-            logger.info(f"✓ Break glass user already exists: ravance@gmail.com")
+            logger.info(f"✓ Break glass user already exists: {BREAK_GLASS_EMAIL}")
 
-        # Check if rob.vance@sleepnumber.com exists
-        rob_vance = db.query(User).filter(User.email == 'rob.vance@sleepnumber.com').first()
+        # Check if admin user exists
+        rob_vance = db.query(User).filter(User.email == ADMIN_EMAIL).first()
         if not rob_vance:
-            # Create rob.vance@sleepnumber.com (Entra ID)
+            # Create admin user (Entra ID)
             rob_vance = User(
-                email='rob.vance@sleepnumber.com',
+                email=ADMIN_EMAIL,
                 username='rob.vance',
                 full_name='Rob Vance',
                 role='super_admin',
@@ -73,7 +76,7 @@ def bootstrap_super_admins() -> None:
             )
             db.add(rob_vance)
             db.commit()
-            logger.info(f"✓ Created Entra ID super admin: rob.vance@sleepnumber.com")
+            logger.info(f"✓ Created Entra ID super admin: {ADMIN_EMAIL}")
         else:
             logger.info(f"✓ Entra ID super admin already exists: rob.vance@sleepnumber.com")
 

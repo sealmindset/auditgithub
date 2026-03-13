@@ -52,8 +52,8 @@ DEVICE_CODE_URL = "https://login.microsoft.com/device"
 DEVICE_CODE_REGEX = re.compile(
     r"enter the code\s+([A-Z0-9]+)\s+to authenticate", re.IGNORECASE
 )
-DEFAULT_EMAIL = "rob.vance@sleepnumber.com"
-DEFAULT_SUBSCRIPTION = "sn-openai-dev-01"
+DEFAULT_EMAIL = os.environ.get("AZURE_LOGIN_EMAIL", "user@company.example")
+DEFAULT_SUBSCRIPTION = os.environ.get("AZURE_SUBSCRIPTION", "")
 DEFAULT_TIMEOUT = 300  # 5 minutes for MFA
 DEFAULT_SLOW_MO = 500
 DEVICE_CODE_WAIT = 30  # seconds to wait for device code from az CLI

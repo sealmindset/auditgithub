@@ -211,7 +211,7 @@ export const MOCK_SETTINGS = {
 };
 
 export const MOCK_ORGANIZATIONS = [
-  { id: "org-1", name: "SleepNumber", slug: "sleepnumber" },
+  { id: "org-1", name: "ExampleOrg", slug: "example-org" },
   { id: "org-2", name: "TestOrg", slug: "testorg" },
 ];
 
