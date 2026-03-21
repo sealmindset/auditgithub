@@ -298,8 +298,24 @@ Consider:
 Output ONLY the JSON array, no explanation."""
 
     try:
+        # AI Safety imports
+        try:
+            from src.services.ai_safety.sanitize import sanitize_prompt_input
+            from src.services.ai_safety.pii_masker import mask_pii, unmask_pii
+            from src.services.ai_safety.validate import validate_agent_output
+            _safety_available = True
+        except ImportError:
+            _safety_available = False
+
+        # AI Safety: sanitize and mask prompt
+        if _safety_available:
+            prompt = sanitize_prompt_input(prompt)
+            prompt, pii_mappings = mask_pii(prompt)
+        else:
+            pii_mappings = {}
+
         client = anthropic.Anthropic(api_key=api_key)
-        
+
         message = client.messages.create(
             model="claude-3-haiku-20240307",  # Fast and cheap for this use case
             max_tokens=2000,
@@ -307,9 +323,15 @@ Output ONLY the JSON array, no explanation."""
                 {"role": "user", "content": prompt}
             ]
         )
-        
+
         response_text = message.content[0].text
-        
+
+        # AI Safety: validate and unmask output
+        if _safety_available:
+            validation = validate_agent_output(response_text)
+            response_text = validation.get("sanitized_text", response_text)
+            response_text = unmask_pii(response_text, pii_mappings)
+
         # Extract JSON from response
         json_match = re.search(r'\[[\s\S]*\]', response_text)
         if json_match:
@@ -317,10 +339,10 @@ Output ONLY the JSON array, no explanation."""
             return {"paths": paths, "raw_response": response_text[:500]}
         else:
             return {"paths": [], "error": "Could not parse JSON from response", "raw": response_text[:500]}
-            
+
     except Exception as e:
         logger.error(f"LLM analysis failed: {e}")
-        return {"error": str(e), "paths": []}
+        return {"error": "LLM analysis encountered an error", "paths": []}
 
 
 async def discover_api_paths(

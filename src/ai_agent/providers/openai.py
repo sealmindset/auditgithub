@@ -1090,15 +1090,19 @@ Return ONLY the Python code block.
             return f"Failed to generate architecture overview: {e}"
 
     async def execute_prompt(self, prompt: str) -> str:
-        """Execute a raw prompt against the AI model."""
+        """Execute a raw prompt against the AI model with AI safety controls."""
         try:
+            # AI Safety: sanitize input and mask PII
+            sanitized_prompt = self._sanitize_input(prompt)
+            masked_prompt, pii_mappings = self._mask_pii(sanitized_prompt)
+
             is_reasoning_model = "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower()
 
             if is_reasoning_model:
                 # Reasoning models (o1/gpt-5) often don't support 'system' role
-                full_prompt = f"System: You are a Senior Software Architect.\n\nUser: {prompt}"
+                full_prompt = f"System: You are a Senior Software Architect.\n\nUser: {masked_prompt}"
                 messages = [{"role": "user", "content": full_prompt}]
-                
+
                 api_params = {
                     "model": self.model,
                     "messages": messages,
@@ -1110,7 +1114,7 @@ Return ONLY the Python code block.
                     "model": self.model,
                     "messages": [
                         {"role": "system", "content": "You are a Senior Software Architect."},
-                        {"role": "user", "content": prompt}
+                        {"role": "user", "content": masked_prompt}
                     ],
                     "max_tokens": 4000,
                     "temperature": 0.3
@@ -1120,21 +1124,26 @@ Return ONLY the Python code block.
 
             response = await self.client.chat.completions.create(**api_params)
             content = response.choices[0].message.content
-            
+
             logger.info(f"OpenAI Response Content Length: {len(content) if content else 0}")
             if not content:
                 logger.warning(f"OpenAI returned empty content. Finish reason: {response.choices[0].finish_reason}")
-            
+
             # Track cost
             cost = self.estimate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
             self._total_cost += cost
             self._total_tokens += response.usage.total_tokens
-            
+
+            # AI Safety: validate output and unmask PII
+            content = self._validate_output(content)
+            content = self._unmask_pii(content, pii_mappings)
+
             return content
-            
+
         except Exception as e:
             logger.error(f"Failed to execute prompt: {e}")
-            raise e
+            safe_error = self._sanitize_error(e)
+            raise RuntimeError(safe_error["message"]) from None
 
     async def fix_and_enhance_diagram_code(
         self, 

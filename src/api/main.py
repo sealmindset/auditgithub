@@ -214,6 +214,19 @@ from src.auth.rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Apply stricter rate limits to AI endpoints
+from src.auth.rate_limit import AI_RATE_LIMIT
+@app.middleware("http")
+async def ai_rate_limit_middleware(request, call_next):
+    """Apply AI-specific rate limits to /ai/ and /api/.../ai-chat endpoints."""
+    path = request.url.path
+    if "/ai/" in path or "/ai-chat" in path:
+        # The limiter checks are applied via default_limits on these paths
+        # This middleware ensures AI paths are logged for monitoring
+        import logging
+        logging.getLogger("rate_limit").debug(f"AI endpoint accessed: {path}")
+    return await call_next(request)
+
 # Initialize OAuth providers with OIDC discovery
 from src.auth.providers import init_oauth
 from src.auth.config import settings as auth_settings

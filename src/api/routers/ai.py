@@ -1,3 +1,4 @@
+import html as html_mod
 import json
 import os
 import uuid
@@ -18,7 +19,10 @@ from ..config import settings # Keep settings as it's used later
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
 from src.auth.dependencies import get_current_user
+from src.auth.rate_limit import limiter
 from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS, AUTH_ERRORS
+
+AI_RATE_LIMIT = f"{os.getenv('AI_RATE_LIMIT_REQUESTS_PER_MINUTE', '30')}/minute"
 
 
 async def get_github_token_for_repo(db: Session, repo: models.Repository) -> str:
@@ -200,7 +204,7 @@ async def generate_remediation(
             context=request.context,
             language=request.language
         )
-        
+
         remediation_text = result.get("remediation", "")
         diff_text = result.get("diff", "")
         remediation_id = None
@@ -765,19 +769,17 @@ async def export_zda_pdf(request: dict):
 
         # Metadata
         meta_style = styles['Normal']
-        story.append(Paragraph(f"<b>Query:</b> {request.get('query', 'N/A')}", meta_style))
-        story.append(Paragraph(f"<b>Generated:</b> {request.get('timestamp', 'N/A')}", meta_style))
+        story.append(Paragraph(f"<b>Query:</b> {html_mod.escape(str(request.get('query', 'N/A')))}", meta_style))
+        story.append(Paragraph(f"<b>Generated:</b> {html_mod.escape(str(request.get('timestamp', 'N/A')))}", meta_style))
         scope_list = request.get('scope', [])
         scope_str = ', '.join(scope_list) if isinstance(scope_list, list) else str(scope_list)
-        story.append(Paragraph(f"<b>Scope:</b> {scope_str}", meta_style))
+        story.append(Paragraph(f"<b>Scope:</b> {html_mod.escape(scope_str)}", meta_style))
         story.append(Spacer(1, 20))
 
         # Analysis
         story.append(Paragraph("AI Analysis", styles['Heading2']))
         story.append(Spacer(1, 8))
-        analysis_text = request.get('analysis', '').replace('\n', '<br/>')
-        # Escape XML special characters
-        analysis_text = analysis_text.replace('&', '&amp;').replace('<br/>', '<br/>').replace('&amp;', '&')
+        analysis_text = html_mod.escape(request.get('analysis', '')).replace('\n', '<br/>')
         try:
             story.append(Paragraph(analysis_text, meta_style))
         except Exception:
@@ -963,12 +965,12 @@ async def export_zda_repos_pdf(request: dict):
 
         # Metadata
         meta_style = styles['Normal']
-        story.append(Paragraph(f"<b>Query:</b> {request.get('query', 'N/A')}", meta_style))
-        story.append(Paragraph(f"<b>Generated:</b> {request.get('timestamp', 'N/A')}", meta_style))
+        story.append(Paragraph(f"<b>Query:</b> {html_mod.escape(str(request.get('query', 'N/A')))}", meta_style))
+        story.append(Paragraph(f"<b>Generated:</b> {html_mod.escape(str(request.get('timestamp', 'N/A')))}", meta_style))
         scope_list = request.get('scope', [])
         scope_str = ', '.join(scope_list) if isinstance(scope_list, list) else str(scope_list)
-        story.append(Paragraph(f"<b>Scope:</b> {scope_str}", meta_style))
-        story.append(Paragraph(f"<b>Total Repositories:</b> {request.get('total_repositories', 0)}", meta_style))
+        story.append(Paragraph(f"<b>Scope:</b> {html_mod.escape(scope_str)}", meta_style))
+        story.append(Paragraph(f"<b>Total Repositories:</b> {html_mod.escape(str(request.get('total_repositories', 0)))}", meta_style))
         story.append(Spacer(1, 20))
 
         # Repository Table

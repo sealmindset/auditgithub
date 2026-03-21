@@ -3,7 +3,9 @@ AI Chat API Routes
 Handles AI conversation endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -11,6 +13,7 @@ from pydantic import BaseModel, Field
 from ..database import get_db
 from src.services.ai_chat_service import AIChatService
 from src.api.schemas.common import CREATE_ERRORS, LIST_ERRORS, CRUD_ERRORS, DELETE_ERRORS
+from src.auth.rate_limit import limiter
 from models.ai_conversation import AIConversation, AIMessage, MessageRole
 import logging
 
@@ -89,13 +92,16 @@ class MessageHistoryResponse(BaseModel):
     responses={
         **CREATE_ERRORS,
         404: {"description": "Repository or project not found"},
+        429: {"description": "Rate limit exceeded"},
         500: {"description": "Failed to process AI message"},
     },
 )
+@limiter.limit(f"{os.getenv('AI_RATE_LIMIT_REQUESTS_PER_MINUTE', '30')}/minute")
 async def send_ai_message(
+    request: Request,
     project_id: int,
     repository_id: UUID,
-    request: ChatMessageRequest,
+    body: ChatMessageRequest,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
@@ -127,10 +133,10 @@ async def send_ai_message(
             project_id=project_id,
             repository_id=repository_id,
             organization_id=organization_id,
-            conversation_id=request.conversation_id,
-            user_message=request.message,
-            context=request.context,
-            focus=request.focus,
+            conversation_id=body.conversation_id,
+            user_message=body.message,
+            context=body.context,
+            focus=body.focus,
         )
 
         return ChatMessageResponse(**response)

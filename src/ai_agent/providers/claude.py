@@ -711,22 +711,32 @@ class ClaudeProvider(AIProvider):
                 raise e
 
     async def execute_prompt(self, prompt: str) -> str:
-        """Execute a raw prompt using Claude."""
+        """Execute a raw prompt using Claude with AI safety controls."""
         try:
+            # AI Safety: sanitize input and mask PII
+            sanitized_prompt = self._sanitize_input(prompt)
+            masked_prompt, pii_mappings = self._mask_pii(sanitized_prompt)
+
             response = await self._call_api_with_retry(
                 model=self.model,
                 max_tokens=4000,
                 temperature=0.3,
                 system="You are an expert AI assistant.",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": masked_prompt}]
             )
-            return response.content[0].text
+            content = response.content[0].text
+
+            # AI Safety: validate output and unmask PII
+            content = self._validate_output(content)
+            content = self._unmask_pii(content, pii_mappings)
+
+            return content
         except Exception as e:
             logger.error(f"Claude execute_prompt failed: {e}")
-            # Identify if this was a rate limit error that persisted
+            safe_error = self._sanitize_error(e)
             if "429" in str(e) or "rate_limit" in str(e).lower():
-                 return "# Error: Rate limit exceeded. Please try again in a minute."
-            return f"# Error: {e}"
+                return "# Error: Rate limit exceeded. Please try again in a minute."
+            return f"# Error: {safe_error['message']}"
 
     async def fix_and_enhance_diagram_code(
         self,

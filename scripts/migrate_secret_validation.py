@@ -34,15 +34,23 @@ def add_columns_if_not_exist(engine):
         ("validated_at", "TIMESTAMP")
     ]
     
+    ALLOWED_COLUMNS = {
+        "secret_validated": "BOOLEAN DEFAULT FALSE",
+        "validation_message": "VARCHAR(500)",
+        "validated_at": "TIMESTAMP",
+    }
+
     with engine.connect() as conn:
         for col_name, col_type in columns_to_add:
+            if col_name not in ALLOWED_COLUMNS:
+                raise ValueError(f"Invalid column name: {col_name}")
             try:
                 # Check if column exists
-                result = conn.execute(text(f"""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'findings' AND column_name = '{col_name}'
-                """))
+                result = conn.execute(text("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'findings' AND column_name = :col_name
+                """), {"col_name": col_name})
                 if result.fetchone() is None:
                     logger.info(f"Adding column {col_name} to findings table...")
                     conn.execute(text(f"ALTER TABLE findings ADD COLUMN {col_name} {col_type}"))

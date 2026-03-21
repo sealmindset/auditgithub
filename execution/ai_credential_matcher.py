@@ -406,19 +406,29 @@ async def match_credentials_with_llm(
     
     try:
         import anthropic
+        # AI Safety imports
+        try:
+            from src.services.ai_safety.sanitize import sanitize_prompt_input
+            from src.services.ai_safety.pii_masker import mask_pii, unmask_pii
+            from src.services.ai_safety.validate import validate_agent_output
+            from src.services.ai_safety.errors import sanitize_ai_error
+            _safety_available = True
+        except ImportError:
+            _safety_available = False
+
         client = anthropic.Anthropic(api_key=api_key)
-        
-        # Prepare context for LLM
+
+        # Prepare context for LLM - mask credential values before sending
         cred_summary = []
         for m in matched[:20]:  # Limit to 20 for context
             cred_summary.append({
                 'service_guess': m['service'],
                 'type': m['type'],
-                'value': m['value'],  # Full value - no masking per policy
+                'value': m['value'][:4] + '****' if len(m.get('value', '')) > 4 else '****',
                 'file': m['file_path'],
                 'environment': m['environment']
             })
-        
+
         prompt = f"""Analyze these discovered API credentials and refine the service attribution.
 
 Credentials found:
@@ -427,7 +437,7 @@ Credentials found:
 For each credential, confirm or correct the service name and provide a certainty score (0-100).
 Consider:
 - File location patterns
-- Naming conventions  
+- Naming conventions
 - Credential format/structure
 - Environment indicators
 
@@ -438,14 +448,27 @@ Return a JSON array with objects containing:
 
 Only return the JSON array, no other text."""
 
+        # AI Safety: sanitize and mask prompt
+        if _safety_available:
+            prompt = sanitize_prompt_input(prompt)
+            prompt, pii_mappings = mask_pii(prompt)
+        else:
+            pii_mappings = {}
+
         response = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+
         # Parse LLM response
         result_text = response.content[0].text.strip()
+
+        # AI Safety: validate output
+        if _safety_available:
+            validation = validate_agent_output(result_text)
+            result_text = validation.get("sanitized_text", result_text)
+            result_text = unmask_pii(result_text, pii_mappings)
         if result_text.startswith('['):
             llm_results = json.loads(result_text)
             
@@ -619,7 +642,8 @@ async def pre_validate_url(url: str, timeout: float = 5.0) -> Dict[str, Any]:
     }
     
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=False, follow_redirects=True) as client:
+        ssl_verify = os.getenv("SSL_VERIFY", "true").lower() != "false"
+        async with httpx.AsyncClient(timeout=timeout, verify=ssl_verify, follow_redirects=True) as client:
             # Make request without any auth headers
             headers = {
                 'User-Agent': 'AuditGH-SecurityScanner/1.0',
@@ -1738,8 +1762,17 @@ async def _enhance_correlations_with_llm(
     """
     try:
         import anthropic
+        # AI Safety imports
+        try:
+            from src.services.ai_safety.sanitize import sanitize_prompt_input
+            from src.services.ai_safety.pii_masker import mask_pii, unmask_pii
+            from src.services.ai_safety.validate import validate_agent_output
+            _safety_available = True
+        except ImportError:
+            _safety_available = False
+
         client = anthropic.Anthropic(api_key=api_key)
-        
+
         # Prepare summary for LLM
         summary = []
         for i, corr in enumerate(correlations[:15]):  # Limit to 15
@@ -1751,7 +1784,7 @@ async def _enhance_correlations_with_llm(
                 'current_confidence': corr['confidence'],
                 'reasons': corr['match_reasons']
             })
-        
+
         prompt = f"""Analyze these credential-to-URL correlations and refine the confidence scores.
 
 Correlations:
@@ -1770,13 +1803,26 @@ Return a JSON array with objects containing:
 
 Only return the JSON array, no other text."""
 
+        # AI Safety: sanitize and mask prompt
+        if _safety_available:
+            prompt = sanitize_prompt_input(prompt)
+            prompt, pii_mappings = mask_pii(prompt)
+        else:
+            pii_mappings = {}
+
         response = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+
         result_text = response.content[0].text.strip()
+
+        # AI Safety: validate output
+        if _safety_available:
+            validation = validate_agent_output(result_text)
+            result_text = validation.get("sanitized_text", result_text)
+            result_text = unmask_pii(result_text, pii_mappings)
         if result_text.startswith('['):
             llm_results = json.loads(result_text)
             

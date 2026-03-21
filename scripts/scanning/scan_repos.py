@@ -28,7 +28,6 @@ from typing import Dict, List, Optional, Tuple, Union, Any, DefaultDict, Set
 from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import pickle
 from dotenv import load_dotenv
 import toml
 from functools import lru_cache
@@ -2349,9 +2348,9 @@ class ResumeState:
             return False
 
         try:
-            with open(self.state_file, 'rb') as f:
-                state_data = pickle.load(f)
-                self.completed_repos = state_data.get('completed_repos', set())
+            with open(self.state_file, 'r') as f:
+                state_data = json.load(f)
+                self.completed_repos = set(state_data.get('completed_repos', []))
                 self.scan_start_time = state_data.get('scan_start_time')
                 self.total_repos = state_data.get('total_repos', 0)
                 return True
@@ -2364,12 +2363,12 @@ class ResumeState:
         with self._lock:
             try:
                 state_data = {
-                    'completed_repos': self.completed_repos,
+                    'completed_repos': list(self.completed_repos),
                     'scan_start_time': self.scan_start_time,
                     'total_repos': self.total_repos
                 }
-                with open(self.state_file, 'wb') as f:
-                    pickle.dump(state_data, f)
+                with open(self.state_file, 'w') as f:
+                    json.dump(state_data, f)
             except Exception as e:
                 logging.error(f"Could not save resume state: {e}")
 

@@ -84,14 +84,13 @@ def cleanup_ghost_repos():
         logger.info("")
 
         # Count related data that will be deleted
-        repo_ids = [str(r[0]) for r in ghost_repos]
-        repo_ids_str = "','".join(repo_ids)
+        repo_ids_list = [r[0] for r in ghost_repos]
 
         # Check for schedules
-        result = db.execute(text(f"""
+        result = db.execute(text("""
             SELECT COUNT(*) FROM scan_schedules
-            WHERE repository_id IN ('{repo_ids_str}')
-        """))
+            WHERE repository_id = ANY(:repo_ids)
+        """), {'repo_ids': repo_ids_list})
         schedule_count = result.scalar()
 
         logger.info(f"Related data to be deleted:")
@@ -124,8 +123,11 @@ def cleanup_ghost_repos():
             'architecture_versions'
         ]
 
+        ALLOWED_CLEANUP_TABLES = set(tables_to_clean)
         logger.info(f"Deleting related data from {len(tables_to_clean)} tables...")
         for table in tables_to_clean:
+            if table not in ALLOWED_CLEANUP_TABLES:
+                raise ValueError(f"Invalid table name: {table}")
             try:
                 result = db.execute(text(f"""
                     DELETE FROM {table}

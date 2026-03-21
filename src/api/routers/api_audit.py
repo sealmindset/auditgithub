@@ -3225,7 +3225,8 @@ async def test_credential(project_id: str, request_data: dict, db: Session = Dep
         headers['Authorization'] = credential_value
     
     try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+        ssl_verify = os.getenv("SSL_VERIFY", "true").lower() != "false"
+        async with httpx.AsyncClient(timeout=10.0, verify=ssl_verify) as client:
             response = await client.get(server_url, headers=headers, follow_redirects=True)
             
             return {

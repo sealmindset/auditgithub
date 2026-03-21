@@ -536,7 +536,7 @@ async def test_credential_url_pair(
     Returns dict suitable for storing in credential_url_test_results table.
     """
     cred = DiscoveredCredential(
-        id=credential_id or hashlib.md5(f"{credential_type}:{credential_value}".encode()).hexdigest(),
+        id=credential_id or hashlib.md5(f"{credential_type}:{credential_value}".encode(), usedforsecurity=False).hexdigest(),
         credential_type=credential_type,
         credential_value=credential_value,
         file_path=file_path,

@@ -127,8 +127,18 @@ def backup_organization(session, org_id: str, org_name: str) -> dict:
     # Get repository IDs for related queries
     repo_ids = [r['id'] for r in backup['repositories']]
     
+    ALLOWED_TABLES = {
+        'scan_results', 'findings', 'scan_schedules', 'schedule_overrides',
+        'scan_runs', 'contributors', 'contributor_profiles', 'contributor_aliases',
+        'language_stats', 'dependencies', 'file_commits', 'commit_analyses',
+        'component_analysis', 'api_endpoints', 'api_threat_assessments',
+        'openapi_specs', 'credential_url_test_results', 'architecture_versions',
+    }
+
     def query_by_repo_ids(table_name: str) -> list:
         """Query table for all repository IDs."""
+        if table_name not in ALLOWED_TABLES:
+            raise ValueError(f"Invalid table name: {table_name}")
         results = []
         for repo_id in repo_ids:
             rows = session.execute(text(f"""

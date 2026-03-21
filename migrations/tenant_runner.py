@@ -51,17 +51,19 @@ def get_tenants(filter_slug: Optional[str] = None, only_active: bool = True, onl
     
     try:
         query = "SELECT id, slug, name, database_host, database_port, database_name, database_user, database_password, schema_version, migration_status, is_active, is_provisioned FROM tenants WHERE 1=1"
-        
+        params = {}
+
         if filter_slug:
-            query += f" AND slug = '{filter_slug}'"
+            query += " AND slug = :filter_slug"
+            params["filter_slug"] = filter_slug
         if only_active:
             query += " AND is_active = true"
         if only_provisioned:
             query += " AND is_provisioned = true"
-        
+
         query += " ORDER BY name"
-        
-        result = session.execute(text(query))
+
+        result = session.execute(text(query), params)
         tenants = []
         for row in result:
             tenants.append({
@@ -91,16 +93,26 @@ def update_tenant_status(tenant_slug: str, version: str, status: str, error: Opt
     session = Session()
     
     try:
-        error_clause = f", migration_error = '{error}'" if error else ", migration_error = NULL"
-        query = f"""
-            UPDATE tenants 
-            SET schema_version = '{version}', 
-                migration_status = '{status}',
-                last_migration_at = NOW()
-                {error_clause}
-            WHERE slug = '{tenant_slug}'
-        """
-        session.execute(text(query))
+        if error:
+            query = """
+                UPDATE tenants
+                SET schema_version = :version,
+                    migration_status = :status,
+                    last_migration_at = NOW(),
+                    migration_error = :error
+                WHERE slug = :tenant_slug
+            """
+            session.execute(text(query), {"version": version, "status": status, "error": error, "tenant_slug": tenant_slug})
+        else:
+            query = """
+                UPDATE tenants
+                SET schema_version = :version,
+                    migration_status = :status,
+                    last_migration_at = NOW(),
+                    migration_error = NULL
+                WHERE slug = :tenant_slug
+            """
+            session.execute(text(query), {"version": version, "status": status, "tenant_slug": tenant_slug})
         session.commit()
     finally:
         session.close()

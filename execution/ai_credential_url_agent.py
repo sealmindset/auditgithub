@@ -796,7 +796,8 @@ class AICredentialUrlAgent:
             if self.test_mode == 'cautious':
                 await asyncio.sleep(await self._get_delay())
             
-            async with httpx.AsyncClient(timeout=timeout, verify=False, follow_redirects=True) as client:
+            ssl_verify = os.getenv("SSL_VERIFY", "true").lower() != "false"
+            async with httpx.AsyncClient(timeout=timeout, verify=ssl_verify, follow_redirects=True) as client:
                 if method.upper() == "GET":
                     response = await client.get(url, headers=headers)
                 elif method.upper() == "POST":
@@ -2252,62 +2253,98 @@ class AICredentialUrlAgent:
         return self._generate_rule_based_analysis()
     
     async def _call_llm_for_analysis(self) -> Optional[Dict]:
-        """Call LLM for intelligent analysis"""
-        
+        """Call LLM for intelligent analysis with AI safety controls."""
+        # AI Safety imports
+        try:
+            from src.services.ai_safety.sanitize import sanitize_prompt_input
+            from src.services.ai_safety.pii_masker import mask_pii, unmask_pii
+            from src.services.ai_safety.validate import validate_agent_output
+            _safety_available = True
+        except ImportError:
+            _safety_available = False
+
         # Check for Anthropic
         anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
         if anthropic_key:
             try:
                 import anthropic
                 client = anthropic.Anthropic(api_key=anthropic_key)
-                
+
                 prompt = self._build_analysis_prompt()
-                
+
+                # AI Safety: sanitize and mask
+                if _safety_available:
+                    prompt = sanitize_prompt_input(prompt)
+                    prompt, pii_mappings = mask_pii(prompt)
+                else:
+                    pii_mappings = {}
+
                 message = client.messages.create(
                     model="claude-sonnet-4-20250514",
                     max_tokens=2000,
                     messages=[{"role": "user", "content": prompt}]
                 )
-                
+
                 response_text = message.content[0].text
+
+                # AI Safety: validate and unmask
+                if _safety_available:
+                    validation = validate_agent_output(response_text)
+                    response_text = validation.get("sanitized_text", response_text)
+                    response_text = unmask_pii(response_text, pii_mappings)
+
                 self.result.llm_provider = "anthropic"
                 self.result.llm_model = "claude-sonnet-4-20250514"
                 self.result.raw_llm_responses.append({
                     "prompt": prompt[:500],
                     "response": response_text[:2000]
                 })
-                
+
                 return self._parse_llm_response(response_text)
             except Exception as e:
                 logger.warning(f"Anthropic API error: {e}")
-        
+
         # Check for OpenAI
         openai_key = os.environ.get("OPENAI_API_KEY")
         if openai_key:
             try:
                 import openai
                 client = openai.OpenAI(api_key=openai_key)
-                
+
                 prompt = self._build_analysis_prompt()
-                
+
+                # AI Safety: sanitize and mask
+                if _safety_available:
+                    prompt = sanitize_prompt_input(prompt)
+                    prompt, pii_mappings = mask_pii(prompt)
+                else:
+                    pii_mappings = {}
+
                 response = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=2000
                 )
-                
+
                 response_text = response.choices[0].message.content
+
+                # AI Safety: validate and unmask
+                if _safety_available:
+                    validation = validate_agent_output(response_text)
+                    response_text = validation.get("sanitized_text", response_text)
+                    response_text = unmask_pii(response_text, pii_mappings)
+
                 self.result.llm_provider = "openai"
                 self.result.llm_model = "gpt-4o"
                 self.result.raw_llm_responses.append({
                     "prompt": prompt[:500],
                     "response": response_text[:2000]
                 })
-                
+
                 return self._parse_llm_response(response_text)
             except Exception as e:
                 logger.warning(f"OpenAI API error: {e}")
-        
+
         return None
     
     def _build_analysis_prompt(self) -> str:

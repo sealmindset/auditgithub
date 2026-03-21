@@ -5,6 +5,7 @@ Uses Redis-backed sliding window algorithm for distributed rate limiting.
 Supports per-user and per-IP limits with endpoint-specific overrides.
 """
 
+import os
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi import Request
@@ -53,12 +54,16 @@ limiter = Limiter(
 )
 
 
+AI_RATE_LIMIT = f"{os.getenv('AI_RATE_LIMIT_REQUESTS_PER_MINUTE', '30')}/minute"
+
 # Override limits for specific endpoints
 ENDPOINT_LIMITS = {
     "/auth/login": "5/minute",         # Prevent brute force
     "/auth/register": "3/minute",      # Prevent spam
     "/auth/refresh": "10/minute",      # Limit token refresh
-    "/auth/reset-password": "3/minute" # Prevent abuse
+    "/auth/reset-password": "3/minute", # Prevent abuse
+    "/ai/": AI_RATE_LIMIT,             # AI analysis endpoints
+    "/api/projects/": AI_RATE_LIMIT,   # AI chat endpoints (under /api/projects/.../ai-chat)
 }
 
 

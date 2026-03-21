@@ -8,6 +8,17 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from enum import Enum
+import logging
+
+try:
+    from src.services.ai_safety.sanitize import sanitize_prompt_input
+    from src.services.ai_safety.validate import validate_agent_output
+    from src.services.ai_safety.pii_masker import mask_pii, unmask_pii
+    from src.services.ai_safety.errors import sanitize_ai_error
+    AI_SAFETY_AVAILABLE = True
+except ImportError:
+    AI_SAFETY_AVAILABLE = False
+    logging.warning("AI safety module not available - providers will operate without safety controls")
 
 
 class Severity(str, Enum):
@@ -263,6 +274,37 @@ class AIProvider(ABC):
         """
         pass
     
+    def _sanitize_input(self, text: str) -> str:
+        """Sanitize prompt input through AI safety module if available."""
+        if AI_SAFETY_AVAILABLE:
+            return sanitize_prompt_input(text)
+        return text
+
+    def _validate_output(self, text: str) -> str:
+        """Validate AI output through safety module if available."""
+        if AI_SAFETY_AVAILABLE:
+            result = validate_agent_output(text)
+            return result.get("sanitized_text", text)
+        return text
+
+    def _mask_pii(self, text: str) -> tuple:
+        """Mask PII in text before sending to AI provider."""
+        if AI_SAFETY_AVAILABLE:
+            return mask_pii(text)
+        return text, {}
+
+    def _unmask_pii(self, text: str, mappings: dict) -> str:
+        """Unmask PII in AI response."""
+        if AI_SAFETY_AVAILABLE and mappings:
+            return unmask_pii(text, mappings)
+        return text
+
+    def _sanitize_error(self, error: Exception) -> dict:
+        """Sanitize AI provider error messages."""
+        if AI_SAFETY_AVAILABLE:
+            return sanitize_ai_error(error)
+        return {"message": "An AI provider error occurred", "safe": True}
+
     def get_total_cost(self) -> float:
         """Get total cost of all API calls made by this provider."""
         return self._total_cost
