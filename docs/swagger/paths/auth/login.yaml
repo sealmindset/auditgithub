@@ -20,7 +20,7 @@ post:
         schema:
           $ref: '../../components/schemas.yaml#/LoginRequest'
         example:
-          username: "admin@sleepnumber.com"
+          username: "admin@example-org.com"
           password: "********"
   responses:
     '200':

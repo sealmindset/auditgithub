@@ -22,10 +22,10 @@ get:
           example:
             - id: "550e8400-e29b-41d4-a716-446655440000"
               api_id: 1
-              name: "sleepnumber"
-              display_name: "Sleep Number"
-              github_org: "sleepnumber"
-              database_name: "org_sleepnumber"
+              name: "example-org"
+              display_name: "Example Organization"
+              github_org: "example-org"
+              database_name: "org_example-org"
               is_active: true
               is_default: true
               total_repos: 42
@@ -57,10 +57,10 @@ post:
         schema:
           $ref: '../../components/schemas.yaml#/CreateOrganizationRequest'
         example:
-          name: "sleepnumber"
-          github_org: "sleepnumber"
+          name: "example-org"
+          github_org: "example-org"
           github_token: "ghp_xxxxxxxxxxxxxxxxxxxx"
-          display_name: "Sleep Number"
+          display_name: "Example Organization"
           create_database: true
           set_as_default: false
   responses:

@@ -32,7 +32,7 @@ git --version
 ### 2. Clone and Configure
 ```bash
 # Clone repository
-git clone https://github.com/sealmindset/auditgithub.git
+git clone https://github.com/example-org/auditgithub.git
 cd auditgithub
 
 # Copy environment template
@@ -51,10 +51,10 @@ GITHUB_TOKEN=ghp_your_default_token_here
 GITHUB_ORG=your_default_org_name
 
 # For multiple organizations (optional)
-ORG_SLEEPNUMBERLABS_TOKEN=ghp_token_for_org1
-ORG_SLEEPNUMBERLABS_GITHUB=sleepnumberlabs
-ORG_SLEEPNUMBERINC_TOKEN=ghp_token_for_org2
-ORG_SLEEPNUMBERINC_GITHUB=SleepNumberInc
+ORG_EXAMPLE_ORG_LABS_TOKEN=ghp_token_for_org1
+ORG_EXAMPLE_ORG_LABS_GITHUB=example-orglabs
+ORG_EXAMPLE_ORG_TOKEN=ghp_token_for_org2
+ORG_EXAMPLE_ORG_GITHUB=example-org
 
 # Database (defaults are fine for dev)
 POSTGRES_USER=postgres
@@ -96,10 +96,10 @@ import uuid
 db = SessionLocal()
 org = models.Organization(
     id=str(uuid.uuid4()),
-    name='sleepnumberlabs',
-    display_name='Sleep Number Labs',
-    github_org='sleepnumberlabs',
-    database_name='org_sleepnumberlabs',
+    name='example-orglabs',
+    display_name='Example Organization Labs',
+    github_org='example-orglabs',
+    database_name='org_example-orglabs',
     is_active=True,
     is_default=True
 )
@@ -117,10 +117,10 @@ import uuid
 db = SessionLocal()
 org = models.Organization(
     id=str(uuid.uuid4()),
-    name='SleepNumberInc',
-    display_name='Sleep Number Inc',
-    github_org='SleepNumberInc',
-    database_name='org_sleepnumberinc',
+    name='example-org',
+    display_name='Example Organization Inc',
+    github_org='example-org',
+    database_name='org_example-orginc',
     is_active=True,
     is_default=False
 )
@@ -186,14 +186,14 @@ docker exec auditgh-redis redis-cli ping
 #### 1. Dry Run (Preview Only)
 **What it does:** Lists repositories that would be scanned without actually scanning
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --dry-run
+docker-compose run --rm scanner --target example-orglabs --dry-run
 ```
 
 #### 2. Basic Scan (All Repos) ⭐ RECOMMENDED
 **What it does:** Scans all repositories + automatically loads results into database
 **Data immediately available in Web UI!**
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs
+docker-compose run --rm scanner --target example-orglabs
 
 # Output shows auto-ingest:
 # ================================================================================
@@ -205,7 +205,7 @@ docker-compose run --rm scanner --target sleepnumberlabs
 # AUTO-INGEST: Loading scan results into database
 # ================================================================================
 # Ingesting reports from: /app/vulnerability_reports
-#   ✅ sleepnumberlabs: 484 repos, 277 findings
+#   ✅ example-orglabs: 484 repos, 277 findings
 # ✅ Auto-ingest completed successfully
 # ================================================================================
 ```
@@ -213,7 +213,7 @@ docker-compose run --rm scanner --target sleepnumberlabs
 #### 3. Single Repository Scan
 **What it does:** Scans only one specific repository
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --repo repository-name
+docker-compose run --rm scanner --target example-orglabs --repo repository-name
 ```
 
 ### Incremental Scans
@@ -222,16 +222,16 @@ docker-compose run --rm scanner --target sleepnumberlabs --repo repository-name
 **What it does:** Only scans repos that haven't been scanned in X days + new repos
 ```bash
 # Rescan repos older than 14 days
-docker-compose run --rm scanner --target sleepnumberlabs --rescan-days 14
+docker-compose run --rm scanner --target example-orglabs --rescan-days 14
 
 # Rescan repos older than 7 days
-docker-compose run --rm scanner --target sleepnumberlabs --rescan-days 7
+docker-compose run --rm scanner --target example-orglabs --rescan-days 7
 ```
 
 #### 5. Override Previous Scans (Force Rescan)
 **What it does:** Rescans everything regardless of when it was last scanned
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --overridescan
+docker-compose run --rm scanner --target example-orglabs --overridescan
 ```
 
 ### AI-Powered Scans
@@ -240,19 +240,19 @@ docker-compose run --rm scanner --target sleepnumberlabs --overridescan
 **What it does:** Runs scans + AI-powered analysis for deeper insights
 **Requirements:** AI_PROVIDER configured in .env
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --ai-agent
+docker-compose run --rm scanner --target example-orglabs --ai-agent
 ```
 
 #### 7. AI Analysis with Auto-Remediation
 **What it does:** AI analyzes findings and suggests fixes
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --ai-agent --ai-auto-remediate
+docker-compose run --rm scanner --target example-orglabs --ai-agent --ai-auto-remediate
 ```
 
 #### 8. Disable AI (Override Default)
 **What it does:** Explicitly disables AI even if configured
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --no-ai-agent
+docker-compose run --rm scanner --target example-orglabs --no-ai-agent
 ```
 
 ### Advanced Scans
@@ -260,13 +260,13 @@ docker-compose run --rm scanner --target sleepnumberlabs --no-ai-agent
 #### 9. High-Performance Scan
 **What it does:** Uses more workers for faster scanning (requires more RAM)
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --max-workers 8
+docker-compose run --rm scanner --target example-orglabs --max-workers 8
 ```
 
 #### 10. Include Forks and Archived Repos
 **What it does:** Scans repos normally excluded (forks and archived)
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --include-forks --include-archived
+docker-compose run --rm scanner --target example-orglabs --include-forks --include-archived
 ```
 
 #### 11. Custom Timeout Settings
@@ -274,7 +274,7 @@ docker-compose run --rm scanner --target sleepnumberlabs --include-forks --inclu
 ```bash
 # Longer timeouts for large repositories
 docker-compose run --rm scanner \
-  --target sleepnumberlabs \
+  --target example-orglabs \
   --repo-timeout 10 \
   --scanner-timeout 20
 ```
@@ -282,7 +282,7 @@ docker-compose run --rm scanner \
 #### 12. Debug Mode
 **What it does:** Verbose logging for troubleshooting
 ```bash
-docker-compose run --rm scanner --target sleepnumberlabs --loglevel DEBUG
+docker-compose run --rm scanner --target example-orglabs --loglevel DEBUG
 ```
 
 #### 13. Disable Auto-Ingest (Manual Control)
@@ -290,7 +290,7 @@ docker-compose run --rm scanner --target sleepnumberlabs --loglevel DEBUG
 **Use when:** Testing, troubleshooting, or need to review reports first
 ```bash
 # Scan without auto-ingest
-docker-compose run --rm scanner --target sleepnumberlabs --no-auto-ingest
+docker-compose run --rm scanner --target example-orglabs --no-auto-ingest
 
 # Then manually ingest when ready
 docker exec auditgh_api python ingest_reports.py
@@ -302,7 +302,7 @@ docker exec auditgh_api python ingest_reports.py
 **What it does:** Complete scan with AI, all repos, overriding previous results + auto-ingest
 ```bash
 docker-compose run --rm scanner \
-  --target sleepnumberlabs \
+  --target example-orglabs \
   --overridescan \
   --ai-agent \
   --include-forks \
@@ -314,7 +314,7 @@ docker-compose run --rm scanner \
 **What it does:** Fast incremental scan of changed/new repos + auto-ingest
 ```bash
 docker-compose run --rm scanner \
-  --target sleepnumberlabs \
+  --target example-orglabs \
   --rescan-days 1 \
   --max-workers 4
 ```
@@ -323,7 +323,7 @@ docker-compose run --rm scanner \
 **What it does:** Thorough weekly scan with AI analysis + auto-ingest
 ```bash
 docker-compose run --rm scanner \
-  --target sleepnumberlabs \
+  --target example-orglabs \
   --rescan-days 7 \
   --ai-agent \
   --max-workers 4
@@ -335,13 +335,13 @@ docker-compose run --rm scanner \
 **What it does:** Runs scans sequentially for multiple organizations + auto-ingest each
 ```bash
 # Scan first organization (auto-ingests)
-docker-compose run --rm scanner --target sleepnumberlabs
+docker-compose run --rm scanner --target example-orglabs
 
 # Scan second organization (auto-ingests)
-docker-compose run --rm scanner --target SleepNumberInc
+docker-compose run --rm scanner --target example-org
 
 # Or use a loop for multiple orgs (each auto-ingests)
-for org in sleepnumberlabs SleepNumberInc; do
+for org in example-orglabs example-org; do
   docker-compose run --rm scanner --target $org
 done
 
@@ -396,7 +396,7 @@ db = SessionLocal()
 # Unset current default
 db.query(models.Organization).update({'is_default': False})
 # Set new default
-org = db.query(models.Organization).filter_by(name='SleepNumberInc').first()
+org = db.query(models.Organization).filter_by(name='example-org').first()
 org.is_default = True
 db.commit()
 print(f'Set {org.name} as default')
@@ -409,7 +409,7 @@ print(f'Set {org.name} as default')
 curl http://localhost:8000/organizations/ | jq
 
 # Or via API
-curl http://localhost:8000/organizations/sleepnumberlabs | jq
+curl http://localhost:8000/organizations/example-orglabs | jq
 ```
 
 ---
@@ -421,14 +421,14 @@ curl http://localhost:8000/organizations/sleepnumberlabs | jq
 ### Automatic Validation (Default)
 ```bash
 # Validation happens automatically after scanning!
-docker-compose run --rm scanner --target sleepnumberlabs
+docker-compose run --rm scanner --target example-orglabs
 
 # Output shows validation step:
 # ================================================================================
 # Validating repository metadata...
 # ================================================================================
-#   Updated metadata for sleepnumberlabs/my-repo: pushed_at, language
-#   Updated metadata for sleepnumberlabs/my-api: pushed_at, language, description
+#   Updated metadata for example-orglabs/my-repo: pushed_at, language
+#   Updated metadata for example-orglabs/my-api: pushed_at, language, description
 # ✅ Metadata validation complete.
 # ================================================================================
 ```
@@ -439,13 +439,13 @@ docker-compose run --rm scanner --target sleepnumberlabs
 docker exec auditgh_api python /app/validate_scan_metadata.py
 
 # Validate specific organization
-docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberInc
+docker exec auditgh_api python /app/validate_scan_metadata.py --org example-org
 
 # Validate specific repository
-docker exec auditgh_api python /app/validate_scan_metadata.py --org sleepnumberlabs --repo my-api
+docker exec auditgh_api python /app/validate_scan_metadata.py --org example-orglabs --repo my-api
 
 # Enable verbose logging
-docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberInc -v
+docker exec auditgh_api python /app/validate_scan_metadata.py --org example-org -v
 ```
 
 ### What Gets Validated
@@ -489,13 +489,13 @@ docker exec auditgh_db psql -U postgres -d security_portal -c \
 ### Automatic Ingestion (Default)
 ```bash
 # Just scan - data is automatically ingested!
-docker-compose run --rm scanner --target sleepnumberlabs
+docker-compose run --rm scanner --target example-orglabs
 
 # Output shows auto-ingest:
 # ================================================================================
 # AUTO-INGEST: Loading scan results into database
 # ================================================================================
-#   ✅ sleepnumberlabs: 484 repos, 277 findings
+#   ✅ example-orglabs: 484 repos, 277 findings
 # ✅ Auto-ingest completed successfully
 # ================================================================================
 
@@ -545,7 +545,7 @@ docker-compose logs -f db
 docker-compose logs --tail=100 api
 
 # Scanner logs (while running)
-docker-compose run --rm scanner --target sleepnumberlabs 2>&1 | tee scan.log
+docker-compose run --rm scanner --target example-orglabs 2>&1 | tee scan.log
 ```
 
 ### Restart Services
@@ -646,11 +646,11 @@ docker-compose logs scanner
 curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
 
 # Run with debug logging
-docker-compose run --rm scanner --target sleepnumberlabs --loglevel DEBUG
+docker-compose run --rm scanner --target example-orglabs --loglevel DEBUG
 
 # Check for timeout issues
 docker-compose run --rm scanner \
-  --target sleepnumberlabs \
+  --target example-orglabs \
   --repo-timeout 10 \
   --scanner-timeout 20
 ```
@@ -679,7 +679,7 @@ location.reload()
 ### Out of Memory Errors
 ```bash
 # Reduce max workers
-docker-compose run --rm scanner --target sleepnumberlabs --max-workers 2
+docker-compose run --rm scanner --target example-orglabs --max-workers 2
 
 # Check Docker memory allocation
 docker stats
@@ -712,7 +712,7 @@ sudo kill -9 $(lsof -ti:8000)
 docker-compose up -d
 
 # Daily scan (incremental)
-docker-compose run --rm scanner --target sleepnumberlabs --rescan-days 1
+docker-compose run --rm scanner --target example-orglabs --rescan-days 1
 
 # Ingest reports
 docker exec auditgh_api python ingest_reports.py

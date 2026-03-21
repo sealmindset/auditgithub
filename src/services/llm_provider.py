@@ -10,11 +10,18 @@ from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
+# Import safety preamble for system prompt hardening
+try:
+    from src.services.ai_safety.safety_preamble import get_safety_preamble
+    _SAFETY_PREAMBLE = get_safety_preamble()
+except ImportError:
+    _SAFETY_PREAMBLE = ""
+    logger.warning("AI safety preamble not available - running without prompt hardening")
+
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers"""
 
-    @abstractmethod
     def create_message(
         self,
         messages: List[Dict[str, str]],
@@ -22,7 +29,23 @@ class LLMProvider(ABC):
         max_tokens: int = 4096,
         temperature: float = 0.3
     ) -> Dict[str, Any]:
-        """Create a message and return response"""
+        """
+        Create a message with safety preamble prepended to system prompt.
+        Subclasses implement _call_provider() for the actual API call.
+        """
+        # Prepend immutable safety preamble to every system prompt
+        hardened_system = f"{_SAFETY_PREAMBLE}\n\n{system}" if _SAFETY_PREAMBLE else system
+        return self._call_provider(messages, hardened_system, max_tokens, temperature)
+
+    @abstractmethod
+    def _call_provider(
+        self,
+        messages: List[Dict[str, str]],
+        system: str,
+        max_tokens: int = 4096,
+        temperature: float = 0.3
+    ) -> Dict[str, Any]:
+        """Subclass implements the actual LLM API call"""
         pass
 
     @abstractmethod
@@ -42,7 +65,7 @@ class AnthropicProvider(LLMProvider):
         self.model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
         logger.info(f"Initialized Anthropic provider with model: {self.model}")
 
-    def create_message(self, messages, system, max_tokens=4096, temperature=0.3):
+    def _call_provider(self, messages, system, max_tokens=4096, temperature=0.3):
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
@@ -75,7 +98,7 @@ class AnthropicFoundryProvider(LLMProvider):
         )
         logger.info(f"Initialized Azure AI Foundry provider with model: {self.model}")
 
-    def create_message(self, messages, system, max_tokens=4096, temperature=0.3):
+    def _call_provider(self, messages, system, max_tokens=4096, temperature=0.3):
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
@@ -104,7 +127,7 @@ class AWSBedrockProvider(LLMProvider):
         logger.info(f"Initialized AWS Bedrock provider with model: {self.model}")
         raise NotImplementedError("AWS Bedrock provider not yet implemented")
 
-    def create_message(self, messages, system, max_tokens=4096, temperature=0.3):
+    def _call_provider(self, messages, system, max_tokens=4096, temperature=0.3):
         # TODO: Implement Bedrock message creation
         raise NotImplementedError("AWS Bedrock provider not yet implemented")
 
@@ -123,7 +146,7 @@ class OpenAIProvider(LLMProvider):
         logger.info(f"Initialized OpenAI provider with model: {self.model}")
         raise NotImplementedError("OpenAI provider not yet implemented")
 
-    def create_message(self, messages, system, max_tokens=4096, temperature=0.3):
+    def _call_provider(self, messages, system, max_tokens=4096, temperature=0.3):
         # TODO: Implement OpenAI message creation
         raise NotImplementedError("OpenAI provider not yet implemented")
 

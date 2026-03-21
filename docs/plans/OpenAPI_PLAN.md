@@ -576,17 +576,17 @@ Use Pydantic `model_config` with JSON Schema examples:
 class CreateOrganizationRequest(BaseModel):
     model_config = {"json_schema_extra": {
         "examples": [{
-            "name": "sleepnumber",
-            "github_org": "sleepnumber",
+            "name": "example-org",
+            "github_org": "example-org",
             "github_token": "ghp_xxxxxxxxxxxxxxxxxxxx",
-            "display_name": "Sleep Number",
+            "display_name": "Example Organization",
             "create_database": True,
             "set_as_default": False,
         }]
     }}
 
     name: str = Field(..., description="Internal name (lowercase, alphanumeric)",
-                      pattern=r'^[a-z0-9]+$', example="sleepnumber")
+                      pattern=r'^[a-z0-9]+$', example="example-org")
     ...
 ```
 

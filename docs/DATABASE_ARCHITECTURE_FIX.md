@@ -5,9 +5,9 @@
 The system had **two conflicting database architectures**:
 
 ### Old Architecture (Causing Errors)
-- Per-organization databases: `org_sleepnumberinc`, `org_sleepnumberlabs`, etc.
+- Per-organization databases: `org_example-orginc`, `org_example-orglabs`, etc.
 - API router trying to connect to these separate databases
-- **Error**: `database "org_sleepnumberinc" does not exist`
+- **Error**: `database "org_example-orginc" does not exist`
 
 ### New Architecture (Correct)
 - Single shared database: `security_portal`
@@ -92,11 +92,11 @@ After applying the fix:
 docker-compose restart api
 
 # Test repositories endpoint
-curl -s 'http://localhost:8000/organizations/SleepNumberInc/repositories?limit=5' | jq
+curl -s 'http://localhost:8000/organizations/example-org/repositories?limit=5' | jq
 # ✅ Returns repositories without database errors
 
 # Test findings endpoint
-curl -s 'http://localhost:8000/organizations/SleepNumberInc/findings?limit=5' | jq
+curl -s 'http://localhost:8000/organizations/example-org/findings?limit=5' | jq
 # ✅ Returns findings without database errors
 ```
 

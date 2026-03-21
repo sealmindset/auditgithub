@@ -1,0 +1,9 @@
+define bot remove toxic content
+  "I've adjusted my response to ensure it meets safety standards."
+
+define flow output_safety
+  bot ...
+  $is_toxic = execute check_toxic_output
+  if $is_toxic
+    bot remove toxic content
+    stop

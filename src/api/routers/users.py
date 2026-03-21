@@ -104,7 +104,7 @@ class UserRepositoryResponse(BaseModel):
             "example": {
                 "repository_id": "123e4567-e89b-12d3-a456-426614174000",
                 "repository_name": "my-api-service",
-                "organization_name": "sleepnumberinc",
+                "organization_name": "example-org",
                 "assigned_at": "2025-02-04T10:00:00Z",
                 "assigned_by_email": "admin@example.com"
             }

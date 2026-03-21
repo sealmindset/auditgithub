@@ -49,19 +49,19 @@ Organization:
       type: string
       description: Internal organization name (lowercase, alphanumeric)
       pattern: '^[a-z0-9]+$'
-      example: "sleepnumber"
+      example: "example-org"
     display_name:
       type: string
       description: Human-readable display name
-      example: "Sleep Number"
+      example: "Example Organization"
     github_org:
       type: string
       description: GitHub organization name
-      example: "sleepnumber"
+      example: "example-org"
     database_name:
       type: string
       description: Database name for organization
-      example: "org_sleepnumber"
+      example: "org_example-org"
     is_active:
       type: boolean
       description: Whether organization is active
@@ -100,11 +100,11 @@ CreateOrganizationRequest:
       type: string
       pattern: '^[a-z0-9]+$'
       description: Internal name (lowercase, alphanumeric)
-      example: "sleepnumber"
+      example: "example-org"
     github_org:
       type: string
       description: GitHub organization name
-      example: "sleepnumber"
+      example: "example-org"
     github_token:
       type: string
       format: password
@@ -113,7 +113,7 @@ CreateOrganizationRequest:
     display_name:
       type: string
       description: Human-readable display name
-      example: "Sleep Number"
+      example: "Example Organization"
     create_database:
       type: boolean
       description: Create isolated database
@@ -129,7 +129,7 @@ UpdateOrganizationRequest:
     display_name:
       type: string
       description: New display name
-      example: "Sleep Number Corporation"
+      example: "Example Organization Corporation"
     is_active:
       type: boolean
       description: Active status
@@ -150,7 +150,7 @@ UpdateCredentialsRequest:
     github_org:
       type: string
       description: GitHub organization name (optional)
-      example: "sleepnumber"
+      example: "example-org"
 
 ImportResult:
   type: object
@@ -162,7 +162,7 @@ ImportResult:
     message:
       type: string
       description: Result message
-      example: "Imported 42 repositories from 'sleepnumber'"
+      example: "Imported 42 repositories from 'example-org'"
     total:
       type: integer
       description: Total repositories processed
@@ -201,7 +201,7 @@ Repository:
     full_name:
       type: string
       description: Full repository name (org/repo)
-      example: "sleepnumber/webapp-frontend"
+      example: "example-org/webapp-frontend"
     organization_id:
       type: string
       format: uuid
@@ -210,7 +210,7 @@ Repository:
       type: string
       format: uri
       description: GitHub repository URL
-      example: "https://github.com/sleepnumber/webapp-frontend"
+      example: "https://github.com/example-org/webapp-frontend"
     description:
       type: string
       description: Repository description
@@ -468,7 +468,7 @@ LoginRequest:
     username:
       type: string
       description: Username or email
-      example: "admin@sleepnumber.com"
+      example: "admin@example-org.com"
     password:
       type: string
       format: password
@@ -518,7 +518,7 @@ User:
       type: string
       format: email
       description: Email address
-      example: "jdoe@sleepnumber.com"
+      example: "jdoe@example-org.com"
     full_name:
       type: string
       description: Full name
@@ -550,7 +550,7 @@ RepositoryMetadata:
       example: "webapp-frontend"
     full_name:
       type: string
-      example: "sleepnumber/webapp-frontend"
+      example: "example-org/webapp-frontend"
     description:
       type: string
     url:

@@ -1,0 +1,8 @@
+define bot qualify unverified
+  "I don't have verified information about that. Here's what I can confirm based on available scan data."
+
+define flow factuality
+  bot ...
+  $has_unverified = execute check_unverified_claims
+  if $has_unverified
+    bot qualify unverified

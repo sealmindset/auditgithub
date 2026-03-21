@@ -8,7 +8,7 @@ OrgName:
   schema:
     type: string
     pattern: '^[a-zA-Z0-9]+$'
-    example: "sleepnumber"
+    example: "example-org"
 
 RepoId:
   name: repo_id

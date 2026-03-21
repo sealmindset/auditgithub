@@ -20,6 +20,6 @@ get:
                 type: array
                 items:
                   type: string
-                example: ["sleepnumber", "sleepnumberlabs"]
+                example: ["example-org", "example-orglabs"]
     '500':
       $ref: '../../components/responses.yaml#/InternalServerError'

@@ -8,7 +8,7 @@
 
 ```bash
 # Clone and configure
-git clone https://github.com/sealmindset/auditgithub.git
+git clone https://github.com/example-org/auditgithub.git
 cd auditgithub
 cp .env.sample .env
 
@@ -165,7 +165,7 @@ docker exec auditgh_api python ingest_reports.py
 
 - **Complete Guide:** [CHEATSHEET.md](CHEATSHEET.md) - All commands with explanations
 - **Full Documentation:** [docs/](docs/) - Detailed guides
-- **Issues:** [GitHub Issues](https://github.com/sealmindset/auditgithub/issues)
+- **Issues:** [GitHub Issues](https://github.com/example-org/auditgithub/issues)
 
 ---
 

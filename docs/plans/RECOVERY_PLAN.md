@@ -26,7 +26,7 @@ The multi-tenant framework implementation caused schema drift and data ingestion
 ### Issue 3: Multi-Tenant Selector Confusion
 - **Symptom**: `auditbamgh` appeared as a tenant name
 - **Cause**: Confusion between repo names and organization names
-- **Status**: RESOLVED - `auditbamgh` is a repo in `sealmindset` org, not a tenant
+- **Status**: RESOLVED - `auditbamgh` is a repo in `example-org` org, not a tenant
 
 ### Issue 4: Credential-URL Testing Not Implemented
 - **Symptom**: Original feature request for AI-powered credential testing incomplete

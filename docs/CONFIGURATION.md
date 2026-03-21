@@ -78,12 +78,12 @@ Complete reference for all AuditGH configuration options.
 **Example for multiple organizations:**
 ```bash
 # Default organization (used by GITHUB_TOKEN)
-GITHUB_ORG=sealmindset
+GITHUB_ORG=example-org
 GITHUB_TOKEN=ghp_xxx
 
 # Additional organizations
-ORG_SLEEPNUMBERLABS_TOKEN=ghp_yyy
-ORG_SLEEPNUMBERLABS_GITHUB=sleepnumberlabs
+ORG_EXAMPLE_ORG_LABS_TOKEN=ghp_yyy
+ORG_EXAMPLE_ORG_LABS_GITHUB=example-orglabs
 
 ORG_ACMECORP_TOKEN=ghp_zzz
 ORG_ACMECORP_GITHUB=acme-corp
@@ -101,7 +101,7 @@ ORG_ACMECORP_GITHUB=acme-corp
 # -----------------------------------------------------------------------------
 # GitHub Configuration
 # -----------------------------------------------------------------------------
-GITHUB_ORG=sealmindset
+GITHUB_ORG=example-org
 GITHUB_TOKEN=ghp_your_token_here
 
 # For GitHub Enterprise:

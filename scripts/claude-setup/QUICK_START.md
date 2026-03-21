@@ -3,7 +3,7 @@
 ## One-Command Setup
 
 ```bash
-cd /Users/rob.vance@sleepnumber.com/Documents/GitHub/auditgithub/scripts/claude-setup
+cd /Users/admin@company.example/Documents/GitHub/auditgithub/scripts/claude-setup
 python3 setup_claude.py
 ```
 
@@ -129,7 +129,7 @@ claude
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--base-url` | Foundry base URL | `https://snapistg-scus.azure.sleepnumber.com/anthropic` |
+| `--base-url` | Foundry base URL | `https://snapistg-scus.azure.example-org.com/anthropic` |
 | `--sonnet-model` | Sonnet model name | `cogdep-aifoundry-dev-eus2-claude-sonnet-4-5` |
 | `--haiku-model` | Haiku model name | `cogdep-aifoundry-dev-eus2-claude-haiku-4-5` |
 | `--opus-model` | Opus model name | `cogdep-aifoundry-dev-eus2-claude-opus-4-6` |

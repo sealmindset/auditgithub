@@ -121,11 +121,11 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 
 **Example output:**
 ```
-Loading backup: backups/sleepnumberlabs_backup_20251214.json
+Loading backup: backups/example-orglabs_backup_20251214.json
 
 Backup Summary:
 --------------------------------------------------
-  Organization: sleepnumberlabs
+  Organization: example-orglabs
   Backup Date:  2024-12-14T22:26:51.123456
   Version:      1.0
 
@@ -140,7 +140,7 @@ Backup Summary:
     Contributors:      0
 
 [DRY RUN] Would perform the following operations:
-  ~ Using existing organization: sleepnumberlabs
+  ~ Using existing organization: example-orglabs
 
   Restoring repositories...
     Restored 1 repositories
@@ -202,7 +202,7 @@ ls -la backups/*.json
 
 # Restore specific backup
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/restore_organization.py --file backups/sealmindset_backup_20251214_222658.json'
+  'python scripts/restore_organization.py --file backups/example-org_backup_20251214_222658.json'
 ```
 
 ### Restore from Remote Location

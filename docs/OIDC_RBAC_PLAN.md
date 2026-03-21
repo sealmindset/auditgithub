@@ -529,7 +529,7 @@ if (!meetsMinimumRole(user.role, requiredRoleForPath(pathname))) {
 **What was delivered:**
 - `UserOrganizationAccess` model and table
 - Organization list filtering in `list_organizations()`
-- Seeded test data: manager/analyst/user → sleepnumberlabs org
+- Seeded test data: manager/analyst/user → example-orglabs org
 
 ### Phase 5: Hardening & Production Readiness (Planned)
 

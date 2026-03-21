@@ -88,12 +88,12 @@ Current ingestion is a single-stage process that runs post-scan with no validati
 │  Current Results:                                                         │
 │  ├─ Total Issues: 281                                                     │
 │  ├─ High Priority: 56                                                     │
-│  ├─ sleepnumberlabs: 240 issues                                          │
+│  ├─ example-orglabs: 240 issues                                          │
 │  │   ├─ Contributors: 2,169/2,644 ingested (partial)                     │
 │  │   ├─ Dependencies: 6,068/16,791 ingested (missing 10k!)               │
 │  │   ├─ Grype: 112/1,184 findings ingested                               │
 │  │   └─ Gitleaks: 165/661 findings ingested                              │
-│  └─ SleepNumberInc: 40 issues                                            │
+│  └─ example-org: 40 issues                                            │
 │      ├─ Contributors: 863/907 ingested (partial)                         │
 │      ├─ Dependencies: 5,118/5,418 ingested                               │
 │      └─ Grype: 83/263 findings ingested                                  │
@@ -294,14 +294,14 @@ CREATE INDEX idx_validation_results_resolved ON validation_results(resolved);
 
 ### Current Findings (validate_ingestion.py)
 
-**sleepnumberlabs:**
+**example-orglabs:**
 - Contributors: 2,169/2,644 (82% coverage) - **475 missing**
 - Dependencies: 6,068/16,791 (36% coverage) - **10,723 missing!**
 - Gitleaks: 165/661 (25% coverage) - **496 missing findings**
 - Grype: 112/1,184 (9% coverage) - **1,072 missing vulnerabilities!**
 - Languages: 1,108/1,243 (89% coverage)
 
-**SleepNumberInc:**
+**example-org:**
 - Contributors: 863/907 (95% coverage)
 - Dependencies: 5,118/5,418 (94% coverage) - **300 missing**
 - Gitleaks: 671/783 (86% coverage)
@@ -330,7 +330,7 @@ SELECT r.name,
     (SELECT COUNT(*) FROM findings WHERE repository_id = r.id AND scanner_name = 'grype') as grype_findings,
     (SELECT COUNT(*) FROM dependencies WHERE repository_id = r.id) as dependencies
 FROM repositories r
-WHERE r.organization_id = (SELECT id FROM organizations WHERE name = 'sleepnumberlabs')
+WHERE r.organization_id = (SELECT id FROM organizations WHERE name = 'example-orglabs')
 ORDER BY r.name
 LIMIT 20;
 "
@@ -348,7 +348,7 @@ docker exec auditgh_api python validate_ingestion.py
 # Validate specific organization
 docker exec auditgh_api python -c "
 from validate_ingestion import validate_all_organizations
-validate_all_organizations(['sleepnumberlabs'])
+validate_all_organizations(['example-orglabs'])
 "
 ```
 
@@ -454,7 +454,7 @@ docker exec auditgh_api python retry_ingestion.py --data-type dependencies
 **Next Steps:**
 1. ✅ ~~Run validation to get current baseline~~ DONE
 2. ✅ ~~Re-ingest with org_id fix to resolve grype issues~~ DONE
-3. 🚧 Investigate dependency ingestion gaps (47% coverage for sleepnumberlabs)
+3. 🚧 Investigate dependency ingestion gaps (47% coverage for example-orglabs)
 4. 🚧 Create database migrations for scan_runs, ingestion_runs, validation_results tables
 5. 🚧 Implement scan tracking in scan_repos.py
 6. 🚧 Store validation results in database

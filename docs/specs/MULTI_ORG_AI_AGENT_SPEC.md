@@ -22,10 +22,10 @@ This limits the system to one organization at a time and requires manual reconfi
 CREATE TABLE public.organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     api_id BIGSERIAL UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL UNIQUE,           -- e.g., 'sealmindset', 'sleepnumberinc'
-    display_name VARCHAR(255),                    -- e.g., 'Seal Mindset', 'Sleep Number Inc'
+    name VARCHAR(255) NOT NULL UNIQUE,           -- e.g., 'example-org', 'example-orginc'
+    display_name VARCHAR(255),                    -- e.g., 'Seal Mindset', 'Example Organization Inc'
     github_org VARCHAR(255) NOT NULL,             -- GitHub organization name
-    database_name VARCHAR(255) NOT NULL UNIQUE,   -- e.g., 'auditgithub_sealmindset'
+    database_name VARCHAR(255) NOT NULL UNIQUE,   -- e.g., 'auditgithub_example-org'
     database_host VARCHAR(255) DEFAULT 'localhost',
     database_port INTEGER DEFAULT 5432,
     is_active BOOLEAN DEFAULT true,
@@ -273,19 +273,19 @@ class AIOrganizationAgent:
 
 ```bash
 # Scan with organization target
-python scan.py --target sealmindset --repos repo1,repo2
+python scan.py --target example-org --repos repo1,repo2
 
 # List organizations
 python scan.py --list-orgs
 
 # Create new organization
-python scan.py --create-org sleepnumberinc \
-    --github-org sleepnumberinc \
+python scan.py --create-org example-orginc \
+    --github-org example-orginc \
     --github-token ghp_xxx
 
 # Sync schemas
 python scan.py --sync-schemas
-python scan.py --sync-schema sealmindset
+python scan.py --sync-schema example-org
 
 # Check schema drift
 python scan.py --check-drift
@@ -303,7 +303,7 @@ def add_org_arguments(parser: argparse.ArgumentParser):
     
     org_group.add_argument(
         '--target', '-t',
-        help='Target organization name (e.g., sealmindset)'
+        help='Target organization name (e.g., example-org)'
     )
     org_group.add_argument(
         '--list-orgs',
@@ -567,33 +567,33 @@ async def sync_schema(self, org_name: str) -> bool:
 
 ```bash
 # Initial setup - create organizations
-python scan.py --create-org sealmindset \
-    --github-org sealmindset \
+python scan.py --create-org example-org \
+    --github-org example-org \
     --github-token ghp_seal_xxx
 
-python scan.py --create-org sleepnumberinc \
-    --github-org sleepnumberinc \
+python scan.py --create-org example-orginc \
+    --github-org example-orginc \
     --github-token ghp_sleep_xxx
 
 # List organizations
 python scan.py --list-orgs
 # Output:
 # Organizations:
-#   sealmindset (active) - last scan: 2024-01-15
-#   sleepnumberinc (active) - last scan: 2024-01-14
+#   example-org (active) - last scan: 2024-01-15
+#   example-orginc (active) - last scan: 2024-01-14
 
 # Scan specific org
-python scan.py --target sealmindset --repos api-service,web-app
+python scan.py --target example-org --repos api-service,web-app
 
 # Check schema drift
 python scan.py --check-drift
 # Output:
 # Schema Drift Report:
-#   sealmindset: IN SYNC (v2.3.0)
-#   sleepnumberinc: DRIFT DETECTED (v2.2.0 -> v2.3.0)
+#   example-org: IN SYNC (v2.3.0)
+#   example-orginc: DRIFT DETECTED (v2.2.0 -> v2.3.0)
 
 # Sync drifted schema
-python scan.py --sync-schema sleepnumberinc
+python scan.py --sync-schema example-orginc
 ```
 
 ### 10. Files to Create/Modify
@@ -619,4 +619,4 @@ python scan.py --sync-schema sleepnumberinc
 2. **Credential storage**: Mock external secrets manager (development) → Real secrets manager (production). Code uses same fetch/store workflow regardless of backend.
 3. **Schema sync frequency**: Automatic on startup, with manual sync option for troubleshooting
 4. **UI location**: Top nav selector for quick organization switching
-5. **Migration strategy**: Convert existing database to `sealmindset` as the first organization
+5. **Migration strategy**: Convert existing database to `example-org` as the first organization

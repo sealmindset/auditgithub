@@ -1,7 +1,7 @@
 # Dependency Coverage Analysis
 
 **Date:** 2026-01-17
-**Objective:** Investigate why sleepnumberlabs shows 47% dependency coverage and develop approach to reach 99.9%
+**Objective:** Investigate why example-orglabs shows 47% dependency coverage and develop approach to reach 99.9%
 
 ---
 
@@ -72,7 +72,7 @@ file_count = len(unique_deps)  # ✅ CORRECT - counts unique
 ### Original Validation Results (INCORRECT)
 
 ```
-sleepnumberlabs:
+example-orglabs:
 - Dependencies: 7,829/16,801 (47% coverage)  ❌ WRONG
 
 Analysis:
@@ -84,7 +84,7 @@ Analysis:
 ### Fixed Validation Results (CORRECT)
 
 ```
-sleepnumberlabs:
+example-orglabs:
 - Dependencies: 7,829/8,282 (94.53% coverage)  ✅ CORRECT
 
 Analysis:
@@ -132,7 +132,7 @@ SELECT
     COUNT(*) as total_dependencies,
     COUNT(DISTINCT name || '@' || version) as unique_name_version
 FROM dependencies
-WHERE repository_id IN (SELECT id FROM repositories WHERE organization_id = 'sleepnumberlabs');
+WHERE repository_id IN (SELECT id FROM repositories WHERE organization_id = 'example-orglabs');
 
 Result:
   total_dependencies: 7,829
@@ -182,7 +182,7 @@ docker exec auditgh_api python3 << 'EOF'
 import json
 from pathlib import Path
 
-report_dir = Path('/app/vulnerability_reports/sleepnumberlabs')
+report_dir = Path('/app/vulnerability_reports/example-orglabs')
 malformed_count = 0
 
 for repo_dir in report_dir.iterdir():
@@ -264,7 +264,7 @@ SELECT r.name,
     COUNT(*) as dep_count
 FROM dependencies d
 JOIN repositories r ON d.repository_id = r.id
-WHERE r.organization_id = (SELECT id FROM organizations WHERE name = 'sleepnumberlabs')
+WHERE r.organization_id = (SELECT id FROM organizations WHERE name = 'example-orglabs')
 GROUP BY r.name
 HAVING COUNT(*) > 100
 ORDER BY COUNT(*) DESC
@@ -318,15 +318,15 @@ LIMIT 5;
 
 ---
 
-## Comparison with SleepNumberInc
+## Comparison with example-org
 
-### SleepNumberInc Status
+### example-org Status
 
 ```
 Dependencies: 5,118/5,418 (94.46% coverage)
 ```
 
-**Analysis:** Nearly identical coverage to sleepnumberlabs (94.46% vs 94.53%)
+**Analysis:** Nearly identical coverage to example-orglabs (94.46% vs 94.53%)
 
 **Conclusion:** This suggests a systemic pattern:
 - ~94-95% is the achievable coverage with current syft output format
@@ -395,7 +395,7 @@ version = component.get('version') or 'latest'
 1. ✅ **Dependency ingestion is working correctly at 94.53% coverage**
 2. ✅ **Validation script bug fixed (was showing 47% due to duplicate counting)**
 3. ✅ **Remaining 5.47% gap is expected and acceptable**
-4. ✅ **Both organizations (sleepnumberlabs and SleepNumberInc) have ~94-95% coverage**
+4. ✅ **Both organizations (example-orglabs and example-org) have ~94-95% coverage**
 
 ### Recommendations
 

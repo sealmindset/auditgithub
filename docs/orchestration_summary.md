@@ -3,7 +3,7 @@ Generated: 2025-09-24T18:01:52.073432
 
 Profile: balanced
 Parallel scanners: 1
-Organization: sealmindset
+Organization: example-org
 Token detected: yes
 
 

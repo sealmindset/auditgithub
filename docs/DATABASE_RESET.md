@@ -22,11 +22,11 @@ The reset process:
 ```bash
 # Reset with confirmation prompt
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/reset_organization_data.py --target sleepnumberlabs'
+  'python scripts/reset_organization_data.py --target example-orglabs'
 
 # Reset without confirmation (for automation)
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/reset_organization_data.py --target sleepnumberlabs --force'
+  'python scripts/reset_organization_data.py --target example-orglabs --force'
 ```
 
 ### Using scan_repos.py Flags
@@ -34,27 +34,27 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 ```bash
 # Reset via scan_repos.py
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python3 scan_repos.py --reset-org --target sleepnumberlabs --reset-force'
+  'python3 scan_repos.py --reset-org --target example-orglabs --reset-force'
 ```
 
 ### Running Locally (Without Docker)
 
 ```bash
 # Direct script execution
-python scripts/reset_organization_data.py --target sleepnumberlabs --force
+python scripts/reset_organization_data.py --target example-orglabs --force
 
 # Via scan_repos.py
-python scan_repos.py --reset-org --target sleepnumberlabs --reset-force
+python scan_repos.py --reset-org --target example-orglabs --reset-force
 ```
 
 ### Example Output
 
 ```
 ============================================================
-Organization Reset: sleepnumberlabs
+Organization Reset: example-orglabs
 ============================================================
 Organization ID: 902d2572-4042-420f-9add-9e60f8683ac9
-GitHub Org: sleepnumberlabs
+GitHub Org: example-orglabs
 
 Current Data:
   - repositories: 45 records
@@ -68,14 +68,14 @@ Total records to delete: 12,911
 ⚠️  WARNING: This will permanently delete all data for this organization!
 A backup will be created and retained for 30 days.
 
-Type 'sleepnumberlabs' to confirm reset: sleepnumberlabs
+Type 'example-orglabs' to confirm reset: example-orglabs
 
-2024-01-15 10:30:00 - INFO - Creating backup for organization 'sleepnumberlabs'...
+2024-01-15 10:30:00 - INFO - Creating backup for organization 'example-orglabs'...
 2024-01-15 10:30:05 - INFO - ✓ Backup created successfully
-  - SQL file: backups/organizations/sleepnumberlabs_20240115_103000.sql
-  - Metadata: backups/organizations/sleepnumberlabs_20240115_103000.json
+  - SQL file: backups/organizations/example-orglabs_20240115_103000.sql
+  - Metadata: backups/organizations/example-orglabs_20240115_103000.json
 
-2024-01-15 10:30:06 - INFO - Deleting data for organization 'sleepnumberlabs'...
+2024-01-15 10:30:06 - INFO - Deleting data for organization 'example-orglabs'...
   ✓ Deleted 0 rows from credential_url_test_status
   ✓ Deleted 0 rows from credential_url_test_results
   ✓ Deleted 0 rows from file_commits
@@ -90,8 +90,8 @@ Type 'sleepnumberlabs' to confirm reset: sleepnumberlabs
   ✓ Reset organization stats
 
 ============================================================
-✓ Organization 'sleepnumberlabs' has been reset successfully!
-  Backup saved to: backups/organizations/sleepnumberlabs_20240115_103000.sql
+✓ Organization 'example-orglabs' has been reset successfully!
+  Backup saved to: backups/organizations/example-orglabs_20240115_103000.sql
   Backup will be retained for 30 days
 ============================================================
 ```
@@ -116,7 +116,7 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 
 ```bash
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/reset_organization_data.py --list-backups --target sleepnumberlabs'
+  'python scripts/reset_organization_data.py --list-backups --target example-orglabs'
 ```
 
 ### Example Backup List
@@ -126,23 +126,23 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 Organization Backups (Retention: 30 days)
 ================================================================================
 
-sleepnumberlabs
+example-orglabs
   Created: 2024-01-15T10:30:00
   Age: 2 days | Status: ✓ Active | File: ✓
   Stats: {'repositories': 45, 'findings': 12543, 'scan_runs': 89}
-  File: backups/organizations/sleepnumberlabs_20240115_103000.sql
+  File: backups/organizations/example-orglabs_20240115_103000.sql
 
-sleepnumberlabs
+example-orglabs
   Created: 2024-01-10T08:15:00
   Age: 7 days | Status: ✓ Active | File: ✓
   Stats: {'repositories': 42, 'findings': 11200, 'scan_runs': 85}
-  File: backups/organizations/sleepnumberlabs_20240110_081500.sql
+  File: backups/organizations/example-orglabs_20240110_081500.sql
 
-sealmindset
+example-org
   Created: 2023-12-01T14:00:00
   Age: 47 days | Status: ⚠️ EXPIRED | File: ✓
   Stats: {'repositories': 60, 'findings': 22954, 'scan_runs': 119}
-  File: backups/organizations/sealmindset_20231201_140000.sql
+  File: backups/organizations/example-org_20231201_140000.sql
 
 ================================================================================
 ```
@@ -180,15 +180,15 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 
 ```bash
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/reset_organization_data.py --restore sleepnumberlabs \
-    --backup-file backups/organizations/sleepnumberlabs_20240115_103000.sql'
+  'python scripts/reset_organization_data.py --restore example-orglabs \
+    --backup-file backups/organizations/example-orglabs_20240115_103000.sql'
 ```
 
 ### Manual Restore via psql
 
 ```bash
 # Copy backup into container
-docker cp backups/organizations/sleepnumberlabs_20240115_103000.sql \
+docker cp backups/organizations/example-orglabs_20240115_103000.sql \
   $(docker-compose ps -q db):/tmp/restore.sql
 
 # Execute restore
@@ -212,7 +212,7 @@ The SQL backup contains CSV exports of all organization data:
 
 ```sql
 -- Organization Data Backup
--- Organization: sleepnumberlabs
+-- Organization: example-orglabs
 -- Organization ID: 902d2572-4042-420f-9add-9e60f8683ac9
 -- Created: 2024-01-15T10:30:00
 -- Retention: 30 days
@@ -222,7 +222,7 @@ The SQL backup contains CSV exports of all organization data:
 -- Rows: 45
 \COPY repositories FROM STDIN WITH CSV HEADER;
 id,api_id,organization_id,name,full_name,url,...
-902d...,1,902d...,api-service,sleepnumberlabs/api-service,...
+902d...,1,902d...,api-service,example-orglabs/api-service,...
 \.
 
 -- Table: findings
@@ -235,7 +235,7 @@ id,api_id,organization_id,name,full_name,url,...
 
 ```json
 {
-  "organization_name": "sleepnumberlabs",
+  "organization_name": "example-orglabs",
   "organization_id": "902d2572-4042-420f-9add-9e60f8683ac9",
   "created_at": "2024-01-15T10:30:00",
   "retention_days": 30,
@@ -251,7 +251,7 @@ id,api_id,organization_id,name,full_name,url,...
     "openapi_specs": 0,
     "file_commits": 0
   },
-  "backup_file": "backups/organizations/sleepnumberlabs_20240115_103000.sql"
+  "backup_file": "backups/organizations/example-orglabs_20240115_103000.sql"
 }
 ```
 
@@ -289,11 +289,11 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 ```bash
 # Step 1: Reset the organization
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/reset_organization_data.py --target sleepnumberlabs --force'
+  'python scripts/reset_organization_data.py --target example-orglabs --force'
 
 # Step 2: Run fresh scan
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python3 scan_repos.py --target sleepnumberlabs'
+  'python3 scan_repos.py --target example-orglabs'
 ```
 
 ### Weekly Cleanup Cron
@@ -308,7 +308,7 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 ```bash
 # Before applying schema changes
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/reset_organization_data.py --target sealmindset'
+  'python scripts/reset_organization_data.py --target example-org'
 # (Don't confirm - just creates backup without deleting)
 # Or use pg_dump directly:
 docker-compose exec db pg_dump -U postgres auditgh_kb > backups/pre_migration_$(date +%Y%m%d).sql

@@ -16,14 +16,14 @@ Comprehensive Role-Based Access Control (RBAC) authentication and authorization 
   - `AuthAuditLog` - Security event logging
 - Created migration: [migrations/versions/018_add_rbac_and_invites.py](migrations/versions/018_add_rbac_and_invites.py)
 - Bootstrapped Super Admin accounts:
-  - `ravance@gmail.com` (break glass with local password)
-  - `rob.vance@sleepnumber.com` (Entra ID)
+  - `admin-user@gmail.com` (break glass with local password)
+  - `admin@company.example` (Entra ID)
 
 ### ✅ Phase 2: Authentication Core
 - [src/auth/break_glass.py](src/auth/break_glass.py) - Emergency local authentication
   - `create_break_glass_user()` - Create user with bcrypt password
   - `verify_break_glass_password()` - Verify credentials
-  - Only allowed for `ravance@gmail.com`
+  - Only allowed for `admin-user@gmail.com`
 
 - [src/auth/invitations.py](src/auth/invitations.py) - Invitation system
   - `create_invitation()` - Generate 64-char cryptographic token
@@ -166,7 +166,7 @@ docker exec auditgh_api python -m src.auth.bootstrap
 1. Navigate to: http://localhost:3000/login
 2. Click "Emergency Access" at the bottom
 3. Login with:
-   - Email: `ravance@gmail.com`
+   - Email: `admin-user@gmail.com`
    - Password: `ChangeMe123!` (or your configured password)
 4. You should see a red warning banner at the top
 
@@ -207,7 +207,7 @@ docker exec auditgh_api python -m src.auth.bootstrap
 ## API Endpoints
 
 ### Authentication
-- `POST /auth/break-glass/login` - Emergency login (ravance@gmail.com only)
+- `POST /auth/break-glass/login` - Emergency login (admin-user@gmail.com only)
 - `GET /auth/login/entra` - Initiate Entra ID OAuth flow
 - `GET /auth/callback/entra` - OAuth callback (handles invitations)
 - `GET /auth/me` - Get current user info
@@ -273,7 +273,7 @@ Apply RBAC to existing scan and findings endpoints:
 4. **One-Time Use**: Invitations marked as accepted/revoked after use
 5. **Audit Logging**: All auth events logged with IP and user agent
 6. **Break Glass Safeguards**:
-   - Only `ravance@gmail.com` allowed
+   - Only `admin-user@gmail.com` allowed
    - Warning banner always visible
    - All actions audited with `is_break_glass=true`
 

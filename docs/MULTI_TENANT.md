@@ -31,7 +31,7 @@ MULTI_TENANT_ENABLED=true
 │                      AuditGH Instance                        │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  sealmindset │  │    acme      │  │   clientx    │      │
+│  │  example-org │  │    acme      │  │   clientx    │      │
 │  │   (default)  │  │              │  │              │      │
 │  ├──────────────┤  ├──────────────┤  ├──────────────┤      │
 │  │ PAT: ghp_... │  │ PAT: ghp_... │  │ PAT: ghp_... │      │
@@ -54,7 +54,7 @@ Add organizations to your `.env` file:
 
 ```bash
 # Default organization (used when no --target specified)
-GITHUB_ORG=sealmindset
+GITHUB_ORG=example-org
 GITHUB_TOKEN=ghp_your_default_token
 
 # Additional organizations - naming convention: ORG_{NAME}_TOKEN and ORG_{NAME}_GITHUB
@@ -64,8 +64,8 @@ ORG_ACME_GITHUB=acme-corp
 ORG_CLIENTX_TOKEN=ghp_clientx_pat_here
 ORG_CLIENTX_GITHUB=clientx-org
 
-ORG_SLEEPNUMBERLABS_TOKEN=ghp_sleepnumber_pat_here
-ORG_SLEEPNUMBERLABS_GITHUB=sleepnumberlabs
+ORG_EXAMPLE_ORG_LABS_TOKEN=ghp_example-org_pat_here
+ORG_EXAMPLE_ORG_LABS_GITHUB=example-orglabs
 ```
 
 **That's it!** On startup, the system automatically:
@@ -141,8 +141,8 @@ curl http://localhost:8000/organizations/
 ```
 📋 Registered Organizations:
 ------------------------------------------------------------
-  sealmindset (default)
-    GitHub: sealmindset | DB: auditgh_kb
+  example-org (default)
+    GitHub: example-org | DB: auditgh_kb
     Status: ✓ active | Schema: synced
     Last scan: 2024-01-15 10:30:00
 
@@ -151,7 +151,7 @@ curl http://localhost:8000/organizations/
     Status: ✓ active | Schema: synced
     Last scan: 2024-01-14 22:00:00
 
-🔑 Organizations with credentials: sealmindset, acme
+🔑 Organizations with credentials: example-org, acme
 ```
 
 ### Update/Rotate PAT

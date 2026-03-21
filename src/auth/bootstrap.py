@@ -45,15 +45,15 @@ def bootstrap_super_admins() -> None:
         break_glass_password = os.getenv('BREAK_GLASS_PASSWORD', 'ChangeMe123!')
 
         # Check if break glass user exists
-        ravance = db.query(User).filter(User.email == BREAK_GLASS_EMAIL).first()
-        if not ravance:
+        bg_user = db.query(User).filter(User.email == BREAK_GLASS_EMAIL).first()
+        if not bg_user:
             # Create break glass user with password
             try:
-                ravance = create_break_glass_user(
+                bg_user = create_break_glass_user(
                     db=db,
                     email=BREAK_GLASS_EMAIL,
                     password=break_glass_password,
-                    full_name='Rob Vance (Break Glass)'
+                    full_name='Break Glass Admin'
                 )
                 logger.info(f"✓ Created break glass user: {BREAK_GLASS_EMAIL}")
             except Exception as e:
@@ -62,13 +62,13 @@ def bootstrap_super_admins() -> None:
             logger.info(f"✓ Break glass user already exists: {BREAK_GLASS_EMAIL}")
 
         # Check if admin user exists
-        rob_vance = db.query(User).filter(User.email == ADMIN_EMAIL).first()
-        if not rob_vance:
+        admin_user = db.query(User).filter(User.email == ADMIN_EMAIL).first()
+        if not admin_user:
             # Create admin user (Entra ID)
-            rob_vance = User(
+            admin_user = User(
                 email=ADMIN_EMAIL,
-                username='rob.vance',
-                full_name='Rob Vance',
+                username=ADMIN_EMAIL.split('@')[0],
+                full_name=os.environ.get("ADMIN_FULL_NAME", "Admin User"),
                 role='super_admin',
                 access_type='both',
                 auth_provider='entra',

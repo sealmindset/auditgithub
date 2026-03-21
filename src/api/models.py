@@ -20,7 +20,7 @@ class Organization(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     api_id = Column(Integer, Sequence('organizations_api_id_seq'), unique=True)
     
-    name = Column(String(255), unique=True, nullable=False)  # Internal name (e.g., "sealmindset")
+    name = Column(String(255), unique=True, nullable=False)  # Internal name (e.g., "my-org")
     github_org = Column(String(255), nullable=False)  # GitHub organization name
     display_name = Column(String(255))  # Human-readable name
     database_name = Column(String(255))  # Per-org database name
@@ -420,7 +420,7 @@ class User(Base):
     role = Column(String, nullable=False, default='user')  # super_admin, admin, manager, analyst, developer, user
     access_type = Column(String, nullable=False, default='both')  # ui_only, api_only, both
 
-    # Break glass authentication (only for ravance@gmail.com)
+    # Break glass authentication (only for BREAK_GLASS_EMAIL)
     local_password_hash = Column(String, nullable=True)  # bcrypt hash
 
     # OIDC fields (provider-agnostic — stable identifier across any OIDC provider)

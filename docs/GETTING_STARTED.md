@@ -16,7 +16,7 @@ This guide walks you through installing and running your first scan with AuditGH
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/sealmindset/auditgithub.git
+git clone https://github.com/example-org/auditgithub.git
 cd auditgithub
 ```
 

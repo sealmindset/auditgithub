@@ -143,7 +143,7 @@ docker-compose run --rm auditgh --repo="<repo-name>" --overridescan
 INFO:root:⚡ Override scan enabled - all skip logic disabled, will scan every repository
 INFO:root:Processing repository: <repo-name>
 INFO:root:⚡ Scanning <repo-name>: Override scan enabled
-INFO:root:Cloning repository: sleepnumberinc/<repo-name>
+INFO:root:Cloning repository: example-orginc/<repo-name>
 ...
 ```
 

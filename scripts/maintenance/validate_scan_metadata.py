@@ -10,8 +10,8 @@ Usage:
     python validate_scan_metadata.py [--org ORG_NAME] [--repo REPO_NAME]
 
 Examples:
-    python validate_scan_metadata.py --org SleepNumberInc --repo my-api
-    python validate_scan_metadata.py --org sleepnumberlabs
+    python validate_scan_metadata.py --org MyOrg --repo my-api
+    python validate_scan_metadata.py --org my-org
     python validate_scan_metadata.py  # Validates all repositories
 """
 
@@ -162,8 +162,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --org SleepNumberInc --repo my-api   # Validate specific repo
-  %(prog)s --org sleepnumberlabs                 # Validate all repos in org
+  %(prog)s --org MyOrg --repo my-api             # Validate specific repo
+  %(prog)s --org my-org                          # Validate all repos in org
   %(prog)s                                       # Validate all repositories
         """
     )
@@ -171,7 +171,7 @@ Examples:
     parser.add_argument(
         '--org',
         type=str,
-        help='Organization name to validate (e.g., SleepNumberInc, sleepnumberlabs)'
+        help='Organization name to validate (e.g., MyOrg, my-org)'
     )
 
     parser.add_argument(

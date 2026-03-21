@@ -965,7 +965,7 @@ curl -X POST http://localhost:3007/api/users \
 | Multi-tenant | Yes (UserRole.tenant_id) | Yes (Organization) | Yes (UserRole.tenant_id) |
 | Mock OIDC | Not available | Via mocksvcs | Via mocksvcs |
 | Provider Config | Hardcoded entra/okta | Single provider env | Dynamic from env |
-| Break Glass | Yes (ravance@gmail.com) | No | Yes (unchanged) |
+| Break Glass | Yes (admin-user@gmail.com) | No | Yes (unchanged) |
 | Audit Logging | Full | Basic | Full |
 
 ---

@@ -8,10 +8,10 @@ Provides a safe way to completely reset an organization's data with:
 3. Clean slate for fresh scans
 
 Usage:
-    python scripts/reset_organization_data.py --target sleepnumberlabs
-    python scripts/reset_organization_data.py --target sleepnumberlabs --force  # Skip confirmation
+    python scripts/reset_organization_data.py --target my-org
+    python scripts/reset_organization_data.py --target my-org --force  # Skip confirmation
     python scripts/reset_organization_data.py --list-backups
-    python scripts/reset_organization_data.py --restore sleepnumberlabs --backup-file <path>
+    python scripts/reset_organization_data.py --restore my-org --backup-file <path>
     python scripts/reset_organization_data.py --cleanup-old-backups  # Remove backups older than 30 days
 """
 
@@ -457,19 +457,19 @@ def main():
         epilog="""
 Examples:
   # Reset an organization (creates backup first)
-  python scripts/reset_organization_data.py --target sleepnumberlabs
-  
+  python scripts/reset_organization_data.py --target my-org
+
   # Reset without confirmation prompt
-  python scripts/reset_organization_data.py --target sleepnumberlabs --force
-  
+  python scripts/reset_organization_data.py --target my-org --force
+
   # List all backups
   python scripts/reset_organization_data.py --list-backups
-  
+
   # List backups for specific organization
-  python scripts/reset_organization_data.py --list-backups --target sleepnumberlabs
-  
+  python scripts/reset_organization_data.py --list-backups --target my-org
+
   # Restore from backup
-  python scripts/reset_organization_data.py --restore sleepnumberlabs --backup-file backups/organizations/sleepnumberlabs_20231213_120000.sql
+  python scripts/reset_organization_data.py --restore my-org --backup-file backups/organizations/my-org_20231213_120000.sql
   
   # Clean up old backups (older than 30 days)
   python scripts/reset_organization_data.py --cleanup-old-backups

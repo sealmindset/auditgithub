@@ -21,8 +21,8 @@ Every request generates structured JSON logs sent to Cribl Stream (with MinIO fa
     "perf_category": "FAST",
     "app_context": {
         "org_id": "uuid-of-org",
-        "org_name": "sleepnumber",
-        "user_id": "user@sleepnumber.com",
+        "org_name": "example-org",
+        "user_id": "user@example-org.com",
         "session_id": "abc123"
     },
     "client_ip": "10.0.1.50",

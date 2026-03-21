@@ -107,18 +107,18 @@ Show all four paths merging into a single box:
 Show how data is isolated per organization:
 
 TOP: Three API requests arrive with different org headers:
-  - Request A: X-Organization-ID: org-uuid-sleepnumber
-  - Request B: X-Organization-ID: org-uuid-sealmindset
+  - Request A: X-Organization-ID: org-uuid-example-org
+  - Request B: X-Organization-ID: org-uuid-example-org
   - Request C: No organization header
 
 MIDDLE: OrganizationContextMiddleware resolves org_id for each request
 
 BOTTOM: PostgreSQL database with:
   - public schema (shared): organizations, roles, permissions, users
-  - tenant_sleepnumber schema (isolated): repositories, findings, scans
-  - tenant_sealmindset schema (isolated): repositories, findings, scans
+  - tenant_example-org schema (isolated): repositories, findings, scans
+  - tenant_example-org schema (isolated): repositories, findings, scans
 
-Show Request A routed to tenant_sleepnumber, Request B to tenant_sealmindset,
+Show Request A routed to tenant_example-org, Request B to tenant_example-org,
 Request C rejected with 400 "Missing organization context."
 
 === DIAGRAM 6: Middleware Pipeline (Layered) ===

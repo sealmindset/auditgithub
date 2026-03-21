@@ -18,7 +18,7 @@ router = APIRouter(
 # Pydantic Schemas
 class RepositoryBase(BaseModel):
     name: str = Field(..., description="Repository name (e.g., 'my-service')", examples=["my-service"])
-    full_name: Optional[str] = Field(None, description="Full repo path (org/name)", examples=["sleepnumber/my-service"])
+    full_name: Optional[str] = Field(None, description="Full repo path (org/name)", examples=["example-org/my-service"])
     url: Optional[str] = Field(None, description="GitHub repository URL")
     description: Optional[str] = Field(None, description="Repository description")
     language: Optional[str] = Field(None, description="Primary programming language", examples=["Python"])

@@ -14,13 +14,13 @@ After implementing complete ingestion and fixing the org_id bug, validation show
 - **Total Issues:** 289 → 218 (71 issues resolved, **25% reduction**)
 - **High Priority Issues:** 63 → 2 (**97% reduction!**)
 
-### sleepnumberlabs Progress
+### example-orglabs Progress
 - **Grype Findings:** 112 → 300 (**+188 findings, 168% improvement**)
 - **Contributors:** 2,169 → 2,430 (**+261 contributors**)
 - **Dependencies:** 6,068 → 7,829 (**+1,761 dependencies, 29% improvement**)
 - **Languages:** 1,108 → 1,262 (**+154 languages**)
 
-### SleepNumberInc Status
+### example-org Status
 - Grype: 83/263 (still low coverage)
 - Gitleaks: 671/783 (86% coverage)
 - Contributors: 863/907 (95% coverage)
@@ -83,7 +83,7 @@ DETAIL:  Key (finding_uuid)=(9768082a-5562-54b5-947f-94ab3d6f160c) already exist
 
 1. **Incomplete Vulnerability Coverage**
    - Only 1 repo per CVE gets recorded, not all affected repos
-   - Grype shows 1,184 vulnerabilities across all sleepnumberlabs repos
+   - Grype shows 1,184 vulnerabilities across all example-orglabs repos
    - Database only has 300 (25% coverage)
 
 2. **Inaccurate Risk Assessment**
@@ -191,8 +191,8 @@ docker exec auditgh_api python validate_ingestion.py
 ```
 
 **Expected Results After Fix:**
-- sleepnumberlabs grype: 300 → 1,184 (**+884 findings, 395% improvement**)
-- SleepNumberInc grype: 83 → 263 (**+180 findings, 317% improvement**)
+- example-orglabs grype: 300 → 1,184 (**+884 findings, 395% improvement**)
+- example-org grype: 83 → 263 (**+180 findings, 317% improvement**)
 
 ---
 
@@ -217,7 +217,7 @@ docker exec auditgh_api python validate_ingestion.py
 
 ### Missing Gitleaks Findings
 
-**Issue:** sleepnumberlabs shows 165/671 gitleaks findings (25% coverage)
+**Issue:** example-orglabs shows 165/671 gitleaks findings (25% coverage)
 
 **Potential Causes:**
 1. Similar duplicate UUID issue (need to investigate)
@@ -233,7 +233,7 @@ docker exec auditgh_api python validate_ingestion.py
 
 ### Missing Dependencies
 
-**Issue:** sleepnumberlabs shows 7,829/16,801 dependencies (47% coverage)
+**Issue:** example-orglabs shows 7,829/16,801 dependencies (47% coverage)
 
 **Potential Causes:**
 1. Duplicate detection preventing re-ingestion
@@ -284,7 +284,7 @@ docker exec auditgh_api python validate_ingestion.py
 Total Issues: 289
 High Priority: 63
 
-sleepnumberlabs:
+example-orglabs:
 - Grype findings: 112/1,184 (9% coverage)
 - Gitleaks findings: 165/666 (25% coverage)
 - Contributors: 2,169/2,644 (82% coverage)
@@ -296,7 +296,7 @@ sleepnumberlabs:
 Total Issues: 218 (-25%)
 High Priority: 2 (-97%)
 
-sleepnumberlabs:
+example-orglabs:
 - Grype findings: 300/1,184 (25% coverage) ⬆️ +188 findings
 - Contributors: 2,430/2,792 (87% coverage) ⬆️ +261 contributors
 - Dependencies: 7,829/16,801 (47% coverage) ⬆️ +1,761 dependencies
@@ -307,14 +307,14 @@ sleepnumberlabs:
 Total Issues: 139 (-52% from initial, -36% from previous)
 High Priority: 4 (-94% from initial)
 
-sleepnumberlabs:
+example-orglabs:
 - Grype findings: 1,071/1,184 (90% coverage) ⬆️ +959 findings (+856% from initial!)
 - Gitleaks findings: 620/684 (91% coverage) ⬆️ +455 findings (+276% from initial!)
 - Contributors: 2,476/2,847 (87% coverage) ⬆️ +307 contributors
 - Languages: 1,278/1,287 (99% coverage) ⬆️ +170 languages
 - Dependencies: 7,829/16,801 (47% coverage) [no change - needs investigation]
 
-SleepNumberInc:
+example-org:
 - Grype findings: 244/263 (93% coverage) ⬆️ +161 findings (+194% from initial!)
 - Gitleaks findings: 671/783 (86% coverage) [stable]
 - Contributors: 863/907 (95% coverage) [stable]

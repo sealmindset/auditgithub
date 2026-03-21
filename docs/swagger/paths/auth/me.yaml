@@ -17,7 +17,7 @@ get:
           example:
             id: "950e8400-e29b-41d4-a716-446655440004"
             username: "jdoe"
-            email: "jdoe@sleepnumber.com"
+            email: "jdoe@example-org.com"
             full_name: "John Doe"
             is_active: true
             roles: ["admin", "security_analyst"]

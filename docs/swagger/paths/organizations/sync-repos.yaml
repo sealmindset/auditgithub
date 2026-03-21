@@ -28,7 +28,7 @@ post:
                 example: true
               message:
                 type: string
-                example: "Synced 42 repositories for 'sleepnumber'"
+                example: "Synced 42 repositories for 'example-org'"
               total:
                 type: integer
                 example: 42

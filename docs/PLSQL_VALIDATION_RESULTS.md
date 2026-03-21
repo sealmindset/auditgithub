@@ -98,14 +98,14 @@ PL/SQL scanning happens automatically during regular scans:
 ```bash
 # Scan a specific repository
 docker-compose run --rm scanner \
-  --target SleepNumberInc \
+  --target example-org \
   --repo YOUR_REPO_NAME
 
 # Scan all repositories in organization
-docker-compose run --rm scanner --target SleepNumberInc
+docker-compose run --rm scanner --target example-org
 
 # Scan repositories matching a pattern
-./scan_pattern.sh SleepNumberInc "%-api%"
+./scan_pattern.sh example-org "%-api%"
 ```
 
 **What happens:**
@@ -125,7 +125,7 @@ docker exec auditgh_api semgrep scan \
   --config /app/semgrep_plsql_rules.yml \
   --json \
   --output /tmp/results.json \
-  /app/vulnerability_reports/SleepNumberInc/YOUR_REPO/
+  /app/vulnerability_reports/example-org/YOUR_REPO/
 
 # View results
 docker exec auditgh_api cat /tmp/results.json | jq '.results[] | {
@@ -143,12 +143,12 @@ To update all existing repositories with PL/SQL scans:
 ```bash
 # Preview which repos have PL/SQL files
 docker exec auditgh_api python /app/rescan_plsql_repos.py \
-  --org SleepNumberInc \
+  --org example-org \
   --dry-run
 
 # Scan all PL/SQL repos
 docker exec auditgh_api python /app/rescan_plsql_repos.py \
-  --org SleepNumberInc
+  --org example-org
 
 # Ingest results
 docker exec auditgh_api python /app/ingest_reports.py
@@ -161,7 +161,7 @@ docker exec auditgh_api python /app/ingest_reports.py
 ### In Web UI
 
 1. Navigate to: http://localhost:3000
-2. Select organization: SleepNumberInc
+2. Select organization: example-org
 3. Go to: **Repositories → Projects**
 4. Click on repository with PL/SQL code
 5. View **SAST tab** for PL/SQL findings
@@ -180,7 +180,7 @@ SELECT
 FROM findings f
 JOIN repositories r ON f.repository_id = r.id
 JOIN organizations o ON r.organization_id = o.id
-WHERE o.github_org = 'SleepNumberInc'
+WHERE o.github_org = 'example-org'
   AND f.scanner_name = 'semgrep'
   AND f.finding_type = 'sast'
 ORDER BY
@@ -245,11 +245,11 @@ docker exec auditgh_api semgrep scan \
    ```bash
    # Find repos with PL/SQL files
    docker exec auditgh_api python /app/rescan_plsql_repos.py \
-     --org SleepNumberInc --dry-run
+     --org example-org --dry-run
 
    # Scan them
    docker exec auditgh_api python /app/rescan_plsql_repos.py \
-     --org SleepNumberInc
+     --org example-org
 
    # Ingest results
    docker exec auditgh_api python /app/ingest_reports.py
@@ -259,7 +259,7 @@ docker exec auditgh_api semgrep scan \
    ```bash
    # Scan specific repos
    docker-compose run --rm scanner \
-     --target SleepNumberInc \
+     --target example-org \
      --repo YOUR_PLSQL_REPO
    ```
 
@@ -276,7 +276,7 @@ docker exec auditgh_api semgrep scan \
 
 ```bash
 # Check if PL/SQL files exist in repo
-ls -la /app/vulnerability_reports/SleepNumberInc/YOUR_REPO/*.sql
+ls -la /app/vulnerability_reports/example-org/YOUR_REPO/*.sql
 
 # Check if rules file exists
 docker exec auditgh_api cat /app/semgrep_plsql_rules.yml | head -20
@@ -285,14 +285,14 @@ docker exec auditgh_api cat /app/semgrep_plsql_rules.yml | head -20
 docker exec auditgh_api semgrep scan \
   --config /app/semgrep_plsql_rules.yml \
   --verbose \
-  /app/vulnerability_reports/SleepNumberInc/YOUR_REPO/
+  /app/vulnerability_reports/example-org/YOUR_REPO/
 ```
 
 ### Findings not in database
 
 ```bash
 # Check if findings are in scan reports
-docker exec auditgh_api ls -la /app/vulnerability_reports/SleepNumberInc/YOUR_REPO/*_semgrep.json
+docker exec auditgh_api ls -la /app/vulnerability_reports/example-org/YOUR_REPO/*_semgrep.json
 
 # Re-run ingestion
 docker exec auditgh_api python /app/ingest_reports.py

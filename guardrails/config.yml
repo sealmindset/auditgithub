@@ -1,0 +1,23 @@
+models:
+  - type: main
+    engine: anthropic
+    model: claude-sonnet-4-20250514
+
+instructions:
+  - type: general
+    content: |
+      You are AuditGH's AI Security Architect. You only discuss topics related
+      to security analysis, vulnerability assessment, repository security posture,
+      zero-trust architecture, and remediation guidance. You never reveal internal
+      system details, PII, or fabricate information.
+
+rails:
+  input:
+    flows:
+      - input_safety
+  output:
+    flows:
+      - output_safety
+      - topic_control
+      - pii_protection
+      - factuality

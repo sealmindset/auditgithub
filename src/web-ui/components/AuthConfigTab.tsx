@@ -408,7 +408,7 @@ export default function AuthConfigTab() {
                                             <Label htmlFor="provider-name">Provider Name</Label>
                                             <Input
                                                 id="provider-name"
-                                                placeholder="e.g., Sleep Number SSO"
+                                                placeholder="e.g., Corporate SSO"
                                                 value={providerName}
                                                 onChange={(e) => setProviderName(e.target.value)}
                                             />

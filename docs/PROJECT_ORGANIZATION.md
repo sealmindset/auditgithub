@@ -51,7 +51,7 @@ scripts/
 - `org_manager.py` - Python backend
 - `manage-orgs.sh` - Interactive menu
 - `add-org.sh` - Legacy organization addition
-- `add_sleepnumber_org.py` - Legacy Sleep Number script
+- `add_example-org_org.py` - Legacy Example Organization script
 
 #### Scanning Scripts (`scripts/scanning/`)
 - `scan_repos.py` - Main scanning script
@@ -220,13 +220,13 @@ Update your shell scripts or automation:
 ```bash
 # Old way
 ./org.sh list
-./gen-arch-batch-docker.sh "sleepnumber" "*"
-python batch_process.py sleepnumber "*"
+./gen-arch-batch-docker.sh "example-org" "*"
+python batch_process.py example-org "*"
 
 # New way
 ./scripts/orgs/org.sh list
-./scripts/architecture/gen-arch-batch-docker.sh "sleepnumber" "*"
-python scripts/batch/batch_process.py sleepnumber "*"
+./scripts/architecture/gen-arch-batch-docker.sh "example-org" "*"
+python scripts/batch/batch_process.py example-org "*"
 ```
 
 Update documentation links:

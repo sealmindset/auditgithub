@@ -27,14 +27,14 @@ The primary OSINT source is GitHub's code search API, which searches **all publi
 │                         PUBLIC GITHUB CODE SEARCH                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Target: https://prod-apps-svc.sleepiq.sleepnumber.com/rest/api/v1          │
+│  Target: https://prod-apps-svc.sleepiq.example-org.com/rest/api/v1          │
 │                                                                             │
 │  Search Queries Generated:                                                  │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ 1. "prod-apps-svc.sleepiq.sleepnumber.com" NOT org:sleepnumberlabs  │   │
-│  │ 2. "sleepiq" api NOT org:sleepnumberlabs                            │   │
-│  │ 3. "sleepnumber" api NOT org:sleepnumberlabs                        │   │
-│  │ 4. "Ocp-Apim-Subscription-Key" NOT org:sleepnumberlabs              │   │
+│  │ 1. "prod-apps-svc.sleepiq.example-org.com" NOT org:example-orglabs  │   │
+│  │ 2. "sleepiq" api NOT org:example-orglabs                            │   │
+│  │ 3. "example-org" api NOT org:example-orglabs                        │   │
+│  │ 4. "Ocp-Apim-Subscription-Key" NOT org:example-orglabs              │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 │  Key: "NOT org:{current_org}" ensures we search EXTERNAL public repos      │
@@ -276,18 +276,18 @@ fetch('https://api.example.com/v1/data', {
 
 ```python
 # Extract service identifiers from domain
-domain = "prod-apps-svc.sleepiq.sleepnumber.com"
+domain = "prod-apps-svc.sleepiq.example-org.com"
 domain_parts = domain.split('.')
-# Result: ['prod-apps-svc', 'sleepiq', 'sleepnumber', 'com']
+# Result: ['prod-apps-svc', 'sleepiq', 'example-org', 'com']
 
 # Filter to meaningful identifiers (>3 chars, not common TLDs)
-service_identifiers = ['sleepiq', 'sleepnumber']
+service_identifiers = ['sleepiq', 'example-org']
 
 # Build queries
 queries = [
-    '"prod-apps-svc.sleepiq.sleepnumber.com" NOT org:sleepnumberlabs',
-    '"sleepiq" api NOT org:sleepnumberlabs',
-    '"sleepnumber" api NOT org:sleepnumberlabs'
+    '"prod-apps-svc.sleepiq.example-org.com" NOT org:example-orglabs',
+    '"sleepiq" api NOT org:example-orglabs',
+    '"example-org" api NOT org:example-orglabs'
 ]
 ```
 
@@ -374,7 +374,7 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Optional: Specify organization to exclude from search
 # (Auto-detected from token if not specified)
-GITHUB_ORG=sleepnumberlabs
+GITHUB_ORG=example-orglabs
 ```
 
 ### Rate Limiting

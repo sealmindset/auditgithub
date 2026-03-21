@@ -24,7 +24,7 @@ post:
             $ref: '../../components/schemas.yaml#/ImportResult'
           example:
             success: true
-            message: "Imported 42 repositories from 'sleepnumber'"
+            message: "Imported 42 repositories from 'example-org'"
             total: 42
             created: 35
             updated: 7
@@ -36,7 +36,7 @@ post:
           schema:
             $ref: '../../components/schemas.yaml#/Error'
           example:
-            detail: "GitHub token not configured for 'sleepnumber'. Use PUT /organizations/{org_name}/credentials"
+            detail: "GitHub token not configured for 'example-org'. Use PUT /organizations/{org_name}/credentials"
     '401':
       description: Invalid GitHub token
       content:
@@ -54,10 +54,10 @@ post:
           examples:
             org_not_found:
               value:
-                detail: "Organization 'sleepnumber' not found"
+                detail: "Organization 'example-org' not found"
             github_org_not_found:
               value:
-                detail: "GitHub organization 'sleepnumber' not found"
+                detail: "GitHub organization 'example-org' not found"
     '502':
       description: GitHub API error
       content:

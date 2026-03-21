@@ -120,7 +120,7 @@ Each log entry follows this structure:
   
   "app_context": {
     "org_id": "uuid-of-organization",
-    "org_name": "sleepnumberlabs",
+    "org_name": "example-orglabs",
     "user_id": "uuid-of-user",
     "request_id": "uuid-of-request",
     "session_id": "session-identifier"

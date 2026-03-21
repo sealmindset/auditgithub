@@ -9,13 +9,13 @@ INFO:src.knowledge_base:Remediations table uses new schema (managed by API) - di
 INFO:root:Temporary directory for cloning: /tmp/repo_scan_0kj9kd67
 INFO:root:Reports will be saved to: /app/vulnerability_reports
 INFO:root:Single repository mode: -EBS-F-7005-AP-UPD-PYMT-METHOD
-INFO:root:Fetching repository: sleepnumberinc/-EBS-F-7005-AP-UPD-PYMT-METHOD
+INFO:root:Fetching repository: example-orginc/-EBS-F-7005-AP-UPD-PYMT-METHOD
 WARNING:root:Repository name '-EBS-F-7005-AP-UPD-PYMT-METHOD' starts with hyphen. This may cause issues with GitHub API.
 INFO:root:Processing repository: -EBS-F-7005-AP-UPD-PYMT-METHOD
 WARNING:root:⚠️  -EBS-F-7005-AP-UPD-PYMT-METHOD: Repository name starts with hyphen (needs quoting for CLI) - will process with safe argument handling
 INFO:root:⚡ Scanning -EBS-F-7005-AP-UPD-PYMT-METHOD: Override scan enabled
 ...
-WARNING:root:Empty response body for SleepNumberInc/-EBS-F-7005-AP-UPD-PYMT-METHOD (status 204). Skipping contributors.
+WARNING:root:Empty response body for example-org/-EBS-F-7005-AP-UPD-PYMT-METHOD (status 204). Skipping contributors.
 INFO:root:Completed processing repository: -EBS-F-7005-AP-UPD-PYMT-METHOD
 
 Problem:

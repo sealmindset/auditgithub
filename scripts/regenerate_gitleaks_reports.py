@@ -106,7 +106,7 @@ def main():
                 if len(parts) >= 3:  # Should have at least 3 parts: empty, number, repo name, ...
                     repo_name = parts[2]  # Third part is the repository name
                     if repo_name and repo_name != 'Repository Name':
-                        # Handle repository names that might be prefixed with 'sleepnumberinc/'
+                        # Handle repository names that might be prefixed with 'org-name/'
                         if '/' in repo_name:
                             repo_name = repo_name.split('/')[-1]
                         repo_path = os.path.join(base_dir, repo_name)

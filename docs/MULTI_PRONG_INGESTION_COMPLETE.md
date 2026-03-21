@@ -16,10 +16,10 @@ The multi-prong ingestion pipeline has been successfully implemented with **dram
 |--------|--------|-------|-------------|
 | **Total Issues** | 289 | 139 | **-52%** |
 | **High Priority Issues** | 63 | 4 | **-94%** |
-| **Grype Findings (sleepnumberlabs)** | 112 | 1,071 | **+856%** 🚀 |
-| **Gitleaks Findings (sleepnumberlabs)** | 165 | 620 | **+276%** 🚀 |
-| **Contributors (sleepnumberlabs)** | 2,169 | 2,476 | **+14%** |
-| **Languages (sleepnumberlabs)** | 1,108 | 1,278 | **+15%** |
+| **Grype Findings (example-orglabs)** | 112 | 1,071 | **+856%** 🚀 |
+| **Gitleaks Findings (example-orglabs)** | 165 | 620 | **+276%** 🚀 |
+| **Contributors (example-orglabs)** | 2,169 | 2,476 | **+14%** |
+| **Languages (example-orglabs)** | 1,108 | 1,278 | **+15%** |
 | **Overall Data Completeness** | ~25% | ~90% | **+65%** |
 
 ### What Was Fixed
@@ -80,8 +80,8 @@ ALTER TABLE findings ADD CONSTRAINT findings_repo_uuid_unique
 ```
 
 **Impact:**
-- sleepnumberlabs: 112 → 1,071 grype findings (**+856% improvement**)
-- SleepNumberInc: 83 → 244 grype findings (**+194% improvement**)
+- example-orglabs: 112 → 1,071 grype findings (**+856% improvement**)
+- example-org: 83 → 244 grype findings (**+194% improvement**)
 
 ---
 
@@ -184,7 +184,7 @@ docker exec auditgh_api python validate_ingestion.py
 INGESTION VALIDATION REPORT
 ================================================================================
 
-sleepnumberlabs:
+example-orglabs:
 --------------------------------------------------------------------------------
 
 Findings:
@@ -249,7 +249,7 @@ High Priority: 4
 - **Result:** 90%+ data completeness achieved
 
 ### Phase 5: Dependency Coverage Investigation (45 minutes)
-- User: "Investigate why sleepnumberlabs has only 47% coverage and develop an approach to get that up to 99.9%"
+- User: "Investigate why example-orglabs has only 47% coverage and develop an approach to get that up to 99.9%"
 - Discovered: Validation script bug counting duplicates instead of unique dependencies
 - Root cause: Syft files have 78% duplication (same terraform module 382 times)
 - Fixed: Updated validation script to count unique dependencies (name+version)
@@ -299,11 +299,11 @@ High Priority: 4
 ### Dependencies Coverage ✅ RESOLVED
 
 **Previous Status (INCORRECT):**
-- sleepnumberlabs: 7,829/16,801 dependencies (47% coverage) ❌
+- example-orglabs: 7,829/16,801 dependencies (47% coverage) ❌
 
 **Current Status (CORRECTED):**
-- sleepnumberlabs: 7,829/8,282 dependencies (**94.53% coverage**) ✅
-- SleepNumberInc: 5,118/5,418 dependencies (**94.46% coverage**) ✅
+- example-orglabs: 7,829/8,282 dependencies (**94.53% coverage**) ✅
+- example-org: 5,118/5,418 dependencies (**94.46% coverage**) ✅
 
 **Root Cause:** Validation script bug
 - Was counting ALL components in syft files (16,801 total with duplicates)
@@ -330,7 +330,7 @@ High Priority: 4
 
 ### Minor Gitleaks Gap (91% Coverage)
 
-**Current Status:** sleepnumberlabs shows 620/684 gitleaks findings (91% coverage)
+**Current Status:** example-orglabs shows 620/684 gitleaks findings (91% coverage)
 
 **Potential Causes:**
 1. Some findings may have malformed Fingerprint field
@@ -440,15 +440,15 @@ Data Completeness: ~90%
 
 | Organization | Before | After | Improvement |
 |--------------|--------|-------|-------------|
-| sleepnumberlabs | 112 | 1,071 | **+856%** |
-| SleepNumberInc | 83 | 244 | **+194%** |
+| example-orglabs | 112 | 1,071 | **+856%** |
+| example-org | 83 | 244 | **+194%** |
 
 ### Gitleaks Findings Improvement
 
 | Organization | Before | After | Improvement |
 |--------------|--------|-------|-------------|
-| sleepnumberlabs | 165 | 620 | **+276%** |
-| SleepNumberInc | 671 | 671 | Stable |
+| example-orglabs | 165 | 620 | **+276%** |
+| example-org | 671 | 671 | Stable |
 
 ---
 
@@ -457,7 +457,7 @@ Data Completeness: ~90%
 ### Immediate (High Priority)
 
 1. **Investigate Dependencies Gap**
-   - Why only 47% coverage for sleepnumberlabs?
+   - Why only 47% coverage for example-orglabs?
    - Review syft JSON parsing logic
    - Check for duplicate detection issues
 

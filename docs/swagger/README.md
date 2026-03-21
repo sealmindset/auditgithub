@@ -223,8 +223,8 @@ All responses return JSON:
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "sleepnumber",
-  "display_name": "Sleep Number",
+  "name": "example-org",
+  "display_name": "Example Organization",
   "is_active": true,
   "total_repos": 42,
   "total_findings": 156
@@ -259,18 +259,18 @@ curl -X POST http://localhost:8000/api/organizations/ \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "sleepnumber",
-    "github_org": "sleepnumber",
+    "name": "example-org",
+    "github_org": "example-org",
     "github_token": "ghp_xxxxxxxxxxxx",
-    "display_name": "Sleep Number"
+    "display_name": "Example Organization"
   }'
 
 # 2. Import repositories
-curl -X POST "http://localhost:8000/api/organizations/sleepnumber/import?confirm=true" \
+curl -X POST "http://localhost:8000/api/organizations/example-org/import?confirm=true" \
   -H "Authorization: Bearer <token>"
 
 # 3. Start security scan
-curl -X POST "http://localhost:8000/api/organizations/sleepnumber/scan?scan_type=full" \
+curl -X POST "http://localhost:8000/api/organizations/example-org/scan?scan_type=full" \
   -H "Authorization: Bearer <token>"
 ```
 

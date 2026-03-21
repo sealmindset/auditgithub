@@ -44,7 +44,7 @@ post:
                 example: "pending"
               message:
                 type: string
-                example: "Scan started for 'sleepnumber'"
+                example: "Scan started for 'example-org'"
     '400':
       $ref: '../../components/responses.yaml#/BadRequest'
     '404':
@@ -75,7 +75,7 @@ get:
             properties:
               organization:
                 type: string
-                example: "sleepnumber"
+                example: "example-org"
               scan_status:
                 type: string
                 enum: [idle, pending, running, completed, failed]

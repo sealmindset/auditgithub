@@ -28,10 +28,10 @@ Standalone validation script that can be run manually or as part of orchestratio
 python validate_scan_metadata.py
 
 # Validate specific organization
-python validate_scan_metadata.py --org SleepNumberInc
+python validate_scan_metadata.py --org example-org
 
 # Validate specific repository
-python validate_scan_metadata.py --org sleepnumberlabs --repo my-api
+python validate_scan_metadata.py --org example-orglabs --repo my-api
 ```
 
 ### 2. Integration Points
@@ -195,13 +195,13 @@ You can manually validate repository metadata at any time:
 docker exec auditgh_api python /app/validate_scan_metadata.py
 
 # Validate specific organization
-docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberInc
+docker exec auditgh_api python /app/validate_scan_metadata.py --org example-org
 
 # Validate specific repository
-docker exec auditgh_api python /app/validate_scan_metadata.py --org sleepnumberlabs --repo my-api
+docker exec auditgh_api python /app/validate_scan_metadata.py --org example-orglabs --repo my-api
 
 # Enable verbose logging
-docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberInc -v
+docker exec auditgh_api python /app/validate_scan_metadata.py --org example-org -v
 ```
 
 ### Local Environment
@@ -210,10 +210,10 @@ docker exec auditgh_api python /app/validate_scan_metadata.py --org SleepNumberI
 python validate_scan_metadata.py
 
 # Validate organization
-python validate_scan_metadata.py --org SleepNumberInc
+python validate_scan_metadata.py --org example-org
 
 # Validate specific repo
-python validate_scan_metadata.py --org SleepNumberInc --repo EBS-E-7000-Store-Inventory-REST-API
+python validate_scan_metadata.py --org example-org --repo EBS-E-7000-Store-Inventory-REST-API
 ```
 
 ## Monitoring and Logs
@@ -224,11 +224,11 @@ The validation system provides comprehensive logging:
 2026-01-20 16:00:00,000 - INFO - ================================================================================
 2026-01-20 16:00:00,000 - INFO - Repository Metadata Validation After Scan
 2026-01-20 16:00:00,000 - INFO - ================================================================================
-2026-01-20 16:00:00,000 - INFO - Target: SleepNumberInc
+2026-01-20 16:00:00,000 - INFO - Target: example-org
 2026-01-20 16:00:00,000 - INFO - Total Repositories: 1872
 2026-01-20 16:00:00,000 - INFO - ================================================================================
-2026-01-20 16:00:00,010 - INFO - Updated metadata for SleepNumberInc/my-api: pushed_at, language
-2026-01-20 16:00:00,020 - INFO - Updated metadata for SleepNumberInc/my-service: pushed_at, language, description
+2026-01-20 16:00:00,010 - INFO - Updated metadata for example-org/my-api: pushed_at, language
+2026-01-20 16:00:00,020 - INFO - Updated metadata for example-org/my-service: pushed_at, language, description
 ...
 2026-01-20 16:00:10,000 - INFO - ================================================================================
 2026-01-20 16:00:10,000 - INFO - Validation Complete!
@@ -248,13 +248,13 @@ If repositories are missing metadata after validation:
 
 1. **Check if scan files exist**:
    ```bash
-   ls vulnerability_reports/SleepNumberInc/my-repo/my-repo_intel.json
-   ls vulnerability_reports/SleepNumberInc/my-repo/my-repo_cloc.json
+   ls vulnerability_reports/example-org/my-repo/my-repo_intel.json
+   ls vulnerability_reports/example-org/my-repo/my-repo_cloc.json
    ```
 
 2. **Verify file contents**:
    ```bash
-   cat vulnerability_reports/SleepNumberInc/my-repo/my-repo_intel.json | jq .
+   cat vulnerability_reports/example-org/my-repo/my-repo_intel.json | jq .
    ```
 
 3. **Check repository has been scanned**:
@@ -266,7 +266,7 @@ If repositories are missing metadata after validation:
 4. **Run validation manually with verbose logging**:
    ```bash
    docker exec auditgh_api python /app/validate_scan_metadata.py \
-     --org SleepNumberInc --repo my-repo -v
+     --org example-org --repo my-repo -v
    ```
 
 ### Incomplete intel.json
@@ -291,7 +291,7 @@ Check the scan logs for errors during the scan process.
 No configuration is required. The system automatically:
 - Detects report file locations
 - Handles both flat and org-based directory structures
-- Works with both SleepNumberInc and sleepnumberlabs organizations
+- Works with both example-org and example-orglabs organizations
 - Preserves existing data when updating
 
 ## Integration with Scheduling

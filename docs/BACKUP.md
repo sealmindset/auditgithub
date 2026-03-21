@@ -113,8 +113,8 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 ```
 Available Organizations:
 --------------------------------------------------------------------------------
-  sealmindset          sealmindset               Repos: 62    Findings: 29004
-  sleepnumberlabs      sleepnumberlabs           Repos: 1     Findings: 121
+  example-org          example-org               Repos: 62    Findings: 29004
+  example-orglabs      example-orglabs           Repos: 1     Findings: 121
 ```
 
 ### Backup Single Organization
@@ -126,13 +126,13 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 
 # Example
 docker-compose run --rm --entrypoint bash auditgh -c \
-  'python scripts/backup_organization.py --org sealmindset --output backups/'
+  'python scripts/backup_organization.py --org example-org --output backups/'
 ```
 
 **Output:**
 ```
-Backing up organization: sealmindset
-  Backing up organization: sealmindset (991a1366-1f57-4ac6-971c-7beb0e12371d)
+Backing up organization: example-org
+  Backing up organization: example-org (991a1366-1f57-4ac6-971c-7beb0e12371d)
     - Backing up repositories...
       Found 62 repositories
     - Backing up findings...
@@ -145,9 +145,9 @@ Backing up organization: sealmindset
       Found 64 scan runs
     - Backing up contributors...
       Found 38 contributors
-  Saved: backups/sealmindset_backup_20251214_222658.json (75594.6 KB)
+  Saved: backups/example-org_backup_20251214_222658.json (75594.6 KB)
 
-Backup complete: backups/sealmindset_backup_20251214_222658.json
+Backup complete: backups/example-org_backup_20251214_222658.json
 ```
 
 ### Backup All Organizations
@@ -166,7 +166,7 @@ Backup files are named automatically:
 {org_name}_backup_{YYYYMMDD}_{HHMMSS}.json
 ```
 
-Example: `sealmindset_backup_20251214_222658.json`
+Example: `example-org_backup_20251214_222658.json`
 
 ### Backup File Structure
 
@@ -176,7 +176,7 @@ Example: `sealmindset_backup_20251214_222658.json`
     "backup_version": "1.0",
     "backup_date": "2024-12-14T22:26:58.123456",
     "organization_id": "991a1366-1f57-4ac6-971c-7beb0e12371d",
-    "organization_name": "sealmindset",
+    "organization_name": "example-org",
     "summary": {
       "repositories": 62,
       "findings": 29004,
@@ -334,7 +334,7 @@ cp -r backups/ /mnt/backup-drive/auditgh/
 
 ```bash
 # Check JSON validity
-python3 -c "import json; json.load(open('backups/sealmindset_backup_20251214.json'))" && echo "Valid JSON"
+python3 -c "import json; json.load(open('backups/example-org_backup_20251214.json'))" && echo "Valid JSON"
 
 # Check file size
 ls -lh backups/*.json
@@ -342,7 +342,7 @@ ls -lh backups/*.json
 # View backup summary
 python3 -c "
 import json
-with open('backups/sealmindset_backup_20251214.json') as f:
+with open('backups/example-org_backup_20251214.json') as f:
     data = json.load(f)
     print('Organization:', data['metadata']['organization_name'])
     print('Backup Date:', data['metadata']['backup_date'])

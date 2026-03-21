@@ -49,7 +49,7 @@ Tools for managing GitHub organizations.
 - **`org_manager.py`** - Python backend for organization operations
 - **`manage-orgs.sh`** - Interactive menu for organization management
 - **`add-org.sh`** - Legacy: Add organization (use org.sh instead)
-- **`add_sleepnumber_org.py`** - Legacy: Add Sleep Number org (use org.sh instead)
+- **`add_example-org_org.py`** - Legacy: Add Example Organization org (use org.sh instead)
 
 **Usage:**
 ```bash
@@ -91,7 +91,7 @@ docker-compose run --rm scanner --target myorg/myrepo
 ./scripts/scanning/rescan_pattern.sh "*"
 
 # Orchestrate parallel scans
-python scripts/scanning/orchestrate_scans.py --org sleepnumber --max-workers 4
+python scripts/scanning/orchestrate_scans.py --org example-org --max-workers 4
 ```
 
 ## Architecture Generation (`architecture/`)
@@ -106,13 +106,13 @@ AI-powered architecture documentation generation.
 **Usage:**
 ```bash
 # Generate for single repo
-./scripts/architecture/gen-arch.sh sleepnumber webapp-frontend
+./scripts/architecture/gen-arch.sh example-org webapp-frontend
 
 # Batch generate with pattern
-./scripts/architecture/gen-arch-batch-docker.sh "sleepnumber" "webapp-*" --skip-if-exists
+./scripts/architecture/gen-arch-batch-docker.sh "example-org" "webapp-*" --skip-if-exists
 
 # Using Python CLI
-python scripts/architecture/generate_architecture_cli.py --org sleepnumber --repo myrepo
+python scripts/architecture/generate_architecture_cli.py --org example-org --repo myrepo
 ```
 
 See [Architecture Generation Guide](../docs/gen-arch.md) for detailed documentation.
@@ -141,7 +141,7 @@ Data processing, backfills, and system maintenance.
 **Usage:**
 ```bash
 # Backfill pushed_at dates
-python scripts/maintenance/backfill_pushed_at.py --org sleepnumber
+python scripts/maintenance/backfill_pushed_at.py --org example-org
 
 # Cleanup ghost repos
 python scripts/maintenance/cleanup_ghost_repos.py
@@ -162,10 +162,10 @@ Batch operations and bulk processing.
 **Usage:**
 ```bash
 # Process multiple repos
-python scripts/batch/batch_process.py sleepnumber "webapp-*" --skip-if-exists --delay=60
+python scripts/batch/batch_process.py example-org "webapp-*" --skip-if-exists --delay=60
 
 # Via Docker
-docker-compose exec api python scripts/batch/batch_process.py sleepnumber "*"
+docker-compose exec api python scripts/batch/batch_process.py example-org "*"
 ```
 
 See [Batch Processing Guide](../docs/BATCH_PROCESSING_GUIDE.md) for detailed documentation.

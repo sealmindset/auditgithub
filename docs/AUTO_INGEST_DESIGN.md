@@ -25,7 +25,7 @@ docker exec auditgh_api python ingest_reports.py
 4. No indication that ingestion is needed
 
 **Recent Example:**
-- SleepNumberInc: 1,878 repos scanned
+- example-org: 1,878 repos scanned
 - Database showed only 1 repo (old data)
 - All 1,877 new repos were in JSON files but not ingested
 
@@ -353,7 +353,7 @@ docker-compose run --rm scanner --target myorg
 # AUTO-INGEST: Loading results into database
 # ================================================================================
 # Ingesting reports from: /app/vulnerability_reports
-#   SleepNumberInc: 1871 repos, 754 findings
+#   example-org: 1871 repos, 754 findings
 # ✅ Auto-ingest completed successfully
 # ================================================================================
 ```

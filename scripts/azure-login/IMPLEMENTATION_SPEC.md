@@ -36,8 +36,8 @@ Automate the Azure CLI device-code login flow using Playwright to handle the bro
 - **Logging**: Every step logged with timestamps to stdout and optionally to file.
 
 ### 2. `config.py` — Configuration
-- `AZURE_LOGIN_EMAIL`: Target account email (default: `rob.vance@sleepnumber.com`)
-- `AZURE_SUBSCRIPTION`: Target subscription (default: `sn-openai-dev-01`)
+- `AZURE_LOGIN_EMAIL`: Target account email (default: `admin@company.example`)
+- `AZURE_SUBSCRIPTION`: Target subscription (default: `my-azure-subscription`)
 - `BROWSER_HEADLESS`: Whether to run headless (default: `False` — must be headed for MFA)
 - `BROWSER_SLOW_MO`: Milliseconds between actions (default: `500`)
 - `LOGIN_TIMEOUT`: Max wait for login completion in seconds (default: `300`)
@@ -86,7 +86,7 @@ Automate the Azure CLI device-code login flow using Playwright to handle the bro
 - Parse and display the account info
 
 ### Step 7: Set subscription
-- Run `az account set --subscription "sn-openai-dev-01"`
+- Run `az account set --subscription "my-azure-subscription"`
 - Verify with `az account show`
 - Display final confirmation
 

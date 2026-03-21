@@ -298,7 +298,7 @@ async def trigger_scan(
 ## Testing Integration
 
 ### Test Scenario 1: Admin User
-1. Login as admin (rob.vance@sleepnumber.com)
+1. Login as admin (admin@company.example)
 2. Try to delete a finding:
    - ✅ New system: Admin role check passes
    - ✅ Old system: `findings:delete` permission check passes

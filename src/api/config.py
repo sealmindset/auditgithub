@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Corporate identity matching configuration
-    # Comma-separated list of corporate email domains (e.g., "sleepnumber.com,company.com")
+    # Comma-separated list of corporate email domains (e.g., "company.com,corp.example.com")
     CORPORATE_EMAIL_DOMAINS: str = ""
-    # Comma-separated list of GitHub username suffixes to strip (e.g., "-sn,-snc,-sleepnumber,_sn,_snc")
+    # Comma-separated list of GitHub username suffixes to strip (e.g., "-corp,-dev,-company,_corp,_dev")
     CORPORATE_USERNAME_SUFFIXES: str = ""
 
     @property

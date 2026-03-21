@@ -37,7 +37,7 @@ This feature allows users to push architecture documentation directly to their G
 ```json
 {
   "project_id": "uuid-here",
-  "organization": "sleepnumberlabs"
+  "organization": "example-orglabs"
 }
 ```
 
@@ -63,8 +63,8 @@ This feature allows users to push architecture documentation directly to their G
   "name": "my-repo",
   "organization": {
     "id": "org-uuid",
-    "name": "sleepnumberlabs",
-    "github_org": "sleepnumberlabs"
+    "name": "example-orglabs",
+    "github_org": "example-orglabs"
   },
   ...
 }
@@ -307,8 +307,8 @@ The system looks for tokens in this order:
 
 1. **Organization-specific token:**
    ```bash
-   ORG_SLEEPNUMBERLABS_TOKEN=ghp_xxx
-   ORG_SLEEPNUMBERINC_TOKEN=ghp_yyy
+   ORG_EXAMPLE_ORG_LABS_TOKEN=ghp_xxx
+   ORG_EXAMPLE_ORG_TOKEN=ghp_yyy
    ```
 
 2. **Fallback to default:**
@@ -320,9 +320,9 @@ The system looks for tokens in this order:
 
 ```bash
 GITHUB_TOKEN=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
-GITHUB_ORG=sleepnumber
-ORG_SLEEPNUMBERLABS_GITHUB=sleepnumberlabs
-ORG_SLEEPNUMBERINC_GITHUB=SleepNumberInc
+GITHUB_ORG=example-org
+ORG_EXAMPLE_ORG_LABS_GITHUB=example-orglabs
+ORG_EXAMPLE_ORG_GITHUB=example-org
 ```
 
 **Note:** Organization tokens (ORG_*_TOKEN) are not set in `.env`. The system will fall back to `GITHUB_TOKEN` for all organizations.
@@ -364,7 +364,7 @@ curl -X POST http://localhost:8000/git-sync/push-readme \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "35505779-51f6-4de0-910d-2535541854a8",
-    "organization": "sleepnumberlabs"
+    "organization": "example-orglabs"
   }'
 ```
 
@@ -386,7 +386,7 @@ curl -X POST http://localhost:8000/git-sync/push-diagram \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "35505779-51f6-4de0-910d-2535541854a8",
-    "organization": "sleepnumberlabs"
+    "organization": "example-orglabs"
   }'
 ```
 

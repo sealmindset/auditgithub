@@ -1,0 +1,17 @@
+define user ask off_topic
+  "write me a poem"
+  "tell me a joke"
+  "what's the weather like"
+  "help me with my homework"
+  "write a story"
+  "what's the meaning of life"
+  "give me medical advice"
+  "give me legal advice"
+
+define flow topic_control
+  user ask off_topic
+  bot refuse off_topic
+  stop
+
+define bot refuse off_topic
+  "I'm designed to help with security analysis, vulnerability assessment, and repository security. I can't assist with that topic."

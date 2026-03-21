@@ -40,7 +40,7 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 #### How to Use
 ```bash
-# Quick start (uses defaults: rob.vance@sleepnumber.com, sn-openai-dev-01)
+# Quick start (uses defaults: admin@company.example, my-azure-subscription)
 ./scripts/azure-login/az-login.sh
 
 # Custom account and subscription
@@ -59,5 +59,5 @@ python scripts/azure-login/az_login.py --help
 3. Opens browser → enters code → clicks Next
 4. Selects account → handles password if needed
 5. **MFA pause** — user completes MFA on their device (number displayed in terminal)
-6. `az account set --subscription "sn-openai-dev-01"`
+6. `az account set --subscription "my-azure-subscription"`
 7. `az account show` verification with formatted output

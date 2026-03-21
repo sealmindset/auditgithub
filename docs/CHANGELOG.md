@@ -176,7 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Files Changed**: `orchestrate_scans.py`
 
 ### Added
-- **Multi-Org Token Support**: `orchestrate_scans.py` now implements dynamic token switching. It automatically detects and uses organization-specific tokens (e.g., `ORG_sleepnumberlabs_TOKEN` from `.env`) when scanning a target organization, overriding the default `GITHUB_TOKEN`. This ensures correct access permissions in multi-tenant environments.
+- **Multi-Org Token Support**: `orchestrate_scans.py` now implements dynamic token switching. It automatically detects and uses organization-specific tokens (e.g., `ORG_example-orglabs_TOKEN` from `.env`) when scanning a target organization, overriding the default `GITHUB_TOKEN`. This ensures correct access permissions in multi-tenant environments.
 
 - **DOE Self-Annealing for AI Model Configuration**
   - **Problem**: Claude API calls were failing with "model: llama3" errors when `AI_MODEL=llama3` was set in `.env` but `AI_PROVIDER=claude`, causing the wrong model to be sent to Anthropic's API.
@@ -260,7 +260,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Solution**: Enhanced GitHub code search to explicitly target PUBLIC repos OUTSIDE the organization using `NOT org:{current_org}` filter.
   - **Key Changes**:
     - Search queries now explicitly exclude the current org to find external usage patterns
-    - Added service identifier extraction from domain (e.g., "sleepiq" from "prod-apps-svc.sleepiq.sleepnumber.com")
+    - Added service identifier extraction from domain (e.g., "sleepiq" from "prod-apps-svc.sleepiq.example-org.com")
     - New `_extract_auth_headers_from_code()` function analyzes external code for auth patterns
     - Captures auth headers (Authorization, X-API-Key, Ocp-Apim-Subscription-Key, etc.)
     - Captures auth methods (Bearer token, Basic auth, fetch with headers, axios, requests)
@@ -269,7 +269,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Files Changed**: `execution/ai_credential_url_agent.py`
 
 - **URL Pre-Validation to Eliminate False Positives**
-  - **Problem**: Credentials were being mapped to URLs like `https://www.sleepnumber.com` that don't require authentication, creating false positives and wasting time testing credentials against public endpoints.
+  - **Problem**: Credentials were being mapped to URLs like `https://www.example-org.com` that don't require authentication, creating false positives and wasting time testing credentials against public endpoints.
   - **Solution**: Implemented URL pre-validation that tests each URL WITHOUT credentials first:
     1. **PUBLIC (200)**: URL returns success without auth → Skip, no credential needed
     2. **AUTH_REQUIRED (401/403)**: URL requires auth → Include in correlation
@@ -369,7 +369,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **CRITICAL: AI Credential-URL Matcher Now Uses Correct API Endpoints**
-  - **Problem**: The AI matcher was incorrectly correlating credentials with unrelated URLs. For example, a `mixpanel_token` was being tested against `sleepnumber.com` instead of `api.mixpanel.com`.
+  - **Problem**: The AI matcher was incorrectly correlating credentials with unrelated URLs. For example, a `mixpanel_token` was being tested against `example-org.com` instead of `api.mixpanel.com`.
   - **Root Cause**: When no matching URL was found in the codebase, the matcher defaulted to the first URL in the list (which could be completely unrelated).
   - **Solution**: Added `SERVICE_API_ENDPOINTS` mapping with canonical API URLs for each service type (Mixpanel, Stripe, Firebase, GitHub, OpenAI, etc.). The matcher now:
     1. Detects the service from the credential type
@@ -427,7 +427,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Files Changed**: `execution/ai_credential_url_agent.py`
 
 - **AWS Cognito client_id Now Tested Against Correct Endpoints**
-  - **Problem**: `cognito_client_id` was being tested against arbitrary URLs (like `qa.sleepnumber.com`) which always return 200 because they're public websites. The credential wasn't even being used in the request.
+  - **Problem**: `cognito_client_id` was being tested against arbitrary URLs (like `qa.example-org.com`) which always return 200 because they're public websites. The credential wasn't even being used in the request.
   - **Root Cause**: The agent didn't understand that `cognito_client_id` is NOT a bearer token - it's used in the request body with AWS Cognito's specific API.
   - **Solution**: Added `AWS_Cognito` as a separate service with:
     1. **Correct Endpoints**: `https://cognito-idp.{region}.amazonaws.com`
@@ -583,7 +583,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Multi-Tenant Organization Scanning** - Successfully scanned sleepnumberlabs/android-consumer-app
+- **Multi-Tenant Organization Scanning** - Successfully scanned example-orglabs/android-consumer-app
   - **Scan Results**: 121 findings including Azure API keys, secrets, and vulnerabilities
   - **Data Migration**: Migrated org-specific database data to master database with organization_id
   - **Organization Stats**: Updated organization stats to reflect actual repo/finding counts
@@ -617,7 +617,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Files Updated**: `execution/ai_credential_url_agent.py`
 
 - **Removed Hardcoded Organizations from Migrations** - Organizations are now created dynamically
-  - **Problem**: `sealmindset` and `sleepnumberlabs` were hardcoded in SQL migrations, appearing in fresh databases
+  - **Problem**: `example-org` and `example-orglabs` were hardcoded in SQL migrations, appearing in fresh databases
   - **Solution**: Removed all hardcoded organization inserts from migrations
   - **New Behavior**: Organizations are created when:
     1. User runs `--create-org NAME --github-org ORG --token TOKEN`
@@ -636,7 +636,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Files Updated**: `.env`, `.env.example`, `docker-compose.yml`, all docs, `scripts/setup_database.sh`
 
 - **API Multi-Tenant Database Routing Fix** - Fixed API querying wrong database
-  - **Problem**: API was routing to org-specific databases (`auditgh_sealmindset`) but data was stored in master DB (`auditgh_kb`)
+  - **Problem**: API was routing to org-specific databases (`auditgh_example_org`) but data was stored in master DB (`auditgh_kb`)
   - **Solution**: Changed `get_db()` to always use master DB with `organization_id` filtering
   - **Files Updated**: `src/api/database.py`, `src/api/routers/analytics.py`, `src/api/routers/organizations.py`
   - **New Functions**: `get_current_org_id()`, `apply_org_filter()` for query filtering
@@ -667,7 +667,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Ingestion Pipeline** (`ingest_scans.py`):
     - `ingest_single_repo()` and `ingest_reports()` now accept `organization_id` parameter
     - All created records (repos, scan_runs, findings) are scoped to organization
-  - **Impact**: Scans for `sleepnumberlabs` will now be stored separately from `sealmindset`
+  - **Impact**: Scans for `example-orglabs` will now be stored separately from `example-org`
 
 - **Organization Data Reset with Backup** - Safe reset process for clean slate scans
   - **Reset Script** (`scripts/reset_organization_data.py`):
@@ -864,7 +864,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Version tracking and rotation support
     - Credential format: `{org_name}/github_token`, `{org_name}/github_org`
   - **CLI Arguments** for `scan_repos.py`:
-    - `--target ORG`: Select organization for scanning (e.g., `--target sealmindset`)
+    - `--target ORG`: Select organization for scanning (e.g., `--target example-org`)
     - `--list-orgs`: List all registered organizations
     - `--create-org NAME`: Create new organization with database
     - `--sync-schemas`: Sync all organization schemas with master
@@ -890,7 +890,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `organization_schema_versions` for migration history
     - `organization_context` for session-based selection
     - Triggers for timestamp updates and audit logging
-    - Initial data: sealmindset as first/default organization
+    - Initial data: example-org as first/default organization
   - **Configuration**:
     - `SECRETS_MASTER_KEY`: Environment variable for consistent encryption across containers
     - `POSTGRES_*` variables take precedence over `DATABASE_URL` for container compatibility

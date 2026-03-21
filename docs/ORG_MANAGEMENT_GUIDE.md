@@ -35,8 +35,8 @@ The AuditGH system supports multiple GitHub organizations, each with isolated re
 
 **Using Command-Line**:
 ```bash
-./org.sh create sleepnumber sleepnumber ghp_xxxxxxxxxxxx --display-name "Sleep Number"
-./org.sh import sleepnumber
+./org.sh create example-org example-org ghp_xxxxxxxxxxxx --display-name "Example Organization"
+./org.sh import example-org
 ```
 
 **Using API**:
@@ -44,10 +44,10 @@ The AuditGH system supports multiple GitHub organizations, each with isolated re
 curl -X POST http://localhost:8000/api/organizations/ \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "sleepnumber",
-    "github_org": "sleepnumber",
+    "name": "example-org",
+    "github_org": "example-org",
     "github_token": "ghp_xxxxxxxxxxxx",
-    "display_name": "Sleep Number",
+    "display_name": "Example Organization",
     "set_as_default": false
   }'
 ```
@@ -95,7 +95,7 @@ Response: OrganizationResponse
 
 Example:
 ```bash
-curl http://localhost:8000/api/organizations/sleepnumber
+curl http://localhost:8000/api/organizations/example-org
 ```
 
 ### Create Organization
@@ -178,7 +178,7 @@ Response: {
 
 Example:
 ```bash
-curl -X POST "http://localhost:8000/api/organizations/sleepnumber/import?confirm=true"
+curl -X POST "http://localhost:8000/api/organizations/example-org/import?confirm=true"
 ```
 
 ### Sync Repositories
@@ -196,7 +196,7 @@ Response: {
 
 Example:
 ```bash
-curl -X POST http://localhost:8000/api/organizations/sleepnumber/sync-repos
+curl -X POST http://localhost:8000/api/organizations/example-org/sync-repos
 ```
 
 ### Update Credentials
@@ -213,7 +213,7 @@ Response: {"success": true, "message": "..."}
 
 Example:
 ```bash
-curl -X PUT http://localhost:8000/api/organizations/sleepnumber/credentials \
+curl -X PUT http://localhost:8000/api/organizations/example-org/credentials \
   -H "Content-Type: application/json" \
   -d '{"github_token": "ghp_new_token_here"}'
 ```
@@ -263,8 +263,8 @@ The `org.sh` script provides command-line access to all organization management 
 
 **Show Organization**:
 ```bash
-./org.sh show sleepnumber
-./org.sh show sleepnumber --json
+./org.sh show example-org
+./org.sh show example-org --json
 ```
 
 **Create Organization**:
@@ -301,8 +301,8 @@ The `org.sh` script provides command-line access to all organization management 
 ./org.sh import <name> [--token TOKEN]
 
 # Examples:
-./org.sh import sleepnumber                    # Uses GITHUB_TOKEN env var
-./org.sh import sleepnumber --token ghp_xxx    # Uses specified token
+./org.sh import example-org                    # Uses GITHUB_TOKEN env var
+./org.sh import example-org --token ghp_xxx    # Uses specified token
 ```
 
 **Set Default Organization**:
@@ -310,7 +310,7 @@ The `org.sh` script provides command-line access to all organization management 
 ./org.sh set-default <name>
 
 # Example:
-./org.sh set-default sleepnumber
+./org.sh set-default example-org
 ```
 
 #### Options
@@ -378,7 +378,7 @@ with OrgManager() as manager:
     orgs = manager.list_organizations(json_output=True)
 
     # Get organization details
-    org = manager.get_organization("sleepnumber", json_output=True)
+    org = manager.get_organization("example-org", json_output=True)
 
     # Create organization
     new_org = manager.create_organization(
@@ -435,22 +435,22 @@ with OrgManager() as manager:
 
 1. Create the organization:
    ```bash
-   ./org.sh create sleepnumber sleepnumber ghp_xxxxxxxxxxxx --display-name "Sleep Number"
+   ./org.sh create example-org example-org ghp_xxxxxxxxxxxx --display-name "Example Organization"
    ```
 
 2. Import repositories:
    ```bash
-   ./org.sh import sleepnumber
+   ./org.sh import example-org
    ```
 
 3. Verify import:
    ```bash
-   ./org.sh show sleepnumber
+   ./org.sh show example-org
    ```
 
 4. Run security scan:
    ```bash
-   docker-compose run --rm scanner --target sleepnumber
+   docker-compose run --rm scanner --target example-org
    ```
 
 ### Workflow 2: Switching Default Organization
@@ -460,7 +460,7 @@ with OrgManager() as manager:
 ./org.sh list
 
 # Set new default
-./org.sh set-default sleepnumber
+./org.sh set-default example-org
 
 # Verify change
 ./org.sh list
@@ -470,7 +470,7 @@ with OrgManager() as manager:
 
 ```bash
 # Update credentials via API
-curl -X PUT http://localhost:8000/api/organizations/sleepnumber/credentials \
+curl -X PUT http://localhost:8000/api/organizations/example-org/credentials \
   -H "Content-Type: application/json" \
   -d '{"github_token": "ghp_new_token_here"}'
 
@@ -509,7 +509,7 @@ done
 cat orgs.json | jq '.[] | select(.total_repos > 0) | {name, total_repos, total_findings}'
 
 # Check specific organization
-./org.sh show sleepnumber --json | jq '{name, total_repos, total_findings}'
+./org.sh show example-org --json | jq '{name, total_repos, total_findings}'
 ```
 
 ## Troubleshooting
@@ -657,7 +657,7 @@ docker-compose restart api
 - **API Documentation**: http://localhost:8000/docs (when API is running)
 - **GitHub Token Setup**: https://github.com/settings/tokens
 - **Database Schema**: See `migrations/002_organizations.sql`
-- **Backup Scripts**: See `add-org.sh.backup` and `add_sleepnumber_org.py.backup`
+- **Backup Scripts**: See `add-org.sh.backup` and `add_example-org_org.py.backup`
 
 ## Support
 

@@ -69,7 +69,7 @@ docker-compose exec db psql -U auditgh -d auditgh_kb -c \
 **Example:**
 ```bash
 docker-compose exec db psql -U auditgh -d auditgh_kb -c \
-  "UPDATE repositories SET url = 'https://github.com/sleepnumberdev/coveo-search' WHERE name = 'coveo-search';"
+  "UPDATE repositories SET url = 'https://github.com/example-orgdev/coveo-search' WHERE name = 'coveo-search';"
 ```
 
 ---
@@ -80,7 +80,7 @@ Update all repositories with missing URLs using a single SQL command:
 
 ```bash
 # Set your GitHub organization
-GITHUB_ORG="sleepnumberdev"
+GITHUB_ORG="example-orgdev"
 
 docker-compose exec db psql -U auditgh -d auditgh_kb -c \
   "UPDATE repositories SET url = 'https://github.com/${GITHUB_ORG}/' || name WHERE url IS NULL;"
@@ -106,7 +106,7 @@ Use the existing `fix_repo_urls.py` script:
 
 ```bash
 # Set the GitHub organization environment variable
-export GITHUB_ORG="sleepnumberdev"
+export GITHUB_ORG="example-orgdev"
 
 # Run the fix script
 python fix_repo_urls.py
@@ -131,7 +131,7 @@ The `ingest_scans.py` file should auto-fix missing URLs when processing reposito
 ```python
 # 1. Get or Create Repository
 repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
-github_org = os.getenv("GITHUB_ORG", "sealmindset")
+github_org = os.getenv("GITHUB_ORG", "example-org")
 repo_url = f"https://github.com/{github_org}/{repo_name}"
 
 if not repo:
@@ -194,9 +194,9 @@ https://github.com/{organization}/{repository_name}
 **Examples:**
 | Repository Name | Constructed URL |
 |----------------|-----------------|
-| `coveo-search` | `https://github.com/sleepnumberdev/coveo-search` |
-| `api-gateway` | `https://github.com/sleepnumberdev/api-gateway` |
-| `web-frontend` | `https://github.com/sleepnumberdev/web-frontend` |
+| `coveo-search` | `https://github.com/example-orgdev/coveo-search` |
+| `api-gateway` | `https://github.com/example-orgdev/api-gateway` |
+| `web-frontend` | `https://github.com/example-orgdev/web-frontend` |
 
 ---
 
@@ -208,7 +208,7 @@ Some repositories may have names starting with `-` (e.g., `-EBS-F-7005-AP-UPD-PY
 
 ```bash
 docker-compose exec db psql -U auditgh -d auditgh_kb -c \
-  "UPDATE repositories SET url = 'https://github.com/sleepnumberdev/-EBS-F-7005-AP-UPD-PYMT-METHOD' WHERE name = '-EBS-F-7005-AP-UPD-PYMT-METHOD';"
+  "UPDATE repositories SET url = 'https://github.com/example-orgdev/-EBS-F-7005-AP-UPD-PYMT-METHOD' WHERE name = '-EBS-F-7005-AP-UPD-PYMT-METHOD';"
 ```
 
 ### Different GitHub Organizations
@@ -270,7 +270,7 @@ If you get `Failed to clone repository... Repository not found` after setting th
 gh repo view ORG/REPO_NAME --json url,name,isPrivate
 
 # Example
-gh repo view sleepnumberdev/coveo-search --json url,name,isPrivate
+gh repo view example-orgdev/coveo-search --json url,name,isPrivate
 ```
 
 **Step 2: Search for the correct repository**
@@ -382,7 +382,7 @@ The `ingest_scans.py` file has been updated to automatically fix missing URLs wh
 ```python
 # 1. Get or Create Repository
 repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
-github_org = os.getenv("GITHUB_ORG", "sealmindset")
+github_org = os.getenv("GITHUB_ORG", "example-org")
 repo_url = f"https://github.com/{github_org}/{repo_name}"
 
 if not repo:

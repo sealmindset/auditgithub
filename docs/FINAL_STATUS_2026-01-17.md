@@ -99,7 +99,7 @@ The multi-prong ingestion pipeline has been successfully implemented with **outs
 
 ## Final Data Completeness
 
-### sleepnumberlabs
+### example-orglabs
 
 | Data Type | Coverage | Count | Status |
 |-----------|----------|-------|--------|
@@ -114,7 +114,7 @@ The multi-prong ingestion pipeline has been successfully implemented with **outs
 
 *Partial contributors expected (intel.json has top N only)
 
-### SleepNumberInc
+### example-org
 
 | Data Type | Coverage | Count | Status |
 |-----------|----------|-------|--------|

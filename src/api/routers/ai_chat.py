@@ -17,7 +17,7 @@ import logging
 # Mock authentication for now - replace with actual auth
 def get_current_user():
     class MockUser:
-        # Using sleepnumberlabs organization UUID from database
+        # Using default organization UUID from database
         organization_id = UUID('b8afdd8e-56e0-4dce-8331-d7964c707fc8')
     return MockUser()
 

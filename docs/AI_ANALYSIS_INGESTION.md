@@ -198,8 +198,8 @@ GROUP BY o.name;
 
 | Organization | Repositories | Threat Assessments |
 |--------------|--------------|-------------------|
-| **SleepNumberInc** | 42 | 47,908 |
-| **sleepnumberlabs** | 47 | 19,449 |
+| **example-org** | 42 | 47,908 |
+| **example-orglabs** | 47 | 19,449 |
 | **TOTAL** | **89** | **67,357** |
 
 **Achievement:** 67,357 AI-powered threat assessments ingested across 89 repositories! 🎉
@@ -610,8 +610,8 @@ GROUP BY o.name;
 
 | Organization | Repos with Threats | Total Threats | Repos with Specs |
 |--------------|--------------------|---------------|------------------|
-| **SleepNumberInc** | 42 | 47,908 | 313 |
-| **sleepnumberlabs** | 47 | 19,449 | 262 |
+| **example-org** | 42 | 47,908 | 313 |
+| **example-orglabs** | 47 | 19,449 | 262 |
 
 ---
 

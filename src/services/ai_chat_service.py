@@ -22,6 +22,10 @@ from models.ai_conversation import (
 import json
 import re
 from src.services.prompt_loader import get_prompt
+from src.services.ai_safety.sanitize import sanitize_prompt_input
+from src.services.ai_safety.validate import validate_agent_output
+from src.services.ai_safety.pii_masker import mask_pii, unmask_pii
+from src.services.ai_safety.errors import sanitize_ai_error
 
 logger = logging.getLogger(__name__)
 
@@ -319,11 +323,17 @@ class AIChatService:
                     "content": msg["content"]
                 })
 
+        # Sanitize user input (strips injection patterns, wraps in <user_input> tags)
+        sanitized_message = sanitize_prompt_input(user_message)
+
+        # Mask PII before sending to external AI provider
+        masked_context, pii_mappings = mask_pii(context_str)
+
         # Add current user message with context
-        current_message = f"""User Question: {user_message}
+        current_message = f"""User Question: {sanitized_message}
 
 ## Available Context:
-{context_str}
+{masked_context}
 
 Please analyze the question and provide a detailed, accurate response based on the context provided. If the context is insufficient, clearly state what information is missing. Focus on {focus} and zero-trust architecture principles."""
 
@@ -343,6 +353,15 @@ Please analyze the question and provide a detailed, accurate response based on t
 
             content = result["content"]
             tokens_used = result["tokens_used"]
+
+            # Validate AI output (strip dangerous HTML, check for prompt leakage)
+            validation = validate_agent_output(content)
+            content = validation["sanitized_text"]
+            if not validation["valid"]:
+                logger.warning(f"AI output validation issues: {validation['issues']}")
+
+            # Unmask PII in response (restore real values for storage)
+            content = unmask_pii(content, pii_mappings)
 
             # Check if response indicates need for clarification
             needs_clarification = "need clarification" in content.lower() or "unclear" in content.lower()
@@ -367,8 +386,8 @@ Please analyze the question and provide a detailed, accurate response based on t
             }
 
         except Exception as e:
-            logger.error(f"LLM API error: {e}", exc_info=True)
-            raise
+            safe_error = sanitize_ai_error(e)
+            raise RuntimeError(safe_error["message"]) from e
 
     def _format_context(self, context: Dict[str, Any]) -> str:
         """Format context for inclusion in prompt"""

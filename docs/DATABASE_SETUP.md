@@ -272,12 +272,12 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 **Expected output:**
 ```
 [AIOrganizationAgent] Syncing all organization schemas...
-[AIOrganizationAgent] Syncing schema for: sealmindset
+[AIOrganizationAgent] Syncing schema for: example-org
 [AIOrganizationAgent] Applying master schema to: auditgh_kb
 [AIOrganizationAgent] Schema applied via psycopg2 to: auditgh_kb
-[AIOrganizationAgent] Syncing schema for: sleepnumberlabs
-[AIOrganizationAgent] Applying master schema to: auditgh_sleepnumberlabs
-[AIOrganizationAgent] Schema applied via psycopg2 to: auditgh_sleepnumberlabs
+[AIOrganizationAgent] Syncing schema for: example-orglabs
+[AIOrganizationAgent] Applying master schema to: auditgh_example_orglabs
+[AIOrganizationAgent] Schema applied via psycopg2 to: auditgh_example_orglabs
 [AIOrganizationAgent] Schema sync complete: 2 synced, 0 already synced, 0 errors
 
 Results: 2 synced, 0 already synced, 0 errors
@@ -298,15 +298,15 @@ docker-compose run --rm --entrypoint bash auditgh -c \
 ```
 📋 Registered Organizations:
 ------------------------------------------------------------
-  sealmindset (default)
-    GitHub: sealmindset | DB: auditgh_kb
+  example-org (default)
+    GitHub: example-org | DB: auditgh_kb
     Status: ✓ active | Schema: synced
 
-  sleepnumberlabs
-    GitHub: sleepnumberlabs | DB: auditgh_sleepnumberlabs
+  example-orglabs
+    GitHub: example-orglabs | DB: auditgh_example_orglabs
     Status: ✓ active | Schema: synced
 
-🔑 Organizations with credentials: sealmindset, sleepnumberlabs
+🔑 Organizations with credentials: example-org, example-orglabs
 ```
 
 ---
@@ -355,8 +355,8 @@ After setup, you'll have:
 | Database | Purpose |
 |----------|---------|
 | `auditgh_kb` | Master database with organizations table |
-| `auditgh_kb` | sealmindset organization data |
-| `auditgh_sleepnumberlabs` | sleepnumberlabs organization data |
+| `auditgh_kb` | example-org organization data |
+| `auditgh_example_orglabs` | example-orglabs organization data |
 
 Each organization database contains:
 - `repositories` - Scanned repositories
@@ -506,13 +506,13 @@ After database setup:
 1. **Run a dry-run scan:**
    ```bash
    docker-compose run --rm --entrypoint bash auditgh -c \
-     'python3 scan_repos.py --target sealmindset --dry-run'
+     'python3 scan_repos.py --target example-org --dry-run'
    ```
 
 2. **Run actual scan:**
    ```bash
    docker-compose run --rm --entrypoint bash auditgh -c \
-     'python3 scan_repos.py --target sealmindset'
+     'python3 scan_repos.py --target example-org'
    ```
 
 3. **Access the Web UI:**

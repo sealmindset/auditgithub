@@ -82,11 +82,11 @@ PL/SQL scanning happens automatically during normal scans:
 
 ```bash
 # Regular scan - PL/SQL rules apply automatically to .sql files
-docker-compose run --rm scanner --target SleepNumberInc
+docker-compose run --rm scanner --target example-org
 
 # Scan specific Oracle EBS repository
 docker-compose run --rm scanner \
-  --target SleepNumberInc \
+  --target example-org \
   --repo EBS-E-7000-Store-Inventory-REST-API
 
 # Results are automatically ingested into database
@@ -106,10 +106,10 @@ To update existing repositories with PL/SQL security scans:
 
 ```bash
 # Preview which repos have PL/SQL code
-docker exec auditgh_api python /app/rescan_plsql_repos.py --org SleepNumberInc --dry-run
+docker exec auditgh_api python /app/rescan_plsql_repos.py --org example-org --dry-run
 
 # Scan all PL/SQL repos in organization
-docker exec auditgh_api python /app/rescan_plsql_repos.py --org SleepNumberInc
+docker exec auditgh_api python /app/rescan_plsql_repos.py --org example-org
 
 # Scan all PL/SQL repos across all organizations
 docker exec auditgh_api python /app/rescan_plsql_repos.py
@@ -123,22 +123,22 @@ docker exec auditgh_api python /app/ingest_reports.py
 ================================================================================
 PL/SQL Repository Security Re-Scan
 ================================================================================
-Target: SleepNumberInc
+Target: example-org
 Mode: LIVE SCAN
 ================================================================================
 
 Scanning repository directories for PL/SQL files...
 Found 15 repositories with PL/SQL code:
 
-  1. SleepNumberInc/EBS-E-7000-Store-Inventory-REST-API (47 PL/SQL files)
-  2. SleepNumberInc/oracle-utilities (23 PL/SQL files)
-  3. SleepNumberInc/ebs-custom-reports (156 PL/SQL files)
+  1. example-org/EBS-E-7000-Store-Inventory-REST-API (47 PL/SQL files)
+  2. example-org/oracle-utilities (23 PL/SQL files)
+  3. example-org/ebs-custom-reports (156 PL/SQL files)
   ...
 
 ================================================================================
-[1/15] SleepNumberInc/EBS-E-7000-Store-Inventory-REST-API
+[1/15] example-org/EBS-E-7000-Store-Inventory-REST-API
   Found 8 PL/SQL security issues
-[2/15] SleepNumberInc/oracle-utilities
+[2/15] example-org/oracle-utilities
   Found 3 PL/SQL security issues
 ...
 
@@ -162,7 +162,7 @@ docker exec auditgh_api semgrep scan \
   --config /app/semgrep_plsql_rules.yml \
   --json \
   --output /tmp/plsql_results.json \
-  /app/vulnerability_reports/SleepNumberInc/EBS-E-7000-Store-Inventory-REST-API/
+  /app/vulnerability_reports/example-org/EBS-E-7000-Store-Inventory-REST-API/
 
 # View results
 docker exec auditgh_api cat /tmp/plsql_results.json | jq '.results[] | {severity: .extra.severity, message: .extra.message, file: .path, line: .start.line}'
@@ -173,7 +173,7 @@ docker exec auditgh_api cat /tmp/plsql_results.json | jq '.results[] | {severity
 ### In Web UI
 
 1. **Navigate to:** http://localhost:3000
-2. **Select organization:** SleepNumberInc
+2. **Select organization:** example-org
 3. **Go to:** Repositories → Projects
 4. **Click on repository:** e.g., EBS-E-7000-Store-Inventory-REST-API
 5. **View SAST tab:** PL/SQL findings appear here with other SAST results
@@ -225,7 +225,7 @@ docker exec auditgh_db psql -U postgres -d security_portal -c "
   JOIN organizations o ON r.organization_id = o.id
   WHERE f.scanner_name = 'semgrep'
     AND f.finding_type = 'sast'
-    AND o.github_org = 'SleepNumberInc'
+    AND o.github_org = 'example-org'
   GROUP BY o.github_org, r.name, f.severity
   ORDER BY
     CASE f.severity
@@ -312,7 +312,7 @@ For `EBS-E-7000-Store-Inventory-REST-API`:
 ```bash
 # Scan the repository
 docker-compose run --rm scanner \
-  --target SleepNumberInc \
+  --target example-org \
   --repo EBS-E-7000-Store-Inventory-REST-API
 
 # View findings
@@ -331,7 +331,7 @@ docker-compose run --rm scanner \
 
 1. **Run scans before deployment:**
    ```bash
-   docker-compose run --rm scanner --target SleepNumberInc --repo YOUR_EBS_REPO
+   docker-compose run --rm scanner --target example-org --repo YOUR_EBS_REPO
    ```
 
 2. **Review findings in Web UI** under SAST tab
@@ -382,7 +382,7 @@ docker-compose run --rm scanner \
 
 ```bash
 # Check if PL/SQL files were detected
-docker exec auditgh_api ls -la /app/vulnerability_reports/SleepNumberInc/EBS-E-7000-Store-Inventory-REST-API/*.sql
+docker exec auditgh_api ls -la /app/vulnerability_reports/example-org/EBS-E-7000-Store-Inventory-REST-API/*.sql
 
 # Check if rules file exists
 docker exec auditgh_api cat /app/semgrep_plsql_rules.yml | head -20
@@ -391,7 +391,7 @@ docker exec auditgh_api cat /app/semgrep_plsql_rules.yml | head -20
 docker exec auditgh_api semgrep scan \
   --config /app/semgrep_plsql_rules.yml \
   --verbose \
-  /app/vulnerability_reports/SleepNumberInc/EBS-E-7000-Store-Inventory-REST-API/
+  /app/vulnerability_reports/example-org/EBS-E-7000-Store-Inventory-REST-API/
 ```
 
 ### Findings not showing in UI

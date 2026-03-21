@@ -34,7 +34,7 @@ python az_login.py --auto-password
 ```
 
 **How it works:**
-1. Script prompts: `Enter password for rob.vance@sleepnumber.com:`
+1. Script prompts: `Enter password for admin@company.example:`
 2. You type your password (characters are hidden - no echo)
 3. Script automatically fills the password in the browser
 4. Password is cleared from memory after use
@@ -91,8 +91,8 @@ python az_login.py
 You can set default values to avoid typing them each time:
 
 ```bash
-export AZURE_LOGIN_EMAIL="rob.vance@sleepnumber.com"
-export AZURE_SUBSCRIPTION="sn-openai-dev-01"
+export AZURE_LOGIN_EMAIL="admin@company.example"
+export AZURE_SUBSCRIPTION="my-azure-subscription"
 export AZURE_MFA_TIMEOUT="300"
 
 # Then simply run:

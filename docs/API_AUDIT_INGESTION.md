@@ -153,7 +153,7 @@ GROUP BY direction;
 | JSON Field | Database Column | Example |
 |------------|-----------------|---------|
 | `category` | `direction` | "inbound", "outbound", "config" |
-| `endpoint_path` or `code` | `endpoint_url` | "https://api.sleepiq.sleepnumber.com/rest/" |
+| `endpoint_path` or `code` | `endpoint_url` | "https://api.sleepiq.example-org.com/rest/" |
 | `http_method` | `http_method` | "GET", "POST", "ANY" |
 | `path` | `file_path` | "app/src/main/res/raw/config.properties" |
 | `line` | `line_number` | 2 |
@@ -215,9 +215,9 @@ LIMIT 10;
 ```
 endpoint_url                                           | direction | http_method | framework
 -------------------------------------------------------+-----------+-------------+-----------
-prod.sleepiq.api_url=https://api.sleepiq.sleepnumber.com/rest/ | config | GET | unknown
+prod.sleepiq.api_url=https://api.sleepiq.example-org.com/rest/ | config | GET | unknown
 prod.edp.api_url=https://sleepiqapi.azure-api.net/prod/ | config | GET | unknown
-stage.sleepiq.api_url=https://stage-api.stage.siq.sleepnumber.com/rest/ | config | GET | unknown
+stage.sleepiq.api_url=https://stage-api.stage.siq.example-org.com/rest/ | config | GET | unknown
 requires login                                         | inbound   | ANY | express
 ...
 ```
@@ -353,7 +353,7 @@ http_method = endpoint.get('http_method', 'ANY')
 ### Your Pen Test Context
 
 You mentioned:
-> "I had conducted a pen test against the production version of the android_consumer_app (see /Users/rob.vance@sleepnumber.com/Documents/GitHub/siqassess for details) that I know what is identified by the app is reliable and accurate."
+> "I had conducted a pen test against the production version of the android_consumer_app (see /Users/admin@company.example/Documents/GitHub/siqassess for details) that I know what is identified by the app is reliable and accurate."
 
 ### Cross-Validation Recommended
 
@@ -402,8 +402,8 @@ GROUP BY o.name;
 
 | Organization | Repos with APIs | Total Endpoints |
 |--------------|-----------------|-----------------|
-| SleepNumberInc | 187 | 826 |
-| sleepnumberlabs | 38 | 345 |
+| example-org | 187 | 826 |
+| example-orglabs | 38 | 345 |
 
 ---
 
@@ -523,7 +523,7 @@ Your observation was **100% correct** - we had forgotten to include API audit in
 - Deduplication working (13 duplicates prevented)
 - Data structure matches audit report
 
-**Next Step:** Compare ingested API servers with your pen test results from `/Users/rob.vance@sleepnumber.com/Documents/GitHub/siqassess` to validate accuracy.
+**Next Step:** Compare ingested API servers with your pen test results from `/Users/admin@company.example/Documents/GitHub/siqassess` to validate accuracy.
 
 ---
 

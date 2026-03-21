@@ -111,7 +111,7 @@ agh init
 ```
 
 This command:
-1. Detects the GitHub org from `git remote` (e.g., `sleepnumberlabs`)
+1. Detects the GitHub org from `git remote` (e.g., `example-orglabs`)
 2. Fetches policy from `agh-policy` repo (public or private with auth)
 3. Resolves effective policy (org default + repo-specific override if exists)
 4. Generates `.github/workflows/agh-scan.yaml` from policy template
@@ -226,7 +226,7 @@ Security Engineering                          Developers
 | (GitHub)         |                              |
 |                  |    agh init / agh scan        |
 | org/             | <----------------------------+
-|   sleepnumberlabs/                              |
+|   example-orglabs/                              |
 |     policy.yaml  |    GH Actions workflow       |
 |     semgrep-rules/| --------------------------> |
 |     gitleaks.toml |                              |
@@ -254,12 +254,12 @@ Security Engineering                          Developers
 ### 4.3 Policy Inheritance
 
 ```
-org/sleepnumberlabs/policy.yaml         # Baseline for all repos
+org/example-orglabs/policy.yaml         # Baseline for all repos
   |
-  +-- repos/sleepnumberlabs/android-consumer-app/policy.yaml
+  +-- repos/example-orglabs/android-consumer-app/policy.yaml
   |     (overrides: stricter severity, more reviews)
   |
-  +-- repos/sleepnumberlabs/internal-docs/policy.yaml
+  +-- repos/example-orglabs/internal-docs/policy.yaml
   |     (overrides: relaxed coverage, fewer tools)
   |
   +-- all other repos: inherit org baseline as-is

@@ -39,14 +39,14 @@ PostgreSQL (:5432)
 │   │   ├── user_roles             ← User-role-tenant assignments
 │   │   └── users                  ← User accounts
 │   │
-│   ├── tenant_sleepnumber schema  ← Isolated per-org
+│   ├── tenant_example-org schema  ← Isolated per-org
 │   │   ├── repositories
 │   │   ├── findings
 │   │   ├── scan_runs
 │   │   ├── scan_schedules
 │   │   └── ... (all operational tables)
 │   │
-│   └── tenant_sealmindset schema  ← Another org
+│   └── tenant_example-org schema  ← Another org
 │       ├── repositories
 │       ├── findings
 │       └── ...

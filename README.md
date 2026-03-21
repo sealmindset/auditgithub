@@ -23,7 +23,7 @@ AuditGH is an enterprise-grade security scanning tool that:
 
 ```bash
 # Clone the repository
-git clone https://github.com/sealmindset/auditgithub.git
+git clone https://github.com/example-org/auditgithub.git
 cd auditgithub
 
 # Configure environment
@@ -189,7 +189,7 @@ GNU General Public License v3.0
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/sealmindset/auditgithub/issues)
+- **Issues:** [GitHub Issues](https://github.com/example-org/auditgithub/issues)
 - **Documentation:** [docs/](docs/)
 - **Cheatsheet:** [CHEATSHEET.md](CHEATSHEET.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)

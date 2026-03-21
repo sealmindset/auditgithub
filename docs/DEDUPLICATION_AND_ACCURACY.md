@@ -195,7 +195,7 @@ Coverage by Data Type:
 
 ### android-consumer-app Comparison
 
-Your pen test at: `/Users/rob.vance@sleepnumber.com/Documents/GitHub/siqassess`
+Your pen test at: `/Users/admin@company.example/Documents/GitHub/siqassess`
 
 #### Database Findings
 
@@ -263,7 +263,7 @@ FROM findings f
 WHERE f.repository_id = (
     SELECT id FROM repositories
     WHERE name = 'android-consumer-app'
-    AND organization_id = (SELECT id FROM organizations WHERE name = 'sleepnumberlabs')
+    AND organization_id = (SELECT id FROM organizations WHERE name = 'example-orglabs')
 )
 AND f.scanner_name = 'gitleaks'
 ORDER BY f.file_path, f.line_start
@@ -625,7 +625,7 @@ COPY (
 
 ### Immediate Actions
 
-1. **Export android-consumer-app findings** and cross-reference with `/Users/rob.vance@sleepnumber.com/Documents/GitHub/siqassess` results
+1. **Export android-consumer-app findings** and cross-reference with `/Users/admin@company.example/Documents/GitHub/siqassess` results
 2. **Calculate accuracy metrics** (precision, recall, F1)
 3. **Identify false positives** and create filtering rules
 4. **Implement triage workflow** for security team validation
