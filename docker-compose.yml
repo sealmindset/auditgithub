@@ -189,8 +189,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: auditgh-redis
-    ports:
-      - "6379:6379"
+    # Port not exposed to host — shares host Redis on 6379, containers use internal network
     volumes:
       - redis-data:/data
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
