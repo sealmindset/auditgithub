@@ -58,6 +58,12 @@ try:
 except ImportError:
     WAF_AUDITOR_AVAILABLE = False
 
+try:
+    from scripts.scanning.scan_waf_static import run_waf_static
+    WAF_STATIC_AVAILABLE = True
+except ImportError:
+    WAF_STATIC_AVAILABLE = False
+
 # =============================================================================
 # DOE Self-Annealing: AI Model Configuration
 # =============================================================================
@@ -1899,8 +1905,8 @@ def _persist_scan_findings(db_session, repository_id: str, findings: List[Dict[s
             finding_type = "sca"
         elif scanner_name in ["checkov", "terrascan", "kics", "terraform-enhanced"]:
             finding_type = "iac"
-        elif scanner_name in ["waf-auditor"]:
-            finding_type = "cloud_config"
+        elif scanner_name in ["waf-auditor", "waf-static"]:
+            finding_type = "waf"
 
         # Count new findings
         count = 0
@@ -2974,6 +2980,13 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
                     repo_path, repo_name, repo_report_dir)
             else:
                 logging.info(f"Skipping terraform-enhanced for {repo_name} (no IaC detected)")
+
+        if is_scanner_enabled('waf-static') and WAF_STATIC_AVAILABLE:
+            if has_iac:
+                waf_static_result = run_waf_static(
+                    repo_path, repo_name, repo_report_dir)
+            else:
+                logging.info(f"Skipping waf-static for {repo_name} (no IaC detected)")
 
         if is_scanner_enabled('waf-auditor') and WAF_AUDITOR_AVAILABLE:
             waf_auditor_result = run_waf_auditor(
