@@ -3,13 +3,18 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
+import os
 import uuid
+import docker
 from loguru import logger
 from ..dependencies import get_tenant_db
 from .. import models
 from src.auth.dependencies import get_current_user
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
+
+SCANNER_IMAGE = os.getenv("SCANNER_IMAGE", "auditgithub-scanner:latest")
+DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "auditgithub_default")
 
 router = APIRouter(
     prefix="/scans",
@@ -30,85 +35,119 @@ class ScanResponse(BaseModel):
 class ScanStatusResponse(BaseModel):
     scan_id: str = Field(..., description="Scan run UUID")
     status: str = Field(..., description="Current status: queued, running, completed, failed")
+    scan_type: Optional[str] = Field(None, description="Scan type: full, incremental, or validation")
     findings_count: Optional[int] = Field(None, description="Number of findings discovered")
     created_at: Optional[datetime] = Field(None, description="Scan creation timestamp")
+    started_at: Optional[datetime] = Field(None, description="Scan start timestamp")
     completed_at: Optional[datetime] = Field(None, description="Scan completion timestamp")
+    elapsed_seconds: Optional[int] = Field(None, description="Elapsed time in seconds")
+    error_message: Optional[str] = Field(None, description="Error details if scan failed")
+
+
+def _get_scanner_env() -> dict:
+    """Build environment dict for scanner container from current env."""
+    keys = [
+        "GITHUB_TOKEN", "GITHUB_ORG", "GITHUB_API",
+        "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
+        "SECRETS_MASTER_KEY",
+        "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN",
+    ]
+    env = {k: os.getenv(k, "") for k in keys if os.getenv(k)}
+    env["POSTGRES_HOST"] = "db"
+    env["POSTGRES_PORT"] = "5432"
+    return env
+
 
 def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: List[str] = None, finding_ids: List[str] = None):
-    """
-    Background task to execute the scan.
-    """
+    """Run scan in the dedicated scanner container via Docker SDK."""
     logger.info(f"Starting scan {scan_id} for {repo_name} (Type: {scan_type}, Scanners: {scanners})")
-    
+
     from ..database import get_db
     db = next(get_db())
     scan_run = db.query(models.ScanRun).filter(models.ScanRun.id == scan_id).first()
-    
+
+    container = None
     try:
         if scan_run:
             scan_run.status = "running"
             db.commit()
 
-        # Build command
-        cmd = ["python3", "scan_repos.py", "--repo", repo_name, "--no-ai-agent"]
-        
+        client = docker.from_env()
+
+        # Build scanner command args
+        cmd_parts = ["--repo", repo_name, "--no-ai-agent",
+                      "--report-dir", "/app/vulnerability_reports",
+                      "--loglevel", "INFO"]
+        github_org = os.getenv("GITHUB_ORG", "")
+        if github_org:
+            cmd_parts.extend(["--org", github_org])
         if scanners:
-            cmd.extend(["--scanners", ",".join(scanners)])
-            
-        # Execute scan
-        import subprocess
-        process = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd="/app" # Assuming running in container
+            cmd_parts.extend(["--scanners", ",".join(scanners)])
+
+        # Resolve host path for volume mounts (map from container /app to host)
+        host_project_dir = os.getenv("HOST_PROJECT_DIR", "/app")
+
+        volumes = {
+            f"{host_project_dir}/vulnerability_reports": {"bind": "/app/vulnerability_reports", "mode": "rw"},
+        }
+
+        logger.info(f"Launching scanner container: {SCANNER_IMAGE} {' '.join(cmd_parts)}")
+
+        container = client.containers.run(
+            SCANNER_IMAGE,
+            command=cmd_parts,
+            environment=_get_scanner_env(),
+            volumes=volumes,
+            network=DOCKER_NETWORK,
+            name=f"auditgh_scan_{scan_id[:8]}",
+            detach=True,
+            mem_limit="8g",
+            cpu_count=4,
         )
-        
-        if process.returncode != 0:
-            logger.error(f"Scan failed: {process.stderr}")
+
+        # Wait for container to finish (timeout 1 hour)
+        result = container.wait(timeout=3600)
+        exit_code = result.get("StatusCode", -1)
+        logs = container.logs(tail=200).decode("utf-8", errors="replace")
+
+        logger.info(f"Scanner container exited with code {exit_code} for {repo_name}")
+        if logs:
+            logger.info(f"Scanner output (last 500 chars): {logs[-500:]}")
+
+        if exit_code != 0:
             if scan_run:
                 scan_run.status = "failed"
-                scan_run.error_message = process.stderr
+                scan_run.error_message = logs[-1000:]
                 db.commit()
             return
 
-        # Ingest results
-        try:
-            # Import here to avoid circular imports
-            import sys
-            import os
-            sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
-            from ingest_scans import ingest_single_repo
-            
-            # We need the report directory. Assuming default structure.
-            # scan_repos.py writes to /app/vulnerability_reports/{safe_repo_name}
-            # ingest_single_repo expects repo_name and repo_dir
-            
-            # Sanitize repo name as done in scan_repos.py
-            safe_repo_name = "".join(c if c.isalnum() or c in '._-' else '_' for c in repo_name)
-            report_dir = f"/app/vulnerability_reports/{safe_repo_name}"
-            
-            ingest_single_repo(repo_name, report_dir)
-            
-            if scan_run:
-                scan_run.status = "completed"
-                scan_run.completed_at = datetime.utcnow()
-                db.commit()
-                
-        except Exception as e:
-            logger.error(f"Ingestion failed: {e}")
-            if scan_run:
-                scan_run.status = "failed"
-                scan_run.error_message = f"Scan succeeded but ingestion failed: {e}"
-                db.commit()
+        # Scan succeeded — mark completed
+        if scan_run:
+            scan_run.status = "completed"
+            scan_run.completed_at = datetime.utcnow()
+            db.commit()
 
+        logger.info(f"Scan {scan_id} completed for {repo_name}")
+
+    except docker.errors.ImageNotFound:
+        msg = f"Scanner image '{SCANNER_IMAGE}' not found. Build with: docker compose build scanner"
+        logger.error(msg)
+        if scan_run:
+            scan_run.status = "failed"
+            scan_run.error_message = msg
+            db.commit()
     except Exception as e:
         logger.error(f"Scan execution failed: {e}")
         if scan_run:
             scan_run.status = "failed"
-            scan_run.error_message = str(e)
+            scan_run.error_message = str(e)[:1000]
             db.commit()
     finally:
+        if container:
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
         db.close()
 
 @router.post("/", dependencies=[Depends(require_permissions("scans:execute"))], response_model=ScanResponse, summary="Trigger a security scan", responses={404: {"description": "Repository not found"}, 401: {"description": "Not authenticated"}, 403: {"description": "Insufficient permissions"}})
@@ -176,10 +215,21 @@ async def get_scan_status(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     
+    now = datetime.utcnow()
+    started = scan.started_at
+    elapsed = None
+    if started:
+        end = scan.completed_at or now
+        elapsed = int((end - started).total_seconds())
+
     return {
         "scan_id": str(scan.id),
         "status": scan.status,
+        "scan_type": scan.scan_type,
         "findings_count": scan.findings_count,
         "created_at": scan.created_at,
-        "completed_at": scan.completed_at
+        "started_at": scan.started_at,
+        "completed_at": scan.completed_at,
+        "elapsed_seconds": elapsed,
+        "error_message": scan.error_message,
     }

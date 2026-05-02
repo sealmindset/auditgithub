@@ -45,6 +45,19 @@ except ImportError as e:
     # Define KnowledgeBase as None if not available
     KnowledgeBase = None
 
+# Phase 4 scanner modules (optional imports)
+try:
+    from scripts.scanning.scan_terraform_enhanced import run_terraform_enhanced
+    TERRAFORM_ENHANCED_AVAILABLE = True
+except ImportError:
+    TERRAFORM_ENHANCED_AVAILABLE = False
+
+try:
+    from scripts.scanning.scan_waf_auditor import run_waf_auditor
+    WAF_AUDITOR_AVAILABLE = True
+except ImportError:
+    WAF_AUDITOR_AVAILABLE = False
+
 # =============================================================================
 # DOE Self-Annealing: AI Model Configuration
 # =============================================================================
@@ -1884,8 +1897,10 @@ def _persist_scan_findings(db_session, repository_id: str, findings: List[Dict[s
             finding_type = "secret"
         elif scanner_name in ["dependency-check", "safety", "pip-audit", "npm-audit"]:
             finding_type = "sca"
-        elif scanner_name in ["checkov", "terrascan", "kics"]:
+        elif scanner_name in ["checkov", "terrascan", "kics", "terraform-enhanced"]:
             finding_type = "iac"
+        elif scanner_name in ["waf-auditor"]:
+            finding_type = "cloud_config"
 
         # Count new findings
         count = 0
@@ -2945,6 +2960,24 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
         # Run MobSF for mobile app security (Android/iOS)
         if is_scanner_enabled('mobsf'):
             mobsf_result = run_mobsf_static(repo_path, repo_name, repo_report_dir)
+
+        # =====================================================================
+        # PHASE 4 SCANNERS: Enhanced Terraform & AWS WAF Auditor
+        # =====================================================================
+
+        terraform_enhanced_result = None
+        waf_auditor_result = None
+
+        if is_scanner_enabled('terraform-enhanced') and TERRAFORM_ENHANCED_AVAILABLE:
+            if has_iac:
+                terraform_enhanced_result = run_terraform_enhanced(
+                    repo_path, repo_name, repo_report_dir)
+            else:
+                logging.info(f"Skipping terraform-enhanced for {repo_name} (no IaC detected)")
+
+        if is_scanner_enabled('waf-auditor') and WAF_AUDITOR_AVAILABLE:
+            waf_auditor_result = run_waf_auditor(
+                repo_path, repo_name, repo_report_dir)
 
         # Generate AI Remediation Plans (using Knowledge Base)
         if PROGRESS_MONITOR_AVAILABLE and config.ENABLE_AI:

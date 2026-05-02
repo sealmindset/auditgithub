@@ -82,7 +82,7 @@ verify_docker_operational() {
     fi
 
     # Check 3: Docker-compose can communicate with Docker
-    if ! docker-compose version > /dev/null 2>&1; then
+    if ! docker compose version > /dev/null 2>&1; then
         return 1
     fi
 
@@ -167,7 +167,7 @@ wait_for_docker() {
 # Ensure Docker is running
 ensure_docker_running() {
     # Skip checks - assume Docker Desktop is running since user can see GUI
-    # If there are CLI issues, docker-compose commands will show clear errors
+    # If there are CLI issues, docker compose commands will show clear errors
     print_success "Proceeding with Docker operations"
 }
 
@@ -178,39 +178,67 @@ print_separator() {
     echo ""
 }
 
-# Kill processes on specified ports
-kill_ports() {
-    local ports=("3000" "3001")
+# Find an available port starting from a preferred port
+find_port() {
+    local preferred=$1
+    local port=$preferred
+    local max=$((preferred + 100))
 
-    print_info "Checking for processes on ports ${ports[*]}..."
-
-    for port in "${ports[@]}"; do
-        if [[ "$OS" == "macos" ]] || [[ "$OS" == "linux" ]]; then
-            # Use lsof for macOS and Linux
-            if command -v lsof &> /dev/null; then
-                local pids=$(lsof -ti:$port 2>/dev/null || true)
-                if [[ -n "$pids" ]]; then
-                    print_warning "Killing process(es) on port $port: $pids"
-                    echo "$pids" | xargs kill -9 2>/dev/null || true
-                    sleep 1
-                fi
-            else
-                print_warning "lsof not found, skipping port cleanup"
-            fi
-        elif [[ "$OS" == "windows" ]]; then
-            # Use netstat for Windows
-            local pids=$(netstat -ano | grep ":$port " | awk '{print $5}' | sort -u 2>/dev/null || true)
-            if [[ -n "$pids" ]]; then
-                print_warning "Killing process(es) on port $port: $pids"
-                for pid in $pids; do
-                    taskkill //PID $pid //F 2>/dev/null || true
-                done
-                sleep 1
-            fi
+    while [ "$port" -le "$max" ]; do
+        if ! lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo "$port"
+            return 0
         fi
+        port=$((port + 1))
     done
 
-    print_success "Port cleanup complete"
+    print_error "No free port found in range ${preferred}-${max}"
+    exit 1
+}
+
+# Auto-detect available ports for all services
+allocate_ports() {
+    print_info "Auto-detecting available ports..."
+
+    export API_HOST_PORT=$(find_port 8000)
+    export UI_HOST_PORT=$(find_port 3000)
+    export DB_HOST_PORT=$(find_port 5432)
+    export MAILPIT_SMTP_HOST_PORT=$(find_port 1025)
+    export MAILPIT_UI_HOST_PORT=$(find_port 8025)
+    export MINIO_API_HOST_PORT=$(find_port 9009)
+    export MINIO_UI_HOST_PORT=$(find_port 9001)
+    export MOCK_OIDC_HOST_PORT=$(find_port 3007)
+
+    # Update APP_URL to match actual UI port (used in emails, OIDC redirects)
+    export APP_URL="http://localhost:${UI_HOST_PORT}"
+
+    # Update CORS to include actual UI port
+    export CORS_ORIGINS="http://localhost:${UI_HOST_PORT},http://localhost:${API_HOST_PORT},http://localhost:3000,http://localhost:3001,http://localhost:8001,http://localhost:8080"
+
+    # Update OIDC external URL to match actual mock-oidc port
+    export OIDC_EXTERNAL_BASE_URL="http://localhost:${MOCK_OIDC_HOST_PORT}"
+
+    # Host project dir for Docker SDK volume mounts (scanner containers)
+    export HOST_PROJECT_DIR="$(pwd)"
+
+    print_success "Ports allocated:"
+    echo "  API:          localhost:${API_HOST_PORT}"
+    echo "  UI:           localhost:${UI_HOST_PORT}"
+    echo "  DB:           localhost:${DB_HOST_PORT}"
+    echo "  Mock OIDC:    localhost:${MOCK_OIDC_HOST_PORT}"
+    echo "  Mailpit SMTP: localhost:${MAILPIT_SMTP_HOST_PORT}"
+    echo "  Mailpit UI:   localhost:${MAILPIT_UI_HOST_PORT}"
+    echo "  MinIO API:    localhost:${MINIO_API_HOST_PORT}"
+    echo "  MinIO UI:     localhost:${MINIO_UI_HOST_PORT}"
+
+    # Flag if any port shifted from default
+    local shifted=false
+    [[ "$API_HOST_PORT" != "8000" ]] && shifted=true
+    [[ "$UI_HOST_PORT" != "3000" ]] && shifted=true
+    [[ "$DB_HOST_PORT" != "5432" ]] && shifted=true
+    if $shifted; then
+        print_warning "Some ports shifted from defaults (conflicts detected)"
+    fi
 }
 
 # Stop existing containers
@@ -224,18 +252,18 @@ stop_containers() {
     fi
 
     # Check if any containers are running
-    local running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
+    local running_containers=$(docker compose --profile mock-oidc ps -q 2>/dev/null | wc -l | tr -d ' ')
 
     if [ "$running_containers" -gt 0 ]; then
         print_info "Found $running_containers container(s) to stop"
 
         # Attempt to stop containers
-        if docker-compose down --remove-orphans 2>&1 | tee /tmp/docker-stop.log | grep -v "^$"; then
+        if docker compose --profile mock-oidc down --remove-orphans 2>&1 | tee /tmp/docker-stop.log | grep -v "^$"; then
             # Wait for containers to fully stop
             local max_wait=30
             local waited=0
             while [ $waited -lt $max_wait ]; do
-                running_containers=$(docker-compose ps -q 2>/dev/null | wc -l | tr -d ' ')
+                running_containers=$(docker compose --profile mock-oidc ps -q 2>/dev/null | wc -l | tr -d ' ')
                 if [ "$running_containers" -eq 0 ]; then
                     break
                 fi
@@ -275,8 +303,8 @@ build_containers() {
         print_info "Tip: Run 'REBUILD=true ./start.sh' for a clean rebuild"
     fi
 
-    # Build with progress output
-    docker-compose build $build_opts 2>&1 | tee /tmp/docker-build.log | grep -E "(Building|Step|Successfully built|naming to)" || true
+    # Build with progress output (include mock-oidc + scan profiles)
+    docker compose --profile mock-oidc --profile scan build $build_opts 2>&1 | tee /tmp/docker-build.log | grep -E "(Building|Step|Successfully built|naming to)" || true
     local build_result=${PIPESTATUS[0]}
 
     echo ""  # New line after build output
@@ -313,11 +341,11 @@ start_containers() {
             fi
         fi
 
-        # Attempt to start containers
-        if docker-compose up -d 2>&1 | tee /tmp/docker-start.log; then
+        # Attempt to start containers (include mock-oidc profile for dev auth)
+        if docker compose --profile mock-oidc up -d 2>&1 | tee /tmp/docker-start.log; then
             local exit_code=${PIPESTATUS[0]}
 
-            # Check if the command actually succeeded (docker-compose returns 0 even with warnings)
+            # Check if the command actually succeeded (docker compose returns 0 even with warnings)
             if [ $exit_code -eq 0 ] && ! grep -q "Cannot connect to the Docker daemon" /tmp/docker-start.log; then
                 print_success "Container startup initiated"
                 # Wait for containers to fully initialize
@@ -337,7 +365,7 @@ start_containers() {
     echo ""
     print_info "Troubleshooting:"
     print_info "  1. Restart Docker Desktop"
-    print_info "  2. Run: docker-compose down"
+    print_info "  2. Run: docker compose down"
     print_info "  3. Run this script again"
     exit 1
 }
@@ -345,7 +373,7 @@ start_containers() {
 # Display container status for debugging
 show_container_status() {
     print_info "Current container status:"
-    docker-compose ps --format table
+    docker compose ps --format table
 }
 
 # Wait for a service to be healthy
@@ -357,28 +385,26 @@ wait_for_service() {
     print_info "Waiting for $service_name to be healthy..."
 
     while [ $attempt -le $max_attempts ]; do
-        local status=$(docker-compose ps --format json | jq -r ".[] | select(.Service==\"$service_name\") | .Health" 2>/dev/null || echo "unknown")
+        local status=$(docker compose ps --format "{{.Status}}" "$service_name" 2>/dev/null || echo "unknown")
 
-        if [[ "$status" == "healthy" ]]; then
+        if echo "$status" | grep -qi "healthy"; then
             print_success "$service_name is healthy"
             return 0
         fi
 
-        # Fallback: check if container is running if health check not available
-        local state=$(docker-compose ps --format json | jq -r ".[] | select(.Service==\"$service_name\") | .State" 2>/dev/null || echo "unknown")
-        if [[ "$state" == "running" ]] && [[ "$status" == "" ]]; then
+        if echo "$status" | grep -qi "^Up" && ! echo "$status" | grep -qi "health"; then
             print_success "$service_name is running (no health check)"
             return 0
         fi
 
-        echo -ne "  Attempt $attempt/$max_attempts: $service_name status=$status, state=$state\r"
+        echo -ne "  Attempt $attempt/$max_attempts: $service_name — $status\r"
         sleep 2
         ((attempt++))
     done
 
     print_error "$service_name failed to become healthy"
     print_info "Checking logs..."
-    docker-compose logs --tail=50 $service_name
+    docker compose logs --tail=50 "$service_name"
     return 1
 }
 
@@ -390,7 +416,7 @@ check_api_health() {
     print_info "Checking API health endpoint..."
 
     while [ $attempt -le $max_attempts ]; do
-        if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+        if curl -f -s "http://localhost:${API_HOST_PORT:-8000}/health" > /dev/null 2>&1; then
             print_success "API health endpoint responding"
             return 0
         fi
@@ -402,7 +428,7 @@ check_api_health() {
 
     print_error "API health check failed"
     print_info "Checking API logs..."
-    docker-compose logs --tail=50 api
+    docker compose logs --tail=50 api
     return 1
 }
 
@@ -418,7 +444,7 @@ show_usage() {
         echo "What this script does:"
         echo "  1. ✓ Detects your operating system"
         echo "  2. ✓ Checks if Docker is running (starts it if needed)"
-        echo "  3. ✓ Kills processes on ports 3000 & 3001"
+        echo "  3. ✓ Auto-detects available ports (avoids conflicts)"
         echo "  4. ✓ Stops existing containers"
         echo "  5. ✓ Builds Docker images with latest code"
         echo "  6. ✓ Starts all containers"
@@ -460,8 +486,8 @@ main() {
     ensure_docker_running
     print_separator
 
-    # Step 3: Kill any processes on ports 3000 and 3001
-    kill_ports
+    # Step 3: Auto-detect available ports (TRIPWIRE: Avoids port conflicts)
+    allocate_ports
     print_separator
 
     # Step 4: Stop existing containers (TRIPWIRE: Wait for full shutdown)
@@ -486,7 +512,7 @@ main() {
     if ! wait_for_service "db" 60; then
         print_error "Database failed to start properly"
         show_container_status
-        docker-compose logs --tail=100 db
+        docker compose logs --tail=100 db
         exit 1
     fi
 
@@ -504,14 +530,14 @@ main() {
     if ! wait_for_service "api" 60; then
         print_error "API failed to start properly"
         show_container_status
-        docker-compose logs --tail=100 api
+        docker compose logs --tail=100 api
         exit 1
     fi
 
     # Additional check: API health endpoint (FINAL TRIPWIRE)
     if ! check_api_health; then
         print_error "API health endpoint check failed"
-        docker-compose logs --tail=100 api
+        docker compose logs --tail=100 api
         exit 1
     fi
 
@@ -521,23 +547,24 @@ main() {
     echo "========================================"
     echo ""
     print_info "Services:"
-    echo "  • Web UI:    http://localhost:3000"
-    echo "  • API:       http://localhost:8000"
-    echo "  • API Docs:  http://localhost:8000/docs"
-    echo "  • MinIO:     http://localhost:9001"
-    echo "  • Database:  localhost:5432"
+    echo "  • Web UI:    http://localhost:${UI_HOST_PORT}"
+    echo "  • API:       http://localhost:${API_HOST_PORT}"
+    echo "  • API Docs:  http://localhost:${API_HOST_PORT}/docs"
+    echo "  • Mailpit:   http://localhost:${MAILPIT_UI_HOST_PORT}"
+    echo "  • MinIO:     http://localhost:${MINIO_UI_HOST_PORT}"
+    echo "  • Database:  localhost:${DB_HOST_PORT}"
     echo ""
     print_info "Useful commands:"
-    echo "  • View logs:          docker-compose logs -f"
-    echo "  • View API logs:      docker-compose logs -f api"
-    echo "  • View DB logs:       docker-compose logs -f db"
-    echo "  • Stop services:      docker-compose down"
+    echo "  • View logs:          docker compose logs -f"
+    echo "  • View API logs:      docker compose logs -f api"
+    echo "  • View DB logs:       docker compose logs -f db"
+    echo "  • Stop services:      docker compose down"
     echo "  • Restart services:   ./start.sh"
     echo "  • Clean rebuild:      REBUILD=true ./start.sh"
     echo "  • Help:               ./start.sh --help"
     echo ""
     print_info "Container status:"
-    docker-compose ps --format table
+    docker compose ps --format table
     echo ""
     print_success "All systems operational! 🚀"
 }

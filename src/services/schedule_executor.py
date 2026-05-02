@@ -170,7 +170,7 @@ class ScheduleExecutor:
                     return
 
             # Build command
-            cmd = ["python", "scan_repos.py", "--target", org_name, "--repo", repo_name]
+            cmd = ["python", "scripts/scanning/scan_repos.py", "--target", org_name, "--repo", repo_name]
 
             # Add custom arguments
             if scan_arguments.get("overridescan"):

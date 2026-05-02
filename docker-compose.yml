@@ -23,6 +23,11 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-auditgh_kb}
       - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-auditgh_dev_secrets_key_32chars}
+      # AWS credentials for Terraform drift detection and WAF auditor
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
     volumes:
       - .:/app
       - ./vulnerability_reports:/app/vulnerability_reports
@@ -64,7 +69,7 @@ services:
       dockerfile: Dockerfile.api
     container_name: auditgh_api
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-8000}:8000"
     env_file:
       - .env
     environment:
@@ -93,19 +98,29 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@auditgithub.local}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
-      - APP_URL=${APP_URL:-http://localhost:3000}
+      - APP_URL=${APP_URL:-http://localhost:${UI_HOST_PORT:-3000}}
       # OIDC provider configuration (mock-oidc in dev, Entra/Okta in prod)
       - OIDC_PROVIDER_NAME=${OIDC_PROVIDER_NAME:-}
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
       - OIDC_DISCOVERY_URL=${OIDC_DISCOVERY_URL:-}
       - OIDC_EXTERNAL_BASE_URL=${OIDC_EXTERNAL_BASE_URL:-}
+      # AWS credentials for scanner container passthrough
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      # Docker SDK: host project path for scanner container volume mounts
+      - HOST_PROJECT_DIR=${HOST_PROJECT_DIR:-.}
+      - SCANNER_IMAGE=${SCANNER_IMAGE:-auditgithub-scanner:latest}
+      - DOCKER_NETWORK=${DOCKER_NETWORK:-auditgithub_default}
     depends_on:
       db:
         condition: service_started
     volumes:
       - .:/app
       - ./vulnerability_reports:/app/vulnerability_reports
+      - /var/run/docker.sock:/var/run/docker.sock
     # Resource limits for API (lighter weight than scanner)
     deploy:
       resources:
@@ -134,7 +149,7 @@ services:
       target: deps
     container_name: auditgh_ui
     ports:
-      - "3000:3000"
+      - "${UI_HOST_PORT:-3000}:3000"
     environment:
       - API_BASE=http://api:8000
       - NODE_ENV=development
@@ -163,7 +178,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${DB_HOST_PORT:-5432}:5432"
     command:
       - "postgres"
       - "-c"
@@ -231,8 +246,8 @@ services:
     image: minio/minio:latest
     container_name: auditgh_minio
     ports:
-      - "9009:9000"   # S3 API (changed from 9000 to avoid Zscaler conflict)
-      - "9001:9001"   # Console UI
+      - "${MINIO_API_HOST_PORT:-9009}:9000"   # S3 API
+      - "${MINIO_UI_HOST_PORT:-9001}:9001"   # Console UI
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-auditgh}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-auditgh_logs_2024}
@@ -260,8 +275,8 @@ services:
     image: axllent/mailpit:latest
     container_name: auditgh_mailpit
     ports:
-      - "1025:1025"   # SMTP server
-      - "8025:8025"   # Web UI
+      - "${MAILPIT_SMTP_HOST_PORT:-1025}:1025"   # SMTP server
+      - "${MAILPIT_UI_HOST_PORT:-8025}:8025"   # Web UI
     restart: unless-stopped
 
   # =============================================================================
@@ -277,9 +292,9 @@ services:
       context: ../mocksvcs/mock_oidc
     container_name: auditgh_mock_oidc
     ports:
-      - "3007:10090"
+      - "${MOCK_OIDC_HOST_PORT:-3007}:10090"
     environment:
-      - MOCK_OIDC_EXTERNAL_BASE_URL=http://localhost:3007
+      - MOCK_OIDC_EXTERNAL_BASE_URL=http://localhost:${MOCK_OIDC_HOST_PORT:-3007}
       - MOCK_OIDC_INTERNAL_BASE_URL=http://mock-oidc:10090
       - MOCK_OIDC_DEFAULT_CLIENT_ID=${OIDC_CLIENT_ID:-auditgh-dev-client}
       - MOCK_OIDC_DEFAULT_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-auditgh-dev-secret}
@@ -309,7 +324,7 @@ services:
       dockerfile: Dockerfile.api
     container_name: auditgh_sandbox
     ports:
-      - "8001:8000"
+      - "${SANDBOX_HOST_PORT:-8001}:8000"
     env_file:
       - .env
     environment:
@@ -359,7 +374,7 @@ services:
     image: swaggerapi/swagger-editor:latest
     container_name: auditgh_swagger_editor
     ports:
-      - "8080:8080"
+      - "${SWAGGER_HOST_PORT:-8080}:8080"
     environment:
       - URL=http://localhost:8001/openapi.json
     depends_on:

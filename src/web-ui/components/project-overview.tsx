@@ -1,10 +1,15 @@
 "use client"
 
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ShieldAlert, FileCode, Star, GitFork, Clock, Eye, EyeOff, Globe, Archive, GitBranch, Tag, Scale, Users, BookOpen, MessageSquare, ExternalLink, Calendar, HardDrive } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { ShieldAlert, FileCode, Star, GitFork, Clock, Eye, EyeOff, Globe, Archive, GitBranch, Tag, Scale, Users, BookOpen, MessageSquare, ExternalLink, Calendar, HardDrive, Play, Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from "recharts"
+import { useToast } from "@/components/ui/use-toast"
 import Link from "next/link"
+import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ProjectOverviewProps {
     project: any
@@ -43,7 +48,91 @@ function formatSize(kb: number) {
     return `${(kb / (1024 * 1024)).toFixed(1)} GB`
 }
 
+function formatElapsed(seconds: number) {
+    if (seconds < 60) return `${seconds}s`
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    if (mins < 60) return `${mins}m ${secs}s`
+    const hrs = Math.floor(mins / 60)
+    return `${hrs}h ${mins % 60}m`
+}
+
 export function ProjectOverview({ project, secrets, sast, terraform, oss }: ProjectOverviewProps) {
+    const { toast } = useToast()
+    const [scanStatus, setScanStatus] = useState<"idle" | "queued" | "running" | "completed" | "failed">("idle")
+    const [scanId, setScanId] = useState<string | null>(null)
+    const [scanDetails, setScanDetails] = useState<{
+        scan_type?: string
+        elapsed_seconds?: number
+        findings_count?: number
+        error_message?: string
+        started_at?: string
+        completed_at?: string
+    }>({})
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+    const pollScanStatus = useCallback(async (id: string) => {
+        try {
+            const res = await apiFetch(`${API_BASE}/scans/${id}`)
+            if (!res.ok) return
+            const data = await res.json()
+            setScanStatus(data.status)
+            setScanDetails({
+                scan_type: data.scan_type,
+                elapsed_seconds: data.elapsed_seconds,
+                findings_count: data.findings_count,
+                error_message: data.error_message,
+                started_at: data.started_at,
+                completed_at: data.completed_at,
+            })
+            if (data.status === "completed" || data.status === "failed") {
+                if (pollRef.current) clearInterval(pollRef.current)
+                pollRef.current = null
+                toast({
+                    title: data.status === "completed" ? "Scan Complete" : "Scan Failed",
+                    description: data.status === "completed"
+                        ? `Found ${data.findings_count ?? 0} findings`
+                        : data.error_message || "Scan encountered an error",
+                    variant: data.status === "completed" ? "default" : "destructive",
+                })
+            }
+        } catch {
+            // keep polling
+        }
+    }, [toast])
+
+    useEffect(() => {
+        return () => { if (pollRef.current) clearInterval(pollRef.current) }
+    }, [])
+
+    const triggerScan = async () => {
+        setScanStatus("queued")
+        setScanDetails({})
+        try {
+            const res = await apiFetch(`${API_BASE}/scans/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ repo_name: project.name, scan_type: "full" }),
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                throw new Error(err.detail || `HTTP ${res.status}`)
+            }
+            const data = await res.json()
+            setScanId(data.scan_id)
+            setScanStatus("queued")
+            toast({ title: "Scan Queued", description: data.message })
+            pollRef.current = setInterval(() => pollScanStatus(data.scan_id), 5000)
+        } catch (e) {
+            setScanStatus("failed")
+            toast({
+                title: "Scan Failed",
+                description: e instanceof Error ? e.message : "Failed to trigger scan",
+                variant: "destructive",
+            })
+        }
+    }
+
     // Calculate stats
     const allFindings = [...secrets, ...sast, ...terraform, ...oss]
 
@@ -119,13 +208,90 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
                                 </Badge>
                             )}
                         </div>
-                        {project.url && (
-                            <Link href={project.url} target="_blank" className="text-blue-600 hover:underline flex items-center gap-1 text-sm">
-                                View on GitHub <ExternalLink className="h-3 w-3" />
-                            </Link>
-                        )}
+                        <div className="flex items-center gap-3">
+                            <Button
+                                size="sm"
+                                variant={scanStatus === "completed" ? "outline" : scanStatus === "failed" ? "destructive" : "default"}
+                                onClick={triggerScan}
+                                disabled={scanStatus === "queued" || scanStatus === "running"}
+                            >
+                                {scanStatus === "queued" || scanStatus === "running" ? (
+                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{scanStatus === "queued" ? "Queued" : "Scanning"}</>
+                                ) : scanStatus === "completed" ? (
+                                    <><CheckCircle2 className="h-4 w-4 mr-2" />Scan Again</>
+                                ) : scanStatus === "failed" ? (
+                                    <><XCircle className="h-4 w-4 mr-2" />Retry Scan</>
+                                ) : (
+                                    <><Play className="h-4 w-4 mr-2" />Scan Now</>
+                                )}
+                            </Button>
+                            {project.url && (
+                                <Link href={project.url} target="_blank" className="text-blue-600 hover:underline flex items-center gap-1 text-sm">
+                                    View on GitHub <ExternalLink className="h-3 w-3" />
+                                </Link>
+                            )}
+                        </div>
                     </div>
                 </CardHeader>
+
+                {/* Scan Status Panel */}
+                {scanStatus !== "idle" && (
+                    <div className="mx-6 mb-2">
+                        <div className={`rounded-lg border p-4 ${
+                            scanStatus === "completed" ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950" :
+                            scanStatus === "failed" ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950" :
+                            "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950"
+                        }`}>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    {scanStatus === "queued" && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
+                                    {scanStatus === "running" && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
+                                    {scanStatus === "completed" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                                    {scanStatus === "failed" && <AlertCircle className="h-4 w-4 text-red-600" />}
+                                    <span className="font-medium text-sm">
+                                        {scanStatus === "queued" && "Scan Queued"}
+                                        {scanStatus === "running" && `Running ${scanDetails.scan_type || "full"} scan...`}
+                                        {scanStatus === "completed" && "Scan Complete"}
+                                        {scanStatus === "failed" && "Scan Failed"}
+                                    </span>
+                                    {scanDetails.scan_type && (
+                                        <Badge variant="outline" className="text-xs">{scanDetails.scan_type}</Badge>
+                                    )}
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                    {scanDetails.elapsed_seconds != null && formatElapsed(scanDetails.elapsed_seconds)}
+                                </span>
+                            </div>
+
+                            {(scanStatus === "queued" || scanStatus === "running") && (
+                                <div className="space-y-1">
+                                    <Progress indeterminate className="h-2" />
+                                    <p className="text-xs text-muted-foreground">
+                                        {scanStatus === "queued"
+                                            ? "Waiting for scanner container to start..."
+                                            : "Running security scanners (Gitleaks, Semgrep, Trivy, Grype)..."}
+                                    </p>
+                                </div>
+                            )}
+
+                            {scanStatus === "completed" && (
+                                <div className="flex items-center gap-4 text-sm">
+                                    <span><strong>{scanDetails.findings_count ?? 0}</strong> findings discovered</span>
+                                    {scanDetails.elapsed_seconds != null && (
+                                        <span className="text-muted-foreground">in {formatElapsed(scanDetails.elapsed_seconds)}</span>
+                                    )}
+                                </div>
+                            )}
+
+                            {scanStatus === "failed" && scanDetails.error_message && (
+                                <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-mono whitespace-pre-wrap max-h-24 overflow-auto">
+                                    {scanDetails.error_message.slice(0, 500)}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <CardContent>
                     {project.description && (
                         <p className="text-muted-foreground mb-4">{project.description}</p>

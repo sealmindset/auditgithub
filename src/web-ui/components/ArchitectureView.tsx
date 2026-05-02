@@ -351,9 +351,15 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                         const data = await res.json()
                                         console.log("Git README response", { ok: res.ok, data })
                                         if (res.ok) {
+                                            const desc = data.pr_url
+                                                ? `PR opened: ${data.pr_url}`
+                                                : data.message || "README.md updated successfully"
+                                            if (data.pr_url) {
+                                                window.open(data.pr_url, "_blank")
+                                            }
                                             toast({
                                                 title: "Success",
-                                                description: data.message || "README.md updated successfully"
+                                                description: desc
                                             })
                                         } else {
                                             throw new Error(data.detail || "Failed to push README")

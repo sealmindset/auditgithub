@@ -88,18 +88,37 @@ RUN ARCH_TAG="x64"; \
     mv gitleaks /usr/local/bin/ && \
     rm gitleaks.tar.gz
 
-# Install Trivy
-RUN curl -sfLk https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+# Install Trivy (direct binary — install.sh fails behind SSL inspection)
+RUN TRIVY_VERSION="0.70.0" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "ARM64" || echo "64bit") && \
+    curl -sSfLk "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${ARCH_TAG}.tar.gz" -o trivy.tar.gz && \
+    tar -xzf trivy.tar.gz trivy && \
+    mv trivy /usr/local/bin/ && \
+    rm trivy.tar.gz
 
-# Install Syft
-RUN curl -sSfLk https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+# Install Syft (direct binary — install.sh fails behind SSL inspection)
+RUN SYFT_VERSION="1.44.0" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_${ARCH_TAG}.tar.gz" -o syft.tar.gz && \
+    tar -xzf syft.tar.gz syft && \
+    mv syft /usr/local/bin/ && \
+    rm syft.tar.gz
 
-# Install Grype
-RUN curl -sSfLk https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+# Install Grype (direct binary — install.sh fails behind SSL inspection)
+RUN GRYPE_VERSION="0.112.0" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${ARCH_TAG}.tar.gz" -o grype.tar.gz && \
+    tar -xzf grype.tar.gz grype && \
+    mv grype /usr/local/bin/ && \
+    rm grype.tar.gz
 
-
-# Install TruffleHog
-RUN curl -sSfLk https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+# Install TruffleHog (direct binary — install.sh fails behind SSL inspection)
+RUN TRUFFLEHOG_VERSION="3.95.2" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION}_linux_${ARCH_TAG}.tar.gz" -o trufflehog.tar.gz && \
+    tar -xzf trufflehog.tar.gz trufflehog && \
+    mv trufflehog /usr/local/bin/ && \
+    rm trufflehog.tar.gz
 
 # Install Nuclei
 RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
@@ -107,15 +126,15 @@ RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 # Install .NET SDK and OSSGadget
 # Note: Microsoft package repository setup might differ for ARM64. 
 # Using dotnet-install script is often more robust for multi-arch.
-RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
+# .NET SDK + OSSGadget — optional, fails behind corporate SSL inspection
+RUN wget --no-check-certificate https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
     chmod +x dotnet-install.sh && \
     ./dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet && \
     ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet && \
-    rm dotnet-install.sh
-
-# Install OSSGadget
-RUN dotnet tool install --global Microsoft.CST.OSSGadget.CLI
-ENV PATH="${PATH}:/root/.dotnet/tools"
+    rm dotnet-install.sh && \
+    dotnet tool install --global Microsoft.CST.OSSGadget.CLI \
+    || echo "WARN: .NET SDK + OSSGadget install failed (SSL/network) — skipping"
+ENV PATH="${PATH}:/root/.dotnet/tools:/usr/share/dotnet"
 
 # =============================================================================
 # PHASE 1 SECURITY TOOLS (December 2024)
@@ -133,8 +152,13 @@ RUN python -m venv /opt/venv/whispers && \
     /opt/venv/whispers/bin/pip install --no-cache-dir whispers && \
     ln -s /opt/venv/whispers/bin/whispers /usr/local/bin/whispers
 
-# Install Bearer (data flow analysis)
-RUN curl -sfLk https://raw.githubusercontent.com/Bearer/bearer/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+# Install Bearer (direct binary — install.sh fails behind SSL inspection)
+RUN BEARER_VERSION="2.0.1" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://github.com/Bearer/bearer/releases/download/v${BEARER_VERSION}/bearer_${BEARER_VERSION}_linux_${ARCH_TAG}.tar.gz" -o bearer.tar.gz && \
+    tar -xzf bearer.tar.gz bearer && \
+    mv bearer /usr/local/bin/ && \
+    rm bearer.tar.gz
 
 # Install Terrascan (Architecture Aware)
 RUN ARCH_TAG="x86_64"; \
@@ -162,12 +186,34 @@ RUN ARCH_TAG="64bit"; \
 # Install gosec (Go security scanner)
 RUN go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-# Install GolangCI-Lint (Go linter aggregator with security linters)
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v1.55.2
+# Install GolangCI-Lint (direct binary — install.sh fails behind SSL inspection)
+RUN GOLANGCI_VERSION="2.12.0" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_VERSION}/golangci-lint-${GOLANGCI_VERSION}-linux-${ARCH_TAG}.tar.gz" -o golangci-lint.tar.gz && \
+    tar -xzf golangci-lint.tar.gz --strip-components=1 -C /usr/local/bin "golangci-lint-${GOLANGCI_VERSION}-linux-${ARCH_TAG}/golangci-lint" && \
+    rm golangci-lint.tar.gz
 
 # Note: MobSF runs as a separate Docker container for full functionality
 # For source code analysis, we use built-in pattern matching (no additional install needed)
 # Full MobSF: docker pull opensecurity/mobile-security-framework-mobsf
+
+# =============================================================================
+# PHASE 4 SECURITY TOOLS: Terraform Enhanced & WAF Auditor (May 2025)
+# =============================================================================
+
+# Install Terraform CLI (for drift detection and blast radius analysis)
+RUN TF_VERSION="1.9.0" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_${ARCH_TAG}.zip" -o terraform.zip && \
+    unzip terraform.zip terraform && \
+    mv terraform /usr/local/bin/ && \
+    rm terraform.zip
+
+# Install Open Policy Agent (for Rego policy enforcement on Terraform plans)
+RUN OPA_VERSION="1.4.2" && \
+    ARCH_TAG=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -sSfLk "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_${ARCH_TAG}_static" -o /usr/local/bin/opa && \
+    chmod +x /usr/local/bin/opa
 
 # Copy the rest of the application
 COPY . .
