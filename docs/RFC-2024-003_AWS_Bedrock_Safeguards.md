@@ -11,6 +11,7 @@
 | **Created** | 2026-05-05 |
 | **Repository** | https://github.com/SleepNumberInc/auditgithub |
 | **Companion RFCs** | RFC-2024-002: /make-it |
+| **Governing Pattern** | [EA Design Pattern: Defense-in-Depth for Managed AI Services](./EA_Design_Pattern_AWS_Bedrock.md) |
 | **Audience** | Security Engineering, Cloud/Platform Engineering, Network Engineering, AI CoE, DevOps/SRE, IAM/Identity, Compliance/GRC |
 
 ---
@@ -28,9 +29,12 @@
 9. [Layer 6: Data Loss Prevention](#9-layer-6--data-loss-prevention)
 10. [Implementation Priority Matrix](#10-implementation-priority-matrix)
 11. [Compliance Mapping](#11-compliance-mapping)
+    - [11a. Multi-Cloud Applicability](#11a-multi-cloud-applicability)
+    - [11b. Deliverables Checklist](#11b-deliverables-checklist)
 12. [Rollout Plan](#12-rollout-plan)
 13. [Open Questions for Reviewers](#13-open-questions-for-reviewers)
 14. [How to Review / Comment](#14-how-to-review--comment)
+15. [References](#references)
 
 ---
 
@@ -857,19 +861,21 @@ item["expires_at"] = int(time.time()) + (TTL_DAYS * 86400)
 
 ## 10. Implementation Priority Matrix
 
+> **Note:** Priorities aligned with the [EA Design Pattern](./EA_Design_Pattern_AWS_Bedrock.md). VPC Endpoints elevated to P0 per EA guidance — network isolation is a prerequisite for credential abuse controls.
+
 | Priority | Layer | Control | Effort | Impact | Timeline | Owner |
 |----------|-------|---------|--------|--------|----------|-------|
+| **P0** | 1 | VPC Endpoints for Bedrock | Medium | Eliminates public internet traversal for Lambdas | Week 1 | Network + Cloud/Platform |
 | **P0** | 3 | SCPs — org + region lock | Low | Blocks cross-region, cross-org Bedrock abuse | Week 1 | Security + Cloud/Platform |
 | **P0** | 5 | Bedrock invocation logging | Low | Full audit trail for all model calls | Week 1 | DevOps/SRE |
-| **P1** | 1 | VPC Endpoints for Bedrock | Medium | Eliminates public internet traversal for Lambdas | Weeks 2-3 | Network + Cloud/Platform |
-| **P1** | 2 | Bedrock Guardrails | Medium | Native prompt injection + PII blocking | Weeks 2-3 | AI CoE + Security |
+| **P1** | 2 | Bedrock Guardrails | Medium | Native prompt injection + PII blocking | Week 2 | AI CoE + Security |
 | **P1** | 3 | Source IP conditions on SSO | Low | Restricts developer access to corporate network | Week 2 | IAM/Identity + Network |
-| **P2** | 5 | CloudWatch metric filters + alarms | Low | Real-time alerting on abuse patterns | Week 3 | DevOps/SRE + Security |
+| **P1** | 5 | CloudWatch metric filters + alarms | Low | Real-time alerting on abuse patterns | Week 2 | DevOps/SRE + Security |
 | **P2** | 4 | Session limits + external ID | Low | Reduces cross-account blast radius | Week 3 | Cloud/Platform + Security |
 | **P2** | 2 | Input/output validation in Lambda | Medium | Application-layer injection defense | Weeks 3-4 | AI CoE + DevOps/SRE |
+| **P2** | 4 | Explicit deny on write actions | Low | Hardens cross-account evidence roles | Week 3 | Security + Cloud/Platform |
 | **P3** | 6 | Content redaction for Teams | Medium | Prevents data leakage to broad channels | Week 4 | Security + DevOps/SRE |
 | **P3** | 5 | GuardDuty + auto-response | Medium | Automated threat detection for Bedrock | Weeks 4-5 | Security + DevOps/SRE |
-| **P3** | 4 | Explicit deny on write actions | Low | Hardens cross-account evidence roles | Week 4 | Security + Cloud/Platform |
 | **P3** | 6 | DynamoDB TTL + log retention | Low | Controls data lifecycle | Week 5 | DevOps/SRE + Compliance |
 
 ### Cost Estimate
@@ -909,30 +915,63 @@ item["expires_at"] = int(time.time()) + (TTL_DAYS * 86400)
 
 ---
 
+## 11a. Multi-Cloud Applicability
+
+This RFC is the **AWS Bedrock instantiation** of the cloud-agnostic [EA Design Pattern: Defense-in-Depth for Managed AI Services](./EA_Design_Pattern_AWS_Bedrock.md). The same 6-layer model applies to Azure OpenAI, GCP Vertex AI, and future managed AI services. Teams consuming Azure OpenAI should reference the EA pattern and produce an equivalent RFC with Azure-specific implementations (Private Endpoints, Azure Policy, Content Safety API, Sentinel).
+
+| Layer | This RFC (AWS Bedrock) | Azure OpenAI Equivalent |
+|-------|----------------------|------------------------|
+| L0 — Identity | IAM + Okta SSO | Entra ID + Azure RBAC |
+| L1 — Network | VPC Endpoints | Private Endpoints |
+| L2 — AI Safety | Bedrock Guardrails | Content Safety API |
+| L3 — Credential | SCPs + Source IP | Azure Policy + Conditional Access |
+| L4 — Containment | Cross-account role limits | Subscription boundaries |
+| L5 — Monitoring | CloudWatch + GuardDuty | Azure Monitor + Sentinel |
+| L6 — DLP | Guardrails PII + Lambda redaction | Azure DLP + Content Safety |
+
+---
+
+## 11b. Deliverables Checklist
+
+Per the [EA Design Pattern](./EA_Design_Pattern_AWS_Bedrock.md), this RFC must produce:
+
+- [ ] **Access Control Matrix** — principal x path x scope for every Bedrock consumer (Layer 0)
+- [ ] **Network Flow Diagram** — VPC endpoints, security groups, traffic paths (Layer 1)
+- [ ] **Guardrail Configuration** — prompt injection + PII rules as Terraform (Layer 2)
+- [ ] **SCP / Org Policy Template** — region + account lock as JSON (Layer 3)
+- [ ] **Cross-Account Role Template** — deny writes, session limits, external ID (Layer 4)
+- [ ] **Monitoring Runbook** — alerts, thresholds, escalation paths, response procedures (Layer 5)
+- [ ] **Redaction Rules** — per external channel (Teams, DynamoDB, S3) (Layer 6)
+- [ ] **Compliance Mapping** — control x layer x status (Section 11 above)
+- [ ] **Priority Matrix** — effort x impact x timeline (Section 10 above)
+
+---
+
 ## 12. Rollout Plan
 
-### Phase 1 — Foundation (Weeks 1-2)
+### Phase 1 — Foundation + Network Isolation (Weeks 1-2)
 
-**Goal:** Establish visibility and org-level boundaries with zero production impact.
+**Goal:** Establish visibility, org-level boundaries, and network isolation. Per [EA Design Pattern](./EA_Design_Pattern_AWS_Bedrock.md), network isolation (L1) and SCPs (L3) are co-equal P0 priorities.
 
 | Action | Owner | Dependencies | Risk |
 |--------|-------|-------------|------|
+| Deploy VPC endpoints for Bedrock | Network + Cloud/Platform | VPC, subnet allocation | Medium — Lambda config changes |
+| Add IAM VPC-only deny for Lambda roles | Security | VPC endpoints operational | Medium — verify Lambda connectivity first |
 | Deploy SCPs (region + account lock) | Security + Cloud/Platform | AWS Organizations admin access | Low — deny-by-default for unused regions/accounts |
 | Enable Bedrock invocation logging | DevOps/SRE | S3 bucket + CloudWatch log group | None — read-only observability |
 | Create CloudWatch metric filters | DevOps/SRE | CloudTrail log group access | None — monitoring only |
 | Baseline normal invocation volume | Security | 2 weeks of invocation data | None — data collection |
 
-### Phase 2 — Network & AI Safety (Weeks 3-4)
+### Phase 2 — AI Safety & Credential Hardening (Weeks 3-4)
 
-**Goal:** Add network isolation for Lambda workloads and AI-layer defenses.
+**Goal:** Add AI-layer defenses and restrict credential use by network location.
 
 | Action | Owner | Dependencies | Risk |
 |--------|-------|-------------|------|
-| Deploy VPC endpoints | Network + Cloud/Platform | VPC, subnet allocation | Medium — Lambda config changes |
-| Add IAM VPC-only deny for Lambda roles | Security | VPC endpoints operational | Medium — verify Lambda connectivity |
 | Deploy Bedrock Guardrails | AI CoE + Security | Guardrail content policy approved | Low — can test in DRAFT before attaching |
 | Add source IP conditions for developer access | IAM/Identity + Network | Corporate IP range list | Medium — could block legitimate remote work |
 | Add input validation to Worker Lambda | DevOps/SRE | Code review + deploy | Low — redacts, doesn't block |
+| Deploy CloudWatch alarms for Bedrock | DevOps/SRE + Security | Baseline data from Phase 1 | Low — alerting only |
 
 ### Phase 3 — Hardening & Automation (Weeks 5-6)
 
@@ -1059,3 +1098,20 @@ Each layer is independently deployable and reversible:
 **Review deadline:** 2026-05-19 (two weeks from publication)
 
 **Decision meeting:** Scheduled after comment period closes. All teams with open questions will be invited.
+
+---
+
+## References
+
+- [EA Design Pattern: Defense-in-Depth for Managed AI Services](./EA_Design_Pattern_AWS_Bedrock.md) — Governing architectural pattern (cloud-agnostic)
+- [AWS Bedrock Security Analysis](./AWS_Bedrock_Security.md) — Detailed security posture assessment
+- [AWS Bedrock Setup Guide](./AWS_BEDROCK_SETUP.md) — Developer + IR automation setup documentation
+- [SLA: Claude Code Setup for AWS Bedrock](../docs/AWS_BEDROCK_SETUP.md) — SSO + settings.json configuration
+- [devops-security-hub-ai README](../vulnerability_reports/devops-security-hub-ai/README.md) — IR automation architecture
+- [AWS Bedrock Security Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/security.html)
+- [AWS Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html)
+- [AWS Bedrock VPC Endpoints](https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html)
+- [AWS Bedrock Model Invocation Logging](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html)
+- [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+- [AWS Service Control Policies](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html)
+- [NIST 800-53 Security Controls](https://csf.tools/reference/nist-sp-800-53/r5/)
