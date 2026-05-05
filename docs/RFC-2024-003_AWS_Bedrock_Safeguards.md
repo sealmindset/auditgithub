@@ -253,6 +253,8 @@ VPC endpoint restrictions would block developer Claude Code access from laptops 
 
 > **Q for Cloud/Platform Engineering:** Is there an existing Terraform module or pattern for deploying VPC endpoints at Sleep Number? Should these be added to a shared infrastructure module? See [Section 13, Q5](#q5).
 
+> **Q for DevOps/SRE:** The VPC endpoint IAM deny and Lambda VPC attachment must deploy atomically — if the deny lands first, IR automation breaks. What is the preferred zero-downtime rollout strategy? See [Section 13, Q24](#q24).
+
 ---
 
 ## 5. Layer 2 — AI Application Security
@@ -396,6 +398,8 @@ def validate_agent_output(output: str) -> tuple[bool, list[str]]:
 > **Q for Security Engineering:** Should blocked/flagged inputs trigger a security incident, or just log and continue with redacted content? What is the escalation path? See [Section 13, Q7](#q7).
 
 > **Q for AI CoE:** Are there additional PII categories beyond AWS keys, IPs, and emails that should be filtered for IR automation specifically (e.g., employee names, internal hostnames, CIDR ranges)? See [Section 13, Q8](#q8).
+
+> **Q for DevOps/SRE:** Is there a staging or test environment for Bedrock agents where Guardrails and input validation can be tested without triggering real IR workflows? See [Section 13, Q23](#q23).
 
 ---
 
@@ -944,6 +948,12 @@ item["expires_at"] = int(time.time()) + (TTL_DAYS * 86400)
 | Deploy EventBridge auto-response | Security + DevOps/SRE | GuardDuty enabled, SNS configured | Medium — false positives could disrupt IR |
 | Set DynamoDB TTL on IR case data | DevOps/SRE | Retention policy approved | Low — future data only |
 
+> **Q for DevOps/SRE:** What is the CI/CD pipeline for IR automation Terraform and Lambda code? Manual `task apply` or automated? See [Section 13, Q22](#q22).
+
+> **Q for DevOps/SRE:** When Bedrock security alarms fire, who gets paged and what is the response procedure? Does this RFC need to produce a runbook? See [Section 13, Q25](#q25).
+
+> **Q for DevOps/SRE:** DevOps/SRE owns or co-owns 8 of 12 implementation items across 6 weeks. Does the team have capacity, or should the timeline extend? See [Section 13, Q26](#q26).
+
 ### Rollback Plan
 
 Each layer is independently deployable and reversible:
@@ -1017,6 +1027,16 @@ Each layer is independently deployable and reversible:
 <a id="q15"></a>**Q15:** What SNS topics or PagerDuty integrations should Bedrock security alarms route to? Is there an existing security alerting pipeline?
 
 <a id="q17"></a>**Q17:** Is GuardDuty already enabled in the `siq-security` account (`085133881264`) and the Bedrock developer account (`622711945934`)?
+
+<a id="q22"></a>**Q22:** What is the CI/CD pipeline for the IR automation Terraform and Lambda code? Is deployment currently manual (`task apply`), or is there an automated pipeline? If manual, should this RFC include standing up a pipeline as a prerequisite?
+
+<a id="q23"></a>**Q23:** Is there a staging or test environment for Bedrock agents where Guardrails and input validation can be tested without triggering real IR workflows? If not, what is the safest way to validate these changes — DRAFT agent aliases, a dedicated test agent, or synthetic findings?
+
+<a id="q24"></a>**Q24:** The VPC endpoint IAM deny policy and Lambda VPC configuration must deploy atomically — if the deny lands before Lambdas are VPC-attached, IR automation breaks. What is the preferred zero-downtime rollout strategy? Blue/green Lambda aliases, feature flags, or a maintenance window?
+
+<a id="q25"></a>**Q25:** When Bedrock security alarms fire (access denied spike, volume anomaly, GuardDuty finding), who gets paged and what is the response procedure? Is there an existing IR runbook template, or does this RFC need to produce one?
+
+<a id="q26"></a>**Q26:** DevOps/SRE is owner or co-owner on 8 of 12 implementation items across the 6-week rollout. Does the team have capacity for this alongside current work, or should the timeline be extended? Are there specific sprint boundaries or freeze periods to account for?
 
 ---
 
