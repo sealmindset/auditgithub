@@ -49,6 +49,7 @@ import {
     Lightbulb,
     ExternalLink,
     FileText,
+    GitBranch,
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -140,6 +141,8 @@ interface WAFFinding {
     raw_data: Record<string, unknown>
     reviewed: boolean
     associated_path: string | null
+    source_repo_id: string | null
+    source_repo_name: string | null
 }
 
 interface WAFDriftWebACL {
@@ -411,7 +414,15 @@ function FindingsView({
             const res = await apiFetch(`${API_BASE}/projects/${projectId}/waf/summary`)
             if (res.ok) {
                 const data = await res.json()
-                setSummary(data)
+                setSummary({
+                    severity_counts: data.by_severity ?? data.severity_counts ?? {},
+                    source_counts: data.by_source ?? data.source_counts ?? {},
+                    total: data.total_findings ?? data.total ?? 0,
+                    last_static_scan: data.last_static_scan ?? null,
+                    last_live_scan: data.last_live_audit ?? data.last_live_scan ?? null,
+                    web_acls: Object.keys(data.by_rule_type ?? data.rule_types ?? {}),
+                    rule_types: Object.keys(data.by_rule_type ?? data.rule_types ?? {}),
+                })
             }
         } catch (err) {
             console.error("Failed to fetch WAF summary:", err)
@@ -434,7 +445,27 @@ function FindingsView({
             const res = await apiFetch(`${API_BASE}/projects/${projectId}/waf/findings?${params}`)
             if (res.ok) {
                 const data = await res.json()
-                const items: WAFFinding[] = data.findings || data.items || data || []
+                const raw = data.findings || data.items || data || []
+                const items: WAFFinding[] = raw.map((f: Record<string, unknown>) => ({
+                    id: f.id,
+                    severity: f.severity,
+                    source: f.source,
+                    title: f.title,
+                    description: f.description,
+                    web_acl_name: f.web_acl_name,
+                    rule_name: f.rule_name,
+                    rule_type: f.rule_type,
+                    file_path: f.file_path ?? null,
+                    line: f.line_start ?? f.line ?? null,
+                    code_snippet: f.code_snippet ?? null,
+                    recommendation: f.recommendation ?? null,
+                    remediation_code: f.remediation_terraform ?? f.remediation_code ?? null,
+                    raw_data: f.risk_factors ?? {},
+                    reviewed: false,
+                    associated_path: f.file_path ?? null,
+                    source_repo_id: f.source_repo_id ?? null,
+                    source_repo_name: f.source_repo_name ?? null,
+                }))
                 if (append) {
                     setFindings(prev => [...prev, ...items])
                 } else {
@@ -789,6 +820,12 @@ function FindingsView({
                                                     </h4>
                                                     {/* Meta row */}
                                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                                        {finding.source_repo_name && (
+                                                            <span className="flex items-center gap-1 font-medium text-violet-600 dark:text-violet-400">
+                                                                <GitBranch className="h-3 w-3" />
+                                                                {finding.source_repo_name}
+                                                            </span>
+                                                        )}
                                                         <span className="flex items-center gap-1">
                                                             <Shield className="h-3 w-3" />
                                                             {finding.web_acl_name}
@@ -1024,8 +1061,33 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
                 const res = await apiFetch(`${API_BASE}/projects/${projectId}/waf/drift`)
                 if (res.ok) {
                     const data = await res.json()
-                    setDriftData(data.web_acls || data || [])
-                    setHasLiveData(data.has_live_data ?? true)
+                    const mapped: WAFDriftWebACL[] = (data.web_acls || []).map((acl: Record<string, unknown>) => {
+                        const driftItems: WAFDriftItem[] = ((acl.drift_items as Record<string, unknown>[]) || []).map(d => ({
+                            rule_name: d.rule_name,
+                            attribute: d.attribute,
+                            code_value: d.code_value ?? null,
+                            live_value: d.live_value ?? null,
+                            status: "drift" as const,
+                            code_detail: d.code_value ? String(d.code_value) : null,
+                            live_detail: d.live_value ? String(d.live_value) : null,
+                        }))
+                        const codeOnly: WAFDriftItem[] = ((acl.code_only_rules as string[]) || []).map(r => ({
+                            rule_name: r, attribute: "presence", code_value: "defined", live_value: null,
+                            status: "code_only" as const, code_detail: "In Terraform", live_detail: null,
+                        }))
+                        const liveOnly: WAFDriftItem[] = ((acl.live_only_rules as string[]) || []).map(r => ({
+                            rule_name: r, attribute: "presence", code_value: null, live_value: "active",
+                            status: "live_only" as const, code_detail: null, live_detail: "In AWS",
+                        }))
+                        return {
+                            web_acl_name: acl.name ?? acl.web_acl_name,
+                            in_code: acl.in_code ?? false,
+                            in_aws: acl.in_live ?? acl.in_aws ?? false,
+                            drift_items: [...driftItems, ...codeOnly, ...liveOnly],
+                        }
+                    })
+                    setDriftData(mapped)
+                    setHasLiveData(data.has_live_audit ?? data.has_live_data ?? true)
                 } else if (res.status === 404) {
                     setHasLiveData(false)
                 }

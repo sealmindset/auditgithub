@@ -4,7 +4,7 @@ import os
 import uuid
 import shutil
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 from pydantic import BaseModel, Field
@@ -1278,7 +1278,7 @@ async def refine_architecture_diagram(
 
     try:
         # Fetch the project to get the architecture report
-        project = db.query(Project).filter(Project.id == request.project_id).first()
+        project = db.query(models.Repository).filter(models.Repository.id == request.project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
             
@@ -1309,6 +1309,228 @@ async def refine_architecture_diagram(
     except Exception as e:
         logger.error(f"Error refining diagram: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Icon Catalog & Diagram Editor Agent
+# ---------------------------------------------------------------------------
+
+from ..utils.custom_icons import (
+    CUSTOM_BRAND_ICONS,
+    get_custom_icons_catalog,
+    get_custom_icons_prompt_block,
+)
+from ..utils.diagrams_indexer import search_diagram_node
+
+
+class IconEntry(BaseModel):
+    name: str
+    label: Optional[str] = None
+    import_path: str
+    provider: str
+    category: Optional[str] = None
+    usage: Optional[str] = None
+    is_custom: bool = False
+
+
+class IconCatalogResponse(BaseModel):
+    total: int
+    icons: list
+    providers: dict
+
+
+@router.get(
+    "/architecture/icons",
+    response_model=IconCatalogResponse,
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Search the full icon catalog (library + custom brand icons)",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions"},
+    },
+)
+async def get_icon_catalog(
+    q: Optional[str] = Query(None, description="Search query (substring match on name/path)"),
+    provider: Optional[str] = Query(None, description="Filter by provider (aws, azure, gcp, saas, onprem, custom, etc.)"),
+    limit: int = Query(100, ge=1, le=500, description="Max results"),
+):
+    """Return a searchable catalog of all available diagram icons."""
+    results = []
+    provider_counts: dict = {}
+
+    # Library icons
+    for name, path in sorted(diagrams_index.items()):
+        if name.startswith("_"):
+            continue
+        parts = path.split(".")
+        prov = parts[1] if len(parts) > 2 else "unknown"
+        cat = parts[2] if len(parts) > 3 else None
+
+        if provider and prov != provider:
+            continue
+        if q and q.lower() not in name.lower() and q.lower() not in path.lower():
+            continue
+
+        provider_counts[prov] = provider_counts.get(prov, 0) + 1
+        results.append({
+            "name": name,
+            "label": name,
+            "import_path": path,
+            "provider": prov,
+            "category": cat,
+            "usage": f"from {'.'.join(parts[:-1])} import {name}",
+            "is_custom": False,
+        })
+
+    # Custom icons
+    for entry in get_custom_icons_catalog():
+        if provider and entry["provider"] != provider:
+            continue
+        if q and q.lower() not in entry["name"].lower() and q.lower() not in entry["label"].lower():
+            continue
+        provider_counts["custom"] = provider_counts.get("custom", 0) + 1
+        results.append(entry)
+
+    total = len(results)
+    return IconCatalogResponse(
+        total=total,
+        icons=results[:limit],
+        providers=provider_counts,
+    )
+
+
+class DiagramEditRequest(BaseModel):
+    project_id: str = Field(..., description="Repository UUID")
+    instruction: str = Field(..., description="Natural language edit instruction")
+    code: Optional[str] = Field(None, description="Current diagram code (uses saved code if omitted)")
+
+
+class DiagramEditResponse(BaseModel):
+    code: str = Field(..., description="Modified Python diagram code")
+    image: Optional[str] = Field(None, description="Base64 PNG if execution succeeded")
+    changes_summary: str = Field(..., description="Brief description of changes made")
+    fix_log: list = Field(default_factory=list, description="Self-annealing correction log")
+
+
+@router.post(
+    "/architecture/edit",
+    response_model=DiagramEditResponse,
+    dependencies=[Depends(require_permissions("findings:write"))],
+    summary="AI-powered surgical edit of diagram code",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions"},
+        404: {"description": "Project not found"},
+        503: {"description": "AI provider not available"},
+    },
+)
+async def edit_diagram(
+    request: DiagramEditRequest,
+    db: Session = Depends(get_tenant_db),
+):
+    """Edit existing diagram code using natural language instructions.
+
+    The AI agent makes surgical edits — it does NOT regenerate the full diagram.
+    The response includes a preview image but does NOT auto-save.
+    Call PUT /architecture/{project_id} to persist.
+    """
+    project = db.query(models.Repository).filter(models.Repository.id == request.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    current_code = request.code or project.architecture_diagram
+    if not current_code:
+        raise HTTPException(status_code=400, detail="No diagram code to edit. Generate one first.")
+
+    if not ai_agent:
+        raise HTTPException(status_code=503, detail="AI provider not configured")
+
+    report_context = project.architecture_report or ""
+
+    # Build focused icon catalog for the prompt (custom + relevant library)
+    icon_context_parts = [get_custom_icons_prompt_block(), ""]
+    instruction_lower = request.instruction.lower()
+    relevant_library = []
+    for name, path in sorted(diagrams_index.items()):
+        if name.startswith("_"):
+            continue
+        if (name.lower() in instruction_lower
+                or name.lower() in current_code.lower()
+                or any(kw in name.lower() for kw in ["waf", "firewall", "monitor", "log", "analytic", "crm", "database", "cache", "queue", "load"])):
+            relevant_library.append(f"  {name}: from {'.'.join(path.split('.')[:-1])} import {name}")
+    if relevant_library:
+        icon_context_parts.append("## Relevant Library Icons")
+        icon_context_parts.extend(relevant_library[:60])
+
+    icon_catalog_text = "\n".join(icon_context_parts)
+
+    system_prompt = (
+        "You are a Python diagrams-as-code expert. You surgically edit existing diagram code "
+        "based on user instructions. Make MINIMUM changes to fulfill the request. "
+        "Preserve all existing structure, clusters, connections, and layout. "
+        "NEVER regenerate the entire diagram. "
+        "If a service has no library icon, use Custom() with the brand icon filename. "
+        "Custom icon PNGs are in the script's working directory. "
+        'Example: Custom("Sumo Logic", "sumo_logic.png") '
+        "ALWAYS add `from diagrams.custom import Custom` if using Custom nodes. "
+        "Keep filename='architecture_diagram' and show=False. "
+        "Return ONLY the modified Python code, no explanations."
+    )
+
+    user_prompt = f"""## Current Diagram Code
+```python
+{current_code}
+```
+
+## Available Icons
+{icon_catalog_text}
+
+## Edit Instruction
+{request.instruction}
+
+Return the complete modified Python code only."""
+
+    try:
+        from src.services.ai_safety.sanitize import sanitize_prompt_input
+        from src.services.ai_safety.validate import validate_agent_output
+
+        sanitized_instruction = sanitize_prompt_input(request.instruction)
+
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        content = await ai_agent.provider.execute_prompt(full_prompt)
+
+        validation = validate_agent_output(content)
+        content = validation["sanitized_text"]
+
+        # Extract code block
+        code_match = re.search(r"```python\n(.*?)```", content, re.DOTALL)
+        if code_match:
+            edited_code = code_match.group(1).strip()
+        else:
+            edited_code = content.replace("```python", "").replace("```", "").strip()
+
+        # Execute with self-annealing
+        image_b64, final_code, fix_log = execute_with_self_annealing(
+            edited_code, diagrams_index, max_retries=2, report_context=report_context
+        )
+
+        changes_summary = f"Applied edit: {request.instruction[:100]}"
+        if fix_log:
+            changes_summary += f" ({len(fix_log)} corrections applied)"
+
+        return DiagramEditResponse(
+            code=final_code,
+            image=image_b64,
+            changes_summary=changes_summary,
+            fix_log=fix_log,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Diagram edit failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 class ArchitectureResponse(BaseModel):
     report: str = Field(..., description="Architecture overview report in markdown")

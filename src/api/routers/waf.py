@@ -112,6 +112,8 @@ class WAFFindingResponse(BaseModel):
     remediation_terraform: Optional[str] = Field(None, description="Suggested Terraform remediation code")
     status: str = Field(..., description="Finding status (open, resolved, etc.)")
     created_at: datetime = Field(..., description="When the finding was created")
+    source_repo_id: Optional[str] = Field(None, description="Repository ID where this WAF finding originated")
+    source_repo_name: Optional[str] = Field(None, description="Repository name where this WAF finding originated")
 
 
 class PaginatedWAFFindingsResponse(BaseModel):
@@ -204,7 +206,21 @@ router = APIRouter(
 
 
 def _get_waf_findings_query(db: Session, project_id: str):
-    """Base query for WAF findings scoped to a project (repository)."""
+    """Base query for WAF findings across all repos in the same organization.
+
+    WAF rules protecting a service often live in a separate infra/WAF module repo,
+    not in the service repo itself. This queries all WAF findings org-wide so the
+    WAF tab on any project shows the full WAF posture.
+    """
+    repo = db.query(models.Repository).filter(models.Repository.id == project_id).first()
+    if repo and repo.organization_id:
+        org_repos = db.query(models.Repository.id).filter(
+            models.Repository.organization_id == repo.organization_id
+        ).subquery()
+        return db.query(models.Finding).filter(
+            models.Finding.repository_id.in_(org_repos),
+            models.Finding.scanner_name.in_(WAF_SCANNER_NAMES),
+        )
     return db.query(models.Finding).filter(
         models.Finding.repository_id == project_id,
         models.Finding.scanner_name.in_(WAF_SCANNER_NAMES),
@@ -259,9 +275,21 @@ def _severity_meta(waf_sev: str) -> SeverityMeta:
     return SeverityMeta(**meta)
 
 
-def _serialize_finding(finding: models.Finding) -> WAFFindingResponse:
+def _build_repo_name_cache(db: Session, findings: list) -> Dict[str, str]:
+    """Build a {repo_id: repo_name} lookup from a list of findings."""
+    repo_ids = {str(f.repository_id) for f in findings if f.repository_id}
+    if not repo_ids:
+        return {}
+    repos = db.query(models.Repository.id, models.Repository.name).filter(
+        models.Repository.id.in_(repo_ids)
+    ).all()
+    return {str(r.id): r.name for r in repos}
+
+
+def _serialize_finding(finding: models.Finding, repo_names: Dict[str, str] = None) -> WAFFindingResponse:
     """Convert a Finding ORM instance into a WAFFindingResponse."""
     waf_sev = _waf_severity(finding)
+    repo_id_str = str(finding.repository_id) if finding.repository_id else None
     return WAFFindingResponse(
         id=str(finding.id),
         severity=waf_sev,
@@ -280,6 +308,8 @@ def _serialize_finding(finding: models.Finding) -> WAFFindingResponse:
         remediation_terraform=_extract_risk_factor(finding, "remediation_terraform"),
         status=finding.status or "open",
         created_at=finding.created_at or datetime.utcnow(),
+        source_repo_id=repo_id_str,
+        source_repo_name=(repo_names or {}).get(repo_id_str) if repo_id_str else None,
     )
 
 
@@ -416,8 +446,9 @@ async def list_waf_findings(
     start = (page - 1) * per_page
     page_items = filtered[start : start + per_page]
 
+    repo_names = _build_repo_name_cache(db, page_items)
     return PaginatedWAFFindingsResponse(
-        findings=[_serialize_finding(f) for f in page_items],
+        findings=[_serialize_finding(f, repo_names) for f in page_items],
         total=total,
         page=page,
         per_page=per_page,
@@ -452,6 +483,8 @@ async def get_waf_finding(
         raise HTTPException(status_code=404, detail="WAF finding not found")
 
     waf_sev = _waf_severity(finding)
+    repo_names = _build_repo_name_cache(db, [finding])
+    repo_id_str = str(finding.repository_id) if finding.repository_id else None
     return WAFFindingDetailResponse(
         id=str(finding.id),
         severity=waf_sev,
@@ -470,6 +503,8 @@ async def get_waf_finding(
         remediation_terraform=_extract_risk_factor(finding, "remediation_terraform"),
         status=finding.status or "open",
         created_at=finding.created_at or datetime.utcnow(),
+        source_repo_id=repo_id_str,
+        source_repo_name=repo_names.get(repo_id_str) if repo_id_str else None,
         risk_factors=finding.risk_factors,
         ai_remediation_text=finding.ai_remediation_text,
         ai_remediation_diff=finding.ai_remediation_diff,
