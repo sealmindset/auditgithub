@@ -69,7 +69,7 @@ services:
       dockerfile: Dockerfile.api
     container_name: auditgh_api
     ports:
-      - "${API_HOST_PORT:-8000}:8000"
+      - "8000"
     env_file:
       - .env
     environment:
@@ -98,7 +98,7 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@auditgithub.local}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
-      - APP_URL=${APP_URL:-http://localhost:${UI_HOST_PORT:-3000}}
+      - APP_URL=${APP_URL:-http://localhost:${UI_HOST_PORT:-3001}}
       # OIDC provider configuration (mock-oidc in dev, Entra/Okta in prod)
       - OIDC_PROVIDER_NAME=${OIDC_PROVIDER_NAME:-}
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
@@ -149,7 +149,7 @@ services:
       target: deps
     container_name: auditgh_ui
     ports:
-      - "${UI_HOST_PORT:-3000}:3000"
+      - "${UI_HOST_PORT:-3001}:3000"
     environment:
       - API_BASE=http://api:8000
       - NODE_ENV=development
@@ -178,7 +178,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "${DB_HOST_PORT:-5432}:5432"
+      - "5432"
     command:
       - "postgres"
       - "-c"
@@ -292,9 +292,9 @@ services:
       context: ../mocksvcs/mock_oidc
     container_name: auditgh_mock_oidc
     ports:
-      - "${MOCK_OIDC_HOST_PORT:-3007}:10090"
+      - "${MOCK_OIDC_HOST_PORT:-3008}:10090"
     environment:
-      - MOCK_OIDC_EXTERNAL_BASE_URL=http://localhost:${MOCK_OIDC_HOST_PORT:-3007}
+      - MOCK_OIDC_EXTERNAL_BASE_URL=http://localhost:${MOCK_OIDC_HOST_PORT:-3008}
       - MOCK_OIDC_INTERNAL_BASE_URL=http://mock-oidc:10090
       - MOCK_OIDC_DEFAULT_CLIENT_ID=${OIDC_CLIENT_ID:-auditgh-dev-client}
       - MOCK_OIDC_DEFAULT_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-auditgh-dev-secret}

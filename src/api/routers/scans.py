@@ -44,7 +44,7 @@ class ScanStatusResponse(BaseModel):
     error_message: Optional[str] = Field(None, description="Error details if scan failed")
 
 
-def _get_scanner_env() -> dict:
+def _get_scanner_env(github_token: str = None, github_org: str = None) -> dict:
     """Build environment dict for scanner container from current env."""
     keys = [
         "GITHUB_TOKEN", "GITHUB_ORG", "GITHUB_API",
@@ -55,7 +55,31 @@ def _get_scanner_env() -> dict:
     env = {k: os.getenv(k, "") for k in keys if os.getenv(k)}
     env["POSTGRES_HOST"] = "db"
     env["POSTGRES_PORT"] = "5432"
+    if github_token:
+        env["GITHUB_TOKEN"] = github_token
+    if github_org:
+        env["GITHUB_ORG"] = github_org
     return env
+
+
+def _resolve_org_credentials(db, repo) -> tuple:
+    """Resolve GitHub token and org name for a repository's organization."""
+    if not repo.organization_id:
+        return os.getenv("GITHUB_TOKEN", ""), os.getenv("GITHUB_ORG", "")
+
+    org = db.query(models.Organization).filter(
+        models.Organization.id == repo.organization_id
+    ).first()
+    if not org:
+        return os.getenv("GITHUB_TOKEN", ""), os.getenv("GITHUB_ORG", "")
+
+    org_name = org.name.lower()
+    token_key = f"ORG_{org_name.upper()}_TOKEN"
+    token = os.getenv(token_key, "")
+    if not token:
+        token = os.getenv("GITHUB_TOKEN", "")
+
+    return token, org.github_org or os.getenv("GITHUB_ORG", "")
 
 
 def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: List[str] = None, finding_ids: List[str] = None):
@@ -74,13 +98,20 @@ def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: 
 
         client = docker.from_env()
 
+        # Resolve org-specific credentials for this repo
+        repo = db.query(models.Repository).filter(models.Repository.name == repo_name).first()
+        org_token, org_github = _resolve_org_credentials(db, repo) if repo else ("", "")
+        if not org_token:
+            org_token = os.getenv("GITHUB_TOKEN", "")
+        if not org_github:
+            org_github = os.getenv("GITHUB_ORG", "")
+
         # Build scanner command args
         cmd_parts = ["--repo", repo_name, "--no-ai-agent",
                       "--report-dir", "/app/vulnerability_reports",
                       "--loglevel", "INFO"]
-        github_org = os.getenv("GITHUB_ORG", "")
-        if github_org:
-            cmd_parts.extend(["--org", github_org])
+        if org_github:
+            cmd_parts.extend(["--org", org_github])
         if scanners:
             cmd_parts.extend(["--scanners", ",".join(scanners)])
 
@@ -91,12 +122,12 @@ def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: 
             f"{host_project_dir}/vulnerability_reports": {"bind": "/app/vulnerability_reports", "mode": "rw"},
         }
 
-        logger.info(f"Launching scanner container: {SCANNER_IMAGE} {' '.join(cmd_parts)}")
+        logger.info(f"Launching scanner container: {SCANNER_IMAGE} for {org_github}/{repo_name}")
 
         container = client.containers.run(
             SCANNER_IMAGE,
             command=cmd_parts,
-            environment=_get_scanner_env(),
+            environment=_get_scanner_env(github_token=org_token, github_org=org_github),
             volumes=volumes,
             network=DOCKER_NETWORK,
             name=f"auditgh_scan_{scan_id[:8]}",

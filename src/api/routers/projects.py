@@ -61,8 +61,14 @@ async def get_projects(
     Includes finding counts by severity and contributor metrics for each project.
     """
     # Get organization ID for multi-tenant scoping
-    org_id = organization_id or _get_current_organization_id(db)
-    
+    # "all" bypasses org filter to show repos across all organizations
+    if organization_id == "all":
+        org_id = None
+    else:
+        org_id = organization_id or _get_current_organization_id(db)
+
+    logger.info(f"get_projects: requested={organization_id}, resolved={org_id}")
+
     # Build query with optional organization filter
     query = db.query(models.Repository)
     if org_id:

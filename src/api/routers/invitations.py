@@ -169,7 +169,7 @@ async def send_invitation(
         )
 
         # Generate invitation link
-        app_url = os.getenv("APP_URL", "http://localhost:3000")
+        app_url = os.getenv("APP_URL", "http://localhost:3001")
         invitation_link = f"{app_url}/invite/{invitation.invite_token}"
 
         return SendInvitationResponse(
