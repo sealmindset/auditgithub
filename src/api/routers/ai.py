@@ -734,12 +734,12 @@ async def validate_zero_day_prompt(
 # Zero Day Analysis Export Endpoints
 @router.post(
     "/zero-day/export/pdf",
-    dependencies=[Depends(require_permissions("findings:write"))],
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Export zero-day analysis as PDF",
     responses={
         **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - findings:write required"},
+        403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "PDF generation failed or reportlab not installed"},
     },
 )
@@ -748,7 +748,7 @@ async def export_zda_pdf(request: dict):
     Export Zero Day Analysis as PDF.
 
     Generates a downloadable PDF report containing the analysis, affected
-    repositories, and metadata. Requires findings:write permission.
+    repositories, and metadata. Requires findings:read permission.
     """
     try:
         from reportlab.lib import colors
@@ -844,12 +844,12 @@ async def export_zda_pdf(request: dict):
 
 @router.post(
     "/zero-day/export/docx",
-    dependencies=[Depends(require_permissions("findings:write"))],
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Export zero-day analysis as DOCX",
     responses={
         **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - findings:write required"},
+        403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "DOCX generation failed or python-docx not installed"},
     },
 )
@@ -858,7 +858,7 @@ async def export_zda_docx(request: dict):
     Export Zero Day Analysis as DOCX.
 
     Generates a downloadable Word document containing the analysis, affected
-    repositories, and metadata. Requires findings:write permission.
+    repositories, and metadata. Requires findings:read permission.
     """
     try:
         from docx import Document
@@ -930,12 +930,12 @@ async def export_zda_docx(request: dict):
 # Zero Day Analysis - Repository List Export Endpoints
 @router.post(
     "/zero-day/export/repos/pdf",
-    dependencies=[Depends(require_permissions("findings:write"))],
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Export affected repositories list as PDF",
     responses={
         **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - findings:write required"},
+        403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "PDF generation failed or reportlab not installed"},
     },
 )
@@ -944,7 +944,7 @@ async def export_zda_repos_pdf(request: dict):
     Export Zero Day Analysis affected repositories as PDF.
 
     Generates a downloadable PDF with a table of affected repositories.
-    Requires findings:write permission.
+    Requires findings:read permission.
     """
     try:
         from reportlab.lib import colors
@@ -1032,12 +1032,12 @@ async def export_zda_repos_pdf(request: dict):
 
 @router.post(
     "/zero-day/export/repos/docx",
-    dependencies=[Depends(require_permissions("findings:write"))],
+    dependencies=[Depends(require_permissions("findings:read"))],
     summary="Export affected repositories list as DOCX",
     responses={
         **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
-        403: {"description": "Insufficient permissions - findings:write required"},
+        403: {"description": "Insufficient permissions - findings:read required"},
         500: {"description": "DOCX generation failed or python-docx not installed"},
     },
 )
@@ -1046,7 +1046,7 @@ async def export_zda_repos_docx(request: dict):
     Export Zero Day Analysis affected repositories as DOCX.
 
     Generates a downloadable Word document with a table of affected repositories.
-    Requires findings:write permission.
+    Requires findings:read permission.
     """
     try:
         from docx import Document
