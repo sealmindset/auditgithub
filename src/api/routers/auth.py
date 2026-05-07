@@ -388,7 +388,7 @@ async def callback(provider: str, request: Request):
             logger.info(f"Login successful: {user.email} (role={user.role}, provider={provider})")
 
             # Redirect to frontend homepage with 303 See Other (POST-redirect-GET pattern)
-            app_url = os.environ.get('APP_URL', 'http://localhost:3001')
+            app_url = os.environ.get('APP_URL', 'http://localhost:3000')
             return RedirectResponse(url=app_url, status_code=303)
 
         finally:

@@ -15,6 +15,8 @@ async function proxyRequest(request: Request): Promise<Response> {
   const proxyPath = url.pathname.replace(/^\/api\/proxy/, "");
   const targetUrl = `${API_BACKEND}${proxyPath}${url.search}`;
 
+
+
   // Forward relevant headers
   const headers = new Headers();
   const forwardHeaders = [

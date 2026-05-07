@@ -1,0 +1,55 @@
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Test artifacts
+vulnerability_reports/
+vulnerability_reports_test/
+test-results/
+
+# Documentation (keep docs needed by app)
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Local dev files
+.scan_resume_state.pkl
+.planning/
+.cache/
+backups/
+generated_architectures/
+
+# Node modules (web-ui)
+src/web-ui/node_modules/
+src/web-ui/.next/

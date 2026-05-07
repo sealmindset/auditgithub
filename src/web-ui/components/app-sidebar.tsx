@@ -22,7 +22,6 @@ import {
     History,
     Bot,
     BarChart3,
-    Building2,
 } from "lucide-react"
 
 import {
@@ -159,11 +158,6 @@ const data: { navMain: NavGroup[] } = {
             title: "Administration",
             url: "#",
             items: [
-                {
-                    title: "Organizations",
-                    url: "/admin/organizations",
-                    icon: Building2,
-                },
                 {
                     title: "User Management",
                     url: "/admin/users",

@@ -18,7 +18,6 @@ import { LanguagesView } from "@/components/LanguagesView"
 import { SbomView } from "@/components/SbomView"
 import { APIAuditView } from "@/components/APIAuditView"
 import { OperationsView } from "@/components/OperationsView"
-import { WAFTab } from "@/components/waf-tab"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { API_BASE, apiFetch } from "@/lib/api"
 
@@ -210,7 +209,6 @@ export default function ProjectPage() {
                     <TabsTrigger value="contributors">Contributors</TabsTrigger>
                     <TabsTrigger value="languages">Languages</TabsTrigger>
                     <TabsTrigger value="sbom">SBOM</TabsTrigger>
-                    <TabsTrigger value="waf">WAF</TabsTrigger>
                     <TabsTrigger value="api-audit">API Audit</TabsTrigger>
                     <TabsTrigger value="operations">Operations</TabsTrigger>
                 </TabsList>
@@ -256,10 +254,6 @@ export default function ProjectPage() {
 
                 <TabsContent value="sbom" className="mt-6">
                     <SbomView projectId={params.id as string} />
-                </TabsContent>
-
-                <TabsContent value="waf" className="mt-6">
-                    <WAFTab projectId={params.id as string} projectName={project.name} />
                 </TabsContent>
 
                 <TabsContent value="api-audit" className="mt-6">

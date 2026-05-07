@@ -133,19 +133,14 @@ export function ZDAReportsView() {
                 body: JSON.stringify(exportData)
             })
 
-            if (!response.ok) {
-                const body = await response.json().catch(() => null)
-                throw new Error(body?.detail || `Export failed (${response.status})`)
-            }
+            if (!response.ok) throw new Error('Export failed')
 
             const blob = await response.blob()
             const extension = format === 'pdf' ? 'pdf' : 'docx'
             downloadBlob(blob, `zda-report-${entry.id}.${extension}`)
 
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Export failed'
-            console.error('Export failed:', message)
-            alert(message)
+            console.error('Export failed:', err)
         }
     }
 
@@ -250,19 +245,14 @@ export function ZDAReportsView() {
                 body: JSON.stringify(exportData)
             })
 
-            if (!response.ok) {
-                const body = await response.json().catch(() => null)
-                throw new Error(body?.detail || `Export failed (${response.status})`)
-            }
+            if (!response.ok) throw new Error('Export failed')
 
             const blob = await response.blob()
             const extension = format === 'pdf' ? 'pdf' : 'docx'
             downloadBlob(blob, `affected-repos-${entry.id}.${extension}`)
 
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Export failed'
-            console.error('Export failed:', message)
-            alert(message)
+            console.error('Export failed:', err)
         }
     }
 

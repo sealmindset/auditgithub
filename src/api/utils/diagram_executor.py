@@ -346,13 +346,9 @@ def _execute_diagram_code(code: str) -> str:
     Execute Python code to generate diagram and return base64 image.
     Internal function used by self-annealing executor.
     """
-    from .custom_icons import copy_custom_icons_to_dir
-
     with tempfile.TemporaryDirectory() as tmpdir:
-        copy_custom_icons_to_dir(tmpdir)
-
         script_path = os.path.join(tmpdir, "diagram_script.py")
-
+        
         with open(script_path, "w") as f:
             f.write(code)
         

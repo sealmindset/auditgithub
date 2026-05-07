@@ -169,7 +169,7 @@ async def send_invitation(
         )
 
         # Generate invitation link
-        app_url = os.getenv("APP_URL", "http://localhost:3001")
+        app_url = os.getenv("APP_URL", "http://localhost:3000")
         invitation_link = f"{app_url}/invite/{invitation.invite_token}"
 
         return SendInvitationResponse(
@@ -330,5 +330,5 @@ async def validate_invitation(
         role=invitation.invited_role,
         access_type=invitation.invited_access_type,
         expires_at=invitation.expires_at,
-        invited_by_email=invitation.inviter.email
+        invited_by_email=invitation.inviter.email if invitation.inviter else "system"
     )

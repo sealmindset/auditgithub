@@ -13,7 +13,6 @@ import { PromptEditorDialog } from "@/components/PromptEditorDialog"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { AskAIModal } from "@/components/AskAIModal"
-import { DiagramEditorPanel } from "@/components/DiagramEditorPanel"
 import { API_BASE, apiFetch } from "@/lib/api"
 
 interface ArchitectureViewProps {
@@ -36,7 +35,6 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
     const [editMode, setEditMode] = useState(false)
     const [promptEditorOpen, setPromptEditorOpen] = useState(false)
     const [askAIOpen, setAskAIOpen] = useState(false)
-    const [diagramEditorOpen, setDiagramEditorOpen] = useState(false)
     const { toast } = useToast()
 
     const [providerName, setProviderName] = useState<string>("")
@@ -353,15 +351,9 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                         const data = await res.json()
                                         console.log("Git README response", { ok: res.ok, data })
                                         if (res.ok) {
-                                            const desc = data.pr_url
-                                                ? `PR opened: ${data.pr_url}`
-                                                : data.message || "README.md updated successfully"
-                                            if (data.pr_url) {
-                                                window.open(data.pr_url, "_blank")
-                                            }
                                             toast({
                                                 title: "Success",
-                                                description: desc
+                                                description: data.message || "README.md updated successfully"
                                             })
                                         } else {
                                             throw new Error(data.detail || "Failed to push README")
@@ -392,17 +384,6 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                         )}
                         {diagramCode && (
                             <>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setDiagramEditorOpen(!diagramEditorOpen)}
-                                    disabled={loading || saving}
-                                    title="Edit diagram with AI agent"
-                                    className={diagramEditorOpen ? "ring-2 ring-violet-400" : ""}
-                                >
-                                    <Wand2 className="mr-2 h-4 w-4" />
-                                    Edit with AI
-                                </Button>
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -554,20 +535,6 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     <span className="ml-2 text-muted-foreground">{providerName || "AI"}: Analyzing repository structure...</span>
                 </div>
-            )}
-
-            {diagramEditorOpen && diagramCode && (
-                <DiagramEditorPanel
-                    projectId={projectId}
-                    currentCode={diagramCode}
-                    onApply={(newCode, newImage) => {
-                        setDiagramCode(newCode)
-                        if (newImage) setDiagramImage(newImage)
-                        setDiagramEditorOpen(false)
-                        toast({ title: "Applied", description: "Diagram code updated. Save to persist." })
-                    }}
-                    onClose={() => setDiagramEditorOpen(false)}
-                />
             )}
 
             <PromptEditorDialog

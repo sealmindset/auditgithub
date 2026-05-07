@@ -241,7 +241,7 @@ import src.api.prompt_models  # noqa: F401 — register prompt management tables
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts, waf
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -284,7 +284,6 @@ app.include_router(ai_chat.router)
 app.include_router(api_keys.router)  # API key management
 app.include_router(sarif_import.router)  # SARIF import (MegaLinter, Semgrep, etc.)
 app.include_router(prompts.router)  # AI Prompt Management System
-app.include_router(waf.router)  # WAF static analysis, live audit, drift comparison, Ask AI
 
 # Register sandbox router (only active when SANDBOX_MODE=true)
 if is_sandbox():

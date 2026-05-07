@@ -15,7 +15,7 @@ What it does:
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -26,35 +26,68 @@ from loguru import logger
 # Mock OIDC pre-seeded users that we create invitations for
 # Must match the users seeded in mocksvcs/mock_oidc/store.py
 DEV_INVITATIONS = [
+    # Real user emails (mock-oidc store.py pre-seeds these)
+    {
+        "email": "ravance@gmail.com",
+        "role": "super_admin",
+        "access_type": "both",
+        "description": "Rob Vance Super Admin (matches mock-oidc mock-super-admin)",
+    },
+    {
+        "email": "rob.vance@sleepnumber.com",
+        "role": "admin",
+        "access_type": "both",
+        "description": "Rob Vance Admin (matches mock-oidc mock-admin)",
+    },
+    # Zapper tenant users
     {
         "email": "superadmin@zapper.local",
         "role": "super_admin",
         "access_type": "both",
-        "description": "Super Admin (matches mock-oidc mock-super-admin user)",
+        "description": "Super Admin (matches mock-oidc mock-superadmin-zapper)",
     },
     {
         "email": "admin@zapper.local",
         "role": "admin",
         "access_type": "both",
-        "description": "Admin (matches mock-oidc mock-admin user)",
+        "description": "Admin (matches mock-oidc mock-admin-zapper)",
     },
     {
         "email": "manager@zapper.local",
         "role": "manager",
         "access_type": "both",
-        "description": "Manager (matches mock-oidc mock-manager user)",
+        "description": "Manager (matches mock-oidc mock-manager-zapper)",
     },
     {
         "email": "analyst@zapper.local",
         "role": "analyst",
         "access_type": "both",
-        "description": "Analyst (matches mock-oidc mock-analyst user)",
+        "description": "Analyst (matches mock-oidc mock-analyst-zapper)",
     },
     {
         "email": "user@zapper.local",
         "role": "user",
         "access_type": "ui_only",
-        "description": "Read-only user (matches mock-oidc mock-user user)",
+        "description": "Read-only user (matches mock-oidc mock-user-zapper)",
+    },
+    # Generic dev users
+    {
+        "email": "manager@auditgithub.local",
+        "role": "manager",
+        "access_type": "both",
+        "description": "Manager (matches mock-oidc mock-manager)",
+    },
+    {
+        "email": "analyst@auditgithub.local",
+        "role": "analyst",
+        "access_type": "both",
+        "description": "Analyst (matches mock-oidc mock-analyst)",
+    },
+    {
+        "email": "user@auditgithub.local",
+        "role": "user",
+        "access_type": "ui_only",
+        "description": "Read-only user (matches mock-oidc mock-user)",
     },
 ]
 
@@ -97,12 +130,12 @@ def seed_dev_invitations():
 
             invitation = UserInvitation(
                 email=inv_data["email"],
-                invite_token=f"dev-bootstrap-{inv_data['role']}",
+                invite_token=f"dev-bootstrap-{inv_data['email'].replace('@', '-at-').replace('.', '-')}",
                 invited_by=None,  # System-generated bootstrap invitation
                 invited_role=inv_data["role"],
                 invited_access_type=inv_data["access_type"],
                 status="pending",
-                expires_at=datetime.utcnow() + timedelta(days=365),  # Long-lived for dev
+                expires_at=datetime.now(timezone.utc) + timedelta(days=365),
             )
             db.add(invitation)
             created += 1
@@ -116,11 +149,14 @@ def seed_dev_invitations():
         if created > 0:
             logger.info(f"Seeded {created} development auth invitations.")
             logger.info("")
-            logger.info("To complete setup, visit:")
-            logger.info("  http://localhost:8000/auth/accept-invite?token=dev-bootstrap-super_admin")
+            app_url = os.getenv("APP_URL", "http://localhost:3001")
+            logger.info("To complete setup, visit one of (use UI URL, not API directly):")
+            for inv in DEV_INVITATIONS:
+                token = f"dev-bootstrap-{inv['email'].replace('@', '-at-').replace('.', '-')}"
+                logger.info(f"  {app_url}/invite/{token}  ({inv['email']}, {inv['role']})")
             logger.info("")
-            logger.info("This will redirect you to mock OIDC to pick a user,")
-            logger.info("then create your account with the assigned role.")
+            logger.info("IMPORTANT: Always start auth flow from the UI (port 3001), not the API directly.")
+            logger.info("This ensures session cookies stay on the same domain through the OIDC redirect.")
         else:
             logger.info("No new invitations needed.")
 

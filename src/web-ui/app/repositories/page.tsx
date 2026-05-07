@@ -1,24 +1,13 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText, Activity, Building2 } from "lucide-react"
+import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText, Activity } from "lucide-react"
 import Link from "next/link"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { API_BASE, apiFetch } from "@/lib/api"
-
-interface Organization {
-    id: string
-    name: string
-    display_name: string | null
-    github_org: string
-    is_default: boolean
-    total_repos: number
-    total_findings: number
-}
 
 function getDaysSince(date: string | null): number | null {
     if (!date) return null
@@ -112,65 +101,25 @@ function getScanAgeBadge(days: number | null) {
 
 export default function RepositoriesPage() {
     const [projects, setProjects] = useState<any[]>([])
-    const [initialLoading, setInitialLoading] = useState(true)
-    const [refreshing, setRefreshing] = useState(false)
-    const [organizations, setOrganizations] = useState<Organization[]>([])
-    const [selectedOrgId, setSelectedOrgId] = useState<string>("")
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        let cancelled = false
-        const init = async () => {
+        const fetchProjects = async () => {
             try {
-                const orgRes = await apiFetch(`${API_BASE}/organizations/`)
-                if (orgRes.ok && !cancelled) {
-                    const orgs: Organization[] = await orgRes.json()
-                    setOrganizations(orgs)
-
-                    const savedOrgName = typeof window !== "undefined"
-                        ? localStorage.getItem("selectedOrganization")
-                        : null
-                    const savedOrg = savedOrgName
-                        ? orgs.find(o => o.name === savedOrgName)
-                        : null
-                    const activeOrg = savedOrg || orgs.find(o => o.is_default) || orgs[0]
-
-                    if (activeOrg) {
-                        setSelectedOrgId(activeOrg.id)
-                        const res = await apiFetch(`${API_BASE}/projects/?organization_id=${activeOrg.id}`)
-                        if (res.ok && !cancelled) {
-                            setProjects(await res.json())
-                        }
-                    }
+                const res = await apiFetch(`${API_BASE}/projects/`)
+                if (res.ok) {
+                    const data = await res.json()
+                    setProjects(data)
                 }
             } catch (error) {
-                console.error("Failed to initialize:", error)
+                console.error("Failed to fetch projects:", error)
             } finally {
-                if (!cancelled) setInitialLoading(false)
+                setLoading(false)
             }
         }
-        init()
-        return () => { cancelled = true }
-    }, [])
 
-    const handleOrgChange = useCallback(async (orgId: string) => {
-        setSelectedOrgId(orgId)
-        setRefreshing(true)
-        try {
-            const org = organizations.find(o => o.id === orgId)
-            if (org && typeof window !== "undefined") {
-                localStorage.setItem("selectedOrganization", org.name)
-            }
-            const url = `${API_BASE}/projects/?organization_id=${orgId}`
-            const res = await apiFetch(url)
-            if (res.ok) {
-                setProjects(await res.json())
-            }
-        } catch (error) {
-            console.error("Failed to fetch projects:", error)
-        } finally {
-            setRefreshing(false)
-        }
-    }, [organizations])
+        fetchProjects()
+    }, [])
 
     const deploymentStatusConfig: Record<string, { label: string; color: string }> = {
         production: { label: "Production", color: "bg-green-500 hover:bg-green-600" },
@@ -386,7 +335,7 @@ export default function RepositoriesPage() {
         }
     ]
 
-    if (initialLoading) {
+    if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -394,50 +343,15 @@ export default function RepositoriesPage() {
         )
     }
 
-    const selectedOrg = organizations.find(o => o.id === selectedOrgId)
-
     return (
         <div className="flex flex-1 flex-col gap-6 p-6">
-            <div className="flex items-start justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Repositories</h1>
-                    <p className="text-muted-foreground">
-                        {selectedOrg
-                            ? `${selectedOrg.total_repos.toLocaleString()} repositories in ${selectedOrg.display_name || selectedOrg.github_org}`
-                            : "All monitored repositories"}
-                    </p>
-                </div>
-                {organizations.length > 0 && (
-                    <Select value={selectedOrgId} onValueChange={handleOrgChange}>
-                        <SelectTrigger className="w-[280px]">
-                            <div className="flex items-center gap-2">
-                                <Building2 className="h-4 w-4 text-muted-foreground" />
-                                <SelectValue placeholder="Select organization" />
-                            </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Organizations</SelectItem>
-                            {organizations.map(org => (
-                                <SelectItem key={org.id} value={org.id}>
-                                    <div className="flex items-center justify-between gap-4">
-                                        <span>{org.display_name || org.github_org}</span>
-                                        <span className="text-xs text-muted-foreground">
-                                            {org.total_repos.toLocaleString()} repos
-                                        </span>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                )}
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Repositories</h1>
+                <p className="text-muted-foreground">
+                    List of all monitored repositories.
+                </p>
             </div>
-            {refreshing ? (
-                <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-            ) : (
-                <DataTable columns={columns} data={projects} searchKey="name" tableId="repositories" />
-            )}
+            <DataTable columns={columns} data={projects} searchKey="name" tableId="repositories" />
         </div>
     )
 }

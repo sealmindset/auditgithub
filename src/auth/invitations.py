@@ -5,7 +5,7 @@ Email-based user onboarding with unique invitation links (7-day expiry).
 Admins can invite users with specific roles and access types.
 """
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from loguru import logger
@@ -68,7 +68,7 @@ def create_invitation(
         invited_role=role,
         invited_access_type=access_type,
         status='pending',
-        expires_at=datetime.utcnow() + timedelta(days=7)
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7)
     )
 
     db.add(invitation)
@@ -133,7 +133,7 @@ def accept_invitation(
         raise ValueError("Invalid or expired invitation")
 
     # Check expiration
-    if invitation.expires_at < datetime.utcnow():
+    if invitation.expires_at < datetime.now(timezone.utc):
         invitation.status = 'expired'
         db.commit()
         raise ValueError("Invitation expired")
@@ -166,14 +166,14 @@ def accept_invitation(
         entra_id_upn=user_info.get('upn') if provider == 'entra' else None,
         is_active=True,
         is_invited=True,
-        first_login_at=datetime.utcnow()
+        first_login_at=datetime.now(timezone.utc)
     )
 
     db.add(user)
 
     # Mark invitation accepted
     invitation.status = 'accepted'
-    invitation.accepted_at = datetime.utcnow()
+    invitation.accepted_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(user)
@@ -208,7 +208,7 @@ def get_invitation_by_token(
         return None
 
     # Auto-expire old invitations
-    if invitation.status == 'pending' and invitation.expires_at < datetime.utcnow():
+    if invitation.status == 'pending' and invitation.expires_at < datetime.now(timezone.utc):
         invitation.status = 'expired'
         db.commit()
 
@@ -276,7 +276,7 @@ def list_pending_invitations(
 
     # Auto-expire old invitations
     for inv in invitations:
-        if inv.expires_at < datetime.utcnow():
+        if inv.expires_at < datetime.now(timezone.utc):
             inv.status = 'expired'
 
     db.commit()
@@ -296,7 +296,7 @@ def cleanup_expired_invitations(db: Session) -> int:
     """
     expired_invitations = db.query(UserInvitation).filter(
         UserInvitation.status == 'pending',
-        UserInvitation.expires_at < datetime.utcnow()
+        UserInvitation.expires_at < datetime.now(timezone.utc)
     ).all()
 
     count = 0

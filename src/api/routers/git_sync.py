@@ -1,8 +1,5 @@
 """
-Git Sync Router - Handles pushing architecture artifacts to GitHub repositories.
-
-Creates feature branches and opens pull requests instead of pushing directly,
-which supports repositories with branch protection rules.
+Git Sync Router - Handles pushing architecture artifacts to GitHub repositories
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -15,10 +12,6 @@ from pathlib import Path
 from loguru import logger
 from typing import Optional
 import base64
-import datetime
-import json
-import urllib.request
-import urllib.error
 
 from ..dependencies import get_tenant_db
 from .. import models
@@ -62,124 +55,110 @@ def get_github_org_name(org: str) -> str:
     return github_org or org
 
 
-def _github_api(token: str, endpoint: str, method: str = "GET", body: dict = None) -> dict:
-    """Make a GitHub API request."""
-    url = f"https://api.github.com{endpoint}"
-    data = json.dumps(body).encode() if body else None
-    req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("Authorization", f"token {token}")
-    req.add_header("Accept", "application/vnd.github.v3+json")
-    if data:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode() if e.fp else ""
-        raise Exception(f"GitHub API {e.code}: {error_body}")
-
-
 def clone_and_update_repo(
     repo_url: str,
     github_token: str,
     file_path: str,
     file_content: bytes,
     commit_message: str,
-    repo_name: str,
-    github_org: str = "",
+    repo_name: str
 ) -> dict:
     """
-    Clone a repository, create a feature branch, commit changes,
-    push the branch, and open a pull request.
+    Clone a repository, update a file, commit and push changes.
 
-    Falls back to direct push if branch protection is not enabled.
-    Returns dict with success status, message, and optional PR URL.
+    Returns dict with success status and message.
     """
     temp_dir = tempfile.mkdtemp(prefix=f"git_sync_{repo_name}_")
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    branch_name = f"auditgh/{file_path.replace('/', '-').replace('.', '-')}-{timestamp}"
 
     try:
+        # Add token to URL for authentication
         if github_token and "github.com" in repo_url:
+            # Convert https://github.com/org/repo to https://TOKEN@github.com/org/repo
             auth_url = repo_url.replace("https://", f"https://{github_token}@")
         else:
             auth_url = repo_url
 
+        # Clone repository
         logger.info(f"Cloning repository: {repo_url}")
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", auth_url, temp_dir],
+            ["git", "clone", auth_url, temp_dir],
             capture_output=True,
             text=True,
             timeout=120
         )
+
         if result.returncode != 0:
             raise Exception(f"Git clone failed: {result.stderr}")
-
-        # Detect default branch
-        head_ref = subprocess.run(
-            ["git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
-            cwd=temp_dir, capture_output=True, text=True
-        )
-        base_branch = head_ref.stdout.strip().replace("origin/", "") if head_ref.returncode == 0 else "main"
-
-        # Create feature branch
-        subprocess.run(["git", "checkout", "-b", branch_name], cwd=temp_dir, check=True)
 
         # Write file
         file_full_path = os.path.join(temp_dir, file_path)
         os.makedirs(os.path.dirname(file_full_path), exist_ok=True)
-        mode = 'wb' if isinstance(file_content, bytes) else 'w'
-        with open(file_full_path, mode) as f:
-            f.write(file_content)
+
+        if isinstance(file_content, bytes):
+            with open(file_full_path, 'wb') as f:
+                f.write(file_content)
+        else:
+            with open(file_full_path, 'w') as f:
+                f.write(file_content)
 
         # Configure git
-        subprocess.run(["git", "config", "user.name", "AuditGH Bot"], cwd=temp_dir, check=True)
-        subprocess.run(["git", "config", "user.email", "noreply@auditgh.local"], cwd=temp_dir, check=True)
-
-        # Stage and check for changes
-        subprocess.run(["git", "add", file_path], cwd=temp_dir, check=True)
-        status = subprocess.run(["git", "status", "--porcelain"], cwd=temp_dir, capture_output=True, text=True)
-        if not status.stdout.strip():
-            return {"success": True, "message": "No changes to commit (file content unchanged)", "skipped": True}
-
-        # Commit
-        subprocess.run(["git", "commit", "-m", commit_message], cwd=temp_dir, check=True)
-
-        # Push feature branch
-        logger.info(f"Pushing branch {branch_name}...")
-        push_result = subprocess.run(
-            ["git", "push", "origin", branch_name],
-            cwd=temp_dir, capture_output=True, text=True, timeout=60
+        subprocess.run(
+            ["git", "config", "user.name", "AuditGH Bot"],
+            cwd=temp_dir,
+            check=True
         )
+        subprocess.run(
+            ["git", "config", "user.email", "noreply@auditgh.local"],
+            cwd=temp_dir,
+            check=True
+        )
+
+        # Stage changes
+        subprocess.run(
+            ["git", "add", file_path],
+            cwd=temp_dir,
+            check=True
+        )
+
+        # Check if there are changes to commit
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_dir,
+            capture_output=True,
+            text=True
+        )
+
+        if not status_result.stdout.strip():
+            return {
+                "success": True,
+                "message": "No changes to commit (file content unchanged)",
+                "skipped": True
+            }
+
+        # Commit changes
+        subprocess.run(
+            ["git", "commit", "-m", commit_message],
+            cwd=temp_dir,
+            check=True
+        )
+
+        # Push changes
+        logger.info("Pushing changes to remote...")
+        push_result = subprocess.run(
+            ["git", "push", "origin", "HEAD"],
+            cwd=temp_dir,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
         if push_result.returncode != 0:
             raise Exception(f"Git push failed: {push_result.stderr}")
 
-        # Open pull request via GitHub API
-        pr_url = None
-        if github_org and github_token:
-            owner = github_org
-            try:
-                pr = _github_api(github_token, f"/repos/{owner}/{repo_name}/pulls", "POST", {
-                    "title": commit_message,
-                    "head": branch_name,
-                    "base": base_branch,
-                    "body": f"Automated update from AuditGH.\n\n- File: `{file_path}`\n- Branch: `{branch_name}`",
-                })
-                pr_url = pr.get("html_url")
-                logger.info(f"PR created: {pr_url}")
-            except Exception as e:
-                logger.warning(f"PR creation failed (branch still pushed): {e}")
-
-        msg = f"Branch `{branch_name}` pushed"
-        if pr_url:
-            msg = f"PR opened: {pr_url}"
-
         return {
             "success": True,
-            "message": msg,
-            "skipped": False,
-            "pr_url": pr_url,
-            "branch": branch_name,
+            "message": f"Successfully pushed {file_path} to repository",
+            "skipped": False
         }
 
     except subprocess.TimeoutExpired:
@@ -189,6 +168,7 @@ def clone_and_update_repo(
     except Exception as e:
         raise Exception(f"Git sync failed: {str(e)}")
     finally:
+        # Cleanup temp directory
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception as e:
@@ -259,15 +239,14 @@ async def push_readme_to_git(
         # Prepare README content (replace entire README)
         readme_content = repo.architecture_report.encode('utf-8')
 
-        # Push to branch and open PR
+        # Push to repository
         result = clone_and_update_repo(
             repo_url=repo.url,
             github_token=github_token,
             file_path="README.md",
             file_content=readme_content,
             commit_message="Update README with architecture report [automated]",
-            repo_name=repo.name,
-            github_org=github_org,
+            repo_name=repo.name
         )
 
         return {
@@ -275,9 +254,7 @@ async def push_readme_to_git(
             "message": result["message"],
             "skipped": result.get("skipped", False),
             "repository": repo.name,
-            "file": "README.md",
-            "pr_url": result.get("pr_url"),
-            "branch": result.get("branch"),
+            "file": "README.md"
         }
 
     except HTTPException:
