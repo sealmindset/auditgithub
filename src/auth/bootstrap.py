@@ -74,7 +74,7 @@ def bootstrap_super_admins() -> None:
                 auth_provider='entra',
                 is_active=True
             )
-            db.add(rob_vance)
+            db.add(admin_user)
             db.commit()
             logger.info(f"✓ Created Entra ID super admin: {ADMIN_EMAIL}")
         else:
