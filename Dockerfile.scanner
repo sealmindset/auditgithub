@@ -19,6 +19,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cloc \
     && rm -rf /var/lib/apt/lists/*
 
+# Trust corporate TLS-inspection root CAs (e.g. Zscaler) so gem/pip/npm/git
+# can reach upstream registries from behind the proxy. No-op if certs/ is empty.
+COPY certs/ /usr/local/share/ca-certificates/extra/
+RUN update-ca-certificates
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
+
+# Some CDNs (dotnet, GitHub releases) return 403 to default wget/curl agents
+# once the proxy rewrites the request. Present a browser UA globally so nested
+# installer scripts inherit it.
+RUN echo 'user_agent = Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' >> /etc/wgetrc && \
+    printf 'user-agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"\n' > /root/.curlrc
+
 # Install Node.js tools
 RUN npm install -g retire pnpm yarn
 
@@ -107,14 +123,20 @@ RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 # Install .NET SDK and OSSGadget
 # Note: Microsoft package repository setup might differ for ARM64. 
 # Using dotnet-install script is often more robust for multi-arch.
+# Non-fatal: Microsoft's CDN returns 403 behind some TLS-inspecting proxies.
+# run_ossgadget() already degrades gracefully when dotnet is absent.
 RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
     chmod +x dotnet-install.sh && \
     ./dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet && \
     ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet && \
-    rm dotnet-install.sh
+    rm -f dotnet-install.sh \
+    || echo "WARNING: .NET SDK install failed; OSSGadget scanner will be unavailable"
 
-# Install OSSGadget
-RUN dotnet tool install --global Microsoft.CST.OSSGadget.CLI
+# Install OSSGadget (skipped if dotnet is unavailable)
+RUN if command -v dotnet >/dev/null 2>&1; then \
+      dotnet tool install --global Microsoft.CST.OSSGadget.CLI \
+      || echo "WARNING: OSSGadget install failed"; \
+    else echo "WARNING: dotnet missing; skipping OSSGadget"; fi
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
 # =============================================================================
@@ -129,7 +151,10 @@ RUN ARCH_TAG="amd64"; \
     chmod +x /usr/local/bin/horusec
 
 # Install Whispers (config file secrets) in isolated venv
+# vendor/ holds sdists that TLS-inspecting proxies block from files.pythonhosted.org
+COPY vendor/ /vendor/
 RUN python -m venv /opt/venv/whispers && \
+    /opt/venv/whispers/bin/pip install --no-cache-dir /vendor/luhn-0.2.0.tar.gz && \
     /opt/venv/whispers/bin/pip install --no-cache-dir whispers && \
     ln -s /opt/venv/whispers/bin/whispers /usr/local/bin/whispers
 

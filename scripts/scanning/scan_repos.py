@@ -910,7 +910,7 @@ def setup_temp_dir() -> str:
         os.makedirs(temp_dir, exist_ok=True)
         
         # Set permissions to ensure the directory is accessible
-        os.chmod(temp_dir, 0o755)
+        os.chmod(temp_dir, 0o700)
         
         # Update the global config with the new temp directory
         config.CLONE_DIR = temp_dir
@@ -2351,7 +2351,13 @@ class ResumeState:
             with open(self.state_file, 'r') as f:
                 state_data = json.load(f)
                 self.completed_repos = set(state_data.get('completed_repos', []))
-                self.scan_start_time = state_data.get('scan_start_time')
+                start_time = state_data.get('scan_start_time')
+                if isinstance(start_time, str):
+                    try:
+                        start_time = datetime.datetime.fromisoformat(start_time)
+                    except ValueError:
+                        start_time = None
+                self.scan_start_time = start_time
                 self.total_repos = state_data.get('total_repos', 0)
                 return True
         except Exception as e:
@@ -2364,7 +2370,9 @@ class ResumeState:
             try:
                 state_data = {
                     'completed_repos': list(self.completed_repos),
-                    'scan_start_time': self.scan_start_time,
+                    # datetime is not JSON serializable; persist as ISO-8601
+                    'scan_start_time': self.scan_start_time.isoformat() if isinstance(
+                        self.scan_start_time, datetime.datetime) else self.scan_start_time,
                     'total_repos': self.total_repos
                 }
                 with open(self.state_file, 'w') as f:
@@ -5825,6 +5833,10 @@ def main():
     parser.add_argument("--no-auto-ingest", action="store_true",
                       help="Disable automatic data ingestion after scan completes (ingestion runs by default)")
 
+    # CSV export
+    parser.add_argument("--export-csv", action="store_true",
+                      help="Export OSS dependencies and vulnerabilities to CSV after scanning")
+
     # Resume functionality arguments
     parser.add_argument("--resume", action="store_true",
                       help="Resume from previous interrupted scan (skips already completed repos)")
@@ -6639,6 +6651,27 @@ def main():
             elif args.no_auto_ingest:
                 logging.info("⏭️  Auto-ingest disabled (--no-auto-ingest flag)")
                 logging.info("   Run manually: docker exec auditgh_api python ingest_reports.py")
+
+            # CSV EXPORT: Generate OSS dependency/vulnerability CSVs
+            if getattr(args, 'export_csv', False) and scan_results.get('success', 0) > 0:
+                try:
+                    logging.info("=" * 80)
+                    logging.info("CSV EXPORT: Generating OSS dependency reports")
+                    logging.info("=" * 80)
+                    scripts_dir = os.path.dirname(os.path.dirname(__file__))
+                    sys.path.insert(0, scripts_dir)
+                    from export_oss_report import export_oss_reports
+                    from pathlib import Path
+                    output_dir = Path(config.REPORT_DIR).parent / "exports" / "csv"
+                    deps_path, vulns_path, deps_count, vulns_count = export_oss_reports(
+                        report_dir=Path(config.REPORT_DIR),
+                        output_dir=output_dir,
+                    )
+                    logging.info(f"Exported {deps_count:,} dependencies → {deps_path}")
+                    logging.info(f"Exported {vulns_count:,} vulnerabilities → {vulns_path}")
+                    logging.info("=" * 80)
+                except Exception as e:
+                    logging.error(f"❌ CSV export failed: {e}")
 
             print("\n✅ All repositories successfully scanned. Shutting down.")
 

@@ -12,7 +12,7 @@ def instrument_external_call(service_name: str, operation: str, endpoint: Option
 
     Usage:
         with instrument_external_call("github", "get_repos", "https://api.github.com/orgs/foo/repos"):
-            response = requests.get(url)
+            response = requests.get(url, timeout=30)
 
     Logs:
         - EXTERNAL_CALL_START with service, operation, endpoint

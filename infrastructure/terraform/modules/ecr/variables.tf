@@ -20,7 +20,7 @@ variable "scan_on_push" {
 variable "image_tag_mutability" {
   description = "Image tag mutability (MUTABLE or IMMUTABLE)"
   type        = string
-  default     = "MUTABLE"
+  default     = "IMMUTABLE"
 }
 
 variable "encryption_type" {

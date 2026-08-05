@@ -62,9 +62,10 @@ function LoginForm() {
       const res = await apiFetch(`${API_BASE}/auth/break-glass/login`, {
         method: "POST",
         body: formData,
+        redirect: "manual",
       })
 
-      if (res.ok) {
+      if (res.ok || res.type === "opaqueredirect" || res.status === 303) {
         window.location.href = redirectTo
       } else {
         const data = await res.json()

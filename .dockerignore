@@ -50,6 +50,17 @@ build/
 backups/
 generated_architectures/
 
+# Scanner output. exports/ is hundreds of megabytes and contains the plaintext
+# secrets the scanner recovered from the estate; shipping it into the build
+# context would both slow every build and bake those credentials into image
+# layers, where a `docker save` or a registry push would carry them off-host.
+exports/
+.try-it-screenshots/
+
+# Host-specific trust material and vendored tarballs
+certs/
+vendor/
+
 # Node modules (web-ui)
 src/web-ui/node_modules/
 src/web-ui/.next/

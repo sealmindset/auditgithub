@@ -60,7 +60,8 @@ class JiraClient:
                 endpoint,
                 json=payload,
                 auth=HTTPBasicAuth(self.username, self.token),
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
             response.raise_for_status()
             return response.json()
@@ -79,7 +80,8 @@ class JiraClient:
             response = requests.get(
                 endpoint,
                 auth=HTTPBasicAuth(self.username, self.token),
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
             response.raise_for_status()
             return response.json()
@@ -115,7 +117,8 @@ class JiraClient:
                 endpoint,
                 json=payload,
                 auth=HTTPBasicAuth(self.username, self.token),
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
             response.raise_for_status()
             return True

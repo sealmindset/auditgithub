@@ -58,9 +58,9 @@ class GitHubRepositoryManager:
         repos = []
         
         while url:
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=30)
             response.raise_for_status()
-            
+
             for repo in response.json():
                 if not include_forks and repo.get('fork'):
                     continue
@@ -431,7 +431,7 @@ def main():
                 response = requests.get(url, headers={
                     'Authorization': f'token {args.token}',
                     'Accept': 'application/vnd.github.v3+json'
-                })
+                }, timeout=30)
                 response.raise_for_status()
                 repo_data = response.json()
                 

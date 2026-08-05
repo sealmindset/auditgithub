@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 from typing import List, Dict, Any, Optional
@@ -6,6 +7,8 @@ from loguru import logger
 from ..dependencies import get_tenant_db
 from ..database import  get_current_org_id
 from .. import models
+import csv
+import io
 import uuid
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -658,6 +661,92 @@ def get_project_dependencies(project_id: str, db: Session = Depends(get_tenant_d
         ))
         
     return results
+
+
+@router.get("/{project_id}/dependencies/export",
+    summary="Export project dependencies as CSV",
+    responses={**CRUD_ERRORS})
+def export_project_dependencies(
+    project_id: str,
+    include_vulns: bool = Query(False, description="Include vulnerability data in a separate section"),
+    db: Session = Depends(get_tenant_db),
+):
+    """Export dependencies as CSV download. Set include_vulns=true for vulnerability columns."""
+    try:
+        uuid_obj = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+
+    repo = db.query(models.Repository).filter(models.Repository.id == uuid_obj).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    buf = io.StringIO()
+
+    if include_vulns:
+        fieldnames = [
+            "name", "version", "type", "package_manager", "license",
+            "vuln_id", "severity", "description",
+        ]
+        writer = csv.DictWriter(buf, fieldnames=fieldnames)
+        writer.writeheader()
+
+        findings = db.query(models.Finding).filter(
+            models.Finding.repository_id == repo.id,
+            models.Finding.package_name.isnot(None),
+        ).all()
+
+        findings_map: Dict[tuple, list] = {}
+        for f in findings:
+            key = (f.package_name, f.package_version)
+            findings_map.setdefault(key, []).append(f)
+
+        for d in repo.dependencies:
+            related = findings_map.get((d.name, d.version), [])
+            if related:
+                for f in related:
+                    writer.writerow({
+                        "name": d.name,
+                        "version": d.version or "",
+                        "type": d.type or "",
+                        "package_manager": d.package_manager or "",
+                        "license": d.license or "",
+                        "vuln_id": f.title or "",
+                        "severity": f.severity or "",
+                        "description": f.description or "",
+                    })
+            else:
+                writer.writerow({
+                    "name": d.name,
+                    "version": d.version or "",
+                    "type": d.type or "",
+                    "package_manager": d.package_manager or "",
+                    "license": d.license or "",
+                    "vuln_id": "",
+                    "severity": "",
+                    "description": "",
+                })
+    else:
+        fieldnames = ["name", "version", "type", "package_manager", "license"]
+        writer = csv.DictWriter(buf, fieldnames=fieldnames)
+        writer.writeheader()
+        for d in repo.dependencies:
+            writer.writerow({
+                "name": d.name,
+                "version": d.version or "",
+                "type": d.type or "",
+                "package_manager": d.package_manager or "",
+                "license": d.license or "",
+            })
+
+    buf.seek(0)
+    filename = f"{repo.name}_dependencies.csv"
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 @router.get("/{project_id}/terraform",
     summary="Get Terraform/IaC findings for a project",

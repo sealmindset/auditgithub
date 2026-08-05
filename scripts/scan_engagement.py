@@ -32,10 +32,10 @@ class EngagementScanner:
         """Fetch engagement metrics for a single repository."""
         url = f"https://api.github.com/repos/{self.org_name}/{repo_name}"
         try:
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=30)
             response.raise_for_status()
             data = response.json()
-            
+
             return {
                 "stars": data.get("stargazers_count", 0),
                 "forks": data.get("forks_count", 0),
@@ -55,7 +55,7 @@ class EngagementScanner:
         """Get approximate contributor count (first page only to avoid heavy API usage)."""
         url = f"https://api.github.com/repos/{self.org_name}/{repo_name}/contributors?per_page=1&anon=true"
         try:
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=30)
             # Check Link header for last page to get total count
             if "link" in response.headers:
                 # Parse link header to find "last" page
@@ -106,15 +106,15 @@ class EngagementScanner:
             url = f"{self.postgrest_url}/repositories?name=eq.{repo_name}"
             
             # First check if repo exists
-            check = requests.get(url)
+            check = requests.get(url, timeout=30)
             if check.status_code == 200 and len(check.json()) > 0:
                 # Update
                 patch_url = f"{self.postgrest_url}/repositories?name=eq.{repo_name}"
-                requests.patch(patch_url, json=payload)
+                requests.patch(patch_url, json=payload, timeout=30)
                 logger.info(f"Updated engagement data for {repo_name}")
             else:
                 # Insert (might fail if other required fields are missing, but let's try)
-                requests.post(f"{self.postgrest_url}/repositories", json=payload)
+                requests.post(f"{self.postgrest_url}/repositories", json=payload, timeout=30)
                 logger.info(f"Inserted engagement data for {repo_name}")
                 
         except Exception as e:

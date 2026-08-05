@@ -85,7 +85,7 @@ def verify_sbom():
         # Verify API
         print(f"Calling API: {API_BASE}/projects/{repo.id}/dependencies")
         try:
-            res = requests.get(f"{API_BASE}/projects/{repo.id}/dependencies")
+            res = requests.get(f"{API_BASE}/projects/{repo.id}/dependencies", timeout=30)
             if res.status_code != 200:
                 print(f"API Failed: {res.status_code} {res.text}")
                 exit(1)
