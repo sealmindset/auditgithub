@@ -10,7 +10,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     graphviz \
     python3-dev \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Trust corporate TLS-inspection root CAs (e.g. Zscaler) so pip, curl and git can
+# reach upstream registries from behind the proxy. Without this the build fails at
+# `pip install` with CERTIFICATE_VERIFY_FAILED, and the tempting fix —
+# --trusted-host — disables verification for the whole install, so a proxy that can
+# already see the traffic could also alter the packages. Trusting the CA keeps
+# verification on. Same block as Dockerfile.scanner; certs/ is tracked as an
+# empty directory so this is a no-op where no interception is in play.
+COPY certs/ /usr/local/share/ca-certificates/extra/
+RUN update-ca-certificates
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
 # Install Syft
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin

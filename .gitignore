@@ -89,9 +89,13 @@ scripts/azure-login/screenshots/*.png
 exports/
 .scan_resume_state.pkl
 
-# Local TLS trust material and vendored source tarballs (host-specific, regenerable)
-certs/
-vendor/
+# Local TLS trust material. The corporate TLS-inspection root CA is host-specific
+# and names our proxy setup, so it stays out of a repository whose origin is
+# public. The directory itself is tracked because Dockerfile.scanner does
+# `COPY certs/`, and a COPY of a missing directory fails the build outright — so
+# a fresh clone needs the directory to exist even when it is empty.
+certs/*
+!certs/.gitkeep
 
 # Local UI/report capture artifacts
 .try-it-screenshots/

@@ -57,9 +57,8 @@ generated_architectures/
 exports/
 .try-it-screenshots/
 
-# Host-specific trust material and vendored tarballs
-certs/
-vendor/
+# certs/ and vendor/ are deliberately NOT ignored here: the images COPY both, and
+# excluding them from the build context turns the COPY into a hard build failure.
 
 # Node modules (web-ui)
 src/web-ui/node_modules/
