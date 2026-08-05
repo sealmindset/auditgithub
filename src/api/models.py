@@ -35,6 +35,102 @@ class Organization(Base):
         return f"<Organization(name='{self.name}', github_org='{self.github_org}')>"
 
 
+class OrganizationCredential(Base):
+    """
+    A credential AuditGithub owns, rather than borrows from the operator's shell.
+
+    Before this table, every GitHub call read GITHUB_TOKEN from the process
+    environment. That meant the tool's effective privilege was whatever the last
+    person to export a variable happened to hold, it was identical across all three
+    orgs, and nothing recorded what that privilege actually was. The consequence was
+    concrete: three private Digital repositories are invisible in the sleepnumber
+    scan and org-level runner enumeration returns 403, because the borrowed token is
+    an org member and not an owner — a fact discoverable only by watching scans fail.
+
+    So: one row per (organization, credential type), value encrypted at rest via
+    src/api/secrets_store.py, and the granted privilege recorded as data next to it.
+    A hunt that cannot see a surface must be able to say so, which requires knowing
+    what it was allowed to see.
+
+    organization_id is nullable. NULL means tenant-wide rather than per-org, which is
+    how the Microsoft Graph application credential is held — one Entra app serves all
+    three GitHub orgs because they live in a single tenant.
+    """
+    __tablename__ = "organization_credentials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('organization_credentials_api_id_seq'), unique=True)
+
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    # github_pat | github_app | graph_app | generic
+    credential_type = Column(String(64), nullable=False)
+    # Distinguishes multiple credentials of the same type (e.g. "read-only", "owner")
+    name = Column(String(128), nullable=False, default="default")
+    description = Column(Text)
+
+    # Fernet ciphertext, prefixed "enc:v1:". Never read this column directly —
+    # go through secrets_store.decrypt so an unreadable value raises instead of
+    # being handed to an HTTP client as if it were a token.
+    encrypted_value = Column(Text)
+    is_encrypted = Column(Boolean, default=True, nullable=False)
+    # Fingerprint of the master key used, so a key rotation is diagnosable rather
+    # than presenting as mass authentication failure.
+    key_fingerprint = Column(String(32))
+
+    # Non-secret companions to the secret — a client ID is not confidential, and
+    # keeping it in plaintext means the UI can show which app is configured without
+    # a decrypt.
+    client_id = Column(String(128))
+    tenant_id_value = Column(String(128))
+
+    # Recorded privilege, not inferred privilege.
+    # For github_pat: owner | member | outside_collaborator | unknown
+    privilege_level = Column(String(64), default="unknown")
+    # Token scopes as reported by the provider (GitHub returns them in the
+    # X-OAuth-Scopes response header), stored verbatim.
+    scopes = Column(JSONB, server_default='[]')
+    # Surfaces this credential is known NOT to reach, from observed failures.
+    # e.g. ["actions:org-runners (403)", "repo:private/digital-* (404)"]
+    known_gaps = Column(JSONB, server_default='[]')
+
+    # Length only — enough to classify and to detect truncation, never the value.
+    value_length = Column(Integer)
+    value_suffix = Column(String(8))
+
+    expires_at = Column(DateTime, nullable=True)
+    last_verified_at = Column(DateTime, nullable=True)
+    # ok | unauthorized | forbidden | expired | error | unverified
+    last_verification_status = Column(String(32), default="unverified")
+    last_verification_detail = Column(Text)
+
+    is_active = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    organization = relationship("Organization")
+
+    __table_args__ = (
+        # Per-org uniqueness. NULLs compare as distinct in Postgres, so this does
+        # not constrain tenant-wide rows — those are covered by the partial unique
+        # index created in migration 022.
+        UniqueConstraint('organization_id', 'credential_type', 'name',
+                         name='uq_org_credential'),
+        Index('idx_org_credentials_org', 'organization_id'),
+        Index('idx_org_credentials_type', 'credential_type'),
+    )
+
+    def __repr__(self):
+        return (f"<OrganizationCredential(type='{self.credential_type}', "
+                f"name='{self.name}', privilege='{self.privilege_level}')>")
+
+
 # =============================================================================
 # REPOSITORY - Core entity
 # =============================================================================

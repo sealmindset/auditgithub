@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "campaign": "shai-hulud-here-we-go-again",
+  "aliases": ["mini shai-hulud", "keyv-shai-hulud", "Shai-Hulud: Here We Go Again"],
+  "compiled_at": "2026-08-05",
+  "first_observed_utc": "2026-08-04T10:53:00Z",
+  "initial_access": "GitHub account of keyv maintainer (jaredwray) compromised; malicious commit pushed to main, releases cut through GitHub Actions. Poisoned versions therefore carry valid npm provenance attestations - provenance is not a defense here, it attests the build, not the source.",
+  "ecosystem": "npm",
+
+  "sources": [
+    {
+      "name": "JFrog Security Research",
+      "url": "https://research.jfrog.com/post/shai-hulud-is-back-august/",
+      "provides": ["hashes", "dropped_files", "c2", "github_markers", "execution_chain"]
+    },
+    {
+      "name": "Wiz Research IOCs",
+      "url": "https://github.com/wiz-sec-public/wiz-research-iocs/blob/main/reports/keyv-packages.csv",
+      "provides": ["package_versions"],
+      "local_copy": "github_conf/ioc/keyv-packages-wiz.csv"
+    },
+    {
+      "name": "Internal hunt (this repo)",
+      "url": "exports/graph-hunt-mini-shai-hulud-RESULTS.md",
+      "provides": ["c2", "hashes", "persistence_paths"]
+    }
+  ],
+
+  "package_list": {
+    "file": "github_conf/ioc/keyv-packages-wiz.csv",
+    "format": "csv: Package,\"Malicious Versions\" (comma-separated versions per row)",
+    "packages": 443,
+    "version_pairs": 2235,
+    "completeness": "PARTIAL AND MOVING. Counts differ by vendor (JFrog 428 pkgs/1700+ versions, Cloudsmith ~444/2236, Aikido 868/1381) because the worm republishes every package writable with each stolen credential set. Re-pull before trusting a zero result."
+  },
+
+  "seed_packages": {
+    "keyv": ["6.0.0"],
+    "cacheable": ["2.5.1"],
+    "flat-cache": ["6.1.24"],
+    "file-entry-cache": ["11.1.6"],
+    "cacheable-request": ["13.0.20"],
+    "cache-manager": ["7.2.10"],
+    "@cacheable/utils": ["2.5.1"],
+    "@cacheable/memory": ["2.2.1"]
+  },
+
+  "known_clean_pins": {
+    "keyv": "5.2.3",
+    "cacheable": "1.8.8"
+  },
+
+  "execution_chain": {
+    "primary": "npm install -> package.json preinstall hook -> node setup.mjs -> downloads Bun 1.3.13 from the official GitHub release -> executes math_init.js (aka Math_Symbol.js) under Bun",
+    "secondary": "Repo open in IDE/agent -> autostart hook in .vscode/tasks.json or .claude/settings.json -> same loader. Requires NO npm install.",
+    "npm_12_caveat": "npm >= 12 does not run preinstall lifecycle hooks by default, so the primary chain does not fire there. Those environments stay exposed through the secondary chain. A detection keyed only on npm execution misses this entirely.",
+    "propagation": "Downloads the current latest tarball of each package writable with stolen credentials, copies itself to package/math_init.js, writes package/setup.mjs, replaces the whole scripts object with preinstall=node setup.mjs, republishes with an incremented patch version."
+  },
+
+  "file_hashes_sha256": [
+    {"hash": "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc", "component": "math_init.js / Math_Symbol.js payload"},
+    {"hash": "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb", "component": "setup.mjs loader"},
+    {"hash": "927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f", "component": ".vscode/tasks.json autostart hook"},
+    {"hash": "14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128", "component": ".claude/settings.json autostart hook"},
+    {"hash": "3f3f42d072bd36860ab7bd7fb5e10ac0d22c741c13c89505ccd6ec0ea572eea7", "component": ".github/workflows/codeql_analysis.yml exfil workflow"},
+    {"hash": "29ac906c8bd801dfe1cb39596197df49f80fff2270b3e7fbab52278c24e4f1a7", "component": "GitHub Actions runner memory scraper"},
+    {"hash": "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668", "component": "payload variant observed in internal hunt window"}
+  ],
+
+  "dropped_files": [
+    "math_init.js",
+    "Math_Symbol.js",
+    "setup.mjs",
+    "format-results.txt",
+    "/tmp/tmp.dpkg_14527.lock",
+    ".vscode/tasks.json",
+    ".vscode/setup.mjs",
+    ".claude/math_init.js",
+    ".claude/settings.json",
+    ".claude/setup.mjs",
+    ".github/workflows/codeql_analysis.yml"
+  ],
+
+  "persistence_paths": [
+    "LaunchAgents",
+    ".config/systemd/user",
+    ".local/bin",
+    ".claude",
+    ".vscode"
+  ],
+
+  "c2": {
+    "domains": [
+      "npm-cache.com",
+      "js-mirror.com",
+      "pypi-get.com",
+      "eth-mainnet.nodereal.io",
+      "go.getblock.io",
+      "eth.llamarpc.com"
+    ],
+    "ips": ["104.21.35.216"],
+    "url_paths": ["/router"],
+    "ethereum": {
+      "contract": "0xE1f2395ee43e45A1556EC6438a88c31B83493103",
+      "selector": "0x53ed5143",
+      "role": "Resolves the live C2 address from an on-chain read, so blocking a single domain does not sever control. Treat the RPC providers above as the chokepoint."
+    }
+  },
+
+  "strings": [
+    "Shai-Hulud: Here We Go Again",
+    "thebeautifulmarchoftime",
+    "thebeautifulsnadsoftime",
+    "IfYouBlockThisAPIKeyItWillCrashTheLiveProductionServersOfAllThirdPartyClients"
+  ],
+
+  "github_markers": {
+    "branch": "dependabot/github_actions/format/setup-formatter",
+    "commit_message": "chore: update config",
+    "forged_trailer": "Co-authored-by: claude <claude@users.noreply.github.com>",
+    "forged_workflow_author": "github-advanced-security[bot]",
+    "workflow_file": "codeql_analysis.yml",
+    "artifact_name": "format-results",
+    "repo_description": "Shai-Hulud: Here We Go Again",
+    "fallback_repo_naming": "Dune vocabulary (sardaukar, fremen, atreides, ...)"
+  },
+
+  "credential_targets": [
+    "GitHub PAT / Actions tokens",
+    "npm publish tokens",
+    "cloud provider credentials (AWS/GCP/Azure) present in CI env",
+    "developer environment variables"
+  ],
+
+  "detection_notes": {
+    "version_precision_required": "keyv, cacheable, flat-cache, file-entry-cache and cacheable-request are extremely common legitimate packages. Alerting on package NAME produces mass false positives. Only name+version matches are actionable.",
+    "where_versions_are_visible": "Lockfiles (package-lock.json / pnpm-lock.yaml / yarn.lock) and registry proxy logs. NOT reliably visible in EDR telemetry: a process command line shows only what the developer typed, and node_modules paths carry no version.",
+    "highest_fidelity_endpoint_signals": [
+      "file hash match (version independent)",
+      "node executing setup.mjs / Math_Symbol.js",
+      "Bun execution on a host with no legitimate Bun usage",
+      "writes to .claude/ or .vscode/ inside a repo working tree that create setup.mjs or math_init.js",
+      "outbound contact to the Ethereum RPC providers from a node/bun process"
+    ]
+  }
+}

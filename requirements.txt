@@ -1,5 +1,6 @@
 requests>=2.31.0
 tomli>=2.0.0  # For TOML parsing
+toml>=0.10.2  # Imported directly by scripts/scanning/scan_repos.py
 urllib3>=2.6.3  # For retry/backoff in requests (fix: GHSA-gm62-xv2j-4w53, GHSA-2xpw-w6gg-jr37, GHSA-38jv-5279-wg99)
 python-dotenv>=1.0.0  # For .env file support
 semgrep>=1.0.0  # For static code analysis

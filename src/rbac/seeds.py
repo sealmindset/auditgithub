@@ -128,6 +128,14 @@ def seed_rbac_data(session: Session) -> None:
         # Reports permissions
         {"name": "reports:read", "resource": "reports", "action": "read", "description": "View reports"},
 
+        # Threat-hunt permissions
+        # Deliberately separate from findings:*. Executing a hunt reads tenant-wide
+        # Defender XDR telemetry — process, file, network and sign-in events across every
+        # onboarded device and identity — which is a far broader grant than reading or
+        # writing repository findings. See docs/playbooks/supply-chain-hunt-ttp.md.
+        {"name": "hunt:execute", "resource": "hunt", "action": "execute", "description": "Execute threat hunts, including Microsoft Graph / Defender XDR endpoint and identity queries"},
+        {"name": "hunt:read", "resource": "hunt", "action": "read", "description": "View threat-hunt results and reconciled threat intel"},
+
         # Schedules permissions
         {"name": "schedules:read", "resource": "schedules", "action": "read", "description": "View scan schedules"},
         {"name": "schedules:create", "resource": "schedules", "action": "create", "description": "Create scan schedules"},
@@ -175,28 +183,31 @@ def seed_rbac_data(session: Session) -> None:
             "organizations:read", "organizations:write",
             "users:read", "users:write",
             "reports:read",
+            "hunt:read", "hunt:execute",
             "schedules:read", "schedules:create", "schedules:update",
             "schedules:override", "schedules:trigger",
         ],
         "analyst": [
-            # Analyst can read/write findings and scans
+            # Analyst can read/write findings and scans, and run threat hunts
             "findings:read", "findings:write",
             "scans:read", "scans:execute",
             "repositories:read",
             "reports:read",
+            "hunt:read", "hunt:execute",
             "schedules:read", "schedules:create", "schedules:update",
             "schedules:trigger",
         ],
         "manager": [
-            # Manager has read-only access
+            # Manager has read-only access — may view hunt results, not run hunts
             "findings:read",
             "scans:read",
             "repositories:read",
             "reports:read",
+            "hunt:read",
             "schedules:read",
         ],
         "user": [
-            # Basic user has minimal read access
+            # Basic user has minimal read access — no hunt visibility
             "findings:read",
             "repositories:read",
             "reports:read",

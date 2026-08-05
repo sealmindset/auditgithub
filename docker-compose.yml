@@ -22,7 +22,11 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-auditgh_kb}
-      - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-auditgh_dev_secrets_key_32chars}
+      # No default. This value is committed nowhere: a fallback baked into the
+      # compose file would be public knowledge, making every ciphertext it
+      # protects decryptable by anyone with a copy of this repository. Unset
+      # means credential storage refuses to write rather than writing plaintext.
+      - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-}
       # AWS credentials for Terraform drift detection and WAF auditor
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
@@ -79,7 +83,11 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-security_portal}
-      - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-auditgh_dev_secrets_key_32chars}
+      # No default. This value is committed nowhere: a fallback baked into the
+      # compose file would be public knowledge, making every ciphertext it
+      # protects decryptable by anyone with a copy of this repository. Unset
+      # means credential storage refuses to write rather than writing plaintext.
+      - SECRETS_MASTER_KEY=${SECRETS_MASTER_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL}
       - AZURE_AI_FOUNDRY_ENDPOINT=${AZURE_AI_FOUNDRY_ENDPOINT}
       - AZURE_AI_FOUNDRY_API_KEY=${AZURE_AI_FOUNDRY_API_KEY}

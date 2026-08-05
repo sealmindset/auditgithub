@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "campaign": "shai-hulud-here-we-go-again",
+  "ioc_bundle": "github_conf/ioc/shai_hulud_2026_08.json",
+  "compiled_at": "2026-08-05",
+  "api": {
+    "endpoint": "POST https://graph.microsoft.com/beta/security/rules/detectionRules",
+    "version": "beta only — this resource does not exist in v1.0 as of 2026-08-05",
+    "permission": "CustomDetection.ReadWrite.All (application or delegated)",
+    "clouds": "Global service only. Not available in US Gov L4/L5 or 21Vianet.",
+    "deprecations": "isEnabled, detectorId, lastRunDetails, schedule.period and schedule.nextRunDateTime are all removed 2026-10-01. This file uses status and schedule.frequency."
+  },
+
+  "design_notes": {
+    "why_not_name_matching": "These rules deliberately never mention keyv, cacheable, flat-cache, file-entry-cache or cacheable-request by name. Those are ubiquitous legitimate dependencies and EDR telemetry does not expose the resolved version, so a name-keyed endpoint rule alerts on normal installs and nothing else. Exact name@version matching happens against the dependency inventory — scripts/ioc/match_npm_ioc.py.",
+    "why_behaviour_and_hashes": "The worm republishes continuously with incremented patch versions, so any version list is stale on arrival. Loader behaviour (node -> setup.mjs -> Bun -> math_init.js) and payload hashes are version-independent.",
+    "npm_12_gap": "npm >= 12 does not run preinstall hooks by default, so a rule keyed on npm execution misses the IDE/agent autostart chain entirely. npm-shaihulud-agent-hook-drop covers that path, and it fires with no npm involvement at all.",
+    "required_query_columns": "Defender custom detections require the query to return Timestamp and ReportId, plus every column referenced by an entityMappings entry. A mapping that names a column the query does not project makes the rule fail at create time.",
+    "query_lookback_matches_frequency": "Each query's ago() window equals its schedule.frequency. A longer window re-alerts on the same event every run; a shorter one drops events between runs.",
+    "excluded_on_purpose": {
+      "104.21.35.216": "Cloudflare shared proxy address. Alerting on it — and above all blocking it — hits unrelated sites hosted behind the same edge. Kept as a hunting pivot only, never as a detection or an indicator block.",
+      "codeql_analysis.yml_by_name": "A legitimate file in many repos. Only flagged when node or bun is the writing process."
+    },
+    "automated_response": "Automated response is defined per rule under `killSwitch` and requires TWO independent keys to fire: killSwitch.armed must be true in this file (a git-reviewable change) AND the operator must pass --arm at deploy time. A plain --apply strips automatedActions and warns. Neither key alone does anything."
+  },
+
+  "kill_switch": {
+    "purpose": "Contain a supply-chain worm at machine speed. This campaign exfiltrates credentials before it does anything else and republishes from the stolen tokens within hours, so the window where human triage helps is shorter than the window where it spreads.",
+    "accepted_cost": "Isolation takes a developer offline mid-build. That is the intended trade, not a side effect. `selective` isolation still severs registry, git and package-manager access — it only preserves Outlook/Teams/Skype so the responder can reach the person. There is no isolation mode that keeps a build working.",
+    "two_key_arming": {
+      "key_1": "killSwitch.armed in this file — reviewed in a pull request, attributable in git history.",
+      "key_2": "--arm on the deploy command — deliberate operator intent, typed confirmation, appended to exports/kill-switch-audit.jsonl."
+    },
+    "tiers": {
+      "quarantine-only": "Non-disruptive. Collect investigation package, run AV scan, quarantine the malicious file. Device stays online.",
+      "isolate-selective": "Device isolated but Outlook/Teams/Skype still work. Use where confidence is high and the responder needs to reach the user.",
+      "isolate-full": "Total network isolation. Use only where the finding is confirmed-malicious on its own, with no benign explanation."
+    },
+    "release_is_manual_and_out_of_band": "Nothing here un-isolates a device. Release is a deliberate human action via the Defender portal or POST /api/machines/{id}/unisolate on api.securitycenter.microsoft.com (Machine.Isolate scope). Confirm eradication and credential rotation before releasing — a device released with the loader still on disk re-isolates on the next hourly run.",
+    "why_no_file_quarantine_on_process_rules": "stopAndQuarantineFiles keys on the file the query returns. On a process-event rule that file is the interpreter — node.exe or bun.exe. Quarantining it bricks the developer's toolchain and does nothing to the payload, which is a script. File actions are therefore attached only to file-event rules, where the returned hash is the malicious artefact itself.",
+    "unverified_action_types": "automatedActionSet also exposes blockFiles, allowFiles, disableUsers, forceUserPasswordResets, markUsersAsCompromised and the six email actions. Their nested column-property names are NOT verified against the Microsoft reference here, so the deployer rejects them rather than guessing and sending a 400 — or worse, a wrong-shaped payload that a future schema change silently reinterprets. Verify the resource doc, then add them.",
+    "disarm": "scripts/ioc/deploy_detection_rules.py --disarm --apply strips automatedActions from every deployed rule immediately. It needs no confirmation because it only ever reduces capability. Verify with --kill-switch-status, which reads the tenant rather than this file."
+  },
+
+  "rules": [
+    {
+      "id": "npm-shaihulud-payload-hash",
+      "killSwitch": {
+        "armed": true,
+        "tier": "isolate-full",
+        "justification": "SHA-256 match against a published payload. No benign process writes these exact bytes, so there is no false-positive path that full isolation would punish. Highest-confidence rule in the set.",
+        "automatedActions": {
+          "isolateDevices": [{ "deviceIdColumn": "DeviceId", "isolationType": "full" }],
+          "stopAndQuarantineFiles": [{ "deviceIdColumn": "DeviceId", "sha1Column": "SHA1" }],
+          "collectInvestigationPackages": [{ "deviceIdColumn": "DeviceId" }]
+        }
+      },
+      "displayName": "Shai-Hulud npm worm — known payload hash on disk",
+      "description": "A file whose SHA-256 matches a published Shai-Hulud (August 2026) payload, loader, autostart hook or exfil workflow was written to disk. Version-independent: matches regardless of which package version delivered it.",
+      "status": "enabled",
+      "queryCondition": {
+        "queryText": "DeviceFileEvents\n| where Timestamp > ago(1h)\n| where SHA256 in~ (\n    \"9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc\",\n    \"fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb\",\n    \"927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f\",\n    \"14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128\",\n    \"3f3f42d072bd36860ab7bd7fb5e10ac0d22c741c13c89505ccd6ec0ea572eea7\",\n    \"29ac906c8bd801dfe1cb39596197df49f80fff2270b3e7fbab52278c24e4f1a7\",\n    \"54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668\")\n| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,\n          ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid\n| limit 1000"
+      },
+      "schedule": { "frequency": "PT1H" },
+      "detectionAction": {
+        "alertTemplate": {
+          "title": "Shai-Hulud npm worm payload written to disk",
+          "description": "A file matching a known Shai-Hulud August 2026 SHA-256 was created on this device. This is a confirmed-malicious artefact, not a heuristic.",
+          "severity": "high",
+          "recommendedActions": "Treat the device as credential-compromised. 1) Capture the file and its parent directory before remediation. 2) Revoke every credential reachable from that user context: npm publish tokens, GitHub PATs and Actions tokens, cloud keys, and anything in the shell environment. 3) Search the repo working tree for setup.mjs, math_init.js, .claude/ and .vscode/ hooks, and .github/workflows/codeql_analysis.yml. 4) Check GitHub audit logs for pushes on branch dependabot/github_actions/format/setup-formatter and for new repos described 'Shai-Hulud: Here We Go Again'. 5) Run scripts/ioc/match_npm_ioc.py to identify which repo and package version delivered it.",
+          "entityMappings": {
+            "hosts": [{ "deviceIdColumn": "DeviceId", "nameColumn": "DeviceName" }],
+            "files": [{ "nameColumn": "FileName", "sha1Column": "SHA1", "sha256Column": "SHA256" }],
+            "accounts": [{
+              "nameColumn": "InitiatingProcessAccountName",
+              "ntDomainColumn": "InitiatingProcessAccountDomain",
+              "sidColumn": "InitiatingProcessAccountSid"
+            }]
+          },
+          "tactics": [
+            { "tactic": "Execution", "techniques": [{ "technique": "T1195.002" }] },
+            { "tactic": "InitialAccess", "techniques": [{ "technique": "T1195.001" }] }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "npm-shaihulud-loader-exec",
+      "killSwitch": {
+        "armed": true,
+        "tier": "isolate-selective",
+        "justification": "The loader ran, so credentials are already gone and the host is a live propagation node. Selective rather than full because the responder needs to reach the developer immediately to start token rotation. No file action: the file this query returns is node.exe or bun.exe, and quarantining the interpreter breaks the machine without touching the payload script.",
+        "automatedActions": {
+          "isolateDevices": [{ "deviceIdColumn": "DeviceId", "isolationType": "selective" }],
+          "collectInvestigationPackages": [{ "deviceIdColumn": "DeviceId" }],
+          "runAntivirusScans": [{ "deviceIdColumn": "DeviceId" }]
+        }
+      },
+      "displayName": "Shai-Hulud npm worm — node/bun executing setup.mjs or math_init.js",
+      "description": "The Shai-Hulud loader chain. A poisoned package replaces its scripts object with preinstall=node setup.mjs; setup.mjs fetches Bun and runs math_init.js (aka Math_Symbol.js). Keys on the loader filenames, so it survives every republish.",
+      "status": "enabled",
+      "queryCondition": {
+        "queryText": "DeviceProcessEvents\n| where Timestamp > ago(1h)\n| where FileName in~ (\"node\",\"node.exe\",\"bun\",\"bun.exe\",\"npm\",\"npm.exe\",\"npm-cli.js\",\"pnpm\",\"yarn\")\n     or InitiatingProcessFileName in~ (\"node\",\"node.exe\",\"bun\",\"bun.exe\",\"npm\",\"npm.exe\")\n| where ProcessCommandLine has_any (\"setup.mjs\",\"math_init.js\",\"math_init\",\"Math_Symbol\")\n| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,\n          FileName, FolderPath, ProcessCommandLine, SHA256,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath\n| limit 1000"
+      },
+      "schedule": { "frequency": "PT1H" },
+      "detectionAction": {
+        "alertTemplate": {
+          "title": "Shai-Hulud loader executed (setup.mjs / math_init.js)",
+          "description": "A Node or Bun process executed the Shai-Hulud loader. If this fired, the payload ran with the developer's full environment, including any tokens exported in the shell.",
+          "severity": "high",
+          "recommendedActions": "Assume credential theft and rotate before eradication — the payload exfiltrates first. Revoke npm publish tokens, GitHub PATs and Actions tokens, and cloud credentials for this user. Then identify the delivering package from the repo lockfile and pin it. Do not simply delete the files: check .claude/ and .vscode/ for the autostart hook, which re-executes without npm.",
+          "entityMappings": {
+            "hosts": [{ "deviceIdColumn": "DeviceId", "nameColumn": "DeviceName" }],
+            "files": [{ "nameColumn": "FileName", "sha256Column": "SHA256" }],
+            "accounts": [{
+              "nameColumn": "AccountName",
+              "ntDomainColumn": "AccountDomain",
+              "sidColumn": "AccountSid"
+            }]
+          },
+          "tactics": [
+            { "tactic": "Execution", "techniques": [{ "technique": "T1059.007" }] },
+            { "tactic": "InitialAccess", "techniques": [{ "technique": "T1195.002" }] }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "npm-shaihulud-bun-from-node",
+      "killSwitch": {
+        "armed": false,
+        "requiresForce": true,
+        "tier": "isolate-selective",
+        "justification": "DELIBERATELY UNARMED. This is the one medium-confidence rule in the set: a toolchain that legitimately drives Bun from a node script trips it, and isolation would take that developer offline for doing nothing wrong. Baseline it for a full cycle first; if it runs clean, flip armed to true in a reviewed change and deploy with --arm --force. Note that --force does NOT override armed=false — that would collapse the two-key control into one key. The actions are defined and validated, waiting on the file change.",
+        "automatedActions": {
+          "isolateDevices": [{ "deviceIdColumn": "DeviceId", "isolationType": "selective" }],
+          "collectInvestigationPackages": [{ "deviceIdColumn": "DeviceId" }]
+        }
+      },
+      "displayName": "Shai-Hulud npm worm — Bun runtime spawned by node or npm",
+      "description": "The loader downloads Bun 1.3.13 from the official GitHub release and runs the payload under it, sidestepping Node-level hardening. Bun launched by a shell is normal developer behaviour; Bun launched by node or npm during an install is not.",
+      "status": "enabled",
+      "queryCondition": {
+        "queryText": "DeviceProcessEvents\n| where Timestamp > ago(1h)\n| where FileName in~ (\"bun\",\"bun.exe\",\"bunx\",\"bunx.exe\")\n| where InitiatingProcessFileName in~ (\"node\",\"node.exe\",\"npm\",\"npm.exe\",\"npm-cli.js\")\n| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,\n          FileName, FolderPath, ProcessCommandLine, SHA256,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath\n| limit 1000"
+      },
+      "schedule": { "frequency": "PT1H" },
+      "detectionAction": {
+        "alertTemplate": {
+          "title": "Bun runtime launched by node/npm — Shai-Hulud loader pattern",
+          "description": "A Bun process was started by node or npm. This matches the Shai-Hulud bootstrap, which fetches Bun specifically to execute its payload outside the Node runtime the project uses.",
+          "severity": "medium",
+          "recommendedActions": "Read InitiatingProcessCommandLine: an npm install or a lifecycle script here is the worm's chain. Confirm against the loader-exec and payload-hash detections on the same device. Baseline first — if a team legitimately drives Bun from node scripts, scope this rule to devices outside that team rather than disabling it.",
+          "entityMappings": {
+            "hosts": [{ "deviceIdColumn": "DeviceId", "nameColumn": "DeviceName" }],
+            "files": [{ "nameColumn": "FileName", "sha256Column": "SHA256" }],
+            "accounts": [{
+              "nameColumn": "AccountName",
+              "ntDomainColumn": "AccountDomain",
+              "sidColumn": "AccountSid"
+            }]
+          },
+          "tactics": [
+            { "tactic": "Execution", "techniques": [{ "technique": "T1059" }] },
+            { "tactic": "DefenseEvasion", "techniques": [{ "technique": "T1218" }] }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "npm-shaihulud-agent-hook-drop",
+      "killSwitch": {
+        "armed": true,
+        "tier": "quarantine-only",
+        "justification": "The hook was written but has not necessarily executed yet — this is the one rule that can fire BEFORE compromise. Quarantining the dropped file removes the trigger and leaves the developer working, which is strictly better than isolating them. Escalate to isolation only if loader-exec fires on the same device.",
+        "automatedActions": {
+          "stopAndQuarantineFiles": [{ "deviceIdColumn": "DeviceId", "sha1Column": "SHA1" }],
+          "collectInvestigationPackages": [{ "deviceIdColumn": "DeviceId" }],
+          "runAntivirusScans": [{ "deviceIdColumn": "DeviceId" }]
+        }
+      },
+      "displayName": "Shai-Hulud npm worm — IDE/agent autostart hook dropped in a repo tree",
+      "description": "The secondary execution chain, and the only one that covers npm >= 12 where preinstall hooks no longer run by default. Opening the repo in VS Code or an agent runtime executes the loader with no npm install at all.",
+      "status": "enabled",
+      "queryCondition": {
+        "queryText": "DeviceFileEvents\n| where Timestamp > ago(1h)\n| where ActionType in~ (\"FileCreated\",\"FileModified\",\"FileRenamed\")\n| where FolderPath has_any (\"\\\\.claude\",\"/.claude\",\"\\\\.vscode\",\"/.vscode\")\n| where FileName in~ (\"setup.mjs\",\"math_init.js\",\"Math_Symbol.js\")\n     or (FileName in~ (\"settings.json\",\"tasks.json\")\n         and SHA256 in~ (\"927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f\",\n                         \"14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128\"))\n| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1, ActionType,\n          InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid\n| limit 1000"
+      },
+      "schedule": { "frequency": "PT1H" },
+      "detectionAction": {
+        "alertTemplate": {
+          "title": "Shai-Hulud autostart hook written to .claude/ or .vscode/",
+          "description": "A loader file or a known-malicious hook config was written into an IDE/agent config directory. This path executes on repo open and requires no package install, so npm 12's removal of default preinstall hooks does not mitigate it.",
+          "severity": "high",
+          "recommendedActions": "Do not open the repo in an IDE or agent runtime until the hook is removed. Remove .claude/ and .vscode/ loader files, then grep the whole working tree for setup.mjs and math_init.js. Rotate credentials for the user if any execution followed. Check whether the file arrived via git pull — if so, the upstream repo is compromised and other clones are affected.",
+          "entityMappings": {
+            "hosts": [{ "deviceIdColumn": "DeviceId", "nameColumn": "DeviceName" }],
+            "files": [{ "nameColumn": "FileName", "sha1Column": "SHA1", "sha256Column": "SHA256" }],
+            "accounts": [{
+              "nameColumn": "InitiatingProcessAccountName",
+              "ntDomainColumn": "InitiatingProcessAccountDomain",
+              "sidColumn": "InitiatingProcessAccountSid"
+            }]
+          },
+          "tactics": [
+            { "tactic": "Persistence", "techniques": [{ "technique": "T1546" }] },
+            { "tactic": "Execution", "techniques": [{ "technique": "T1195.002" }] }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "npm-shaihulud-c2-contact",
+      "killSwitch": {
+        "armed": true,
+        "tier": "isolate-full",
+        "justification": "Outbound C2 contact means the exfil stage is running right now. Full isolation is the only action that stops data leaving. Severing the network is also the only way to stop the on-chain C2 lookup, which defeats domain-level blocking by design. No file action available — DeviceNetworkEvents returns no file hash.",
+        "automatedActions": {
+          "isolateDevices": [{ "deviceIdColumn": "DeviceId", "isolationType": "full" }],
+          "collectInvestigationPackages": [{ "deviceIdColumn": "DeviceId" }]
+        }
+      },
+      "displayName": "Shai-Hulud npm worm — C2 or Ethereum-RPC contact from a dev toolchain process",
+      "description": "The payload resolves its live C2 address from an on-chain read via public Ethereum RPC providers, so the RPC providers are the chokepoint rather than any single domain. Scoped to node/bun/npm/python/git as the initiating process — these RPC endpoints have legitimate users, but not inside a package install.",
+      "status": "enabled",
+      "queryCondition": {
+        "queryText": "DeviceNetworkEvents\n| where Timestamp > ago(1h)\n| where RemoteUrl has_any (\"npm-cache.com\",\"js-mirror.com\",\"pypi-get.com\",\n                          \"eth-mainnet.nodereal.io\",\"go.getblock.io\",\"eth.llamarpc.com\")\n| where InitiatingProcessFileName in~ (\"node\",\"node.exe\",\"bun\",\"bun.exe\",\"bunx\",\n                                      \"npm\",\"npm.exe\",\"npm-cli.js\",\"pnpm\",\"yarn\",\n                                      \"python\",\"python3\",\"python.exe\",\"git\",\"git.exe\")\n| project Timestamp, ReportId, DeviceId, DeviceName, RemoteUrl, RemoteIP, RemotePort, ActionType,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath,\n          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid\n| limit 1000"
+      },
+      "schedule": { "frequency": "PT1H" },
+      "detectionAction": {
+        "alertTemplate": {
+          "title": "Dev toolchain process contacted Shai-Hulud C2 or Ethereum RPC",
+          "description": "A node, bun, npm, python or git process reached a Shai-Hulud C2 domain or one of the Ethereum RPC providers the payload uses to resolve its current C2 address. Treat as active command-and-control, not reconnaissance.",
+          "severity": "high",
+          "recommendedActions": "Rotate every credential in reach of that process before eradication — outbound contact means the exfil stage already ran. Pull the full DeviceNetworkEvents history for the device to find what else it reached. Block the four attacker-controlled domains (npm-cache.com, js-mirror.com, pypi-get.com, and the /router path) via Defender indicators. Do NOT block 104.21.35.216: it is a Cloudflare shared address and blocking it breaks unrelated traffic.",
+          "entityMappings": {
+            "hosts": [{ "deviceIdColumn": "DeviceId", "nameColumn": "DeviceName" }],
+            "accounts": [{
+              "nameColumn": "InitiatingProcessAccountName",
+              "ntDomainColumn": "InitiatingProcessAccountDomain",
+              "sidColumn": "InitiatingProcessAccountSid"
+            }]
+          },
+          "tactics": [
+            { "tactic": "CommandAndControl", "techniques": [{ "technique": "T1102" }] },
+            { "tactic": "Exfiltration", "techniques": [{ "technique": "T1041" }] }
+          ]
+        }
+      },
+      "operational_caveats": [
+        "RemoteUrl is only populated when Network Protection is enabled and in block/audit mode. Without it this rule sees nothing, because node performs its own TLS and Defender records only the IP. Verify Network Protection coverage before treating a zero from this rule as clean.",
+        "The Ethereum RPC providers are legitimate infrastructure. If any team here does blockchain work from node, scope this rule to exclude their devices rather than dropping the RPC hostnames — those hostnames are the resilient part of the IOC set."
+      ]
+    },
+
+    {
+      "id": "npm-shaihulud-exfil-artifacts",
+      "killSwitch": {
+        "armed": true,
+        "tier": "isolate-selective",
+        "justification": "The staging file or the forged exfil workflow was written by node/bun. Isolating stops the local push; quarantining the artefact removes the staged credential dump. Selective so the responder can reach the developer while the GitHub-side cleanup runs — the workflow may already be on the remote, and that half is not containable from the endpoint.",
+        "automatedActions": {
+          "isolateDevices": [{ "deviceIdColumn": "DeviceId", "isolationType": "selective" }],
+          "stopAndQuarantineFiles": [{ "deviceIdColumn": "DeviceId", "sha1Column": "SHA1" }],
+          "collectInvestigationPackages": [{ "deviceIdColumn": "DeviceId" }]
+        }
+      },
+      "displayName": "Shai-Hulud npm worm — exfil workflow or results artefact written by node/bun",
+      "description": "The worm stages stolen data as format-results.txt and exfiltrates it through a forged .github/workflows/codeql_analysis.yml attributed to github-advanced-security[bot]. Both filenames are legitimate in isolation; a node or bun process writing them is not.",
+      "status": "enabled",
+      "queryCondition": {
+        "queryText": "DeviceFileEvents\n| where Timestamp > ago(1h)\n| where ActionType in~ (\"FileCreated\",\"FileModified\",\"FileRenamed\")\n| where FileName in~ (\"format-results.txt\",\"format-results\",\"codeql_analysis.yml\")\n| where InitiatingProcessFileName in~ (\"node\",\"node.exe\",\"bun\",\"bun.exe\",\"bunx\",\"npm\",\"npm.exe\")\n| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1, ActionType,\n          InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid\n| limit 1000"
+      },
+      "schedule": { "frequency": "PT1H" },
+      "detectionAction": {
+        "alertTemplate": {
+          "title": "Shai-Hulud exfil artefact written by a Node/Bun process",
+          "description": "A Node or Bun process wrote the worm's staging file or its forged CodeQL workflow. The workflow is the exfiltration channel: it runs in GitHub Actions with repo credentials and uploads the harvested data as a build artefact.",
+          "severity": "high",
+          "recommendedActions": "Check the repo's remote for a pushed workflow change and for the branch dependabot/github_actions/format/setup-formatter. Delete any format-results artefact from Actions — it contains the stolen credentials. Rotate the Actions token and every secret the workflow could read. Review the org audit log for repos created with the description 'Shai-Hulud: Here We Go Again' or named from Dune vocabulary.",
+          "entityMappings": {
+            "hosts": [{ "deviceIdColumn": "DeviceId", "nameColumn": "DeviceName" }],
+            "files": [{ "nameColumn": "FileName", "sha1Column": "SHA1", "sha256Column": "SHA256" }],
+            "accounts": [{
+              "nameColumn": "InitiatingProcessAccountName",
+              "ntDomainColumn": "InitiatingProcessAccountDomain",
+              "sidColumn": "InitiatingProcessAccountSid"
+            }]
+          },
+          "tactics": [
+            { "tactic": "Exfiltration", "techniques": [{ "technique": "T1567.002" }] },
+            { "tactic": "CredentialAccess", "techniques": [{ "technique": "T1552.001" }] }
+          ]
+        }
+      }
+    }
+  ],
+
+  "hunting_queries": [
+    {
+      "id": "npm-registry-tarball-fetch",
+      "purpose": "The closest honest implementation of 'trigger on npm, inspect what it is fetching, compare to a blacklist' using endpoint telemetry alone. The registry URL path carries the resolved version — <pkg>/-/<pkg>-<version>.tgz — which is the only place a package version appears in Device* tables.",
+      "not_a_detection_rule": "Left as a hunt, not deployed as a scheduled rule. It depends on Network Protection populating RemoteUrl, and node's own TLS stack means coverage is partial even then. A scheduled rule built on it would return zero on most devices and read as 'clean'. Use match_npm_ioc.py for authoritative version matching.",
+      "queryText": "let bad = dynamic([\"keyv-6.0.0.tgz\",\"cacheable-2.5.1.tgz\",\"flat-cache-6.1.24.tgz\",\"file-entry-cache-11.1.6.tgz\",\"cacheable-request-13.0.20.tgz\",\"cache-manager-7.2.10.tgz\",\"utils-2.5.1.tgz\",\"memory-2.2.1.tgz\"]);\nDeviceNetworkEvents\n| where Timestamp > ago(7d)\n| where InitiatingProcessFileName in~ (\"node\",\"node.exe\",\"npm\",\"npm.exe\",\"npm-cli.js\",\"pnpm\",\"yarn\",\"bun\",\"bun.exe\")\n| where RemoteUrl has \"/-/\" and RemoteUrl endswith \".tgz\"\n| extend Tarball = tostring(split(RemoteUrl, \"/-/\")[1])\n| where Tarball has_any (bad)\n| project Timestamp, DeviceName, AccountName = InitiatingProcessAccountName, Tarball, RemoteUrl,\n          InitiatingProcessFileName, InitiatingProcessCommandLine\n| limit 1000",
+      "coverage_prerequisites": [
+        "Network Protection enabled (block or audit) — otherwise RemoteUrl is empty and only RemoteIP is recorded.",
+        "Traffic not routed through a TLS-inspecting proxy that rewrites the URL, and not through a private registry mirror whose path layout differs.",
+        "The full blacklist is 2235 name@version pairs; only the 8 seed packages are inlined here. dynamic() literals in a hunting query are size-limited, which is another reason version matching belongs in the database."
+      ]
+    },
+    {
+      "id": "npm-install-window-baseline",
+      "purpose": "Establish who ran a package install in a given window, to scope which developers' credentials are in play after a confirmed detection. This is the literal 'trigger when npm is used' step — useful for scoping, not for alerting.",
+      "not_a_detection_rule": "npm install is normal. Alerting on it produces one alert per developer per day and trains the team to ignore the rule.",
+      "queryText": "DeviceProcessEvents\n| where Timestamp > ago(7d)\n| where FileName in~ (\"npm\",\"npm.exe\",\"npm-cli.js\",\"node\",\"pnpm\",\"yarn\",\"bun\",\"bun.exe\")\n| where ProcessCommandLine has_any (\"install\",\" ci\",\"add \")\n| summarize Installs = count(), FirstSeen = min(Timestamp), LastSeen = max(Timestamp)\n         by DeviceName, AccountName\n| order by Installs desc\n| limit 500"
+    }
+  ]
+}

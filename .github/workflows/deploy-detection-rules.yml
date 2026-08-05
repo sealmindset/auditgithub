@@ -1,0 +1,144 @@
+name: Deploy Defender Detection Rules
+
+# Deploys github_conf/detections/*.json to Defender XDR custom detection rules.
+#
+# Two-person control, by construction:
+#   * the rules file changes through a reviewed pull request  (key 1: killSwitch.armed)
+#   * this workflow runs against a protected environment that requires an approver
+#     before the job starts                                   (key 2: --arm)
+#
+# No client secret exists. Authentication is workload identity federation: the job
+# requests a short-lived OIDC token and exchanges it for a Graph token. The federated
+# credential on the app registration is scoped to this repository AND this environment,
+# so a pull-request build cannot obtain a token that can write detection rules.
+#
+# Manual only. A detection rule that deploys itself on push is a rule that can arm
+# device isolation without anyone deciding to.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to do'
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate              # dry run, no credentials used
+          - deploy-disabled       # create/update, status=disabled, no alerts
+          - deploy                # create/update, enabled, NOT armed
+          - deploy-armed          # create/update, enabled, automated response ON
+          - disarm                # strip automatedActions (emergency rollback)
+          - status                # report what is live and armed in the tenant
+      device_group:
+        description: >-
+          Defender device group to scope rules to. Leave blank for tenant-wide, which
+          includes the self-hosted CI runners. Required for deploy-armed unless
+          allow_tenant_wide is checked.
+        required: false
+        type: string
+      allow_tenant_wide:
+        description: 'Arm tenant-wide with NO device-group scope (isolating a CI runner stops builds org-wide)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write            # required for the OIDC assertion; nothing else
+
+concurrency:
+  # Never let two deployments interleave: rule state is the shared resource, and a
+  # half-applied arm is worse than either outcome.
+  group: defender-detection-rules
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # validate needs no credentials, so it needs no approval gate. Everything that can
+    # touch the tenant runs in the protected environment.
+    environment: ${{ inputs.mode == 'validate' && 'defender-validate' || 'defender-prod' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Guard — arming tenant-wide must be explicit
+        if: inputs.mode == 'deploy-armed'
+        run: |
+          if [ -z "${{ inputs.device_group }}" ] && [ "${{ inputs.allow_tenant_wide }}" != "true" ]; then
+            echo "::error::deploy-armed with no device_group would arm automated isolation across"
+            echo "::error::every onboarded device, including the self-hosted CI runners"
+            echo "::error::(cxdkrprdapp12-17). Set device_group to pilot, or tick allow_tenant_wide"
+            echo "::error::to accept that deliberately."
+            exit 1
+          fi
+
+      - name: Deploy
+        env:
+          GRAPH_TENANT_ID: ${{ vars.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ vars.GRAPH_CLIENT_ID }}
+          # No GRAPH_CLIENT_SECRET. The script detects ACTIONS_ID_TOKEN_REQUEST_URL and
+          # uses the federated flow; if this ever falls back to a secret it will say so
+          # loudly on stderr.
+        run: |
+          set -euo pipefail
+
+          SCOPE_ARG=()
+          if [ -n "${{ inputs.device_group }}" ]; then
+            SCOPE_ARG=(--scope "${{ inputs.device_group }}")
+          elif [ "${{ inputs.mode }}" != "validate" ] && [ "${{ inputs.mode }}" != "status" ]; then
+            # Explicit rather than implicit: clear the scope so a rule previously piloted
+            # on one group does not silently keep that scope on a tenant-wide rollout.
+            SCOPE_ARG=(--scope-all-devices)
+          fi
+
+          case "${{ inputs.mode }}" in
+            validate)
+              python scripts/ioc/deploy_detection_rules.py
+              ;;
+            deploy-disabled)
+              python scripts/ioc/deploy_detection_rules.py --apply --status disabled "${SCOPE_ARG[@]}"
+              ;;
+            deploy)
+              python scripts/ioc/deploy_detection_rules.py --apply "${SCOPE_ARG[@]}"
+              ;;
+            deploy-armed)
+              # --yes skips the typed confirmation, which cannot be answered on a runner.
+              # The environment approval is the human gate that replaces it, and the run
+              # is recorded as unattended in exports/kill-switch-audit.jsonl.
+              python scripts/ioc/deploy_detection_rules.py --apply --arm --yes "${SCOPE_ARG[@]}"
+              ;;
+            disarm)
+              python scripts/ioc/deploy_detection_rules.py --disarm --apply
+              ;;
+            status)
+              python scripts/ioc/deploy_detection_rules.py --kill-switch-status
+              ;;
+          esac
+
+      - name: Verify what is actually live
+        # Runs even on failure: a partial apply is exactly when the tenant state matters
+        # most, and the rules file is not evidence of it.
+        if: always() && inputs.mode != 'validate'
+        env:
+          GRAPH_TENANT_ID: ${{ vars.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ vars.GRAPH_CLIENT_ID }}
+        run: python scripts/ioc/deploy_detection_rules.py --kill-switch-status
+
+      - name: Upload kill-switch audit trail
+        if: always() && hashFiles('exports/kill-switch-audit.jsonl') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kill-switch-audit-${{ github.run_id }}
+          path: exports/kill-switch-audit.jsonl
+          retention-days: 90

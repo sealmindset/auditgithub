@@ -33,6 +33,13 @@ interface AnalysisResult {
     affected_repositories: RepositoryResult[]
     plan?: any
     execution_summary?: string[]
+    // Threat-hunting output. coverage_notes lists surfaces the run could not examine;
+    // hunt_enabled is false when the account lacks hunt:execute, in which case no
+    // external evidence was gathered at all.
+    hunt_evidence?: Record<string, any>
+    coverage_notes?: string[]
+    hunt_enabled?: boolean
+    organizations_in_scope?: string[]
 }
 
 interface QueryHistory {
@@ -156,7 +163,14 @@ export function ZeroDayView() {
             analysis: result.answer,
             affected_repositories: result.affected_repositories,
             plan: result.plan,
-            execution_summary: result.execution_summary
+            execution_summary: result.execution_summary,
+            // Forwarded so the exported report carries the evidence and the blind spots.
+            // Omitting these produces a document that reads as a complete hunt while
+            // silently dropping every caveat that qualifies its conclusions.
+            hunt_evidence: result.hunt_evidence,
+            coverage_notes: result.coverage_notes,
+            hunt_enabled: result.hunt_enabled,
+            organizations_in_scope: result.organizations_in_scope
         }
 
         try {
@@ -188,15 +202,19 @@ export function ZeroDayView() {
                 body: JSON.stringify(exportData)
             })
 
-            if (!response.ok) throw new Error('Export failed')
+            if (!response.ok) {
+                const body = await response.json().catch(() => null)
+                throw new Error(body?.detail || `Export failed (${response.status})`)
+            }
 
             const blob = await response.blob()
             const extension = format === 'pdf' ? 'pdf' : 'docx'
             downloadBlob(blob, `zda-analysis-${Date.now()}.${extension}`)
 
         } catch (err) {
-            console.error('Export failed:', err)
-            setError('Export failed. Please try again.')
+            const message = err instanceof Error ? err.message : 'Export failed'
+            console.error('Export failed:', message)
+            setError(message)
         }
     }
 
@@ -276,7 +294,13 @@ export function ZeroDayView() {
             timestamp: new Date().toISOString(),
             scope: selectedScopes,
             total_repositories: result.affected_repositories.length,
-            repositories: result.affected_repositories
+            repositories: result.affected_repositories,
+            // A repository list is the artifact most likely to be forwarded alone, and a
+            // short or empty list is exactly where the reader needs to know what could
+            // not be seen. The backend renders these as a coverage section.
+            coverage_notes: result.coverage_notes,
+            hunt_enabled: result.hunt_enabled,
+            organizations_in_scope: result.organizations_in_scope
         }
 
         try {
@@ -486,6 +510,35 @@ export function ZeroDayView() {
                                 <ReactMarkdown>{result.answer}</ReactMarkdown>
                             </CardContent>
                         </Card>
+
+                        {/* Coverage limits, shown next to the analysis rather than only in
+                            the exported file. A reader who sees the conclusions on screen
+                            needs to see, in the same place, which surfaces went unexamined —
+                            otherwise an empty result reads as an all-clear. */}
+                        {(result.hunt_enabled === false || (result.coverage_notes?.length ?? 0) > 0) && (
+                            <Card className="mt-4 border-amber-500/60">
+                                <CardHeader>
+                                    <CardTitle className="text-base">Coverage and Blind Spots</CardTitle>
+                                    <CardDescription>
+                                        {result.hunt_enabled === false
+                                            ? "External evidence was not gathered: this account lacks the hunt:execute permission. Registry ground truth, CI/CD activity, endpoint telemetry and alerts were not consulted."
+                                            : "Surfaces this run could not examine. An absence of findings on these is not a finding of absence."}
+                                        {result.organizations_in_scope?.length
+                                            ? ` Organizations in scope: ${result.organizations_in_scope.join(', ')}.`
+                                            : ''}
+                                    </CardDescription>
+                                </CardHeader>
+                                {(result.coverage_notes?.length ?? 0) > 0 && (
+                                    <CardContent>
+                                        <ul className="list-disc pl-5 space-y-1 text-sm">
+                                            {result.coverage_notes!.map((note, i) => (
+                                                <li key={i}>{note}</li>
+                                            ))}
+                                        </ul>
+                                    </CardContent>
+                                )}
+                            </Card>
+                        )}
                     </div>
 
                     <Card>

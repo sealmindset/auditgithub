@@ -45,6 +45,36 @@ interface CriblTestResult {
     details: Record<string, unknown> | null
 }
 
+// Shape returned by GET /settings/ for credential-valued keys. The value itself is
+// never sent; only enough to identify which credential is stored.
+interface SecretInfo {
+    present: boolean
+    length: number | null
+    preview: string | null
+    unreadable?: boolean
+}
+
+function asSecretInfo(value: unknown): SecretInfo | null {
+    if (value && typeof value === "object" && "present" in value) {
+        return value as SecretInfo
+    }
+    // Legacy plaintext row, still unencrypted in the database. Report presence
+    // without echoing it back into the form.
+    if (typeof value === "string" && value.length > 0) {
+        return { present: true, length: value.length, preview: null }
+    }
+    return null
+}
+
+function secretStatusText(info: SecretInfo | null): string {
+    if (!info || !info.present) return "Not configured."
+    if (info.unreadable) {
+        return "Stored, but could not be decrypted — SECRETS_MASTER_KEY may have changed. Enter the value again to re-store it."
+    }
+    const suffix = info.preview ? ` ending ${info.preview.slice(-4)}` : ""
+    return `Configured (${info.length} characters${suffix}). Leave blank to keep it; enter a value to replace it.`
+}
+
 export default function SettingsPage() {
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -52,6 +82,8 @@ export default function SettingsPage() {
     const [verifyingJira, setVerifyingJira] = useState(false)
 
     const [openaiKey, setOpenaiKey] = useState("")
+    const [openaiKeyInfo, setOpenaiKeyInfo] = useState<SecretInfo | null>(null)
+    const [jiraTokenInfo, setJiraTokenInfo] = useState<SecretInfo | null>(null)
     const [jiraUrl, setJiraUrl] = useState("")
     const [jiraEmail, setJiraEmail] = useState("")
     const [jiraToken, setJiraToken] = useState("")
@@ -88,10 +120,13 @@ export default function SettingsPage() {
                 })
                 if (res.ok) {
                     const data = await res.json()
-                    setOpenaiKey(data.OPENAI_API_KEY || "")
+                    // Secret-valued settings come back masked ({present, length, preview}),
+                    // never as the value itself. Leave the inputs empty and describe what
+                    // is stored; a blank field on save means "leave unchanged".
+                    setOpenaiKeyInfo(asSecretInfo(data.OPENAI_API_KEY))
+                    setJiraTokenInfo(asSecretInfo(data.JIRA_API_TOKEN))
                     setJiraUrl(data.JIRA_URL || "")
                     setJiraEmail(data.JIRA_EMAIL || "")
-                    setJiraToken(data.JIRA_API_TOKEN || "")
                 }
             } catch (error) {
                 console.error("Failed to fetch settings:", error)
@@ -134,15 +169,32 @@ export default function SettingsPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: 'include',
+                // Omit blank secret fields rather than sending "". The API treats
+                // null as "leave unchanged", so an empty box cannot silently wipe a
+                // stored credential the operator never intended to touch.
                 body: JSON.stringify({
-                    openai_api_key: openaiKey,
+                    openai_api_key: openaiKey || null,
                     jira_url: jiraUrl,
                     jira_email: jiraEmail,
-                    jira_api_token: jiraToken
+                    jira_api_token: jiraToken || null
                 })
             })
 
             if (res.ok) {
+                // Clear the inputs and re-read the masked state, so the form reflects
+                // what is stored instead of holding plaintext in browser memory.
+                setOpenaiKey("")
+                setJiraToken("")
+                try {
+                    const refreshed = await apiFetch(`${API_BASE}/settings/`, { credentials: 'include' })
+                    if (refreshed.ok) {
+                        const data = await refreshed.json()
+                        setOpenaiKeyInfo(asSecretInfo(data.OPENAI_API_KEY))
+                        setJiraTokenInfo(asSecretInfo(data.JIRA_API_TOKEN))
+                    }
+                } catch {
+                    // Non-fatal; the save itself succeeded.
+                }
                 alert("Settings saved successfully!")
             } else {
                 alert("Failed to save settings.")
@@ -363,7 +415,7 @@ export default function SettingsPage() {
                                     <Input
                                         id="openai-key"
                                         type="password"
-                                        placeholder="sk-..."
+                                        placeholder={openaiKeyInfo?.present ? "•••••••• (stored)" : "sk-..."}
                                         value={openaiKey}
                                         onChange={(e) => setOpenaiKey(e.target.value)}
                                     />
@@ -371,6 +423,9 @@ export default function SettingsPage() {
                                         {verifyingOpenAI ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
                                     </Button>
                                 </div>
+                                <p className={`text-xs ${openaiKeyInfo?.unreadable ? "text-red-600" : "text-muted-foreground"}`}>
+                                    {secretStatusText(openaiKeyInfo)}
+                                </p>
                                 {openaiStatus && (
                                     <div className={`flex items-center gap-2 text-sm ${openaiStatus.valid ? "text-green-600" : "text-red-600"}`}>
                                         {openaiStatus.valid ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
@@ -414,7 +469,7 @@ export default function SettingsPage() {
                                         <Input
                                             id="jira-token"
                                             type="password"
-                                            placeholder="Jira API Token"
+                                            placeholder={jiraTokenInfo?.present ? "•••••••• (stored)" : "Jira API Token"}
                                             value={jiraToken}
                                             onChange={(e) => setJiraToken(e.target.value)}
                                         />
@@ -422,6 +477,9 @@ export default function SettingsPage() {
                                             {verifyingJira ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
                                         </Button>
                                     </div>
+                                    <p className={`text-xs ${jiraTokenInfo?.unreadable ? "text-red-600" : "text-muted-foreground"}`}>
+                                        {secretStatusText(jiraTokenInfo)}
+                                    </p>
                                     {jiraStatus && (
                                         <div className={`flex items-center gap-2 text-sm ${jiraStatus.valid ? "text-green-600" : "text-red-600"}`}>
                                             {jiraStatus.valid ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}

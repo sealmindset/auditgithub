@@ -4,6 +4,32 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — Security Findings (MEDIUM) (2026-05-22)
+- Added `timeout=30` to 12 HTTP requests calls across 5 files (instrumentation, jira, scan_engagement, scan_hardcoded_ips, verify_sbom)
+- Changed temp directory permissions from 0o755 to 0o700 in scan_repos.py
+- Made uvicorn bind address configurable via BIND_HOST env var (defaults to 127.0.0.1)
+- Set ECR image tag mutability default to IMMUTABLE
+- Set VPC subnet map_public_ip_on_launch to false
+- Upgraded 8 npm dependencies via npm audit fix (js-cookie, lodash, picomatch, dompurify, mermaid, uuid, brace-expansion, next)
+- 2 npm vulnerabilities remain (postcss via next — awaiting Next.js patch release)
+- 3 SQL injection f-string patterns confirmed safe (allowlist validation already present)
+
+### Fixed — Schema Path & Auth Bootstrap (2026-05-22)
+- Fixed `ai_org_agent.py` schema.sql path to `scripts/setup/` (was `setup/`)
+- Fixed auth bootstrap variable name from hardcoded `rob_vance` to generic `admin_user`
+
+### Added — Security Workstation Integration (2026-05-07)
+- Security workstation: auth fixes, scanner hardening, UI cleanup
+- Fixed ZDA export 403 error for users with `findings:read` permission
+- Aligned RFC-2024-003 with EA Design Pattern for managed AI services
+- Added DevOps/SRE questions (Q22-Q26) to RFC-2024-003
+- Added RFC-2024-003: AWS Bedrock Safeguards defense-in-depth
+- Added defense-in-depth security layers for AWS Bedrock beyond IAM
+- Enhanced AI architecture diagrams, WAF auditor, diagram editor panel
+- Added multi-org management, per-org scan credentials, Docker port fixes
+- Added WAF security feature: static scanner, API router, UI tab
+- Added on-demand scanning, auto-port detection, enhanced Terraform scanner, AWS WAF auditor
+
 ### Added — Azure Device-Code Login Automation (2025-03-07)
 
 **Context:** Automates the Azure CLI `az login --use-device-code` flow end-to-end using Playwright browser automation, eliminating manual copy-paste of device codes and browser navigation.

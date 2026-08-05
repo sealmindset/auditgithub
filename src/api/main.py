@@ -105,6 +105,8 @@ tags_metadata = [
     {"name": "invitations", "description": "Email-based user invitation management with RBAC-scoped access"},
     {"name": "api-keys", "description": "Programmatic API key management with tool scoping, repository scoping, and rate limiting"},
     {"name": "organizations", "description": "Multi-organization management, GitHub credentials, and repository import"},
+    {"name": "credentials", "description": "Encrypted per-organization GitHub and Microsoft Graph credentials, with recorded privilege level and known access gaps"},
+    {"name": "hunt", "description": "Supply-chain threat hunting: package-registry ground truth, cross-source arbitration with tiered evidence, CI/CD and dead-drop sweeps, and Defender XDR telemetry. Every response reports its coverage so a zero result cannot be mistaken for a clean one"},
     {"name": "Tenants", "description": "Multi-tenant organization provisioning and isolated database management"},
     {"name": "repositories", "description": "GitHub repository management, metadata, and scan history"},
     {"name": "findings", "description": "Security findings: listing, filtering, status updates, comments, and statistics"},
@@ -241,7 +243,7 @@ import src.api.prompt_models  # noqa: F401 — register prompt management tables
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts, credentials, hunt
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -284,6 +286,8 @@ app.include_router(ai_chat.router)
 app.include_router(api_keys.router)  # API key management
 app.include_router(sarif_import.router)  # SARIF import (MegaLinter, Semgrep, etc.)
 app.include_router(prompts.router)  # AI Prompt Management System
+app.include_router(credentials.router)  # Encrypted per-org credential store
+app.include_router(hunt.router)  # Threat hunting: registry ground truth, arbitration, Defender XDR
 
 # Register sandbox router (only active when SANDBOX_MODE=true)
 if is_sandbox():
@@ -763,4 +767,4 @@ async def oidc_health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=os.getenv("BIND_HOST", "127.0.0.1"), port=8000)

@@ -37,6 +37,13 @@ interface AnalysisResult {
     affected_repositories: RepositoryResult[]
     plan?: any
     execution_summary?: string[]
+    // Threat-hunting evidence and the limits on what the run could see. Saved reports
+    // predating this feature leave these undefined, which the exporters handle by
+    // omitting the section rather than claiming coverage was clean.
+    hunt_evidence?: Record<string, any>
+    coverage_notes?: string[]
+    hunt_enabled?: boolean
+    organizations_in_scope?: string[]
 }
 
 interface QueryHistory {
@@ -102,7 +109,12 @@ export function ZDAReportsView() {
             analysis: entry.result.answer,
             affected_repositories: entry.result.affected_repositories,
             plan: entry.result.plan,
-            execution_summary: entry.result.execution_summary
+            execution_summary: entry.result.execution_summary,
+            // Forwarded so an exported report carries its evidence and its blind spots.
+            hunt_evidence: entry.result.hunt_evidence,
+            coverage_notes: entry.result.coverage_notes,
+            hunt_enabled: entry.result.hunt_enabled,
+            organizations_in_scope: entry.result.organizations_in_scope
         }
 
         try {
@@ -133,14 +145,19 @@ export function ZDAReportsView() {
                 body: JSON.stringify(exportData)
             })
 
-            if (!response.ok) throw new Error('Export failed')
+            if (!response.ok) {
+                const body = await response.json().catch(() => null)
+                throw new Error(body?.detail || `Export failed (${response.status})`)
+            }
 
             const blob = await response.blob()
             const extension = format === 'pdf' ? 'pdf' : 'docx'
             downloadBlob(blob, `zda-report-${entry.id}.${extension}`)
 
         } catch (err) {
-            console.error('Export failed:', err)
+            const message = err instanceof Error ? err.message : 'Export failed'
+            console.error('Export failed:', message)
+            alert(message)
         }
     }
 
@@ -214,7 +231,12 @@ export function ZDAReportsView() {
             timestamp: entry.timestamp,
             scope: entry.scope,
             total_repositories: entry.result.affected_repositories.length,
-            repositories: entry.result.affected_repositories
+            repositories: entry.result.affected_repositories,
+            // Coverage travels with the repository list: a short list without its
+            // caveats reads as an all-clear.
+            coverage_notes: entry.result.coverage_notes,
+            hunt_enabled: entry.result.hunt_enabled,
+            organizations_in_scope: entry.result.organizations_in_scope
         }
 
         try {
@@ -245,14 +267,19 @@ export function ZDAReportsView() {
                 body: JSON.stringify(exportData)
             })
 
-            if (!response.ok) throw new Error('Export failed')
+            if (!response.ok) {
+                const body = await response.json().catch(() => null)
+                throw new Error(body?.detail || `Export failed (${response.status})`)
+            }
 
             const blob = await response.blob()
             const extension = format === 'pdf' ? 'pdf' : 'docx'
             downloadBlob(blob, `affected-repos-${entry.id}.${extension}`)
 
         } catch (err) {
-            console.error('Export failed:', err)
+            const message = err instanceof Error ? err.message : 'Export failed'
+            console.error('Export failed:', message)
+            alert(message)
         }
     }
 

@@ -554,3 +554,38 @@ def get_repository_deployment_status(
         "environments": list(deployments_by_env.values()),
         "total_environments": len(deployments_by_env)
     }
+
+
+# Tools advertised to the zero-day planner, kept beside the implementations so the
+# catalogue in the prompt cannot drift from what the dispatcher can actually call.
+# search_deployments and search_workflow_runs existed here for a long time without ever
+# being reachable by the agent, which is why the planner could not ask whether a build
+# ran during an attack window.
+DB_TOOL_SPECS = [
+    {"name": "search_dependencies",
+     "signature": "search_dependencies(package_name, version_spec=None)",
+     "description": "Search SBOM/dependency records for a package. Fuzzy name matching. "
+                    "version_spec matches the declared version exactly."},
+    {"name": "search_findings",
+     "signature": "search_findings(query, severity_filter=None)",
+     "description": "Search scanner findings by text, CVE or CWE."},
+    {"name": "search_languages",
+     "signature": "search_languages(language)",
+     "description": "Repositories using a programming language."},
+    {"name": "search_technology",
+     "signature": "search_technology(keyword)",
+     "description": "Repositories matched by language or description text."},
+    {"name": "search_all_sources",
+     "signature": "search_all_sources(query, scopes=None)",
+     "description": "Broad sweep across every source. Use when the query is vague."},
+    {"name": "search_workflow_runs",
+     "signature": "search_workflow_runs(repository_name=None, workflow_name=None, "
+                  "branch=None, status=None, conclusion=None, days_back=30)",
+     "description": "GitHub Actions workflow runs. Use to establish whether CI executed "
+                    "while a poisoned dependency was installable."},
+    {"name": "search_deployments",
+     "signature": "search_deployments(repository_name=None, environment=None, "
+                  "commit_sha=None, status=None, days_back=90)",
+     "description": "Deployment records. Use to establish whether affected code reached "
+                    "a live environment, and when."},
+]

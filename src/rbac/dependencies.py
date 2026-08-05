@@ -189,8 +189,66 @@ def require_permissions(*required_perms: str) -> Callable:
     return permission_checker
 
 
+def check_permission(permission: str) -> Callable:
+    """
+    Create a dependency that REPORTS whether the user holds a permission, as a bool.
+
+    Unlike require_permissions, this never raises. It exists for routes whose behaviour
+    degrades rather than fails: the zero-day analyst runs its database tools for any
+    caller with findings:write, but reaches live external systems only with
+    hunt:execute, and the response records which surfaces went unexamined.
+
+    Do not use this to guard a route. A route that must be denied should use
+    require_permissions, which returns 403 before the handler runs. This returns a value
+    the handler is free to ignore, so it protects nothing on its own.
+
+    Args:
+        permission: Permission name in "resource:action" format
+
+    Returns:
+        FastAPI dependency resolving to True if the user holds the permission.
+    """
+    async def permission_reporter(
+        user: User = Depends(get_current_user),
+        request: Request = None,
+        session: Session = Depends(get_db)
+    ) -> bool:
+        import os
+
+        if os.getenv("AUTH_DISABLED", "false").lower() == "true":
+            return True
+
+        try:
+            tenant_id = get_tenant_id_from_request(request)
+            user_perms = await get_user_permissions(user, tenant_id, session)
+            if not user_perms:
+                user_perms = _get_legacy_permissions(user, session)
+            granted = has_permission(user_perms, permission)
+        except Exception as exc:
+            # Fail closed. An error resolving permissions must not read as a grant.
+            logger.warning(f"check_permission({permission}) could not be resolved: {exc}")
+            return False
+
+        # Recorded either way: a denial here silently narrows what a hunt examined, and
+        # that needs to be attributable afterwards.
+        audit_authorization(
+            user, tenant_id, "api", "request", granted=granted,
+            reason=None if granted else f"Optional capability not held: {permission}",
+            required_permissions=[permission],
+            user_permissions=user_perms,
+        )
+        return granted
+
+    return permission_reporter
+
+
 # Legacy role → permission mapping for backward compatibility
 # Used when user_roles table has no entry for the user
+#
+# KEEP IN SYNC with role_permissions_map in src/rbac/seeds.py. These two maps are
+# duplicated definitions of the same policy and will silently diverge otherwise — a
+# permission added only to seeds.py is invisible to any user falling back to legacy
+# role resolution.
 _LEGACY_ROLE_PERMISSIONS = {
     "super_admin": ["*:*"],
     "admin": [
@@ -200,6 +258,7 @@ _LEGACY_ROLE_PERMISSIONS = {
         "organizations:read", "organizations:write",
         "users:read", "users:write",
         "reports:read", "admin:manage",
+        "hunt:read", "hunt:execute",
         "schedules:read", "schedules:create", "schedules:update",
         "schedules:override", "schedules:trigger",
     ],
@@ -208,11 +267,13 @@ _LEGACY_ROLE_PERMISSIONS = {
         "scans:read", "scans:execute",
         "repositories:read",
         "reports:read",
+        "hunt:read", "hunt:execute",
         "schedules:read", "schedules:create", "schedules:update",
         "schedules:trigger",
     ],
     "manager": [
         "findings:read", "scans:read", "repositories:read", "reports:read",
+        "hunt:read",
         "schedules:read",
     ],
     "user": [

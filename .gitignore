@@ -80,3 +80,23 @@ secrets/
 
 # Azure login screenshots
 scripts/azure-login/screenshots/*.png
+
+# Scanner and export artifacts.
+# exports/ holds raw scanner output, including findings_all.csv, which contains the
+# plaintext secrets the scanner recovered from the estate (private keys, PATs). It must
+# never be committed: publishing it would leak every credential it found, and git history
+# cannot be un-published. The rest of exports/ is regenerable, so nothing is lost.
+exports/
+.scan_resume_state.pkl
+
+# Local TLS trust material and vendored source tarballs (host-specific, regenerable)
+certs/
+vendor/
+
+# Local UI/report capture artifacts
+.try-it-screenshots/
+TRY-IT-REPORT.md
+
+# Python bytecode
+__pycache__/
+*.pyc

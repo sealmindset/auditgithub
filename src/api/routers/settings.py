@@ -6,6 +6,7 @@ import os
 import requests
 from ..dependencies import get_tenant_db
 from .. import models
+from .. import secrets_store
 from src.rbac.dependencies import require_permissions
 from src.auth.dependencies import require_super_admin
 
@@ -13,6 +14,11 @@ router = APIRouter(
     prefix="/settings",
     tags=["settings"]
 )
+
+# Keys whose values are credentials. These are encrypted at rest via secrets_store
+# and masked on read. Everything else (URLs, email addresses) is stored plaintext,
+# because it is not secret and operators need to see it to confirm configuration.
+SECRET_SETTING_KEYS = {"OPENAI_API_KEY", "JIRA_API_TOKEN"}
 
 class SettingsUpdate(BaseModel):
     """Request model for updating application settings."""
@@ -74,11 +80,30 @@ def get_settings(db: Session = Depends(get_tenant_db)):
 
     Requires the **admin:manage** permission. Returns configuration values
     persisted in the system config table.
+
+    Values flagged `is_encrypted` are returned masked — length and last four
+    characters only. Previously this endpoint returned every stored API key in
+    cleartext to any caller holding admin:manage, which meant reading the settings
+    page was equivalent to exfiltrating the credentials on it. Masked values are
+    enough to confirm which key is loaded and to spot a truncated paste, which is
+    the only thing the UI actually needs.
     """
     configs = db.query(models.SystemConfig).all()
     settings = {}
     for config in configs:
-        settings[config.key] = config.value
+        if config.is_encrypted or config.key in SECRET_SETTING_KEYS:
+            try:
+                plaintext = secrets_store.decrypt(config.value) if config.value else None
+            except (secrets_store.SecretsNotConfigured, secrets_store.SecretDecryptionError):
+                # Unreadable is not the same as absent — report it as such rather
+                # than showing an empty field the operator would try to "fix" by
+                # re-pasting over a value that may still be in use elsewhere.
+                settings[config.key] = {"present": True, "length": None, "preview": None,
+                                        "unreadable": True}
+                continue
+            settings[config.key] = secrets_store.mask(plaintext)
+        else:
+            settings[config.key] = config.value
     return settings
 
 @router.post(
@@ -105,20 +130,44 @@ def save_settings(settings: SettingsUpdate, db: Session = Depends(get_tenant_db)
     }
     
     for key, value in updates.items():
-        if value is not None:
-            # Update DB
-            config = db.query(models.SystemConfig).filter(models.SystemConfig.key == key).first()
-            if not config:
-                config = models.SystemConfig(key=key, value=value)
-                db.add(config)
-            else:
-                config.value = value
-            
-            # Update .env
-            update_env_file(key, value)
-            
-            # Update current process env (for immediate use)
-            os.environ[key] = value
+        if value is None:
+            # Null means "leave unchanged". The UI sends null for a blank credential
+            # field so that not retyping a secret cannot erase it.
+            continue
+
+        is_secret = key in SECRET_SETTING_KEYS
+        stored_value = value
+
+        if is_secret:
+            try:
+                stored_value = secrets_store.encrypt(value)
+            except secrets_store.SecretsNotConfigured as exc:
+                # Fail closed. Writing the credential in cleartext because encryption
+                # is unavailable is the failure mode this store exists to prevent.
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        f"Cannot store {key}: SECRETS_MASTER_KEY is not configured, and "
+                        "credentials are not written in plaintext. Set it and restart the "
+                        "API. Note that setting it later cannot recover values that were "
+                        "never stored."
+                    ),
+                ) from exc
+
+        config = db.query(models.SystemConfig).filter(models.SystemConfig.key == key).first()
+        if not config:
+            config = models.SystemConfig(key=key, value=stored_value, is_encrypted=is_secret)
+            db.add(config)
+        else:
+            config.value = stored_value
+            config.is_encrypted = is_secret
+
+        # Update .env and the live process env with the plaintext — these are the
+        # paths existing code reads from, and .env is already outside the DB trust
+        # boundary. Encryption here protects the database copy and API responses,
+        # not the operator's own .env file.
+        update_env_file(key, value)
+        os.environ[key] = value
 
     db.commit()
     return {"status": "success", "message": "Settings saved"}
