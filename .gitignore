@@ -1,8 +1,12 @@
-# Environment variables
+# Environment variables.
+# The catch-all `.env.*` matters more than the specific patterns above it: any copy of
+# .env holds live PATs, and this repository's origin is public. Enumerating suffixes
+# (.local, .tmp) means the next backup or scratch copy someone makes is tracked by
+# default. Sample files are re-admitted explicitly.
 .env
-.env.local
-.env.*.local
-.env.tmp
+.env.*
+!.env.sample
+!.env.example
 
 backups/
 backups/auditgithub_kb_backups_*.json

@@ -150,11 +150,27 @@ def hunt_registry_truth(packages: List[str], window_start: Any, window_end: Any,
         "malicious_version_count": len(detail),
         "malicious_specs": result.get("malicious_specs", []),
         "malicious_detail": detail,
+        # Registry cleanup misses: published inside the window, still installable, but
+        # with sibling in-window versions withdrawn. Kept out of malicious_specs because
+        # the strict rule is what makes that set defensible, and carried in
+        # hunt_scope_specs because two of these were confirmed live malware by tarball
+        # hash on 2026-08-06 — @ornikar/intl-config@10.0.10 and
+        # @ornikar/react-native-svg-transformer@1.0.13, both still serving setup.mjs at
+        # fd3ca400… with a preinstall hook. Dropping them here once already turned a
+        # real exposure into a silent zero.
+        "suspected_uncleaned_specs": result.get("suspected_uncleaned_specs", []),
+        "suspected_uncleaned_detail": result.get("suspected_uncleaned_detail", []),
+        "hunt_scope_specs": result.get("hunt_scope_specs", []),
         "per_package": result.get("per_package", {}),
         "coverage": {
             "usable": True,
             "unreachable": unreachable,
             "warning": result.get("coverage_warning"),
+            "scope_vs_verdict": (
+                "Query the estate for hunt_scope_specs; report verdicts from "
+                "malicious_specs. They differ by the cleanup misses, and scoping to the "
+                "narrower set is how a still-live malicious version goes unsearched."
+            ),
             "note": ("Derive the attack window from these publish timestamps, not from "
                      "advisory prose. In the reference run every vendor named a first "
                      "compromised package that the registry shows was the seventh, and "

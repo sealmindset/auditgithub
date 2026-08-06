@@ -192,6 +192,29 @@ _TIER1: List[Source] = [
             "rotation."
         ),
     ),
+    Source(
+        id="elastic",
+        name="Elastic Security Labs",
+        tier=Tier.PRIMARY,
+        kind=SourceKind.ADVISORY,
+        url="https://www.elastic.co/security-labs/shai-hulud-chaindrop-npm-supply-chain",
+        description=(
+            "Reverse-engineering source: names the worm CHAINDROP, decomposes it into dropper, "
+            "payload and a 711 KB collector, and documents the obfuscation (control-flow "
+            "flattening, Base91). Uniquely contributes the C2 domain awqhnjewqjkl.icu, the "
+            "collector's 300+ credential patterns including AI tooling (Anthropic, Claude, "
+            "Codex, Cursor) and Alibaba plus instance-metadata endpoints, the AES-256-GCM + RSA "
+            "exfil shape, and the detail that propagation writes hooks to up to 50 branches per "
+            "accessible repository — so inspecting only the default branch reads a compromised "
+            "repository as clean. Local claims are held in "
+            "github_conf/ioc/chaindrop_elastic_2026_08.json."
+        ),
+        calibration_notes=(
+            "Names five root packages and does not enumerate the 400+ propagated ones, so it "
+            "neither confirms nor refutes any specific version. Its silence on an indicator is "
+            "not a denial of it."
+        ),
+    ),
 ]
 
 # =============================================================================
