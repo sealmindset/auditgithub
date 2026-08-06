@@ -4,6 +4,48 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Deployment Topology P1/P2 and Shared GitHub Budget Governor (2026-08-06)
+
+Branch `deployment-topology-p1-p2`, commit `5b749b9`.
+
+**Added — deployment capability map (P1, run against the live estate)**
+- Parses the ~84 centrally-shared reusable workflows once and propagates each deployment contract to every consumer repository, resolving concrete environments and Azure/AWS identifiers from per-repository GitHub Environments and Actions variables.
+- 4,207 map rows across 374 repositories; 288 repositories reach a production environment.
+- Coverage is data: every repository is resolved with evidence, explicitly unresolved with a reason, or a counted unknown. A repository with no rows is never reported as "deploys nowhere".
+- Every row carries `method`, `confidence`, `evidence`, and the claim it does **not** make (`deployment_capability_not_observation`).
+- New tables `reusable_workflow_targets` and `repo_deployment_map` plus a `repo_deployment_coverage` view (migration 020).
+- 4 API routes under `/cicd/topology/*` and CLI `scripts/sync_deployment_topology.py`.
+
+**Added — deployment observation (P2, code complete, not yet run)**
+- Reads the GitHub Deployments API and writes `method='github_deployment'` rows alongside — never over — P1's inference, so wired-but-never-used and used-but-not-wired are both visible.
+- First writer for the previously unused `deployments` / `deployment_targets` tables.
+- Resumable by design: repositories are probed oldest-observation-first and committed as they complete, so a run stopped at the budget floor continues on the next invocation.
+- `POST /cicd/topology/observe`, `GET /cicd/topology/activity`, CLI `scripts/sync_deployment_observations.py`, migration 021.
+- Deployment payload **values are dropped at ingest**; only key names are stored, because a payload is supplied by whoever created the deployment and can carry credential material.
+
+**Added — shared GitHub API budget governor**
+- Every GitHub caller in the deployment shares one PAT and one 5000/hr limit with nothing arbitrating between them; an org import exhausted the window (`X-RateLimit-Used: 5019`) and the first topology run consequently wrote nothing.
+- Budget is now **observed** from `X-RateLimit-*` headers of real responses, not asserted by `GET /rate_limit` (which reported 4990 remaining while the next real request 403'd).
+- Three tiers with reserved floors: interactive is never gated, on-demand leaves 400 calls, background leaves 2000 and additionally waits for an idle estate. No Redis means background work is refused rather than allowed blind.
+- `GET /scheduler/github-budget` exposes the live snapshot and a per-tier would-admit decision.
+
+**Changed — scheduler deprioritized**
+- The ~2,500 per-repo scan cron jobs are no longer registered at startup (`SCHEDULER_AUTO_REGISTER_REPO_SCANS=false`); schedules stay in the database and run on demand.
+- When enabled: deterministic per-schedule minute spread instead of all firing at `hh:00`, one scan at a time, and deferrals recorded as `last_execution_status='deferred_rate_budget'` rather than skipped silently.
+
+**Fixed**
+- Scheduled scans ran `subprocess.run` inside an async handler, blocking the API event loop for up to the 2-hour scan timeout — one scheduled scan stalled every request in the process. Now `asyncio.create_subprocess_exec`.
+- `scripts/setup_database.sh` applied a hardcoded list of migrations 001–006 and had been silently skipping 007–020; it now applies every migration in sorted order, with dev-only seed files gated behind `SEED_MOCK_USERS=true`.
+
+**Security findings recorded as data**
+- 46 contracts hand `toJSON(secrets)` to a composite action pinned to a moving `@v2` tag, or use `secrets: inherit` (`reusable_workflow_targets.secrets_bulk_exposure`).
+- 9 consumer references point at deleted branches of central workflow repositories: their CI is broken today, and the dangling ref means anyone able to push a branch of that name gains code execution in every consumer with the consumer's secrets.
+
+**Rights**
+- No new access required. One gap recorded with evidence: `GET /orgs/{org}/actions/variables` returns 403, which lowers precision (rows get `unresolved_reason='org_variables_forbidden'`) but not coverage. GitHub throttling is classified separately from denial throughout, so a rate-limited run can never be filed as an access request.
+
+**Tests:** 86 added (55 parser, 12 budget governor, 19 observation).
+
 ### Fixed — Security Findings (MEDIUM) (2026-05-22)
 - Added `timeout=30` to 12 HTTP requests calls across 5 files (instrumentation, jira, scan_engagement, scan_hardcoded_ips, verify_sbom)
 - Changed temp directory permissions from 0o755 to 0o700 in scan_repos.py
