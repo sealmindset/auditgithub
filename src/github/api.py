@@ -69,15 +69,27 @@ class GitHubAPI:
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """Make an authenticated request to the GitHub API with rate limit handling."""
         url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
-        
+
         while True:
             response = self.session.request(method, url, **kwargs)
-            
+            # Publish the observed budget so lower-priority consumers (cron
+            # scans) back off before this client drains the shared PAT.
+            self._observe_budget(response)
+
             if not self._handle_rate_limit(response):
                 break
-        
+
         response.raise_for_status()
         return response
+
+    @staticmethod
+    def _observe_budget(response: requests.Response) -> None:
+        """Feed the shared budget governor; never fail a request over this."""
+        try:
+            from src.api.utils import github_budget
+            github_budget.observe_headers(response.headers)
+        except Exception:  # pragma: no cover - governor is advisory only
+            pass
     
     def get_repositories(self, include_forks: bool = False, 
                         include_archived: bool = False) -> List[Repository]:

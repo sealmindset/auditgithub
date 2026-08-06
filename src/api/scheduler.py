@@ -67,6 +67,11 @@ class SchedulerService:
     
     def __init__(self):
         self.enabled = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
+        # Off by default: registering every repository schedule as a cron job
+        # points ~2500 scans at one shared GitHub PAT. See src/api/utils/github_budget.py.
+        self.auto_register_repo_scans = (
+            os.getenv("SCHEDULER_AUTO_REGISTER_REPO_SCANS", "false").lower() == "true"
+        )
         self.jobs: Dict[str, ScheduledJob] = {}
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.schedule_executor: Optional['ScheduleExecutor'] = None
@@ -183,19 +188,33 @@ class SchedulerService:
         self._running = True
         logger.info("Scheduler started")
 
-        # Initialize ScheduleExecutor for database-driven schedules
+        # Initialize ScheduleExecutor for database-driven schedules. The executor
+        # is always constructed so on-demand runs (/schedules/{id}/run) work, but
+        # the ~2500 per-repository cron jobs are only registered when explicitly
+        # enabled: they all share one GitHub PAT and one 5000/hr rate limit, and
+        # registering them drained the whole budget in a single window, starving
+        # interactive and operator-triggered work.
         from src.services.schedule_executor import ScheduleExecutor
         self.schedule_executor = ScheduleExecutor(self.scheduler)
-        await self.schedule_executor.sync_schedules()
 
-        # Add periodic sync job (every hour)
-        self.scheduler.add_job(
-            self.schedule_executor.sync_schedules,
-            trigger=CronTrigger(minute=0),  # Every hour
-            id="schedule_sync",
-            name="Sync Repository Schedules",
-            replace_existing=True
-        )
+        if self.auto_register_repo_scans:
+            await self.schedule_executor.sync_schedules()
+            self.scheduler.add_job(
+                self.schedule_executor.sync_schedules,
+                trigger=CronTrigger(minute=0),  # Every hour
+                id="schedule_sync",
+                name="Sync Repository Schedules",
+                replace_existing=True
+            )
+        else:
+            pending = self.schedule_executor.count_active_schedules()
+            logger.info(
+                "Repository scan cron jobs NOT registered "
+                "(SCHEDULER_AUTO_REGISTER_REPO_SCANS=false): %d active schedules "
+                "remain on-demand only. They are still visible in the API and can "
+                "be run via POST /schedules/{id}/run.",
+                pending,
+            )
     
     async def stop(self):
         """Stop the scheduler."""

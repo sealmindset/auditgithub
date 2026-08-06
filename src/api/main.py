@@ -243,7 +243,7 @@ import src.api.prompt_models  # noqa: F401 — register prompt management tables
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts, credentials, hunt
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts, credentials, hunt, cicd
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -288,6 +288,7 @@ app.include_router(sarif_import.router)  # SARIF import (MegaLinter, Semgrep, et
 app.include_router(prompts.router)  # AI Prompt Management System
 app.include_router(credentials.router)  # Encrypted per-org credential store
 app.include_router(hunt.router)  # Threat hunting: registry ground truth, arbitration, Defender XDR
+app.include_router(cicd.router)  # CI/CD history and deployment topology (repo -> environment -> cloud)
 
 # Register sandbox router (only active when SANDBOX_MODE=true)
 if is_sandbox():

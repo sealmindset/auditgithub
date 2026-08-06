@@ -108,3 +108,7 @@ TRY-IT-REPORT.md
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Registry lookup cache written by the npm supply-chain scans (one JSON per
+# package, hundreds of files). Regenerable from the registry; never commit.
+.cache/

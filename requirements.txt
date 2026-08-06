@@ -64,6 +64,9 @@ reportlab>=4.0.0  # For PDF generation
 python-docx>=0.8.11  # For DOCX generation
 google-genai>=0.2.0  # New Google GenAI SDK (replaces deprecated google-generativeai)
 
+# Deployment Topology (P1)
+PyYAML>=6.0.1  # Parses centrally-shared reusable GitHub Actions workflows
+
 # Logging & Observability
 loguru>=0.7.0  # Structured logging with HTTP transport
 minio>=7.2.0  # S3-compatible storage client for log fallback

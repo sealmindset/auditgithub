@@ -234,3 +234,51 @@ async def get_next_runs():
         })
     
     return {"jobs": next_runs}
+
+
+@router.get(
+    "/github-budget",
+    dependencies=[Depends(require_permissions("admin:manage"))],
+    summary="Shared GitHub API rate-limit budget and admission decisions",
+    responses={**CRUD_ERRORS, 403: {"description": "Missing admin:manage permission"}},
+)
+async def get_github_budget():
+    """
+    Show the shared GitHub PAT budget every scanner competes for, and whether
+    each priority tier would be admitted right now.
+
+    `remaining` comes from the headers of the last *real* GitHub response, not
+    from `GET /rate_limit`, which has been observed reporting a full budget
+    while real requests were already returning 403.
+    """
+    from ..utils import github_budget
+
+    snap = github_budget.snapshot()
+    tiers = {}
+    for tier in (
+        github_budget.TIER_INTERACTIVE,
+        github_budget.TIER_ON_DEMAND,
+        github_budget.TIER_BACKGROUND,
+    ):
+        allowed, reason, _ = github_budget.can_run(
+            tier, need=github_budget.DEFAULT_SCAN_COST
+        )
+        tiers[tier] = {
+            "would_admit": allowed,
+            "reason": reason,
+            "floor": snap["floors"][tier],
+            "active_leases": github_budget.active_leases(tier),
+            "seconds_since_activity": github_budget.seconds_since_activity(tier),
+        }
+
+    return {
+        "budget": snap,
+        "tiers": tiers,
+        "idle_threshold_seconds": github_budget.IDLE_SECONDS,
+        "scan_cost_estimate": github_budget.DEFAULT_SCAN_COST,
+        "note": (
+            "background tier = cron scans; on_demand = operator-triggered runs; "
+            "interactive is never gated. A refusal here is throttling/priority, "
+            "not a permissions problem."
+        ),
+    }

@@ -1778,3 +1778,134 @@ class RepositoryOpsDiscovery(Base):
 
     def __repr__(self):
         return f"<RepositoryOpsDiscovery(repository_id='{self.repository_id}', status='{self.status}')>"
+
+
+# =============================================================================
+# DEPLOYMENT TOPOLOGY - repo -> environment -> cloud resource map
+# See migrations/020_deployment_topology.sql
+# =============================================================================
+
+class ReusableWorkflowTarget(Base):
+    """
+    Parsed deployment contract of a centrally-shared reusable workflow.
+
+    Parsing the handful of central workflows once yields deployment topology for
+    the hundreds of repositories that call them. One row per
+    (source_repo, workflow_path, ref).
+    """
+    __tablename__ = "reusable_workflow_targets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+
+    # Identity of the shared workflow
+    source_repo = Column(String(512), nullable=False)      # owner/repo hosting it
+    workflow_path = Column(String(512), nullable=False)    # .github/workflows/x.yaml
+    ref = Column(String(255), nullable=False)              # tag/branch consumers pin
+    resolved_sha = Column(String(40))
+    workflow_name = Column(String(512))
+    kind = Column(String(50))                              # cd | ci | infra | release | utility
+
+    # Reach (derived from the dependencies table)
+    consumer_count = Column(Integer, default=0)
+
+    # What it deploys
+    cloud_providers = Column(JSONB)
+    resource_types = Column(JSONB)
+    is_deploying = Column(Boolean, default=False)
+
+    # How the environment is chosen
+    environment_source = Column(String(50))                # deployment_event|input|literal|matrix
+    environment_gate_vars = Column(JSONB)
+    literal_environments = Column(JSONB)
+
+    # Credential + execution surface
+    runner_labels = Column(JSONB)
+    inputs = Column(JSONB)
+    declared_secrets = Column(JSONB)
+    referenced_vars = Column(JSONB)
+    referenced_secrets = Column(JSONB)                     # NAMES only, never values
+    nested_workflows = Column(JSONB)
+    actions_used = Column(JSONB)
+    permissions = Column(JSONB)
+    oidc_used = Column(Boolean, default=False)
+    secrets_bulk_exposure = Column(JSONB)                  # toJSON(secrets) / secrets: inherit sinks
+
+    # Provenance
+    parse_confidence = Column(Numeric(3, 2))
+    parser_version = Column(String(20))
+    evidence = Column(JSONB)
+    fetch_status = Column(String(50))
+    fetch_error = Column(Text)
+    fetched_at = Column(DateTime)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    organization = relationship("Organization", backref="reusable_workflow_targets")
+
+    __table_args__ = (
+        UniqueConstraint('organization_id', 'source_repo', 'workflow_path', 'ref',
+                         name='reusable_workflow_targets_organization_id_source_repo_worp_key'),
+    )
+
+    def __repr__(self):
+        return (f"<ReusableWorkflowTarget('{self.source_repo}/{self.workflow_path}@{self.ref}', "
+                f"consumers={self.consumer_count})>")
+
+
+class RepoDeploymentMap(Base):
+    """
+    Where a repository's code runs, with provenance and confidence.
+
+    One row per (repository, environment, method, resource). Each collection
+    method writes its own rows rather than overwriting another's, so a
+    low-confidence static inference never masks a high-confidence observation.
+
+    A row with is_resolved = False is an explicit "we looked and could not
+    determine" marker - an unbounded unknown, NOT an assertion that the
+    repository deploys nowhere.
+    """
+    __tablename__ = "repo_deployment_map"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"),
+                           nullable=False)
+
+    environment = Column(String(255), nullable=False)      # dev, prd, prd-ncus, __unresolved__
+    environment_kind = Column(String(50))                  # production|staging|test|development|ephemeral
+
+    cloud_provider = Column(String(50))
+    resource_type = Column(String(100))
+    resource_identifier = Column(String(512))
+    subscription_or_account = Column(String(255))
+    region = Column(String(100))
+
+    # Who/what executes the deploy, and with which identity
+    runner_labels = Column(JSONB)
+    deploy_identity = Column(String(255))                  # e.g. Azure SP client id for this env
+    tf_backend = Column(JSONB)
+
+    # Provenance
+    method = Column(String(50), nullable=False)
+    confidence = Column(Numeric(3, 2), nullable=False)
+    source_workflow_id = Column(UUID(as_uuid=True),
+                                ForeignKey("reusable_workflow_targets.id", ondelete="SET NULL"))
+    is_resolved = Column(Boolean, default=False)
+    unresolved_reason = Column(String(255))
+    evidence = Column(JSONB, nullable=False)
+
+    first_observed_at = Column(DateTime, server_default=func.now())
+    last_observed_at = Column(DateTime, server_default=func.now())
+    is_current = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    repository = relationship("Repository", backref="deployment_map")
+    source_workflow = relationship("ReusableWorkflowTarget", backref="deployment_map_rows")
+
+    def __repr__(self):
+        return (f"<RepoDeploymentMap(env='{self.environment}', method='{self.method}', "
+                f"confidence={self.confidence})>")

@@ -51,35 +51,22 @@ run_sql "setup/schema.sql"
 echo ""
 echo "3. Applying migrations in order..."
 
-# Migration 001: Sync schema (remediations, api_endpoints, openapi_specs)
-if [ -f "migrations/001_sync_schema.sql" ]; then
-    run_sql "migrations/001_sync_schema.sql"
-fi
-
-# Migration 002: Organizations (multi-tenant support)
-if [ -f "migrations/002_organizations.sql" ]; then
-    run_sql "migrations/002_organizations.sql"
-fi
-
-# Migration 003: Credential URL test results
-if [ -f "migrations/003_credential_url_test_results.sql" ]; then
-    run_sql "migrations/003_credential_url_test_results.sql"
-fi
-
-# Migration 004: Fix multi-tenant repositories
-if [ -f "migrations/004_fix_multi_tenant_repositories.sql" ]; then
-    run_sql "migrations/004_fix_multi_tenant_repositories.sql"
-fi
-
-# Migration 005: Mobile and Go scanners
-if [ -f "migrations/005_mobile_go_scanners.sql" ]; then
-    run_sql "migrations/005_mobile_go_scanners.sql"
-fi
-
-# Migration 006: Ensure all tables (catch-all)
-if [ -f "migrations/006_ensure_all_tables.sql" ]; then
-    run_sql "migrations/006_ensure_all_tables.sql"
-fi
+# Every numbered migration under migrations/ is applied in numeric order.
+# Previously 001-006 were hardcoded here, so 007+ (including 017_cicd_tracking
+# and 020_deployment_topology) never ran on a fresh database.
+#
+# Mock-user seeds are dev-only and stay opt-in via SEED_MOCK_USERS=true.
+for migration in $(ls migrations/[0-9][0-9][0-9]_*.sql 2>/dev/null | sort -V); do
+    case "$migration" in
+        *seed_mock*)
+            if [ "${SEED_MOCK_USERS:-false}" != "true" ]; then
+                echo "Skipping (dev-only seed, set SEED_MOCK_USERS=true to apply): $migration"
+                continue
+            fi
+            ;;
+    esac
+    run_sql "$migration"
+done
 
 echo ""
 echo "4. Verifying tables..."
