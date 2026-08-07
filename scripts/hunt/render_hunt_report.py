@@ -93,6 +93,82 @@ STATUS_NOTE = {
 }
 
 
+# ----------------------------------------------------------------------------------
+# Doctrine §0.6 - report nothing you cannot prove, and price every gap in exact
+# privileges. Enforced here rather than trusted to whoever writes the next vector.
+#
+# WHY THIS IS CODE AND NOT A STYLE NOTE
+#
+# Both halves of §0.6 have already been violated by this exact file, in ways a reviewer
+# reading the diff would not have caught. The endpoint vector shipped BLOCKED with the
+# reason "GRAPH_TENANT_ID ... absent from the environment" - a true sentence about the
+# wrong place to look, which raised a priority-1 request for a permission the tenant had
+# already granted. Prose asking future authors to be careful had no effect, because the
+# author WAS careful; the observation was accurate and the inference was not.
+#
+# So the requirement is structural. A vector claiming it could not look must hand over six
+# named fields, and it is not possible to fill in `permission` and `granted_by` from an
+# empty `.env` - you have to go and ask the tenant, which is the behaviour the rule exists
+# to force. A vector claiming it found something must name what it found. A vector claiming
+# any status at all must show the coverage evidence that earns it.
+#
+# The check runs before the document is written and a violation aborts the render. That is
+# deliberate: a report that cannot substantiate itself is worse than no report, because it
+# is read with the same trust as one that can.
+ACCESS_GAP_FIELDS = ("api", "endpoint", "permission", "grant_type", "granted_by", "proves")
+
+
+def access_gap_sentence(gap: dict) -> str:
+    """One sentence a reader can hand to a tenant admin without asking a follow-up."""
+    return (f"{gap['api']}: {gap['grant_type']} permission `{gap['permission']}` on "
+            f"`{gap['endpoint']}`, granted by {gap['granted_by']}. Once granted this "
+            f"proves: {gap['proves']}")
+
+
+def validate_vectors(vectors: List[dict]) -> List[str]:
+    """Return every §0.6 violation found. Empty list means the report may be written.
+
+    Deliberately returns all violations rather than raising on the first. An author
+    fixing these is going to run the renderer in a loop, and a checker that reveals one
+    problem per run trains them to fix the checker's opinion rather than the report.
+    """
+    problems: List[str] = []
+    for vector in vectors:
+        name, status = vector.get("name", "(unnamed vector)"), vector.get("status")
+
+        # (a) A status is a conclusion from an artefact. NOT RUN is exempt - it is the one
+        #     status that asserts nothing about the estate, so it has nothing to prove.
+        if status != NOT_RUN and not vector.get("coverage"):
+            problems.append(f"{name}: status {status} with no coverage evidence. §0.6(a) - "
+                            f"a status with nothing behind it is an opinion.")
+
+        # (b) A gap must be closable by the person reading it.
+        if status == INCOMPLETE and not vector.get("unresolved_items"):
+            problems.append(f"{name}: INCOMPLETE with no named unresolved items. §0.6(b) - "
+                            f"an unnamed gap cannot be closed, so it is a caveat, and this "
+                            f"report does not publish caveats.")
+        if status == BLOCKED and not vector.get("access_required"):
+            problems.append(f"{name}: BLOCKED with no access_required entry. §0.6(b) - "
+                            f"'could not look' is only reportable alongside the exact "
+                            f"privilege that would let us look.")
+        for index, gap in enumerate(vector.get("access_required") or []):
+            missing = [f for f in ACCESS_GAP_FIELDS if not (gap.get(f) or "").strip()]
+            if missing:
+                problems.append(f"{name}: access_required[{index}] is missing "
+                                f"{', '.join(missing)}. §0.6(b) requires all of "
+                                f"{', '.join(ACCESS_GAP_FIELDS)}.")
+
+        # (c) No false positives for the sake of false positives. A FINDINGS status has to
+        #     say what was found. `findings` is the compromise-evidence channel;
+        #     `evidence_for_status` is how a posture vector names the specific exposures
+        #     that earned its status without pretending they are incidents.
+        if status == FINDINGS and not (vector.get("findings")
+                                       or vector.get("evidence_for_status")):
+            problems.append(f"{name}: FINDINGS with nothing named. §0.6(c) - a finding "
+                            f"nobody can point at is volume, not signal.")
+    return problems
+
+
 def read_json(path: Path) -> Optional[dict]:
     if not path.exists():
         return None
@@ -128,17 +204,36 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
     hits = totals.get("repos_with_indicator_hits", 0)
     unresolved = trees.get("unresolved_repos", []) or []
 
-    # The status is decided by one number: how many repositories this sweep could not
-    # read. Not by an adjective, and not by the raw truncation count - a tree that
-    # truncated and was then re-read per-subtree was read, and a repository with no
-    # commits has no files to read. Both are resolved, and the accounting below is what
-    # entitles this vector to say CLEAR with nothing attached to it.
-    status = FINDINGS if hits and trees.get("indicator_hit_is_campaign_confirmed") \
-        else (INCOMPLETE if unresolved else CLEAR)
     read = accounting.get("read", totals.get("tree_ok", 0))
     no_files = accounting.get("no_files", 0)
     total_repos = totals.get("repos", 0)
     walked = totals.get("truncation_resolved_by_walk", 0)
+
+    # CLEAR used to be decided by `unresolved_repos` alone. An artefact that reported
+    # `tree_failed: 50` with an empty `resolution_accounting` and an empty
+    # `unresolved_repos` therefore rendered as CLEAR over 2,760 of 2,810 repositories, and
+    # the fifty that could not be read left no trace anywhere in the document. The one
+    # coverage line that would have exposed it printed "Buckets sum to the enumerated
+    # total: None", which reads as a missing field rather than as a failed assertion.
+    #
+    # So the arithmetic is done here instead of trusted from the artefact. Whatever the
+    # collector did or did not populate, a repository is resolved or it is not, and the
+    # difference between the two is a count this vector must carry. A sweep may only claim
+    # CLEAR when its buckets actually sum.
+    named_unresolved = [u.get("repo") for u in unresolved if u.get("repo")]
+    unaccounted = max(0, total_repos - read - no_files)
+    if unaccounted > len(named_unresolved):
+        # Failures the collector counted but did not name. They cannot be listed, so they
+        # are stated as a count - unnameable is not the same as absent.
+        failed = totals.get("tree_failed")
+        named_unresolved.append(
+            f"{unaccounted - len(named_unresolved)} repository tree(s) enumerated but not "
+            f"read, and not named in the artefact"
+            + (f" (collector recorded tree_failed={failed})" if failed else "")
+            + ". Re-run scripts/hunt/collect_repo_trees.py to resolve or name them.")
+
+    status = FINDINGS if hits and trees.get("indicator_hit_is_campaign_confirmed") \
+        else (INCOMPLETE if named_unresolved else CLEAR)
 
     coverage = [
         f"Enumeration completed for every org: "
@@ -148,11 +243,17 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
         f"Binaries {bun.get('binaries')}, release assets {len(bun.get('release_assets') or [])}, "
         f"staging prefixes {bun.get('staging_prefixes')}.",
         # The buckets are asserted to sum. If they ever do not, the coverage claim is
-        # arithmetic that does not add up and the reader is told so rather than reassured.
-        f"Every repository is accounted for exactly once: {read} read in full, "
-        f"{no_files} with no files at all (no commits, or an empty tree - these cannot "
-        f"contain a file and are resolved, not skipped), {len(unresolved)} unresolved. "
-        f"Buckets sum to the enumerated total: {accounting.get('sums_to_repos')}.",
+        # arithmetic that does not add up and the reader is told so rather than reassured -
+        # which means saying it in the sentence, not printing a bare `None` from a field
+        # the collector never wrote.
+        f"Repository accounting: {read} read in full, {no_files} with no files at all "
+        f"(no commits, or an empty tree - these cannot contain a file and are resolved, "
+        f"not skipped), {unaccounted} unresolved, out of {total_repos} enumerated. "
+        + ("Buckets sum to the enumerated total, so every repository is accounted for "
+           "exactly once."
+           if not unaccounted else
+           f"**Buckets do not sum: {unaccounted} repository(ies) are enumerated and "
+           f"neither read nor explained.** This vector cannot be read as clean over them."),
     ]
     if walked:
         coverage.append(
@@ -171,7 +272,7 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
             "Repositories enumerated": total_repos,
             "Resolved - file tree read in full": read,
             "Resolved - repository holds no files at all": no_files,
-            "UNRESOLVED - not read, listed by name below": len(unresolved),
+            "UNRESOLVED - enumerated but not read": unaccounted,
             "Oversized trees re-read per-subtree to completion": walked,
             "npm-relevant repositories": totals.get("npm_relevant", 0),
             "Repos matching a campaign filename": hits,
@@ -180,7 +281,7 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
         "coverage": coverage,
         "limits": trees.get("limits", []),
         "findings": [],
-        "unresolved_items": [u.get("repo") for u in unresolved],
+        "unresolved_items": named_unresolved,
     }
 
 
@@ -319,6 +420,23 @@ def vector_ci(posture: Optional[dict], owners: Optional[dict]) -> dict:
     pinned = counts.get("action_refs_pinned_to_sha", 0)
     mutable = counts.get("action_refs_on_mutable_refs", 0)
     status = FINDINGS if (tojson or curl_sh or critical or mutable) else CLEAR
+
+    # §0.6(c). Name the specific things that earned FINDINGS, so nobody has to reverse the
+    # boolean above to find out what is wrong. Every entry is a count from the artefact -
+    # none of it is an assessment, and none of it is evidence of compromise, which is why
+    # this vector never sets is_compromise_evidence.
+    earned = []
+    if critical:
+        earned.append(f"{plural(len(critical), 'workflow')} combining a privileged trigger "
+                      f"with a checkout of PR head code")
+    if tojson:
+        earned.append(f"{plural(len(tojson), 'workflow')} handing the whole secrets context "
+                      f"to a step")
+    if curl_sh:
+        earned.append(f"{plural(len(curl_sh), 'workflow')} piping remote code to a shell")
+    if mutable:
+        earned.append(f"{mutable} third-party action reference(s) on a mutable ref, which "
+                      f"the owner can repoint with no version change visible to us")
     return {
         "name": "CI / GitHub Actions posture",
         "status": status,
@@ -360,6 +478,7 @@ def vector_ci(posture: Optional[dict], owners: Optional[dict]) -> dict:
         "curl_sh": curl_sh,
         "self_hosted": posture.get("self_hosted_runner_workflows", []) or [],
         "unpinned_third_party": posture.get("most_common_unpinned_third_party_actions", []) or [],
+        "evidence_for_status": earned,
         "findings": [],
     }
 
@@ -444,6 +563,18 @@ def vector_reusable(reusable: Optional[dict]) -> dict:
         ],
         "ranked_sinks": ranked,
         "bulk_rows": bulk,
+        # §0.6(c). Exposure, named and counted, and explicitly not a compromise claim - the
+        # `limits` above already say secrets_bulk_exposure records that the context was
+        # passed, not that anything was misused. Naming it here keeps the distinction
+        # visible at the point a reader decides how alarmed to be.
+        "evidence_for_status": [
+            f"{s['sink']} receives the whole secrets context from "
+            f"{plural(s['workflows'], 'shared definition')} behind "
+            f"{s['consumer_refs']} consumer reference(s)"
+            + (" - serialised to text, on a mutable ref" if s["serialises_to_text"]
+               and s["sink_ref_mutable"] else "")
+            for s in ranked[:10]
+        ],
         "findings": [],
     }
 
@@ -628,13 +759,35 @@ def render_delta(previous: Optional[dict], current: dict,
     # possible delta and the easiest to miss: the reader sees a shorter table and no
     # warning. Iterating only today's vectors would let a broken collector silently
     # remove a whole line of defence and still print "no change since the previous run".
-    for name, before in (previous.get("vectors") or {}).items():
-        if name in current["vectors"]:
-            continue
-        lines.append(
-            f"**WARNING - vector no longer reported: {name}** (was {before.get('status')}). "
-            f"Either its collector failed, or it was renamed. Until that is confirmed, "
-            f"treat this attack vector as unchecked this cycle, not as clean.")
+    #
+    # But the alarm has to be earned. The previous version raised a WARNING for every
+    # disappeared name and then admitted, in the same sentence, that it could not tell a
+    # failed collector from a rename - which is a false positive by construction, and it
+    # fired on exactly that: "GitHub code search (corroborating)" gained the word "only"
+    # and was reported as an unchecked attack vector while sitting in the table below.
+    #
+    # So the two cases are separated by something provable rather than guessed. A rename
+    # requires a new name to have appeared in the same run. Where none did, a
+    # disappearance cannot be a rename and coverage has measurably dropped - that earns
+    # the warning. Where one did, both lists are printed as facts and no cause is
+    # asserted, because the renderer cannot see which name replaced which and must not
+    # pretend otherwise.
+    gone = [(name, before) for name, before in (previous.get("vectors") or {}).items()
+            if name not in current["vectors"]]
+    appeared = [name for name in current["vectors"]
+                if name not in (previous.get("vectors") or {})]
+    for name, before in gone:
+        if appeared:
+            lines.append(
+                f"Vector list changed: **{name}** (was {before.get('status')}) is not in "
+                f"this run, and {', '.join(appeared)} appeared. If that is a rename, "
+                f"coverage is unchanged; confirm against Section 3 before reading it as "
+                f"either.")
+        else:
+            lines.append(
+                f"**WARNING - vector no longer reported: {name}** (was "
+                f"{before.get('status')}), and no new vector took its place. Coverage has "
+                f"dropped. Treat this attack vector as unchecked this cycle, not as clean.")
     if not lines:
         lines.append("No change since the previous run. Same vectors, same statuses, "
                      "same counts.")
@@ -817,6 +970,13 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
     #    problem and the fix is running the collector, which costs a minute. Only the
     #    artefact can say which one is true, so neither branch guesses.
     if endpoint.get("status") == BLOCKED:
+        # §0.6(b). The targets used to be one hardcoded string naming ThreatHunting.Read.All
+        # - which is the permission the tenant already held, so on the run that produced
+        # this branch the report asked for the one thing it did not need. A hardcoded ask
+        # is an ask about the past. These come from the collector, which is the only thing
+        # here that has spoken to the tenant, and validate_vectors() has already refused
+        # the render if any of the six fields is missing.
+        gaps = endpoint.get("access_required") or []
         actions.append({
             "priority": 1,
             "title": "Get read access to endpoint security telemetry",
@@ -825,12 +985,12 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
                        "laptop, so the one place it would show up is the one place we "
                        "cannot look. This is not a finding - it is a hole where a finding "
                        "would be.",
-            "scope": "1 access request",
-            "targets": ["Microsoft Graph: ThreatHunting.Read.All on /security/runHuntingQuery"],
-            "owners": ["Security operations / Microsoft 365 tenant admin"],
+            "scope": f"{plural(len(gaps), 'access request')}",
+            "targets": [access_gap_sentence(g) for g in gaps],
+            "owners": sorted({g["granted_by"] for g in gaps}),
             "effort": "Hours, once approved. The queries are already written and tested "
                       "for syntax; they have never been run.",
-            "blocked_by": endpoint.get("blocked_by"),
+            "blocked_by": "; ".join(f"{g['api']} {g['permission']}" for g in gaps),
         })
     elif endpoint.get("status") == NOT_RUN:
         actions.append({
@@ -1034,24 +1194,43 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w("")
     w("**Where we looked, in plain terms.**")
     w("")
-    w("| We checked | Result |")
-    w("|---|---|")
+    # The scope column is not decoration. Section 1 is where a reader forms the belief they
+    # will repeat to their boss, and a result with no denominator beside it is the easiest
+    # place in the document to over-read. Every number in it comes from the vector's own
+    # artefact.
+    w("| We checked | How much of it | Result |")
+    w("|---|---|---|")
+    # Plain-language labels for what each vector looked at. These used to open with
+    # "Every": every file in every repository we own, every third-party building block we
+    # use, every automated build pipeline. None of that was provable. The sweep reads the
+    # GitHub organisations it was pointed at - not a repository on someone's laptop, not
+    # another VCS, not a private fork - and "every building block we use" is a claim about
+    # the estate, whereas the artefact only knows what it inventoried.
+    #
+    # A label that overclaims is worse than a vague one, because it converts a measured
+    # result into an unmeasured one at the exact point in the document where the reader is
+    # least equipped to notice. Each label now says what was actually read, and the Scope
+    # column beside it carries the number.
     PLAIN = {
-        "GitHub repositories - files on disk": "Every file in every repository we own",
-        "GitHub repositories - branches and commits": "Every code change made during the attack",
+        "GitHub repositories - files on disk": "The files in the GitHub repositories we "
+                                               "enumerated",
+        "GitHub repositories - branches and commits": "Code changes pushed during the "
+                                                      "attack window, in those repositories",
         "GitHub code search (corroborating only)": "A second, independent search of our code",
-        "Dependency inventory vs campaign IOCs": "Every third-party building block we use",
-        "CI / GitHub Actions posture": "Every automated build pipeline",
+        "Dependency inventory vs campaign IOCs": "The third-party building blocks listed "
+                                                 "in our dependency files",
+        "CI / GitHub Actions posture": "The GitHub Actions build pipelines we could read",
         "CI - shared reusable workflows (fan-out)": "The shared build steps that most "
                                                     "pipelines depend on",
         "Registry ground truth (attack window)": "The public library itself, to know exactly "
                                                  "what was poisoned and when",
-        "Endpoint / identity (Microsoft Defender)": "Staff laptops and servers",
+        "Endpoint / identity (Microsoft Defender)": "Staff laptops and servers reporting to "
+                                                    "Microsoft Defender",
     }
     PLAIN_STATUS = {
-        CLEAR: "Clean - checked all of it, and we can prove the check works",
+        CLEAR: "Clean - checked everything in scope, and we can prove the check works",
         FINDINGS: "Things to fix",
-        BLOCKED: "**Could not check - no access**",
+        BLOCKED: "**Could not check - access needed, named in Section 3**",
         NOT_RUN: "Not checked this cycle",
     }
     for vector in vectors:
@@ -1066,11 +1245,47 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             plain = "Supporting check only - can spot a problem, cannot declare us clean"
         else:
             plain = PLAIN_STATUS.get(vector["status"], vector["status"])
-        w(f"| {PLAIN.get(vector['name'], vector['name'])} | {plain} |")
+        w(f"| {PLAIN.get(vector['name'], vector['name'])} | {vector.get('scope', '-')} "
+          f"| {plain} |")
     w("")
-    w("**The one thing to remember.** Nothing in our estate matches this campaign. The "
-      "risk on this page is not that we were hit - it is that our build pipelines are "
-      "arranged in a way that would make the next one much worse than it needs to be.")
+
+    # The closing line is the one sentence a reader repeats to somebody else, so it is the
+    # sentence that most has to be true. It used to read "Nothing in our estate matches
+    # this campaign" - unconditionally, and regardless of what the vectors said. Neither
+    # half survives inspection: this hunt does not read the estate, it reads the sources it
+    # enumerated, and on any run with a compromise finding the sentence would have
+    # contradicted the verdict three lines above it. The second clause asserted a CI
+    # problem whether or not one had been found.
+    #
+    # Both halves are now derived. The scope-limiting phrase is not hedging - it is the
+    # difference between a claim the artefacts support and one they do not.
+    compromise = [v for v in vectors if v["status"] == FINDINGS
+                  and v.get("is_compromise_evidence")]
+    residue = sum(len(v.get("unresolved_items") or []) for v in vectors)
+    unchecked = [v["name"] for v in vectors if v["status"] in (BLOCKED, NOT_RUN)]
+    exposure = [v for v in vectors if v["status"] == FINDINGS
+                and not v.get("is_compromise_evidence")]
+
+    if compromise:
+        remember = ("This campaign reached us. " + "; ".join(v["name"] for v in compromise)
+                    + " carries the evidence, and Section 3 names it. Everything below "
+                      "that is secondary until it is contained.")
+    else:
+        remember = "Nothing we checked matches this campaign."
+        if residue or unchecked:
+            parts = []
+            if residue:
+                parts.append(f"{residue} named item(s) we did not read")
+            if unchecked:
+                parts.append(f"{len(unchecked)} vector(s) not checked at all this cycle "
+                             f"({', '.join(unchecked)})")
+            remember += (" That is a statement about what we read, not about the estate: "
+                         + " and ".join(parts) + ", each listed in Section 3.")
+    if exposure:
+        remember += (" The risk on this page is not that we were hit - it is that "
+                     + " and ".join(v["name"] for v in exposure)
+                     + " would make the next one worse than it needs to be.")
+    w(f"**The one thing to remember.** {remember}")
     w("")
     w("---")
     w("")
@@ -1186,6 +1401,39 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         section[0] += 1
         return f"### 3.{section[0]} {title}"
 
+    # Access gaps, priced. §0.6(b): "we need more access" is not a work item until someone
+    # can act on it without a discovery phase of their own. Six columns, every one of them
+    # supplied by the collector that actually queried the tenant, and the render aborts if
+    # any is blank - so this table cannot degrade into "insufficient permissions".
+    #
+    # Conditional, and deliberately so: on a run with full access this section does not
+    # exist, rather than existing and saying "none". An empty standing section is where a
+    # real gap goes to be skimmed past.
+    gaps = [(v["name"], g) for v in vectors for g in (v.get("access_required") or [])]
+    if gaps:
+        w(heading("Access required, exactly"))
+        w("")
+        w(f"{plural(len(gaps), 'privilege')} would let this hunt answer a question it "
+          f"currently cannot. Each row is complete enough to raise as a ticket without "
+          f"coming back to us for detail.")
+        w("")
+        w("| Vector | API | Permission | Grant type | Granted by | What it would prove |")
+        w("|---|---|---|---|---|---|")
+        for vector_name, gap in gaps:
+            w(f"| {vector_name} | {gap['api']} | `{gap['permission']}` | "
+              f"{gap['grant_type']} | {gap['granted_by']} | {gap['proves']} |")
+        w("")
+        w("Endpoint per permission:")
+        w("")
+        for _, gap in gaps:
+            w(f"- `{gap['permission']}` -> `{gap['endpoint']}`")
+        w("")
+        w("> Grants are verified against the tenant, not against local configuration. A "
+          "credential missing from a config file is evidence about that file. Earlier runs "
+          "of this report inferred a permissions problem from an empty `.env` and raised a "
+          "request for a permission that had already been granted.")
+        w("")
+
     for vector in vectors:
         w(heading(f"{vector['name']} - {vector['status']}"))
         w("")
@@ -1194,6 +1442,18 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w("|---|---|")
             for metric, value in vector["counts"].items():
                 w(f"| {metric} | {value} |")
+            w("")
+        # §0.6(c). What specifically earned FINDINGS. A status a reader cannot trace to a
+        # named item is the shape a false positive takes: it looks like diligence, costs
+        # nothing to emit, and teaches the reader to discount the next real one.
+        if vector.get("evidence_for_status"):
+            w(f"**What earned this status.** Named items only; this vector "
+              + ("carries evidence of compromise." if vector.get("is_compromise_evidence")
+                 else "measures exposure, not compromise - nothing here says the campaign "
+                      "reached us."))
+            w("")
+            for line in vector["evidence_for_status"]:
+                w(f"- {line}")
             w("")
         if vector.get("coverage"):
             w("**Proof this check works (coverage evidence).**")
@@ -1216,6 +1476,16 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w("")
             for line in vector["unresolved_items"]:
                 w(f"- {line}")
+            w("")
+        # §0.6(b) in the evidence section. `validate_vectors` guarantees all six fields are
+        # present, so this renders a request a reader can forward to a tenant admin without
+        # a follow-up conversation - which is the entire difference between a priced gap
+        # and "could not check, no access".
+        if vector.get("access_required"):
+            w("**Access required to close this - exact privileges.**")
+            w("")
+            for gap in vector["access_required"]:
+                w(f"- {access_gap_sentence(gap)}")
             w("")
         if vector.get("blocked_by"):
             w(f"**Blocked by.** {vector['blocked_by']}")
@@ -1468,10 +1738,32 @@ def main() -> int:
     # Only these vectors can produce evidence that the campaign actually reached us.
     # CI posture findings are exposure, not compromise, and conflating the two is how a
     # report turns a hygiene backlog into a false incident.
-    for vector in (trees, branches, search, ioc):
+    #
+    # The endpoint vector belongs in this list and was missing from it. §0.6(c) cuts both
+    # ways: the rule against inflating a weak signal is the same rule that forbids
+    # demoting a strong one. This vector only reaches FINDINGS when a Bun binary executed
+    # from a temp or staging path on a real workstation - the campaign's own shape, on the
+    # one surface that can observe it - and while it sat outside this tuple that finding
+    # would have been classed as exposure and rendered as "weaknesses that would make the
+    # next one worse". The verdict would have read AMBER on a day the estate was breached.
+    for vector in (trees, branches, search, ioc, endpoint):
         vector["is_compromise_evidence"] = True
 
     vectors = [trees, branches, search, ioc, ci, reusable, registry, endpoint]
+
+    # §0.6 is checked before anything is written, and a violation stops the render rather
+    # than annotating it. A report that cannot substantiate itself is worse than no report,
+    # because it is read with exactly the same trust as one that can - and the failure mode
+    # this guards against has already shipped once, silently, in a document that looked
+    # complete on every page.
+    problems = validate_vectors(vectors)
+    if problems:
+        print("[report] REFUSING TO RENDER - unsubstantiated claims (doctrine §0.6):",
+              file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 2
+
     verdict = compute_verdict(vectors)
     current_state = build_state(vectors, verdict)
     delta = render_delta(read_json(args.state), current_state, args.added_checks)

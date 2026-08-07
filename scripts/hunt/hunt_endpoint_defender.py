@@ -243,10 +243,29 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         unresolved_items.append(
             f"SHA256 is empty on every DeviceProcessEvents row for {platform} - hash-based "
             f"provenance triage is blind on that platform")
+    # §0.6(b). An access gap is reportable only if it is priced in exact privileges, and
+    # the six fields are structured rather than prose so `validate_vectors` in the renderer
+    # can refuse to publish a half-filled one. This is derived from a live `verify()`
+    # against the tenant, not from an absent environment variable - the whole reason this
+    # collector exists is that the previous version inferred a permissions problem from a
+    # place the client never reads.
+    access_required: List[dict] = []
     if not raw["identity"].get("capabilities", {}).get("signIns", {}).get("available"):
+        access_required.append({
+            "api": "Microsoft Graph",
+            "endpoint": "GET /auditLogs/signIns",
+            "permission": "AuditLog.Read.All",
+            "grant_type": "application (app-only), admin consent",
+            "granted_by": "Microsoft 365 Global Administrator or Privileged Role "
+                          "Administrator",
+            "proves": "interactive and service-principal sign-in history for accounts whose "
+                      "credentials the campaign harvests. Not a blocker for this hunt - the "
+                      "AADSpnSignInEventsBeta and IdentityLogonEvents hunting tables carry "
+                      "the same ground and ThreatHunting.Read.All already covers them.",
+        })
         unresolved_items.append(
-            "AuditLog.Read.All is not granted, so GET /auditLogs/signIns is unavailable "
-            "app-only; sign-in analysis must come from hunting tables instead")
+            "Sign-in history is read from hunting tables rather than the audit log - see "
+            "the access request below for what direct access would add")
 
     status = FINDINGS if findings else (INCOMPLETE if unresolved_items else CLEAR)
 
@@ -314,6 +333,11 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         },
         "coverage": coverage,
         "unresolved_items": unresolved_items,
+        "access_required": access_required,
+        # §0.6(c). The suspicious rows, named. A FINDINGS status that a reader cannot
+        # trace to a specific device and path is the shape a false positive takes, and the
+        # renderer will refuse to publish one.
+        "evidence_for_status": [f["what"] for f in findings],
         "findings": findings,
         "identity": raw["identity"],
         "evidence": ev,

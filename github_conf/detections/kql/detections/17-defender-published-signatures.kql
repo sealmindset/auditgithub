@@ -6,6 +6,7 @@
 //              the campaign analysis.
 // Source       Microsoft Security Blog, 2026-08-04, "ChainDrop supply chain compromise:
 //              anatomy of a self-propagating worm" — detections section.
+// Last run     2026-08-07, 30-day lookback. See RESULT below.
 //
 // WHY A RULE FOR ALERTS WE WOULD ALREADY BE SENT
 //
@@ -14,13 +15,60 @@
 // campaign's own detections out of that queue and puts them on the hunt's own report, so a
 // hit cannot be lost to alert volume during the window when it matters most.
 //
-// It is also the cheapest possible confirmation that the endpoint fleet is reporting at
-// all: if Microsoft's signatures for the campaign of the moment exist and our tenant has
-// never evaluated one, that is worth knowing on its own.
+// Behavior:Win32/SuspBunActivity.A is the load-bearing one for this estate, because this
+// estate is 2,831 reporting Windows 11 devices and 158 Windows Servers.
 //
-// Behavior:Win32/SuspBunActivity.A is the load-bearing one for this estate. Microsoft
-// shipped a Win32 variant alongside the Linux one, which is independent confirmation that
-// the Windows bun.exe path is real and not a theoretical extension of the POSIX chain.
+// Read that signature's existence precisely (doctrine §0.6(a)). Provable: Microsoft
+// published a Win32 variant alongside the Linux one, so the vendor considered the Windows
+// execution path worth shipping a behavioural detection for. NOT provable from that fact:
+// that the Windows path has been observed in the wild, or that it has been observed here.
+// An earlier draft of this comment claimed the signature was "independent confirmation
+// that the Windows bun.exe path is real" — it is confirmation of what Microsoft chose to
+// detect, which is a weaker and different statement. The rule is worth running either way;
+// the justification has to be the one the evidence supports.
+//
+// THE FIRST VERSION OF THIS RULE COULD NEVER HAVE FIRED
+//
+// It filtered on `AlertInfo.ThreatFamilyName`, which does not exist. `AlertInfo` carries
+// nine columns and that is not one of them; the threat family lives on `AlertEvidence` and
+// is spelled `ThreatFamily`. Graph rejects the query outright:
+//
+//     400 BadRequest — 'where' operator: Failed to resolve table or column or scalar or
+//     graph expression named 'ThreatFamilyName'
+//
+// It was committed as coverage, lint-clean, and never executed. That is the exact failure
+// doctrine §0.6(a) exists to stop: an unrun rule contributes nothing and reads on the page
+// as though it contributes everything. A rule is not coverage until it has returned rows —
+// including zero rows — from the tenant.
+//
+// CONTROL (doctrine §0.1) — run both; their answers gate this rule's zero. The rule has
+// two independent branches and they need separate controls, because one of them turns out
+// to be far weaker than the other on this tenant.
+//
+//     AlertInfo | where Timestamp > ago(30d)
+//     | summarize AlertRows = count(), DistinctAlerts = dcount(AlertId)
+//
+//     AlertEvidence | where Timestamp > ago(30d) | where isnotempty(ThreatFamily)
+//     | summarize Rows = count(), Families = dcount(ThreatFamily)
+//
+// RESULT — executed 2026-08-07, 30-day lookback. 0 rows.
+//
+// Control A (Title branch): AlertInfo carries 2,034 rows / 2,029 distinct alerts over the
+// same window. The table is live and Title is populated, so the Title branch's zero is a
+// measured absence: none of the five signature names, and none of the four family stems,
+// appears in any alert title on this tenant in 30 days.
+//
+// Control B (ThreatFamily branch): FAILED, and this is the honest part. AlertEvidence has
+// exactly 2 rows with a non-empty ThreatFamily across 30 days, carrying 1 distinct value.
+// The column is essentially never written here. A zero from that branch is therefore not
+// readable as "no campaign family was seen" — it is indistinguishable from "the column is
+// empty", which is doctrine §0.1's definition of an unusable zero.
+//
+// So the defensible claim from this run is the narrow one: Microsoft's published signature
+// names have not appeared in an alert title on this tenant. The ThreatFamily branch stays
+// in the rule because it costs nothing and will become meaningful if AV detections start
+// populating the column, but it contributes no coverage today and must not be counted as
+// though it does.
 
 let CampaignSignatures = dynamic([
     "Trojan:NPM/ShaiLoader.BY",
@@ -29,19 +77,35 @@ let CampaignSignatures = dynamic([
     "Behavior:Linux/SuspBunActivity.A",
     "Behavior:Win32/SuspBunActivity.A"
 ]);
+// Matched on the family stems as well as the full signature names, because Microsoft
+// revises the suffix (.A, .B, !MTB) on the same family without announcing it, and an exact
+// match on today's five strings goes stale the first time they ship a variant.
+let CampaignFamilies = dynamic(["ShaiLoader", "MalBun", "ShaiWorm", "SuspBunActivity"]);
+// Both tables are searched and the AlertIds unioned. The signature name surfaces in
+// AlertInfo.Title when the detection came from EDR behaviour, and in
+// AlertEvidence.ThreatFamily when it came from AV — matching one table alone silently
+// halves the rule.
+let MatchedAlerts = union
+    (AlertInfo
+     | where Timestamp > ago(30d)
+     | where Title has_any (CampaignSignatures) or Title has_any (CampaignFamilies)
+     | project AlertId),
+    (AlertEvidence
+     | where Timestamp > ago(30d)
+     | where ThreatFamily has_any (CampaignFamilies)
+     | project AlertId)
+    | distinct AlertId;
 AlertInfo
 | where Timestamp > ago(30d)
-// Matched on both the title and the threat family, because the signature name surfaces in
-// different fields depending on whether the detection came from AV or from EDR behaviour.
-| where Title has_any (CampaignSignatures)
-    or ThreatFamilyName has_any (dynamic(["ShaiLoader","MalBun","ShaiWorm","SuspBunActivity"]))
+| where AlertId in (MatchedAlerts)
 | join kind=leftouter (
     AlertEvidence
     | where Timestamp > ago(30d)
-    | project AlertId, EvidenceRole, EntityType, DeviceName, FileName, SHA256,
-              AccountName, RemoteUrl, RemoteIP
+    | project AlertId, EvidenceRole, EntityType, DeviceName, FileName, SHA256, ThreatFamily,
+              AccountName, AccountUpn, RemoteUrl, RemoteIP, ProcessCommandLine
 ) on AlertId
-| project Timestamp, AlertId, Title, Severity, Category, ThreatFamilyName, ServiceSource,
-          DetectionSource, DeviceName, EntityType, EvidenceRole, FileName, SHA256,
-          AccountName, RemoteUrl, RemoteIP
+| project Timestamp, AlertId, Title, Severity, Category, ThreatFamily, ServiceSource,
+          DetectionSource, AttackTechniques, DeviceName, EntityType, EvidenceRole, FileName,
+          SHA256, AccountName, AccountUpn, RemoteUrl, RemoteIP, ProcessCommandLine
+| order by Timestamp desc
 | limit 1000

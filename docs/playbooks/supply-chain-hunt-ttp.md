@@ -14,7 +14,7 @@ endpoints & identity via Microsoft Graph / Defender XDR · attacker infrastructu
 
 ## 0. Doctrine — read this before running anything
 
-Five rules that determine whether the output is evidence or theatre.
+Six rules that determine whether the output is evidence or theatre.
 
 ### 0.1 A zero is only meaningful if the query could have found the thing
 
@@ -72,6 +72,53 @@ descending, or bucket and aggregate.
 Log retention windows are shorter than exposure windows. A credential exposed for five months and
 "clean" across 30 days of retained sign-ins is still a credential that must be rotated. Scope your
 confidence to your retention.
+
+### 0.6 Report nothing you cannot prove, and price every gap in exact privileges
+
+Three obligations. All three are enforced in code by `scripts/hunt/render_hunt_report.py`, which
+refuses to write a report that violates any of them.
+
+**(a) Every claim carries its proof, or it is not made.** A status is not an opinion; it is a
+conclusion drawn from an artefact. Each vector must supply the coverage evidence that earns its
+status, and each `FINDINGS` vector must name the specific items that earned it. A number with no
+artefact behind it is deleted from the report — not softened, not hedged, not footnoted. There is
+no wording that makes an unproven claim safe to publish, because the reader cannot tell which
+sentences you were confident about.
+
+This binds inference as hard as it binds measurement. "Microsoft shipped a Win32 signature,
+therefore the Windows path is confirmed in the wild" is not a finding. The signature's existence is
+provable; what it implies about this estate is not. Write the first, drop the second.
+
+**(b) Every gap names the exact privilege that closes it.** A gap reported as "insufficient access"
+is not a work item, it is a research project handed to whoever reads it. State the API, the exact
+endpoint, the exact permission string, the grant type (application vs delegated), who can grant it,
+and what the query would prove once granted. Six fields. If any is unknown, that is a gap in the
+hunt's own understanding — go and find it before publishing.
+
+> **Verify the grant against the tenant, never against config.** The reference run reported the
+> endpoint vector `BLOCKED` because `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID` and `GRAPH_CLIENT_SECRET`
+> were absent from `.env`. True observation, wrong conclusion: `GraphClient.from_db` reads the
+> encrypted credential store, and the store held an app registration carrying
+> `ThreatHunting.Read.All`. The report raised a priority-1 access request for a permission already
+> granted, and told an executive the laptops were unseen on a cycle where they could have been
+> searched in under a minute. Absence of a credential where you looked is evidence about where you
+> looked. Ask the tenant: `GET /servicePrincipals/{id}/appRoleAssignments`.
+
+**(c) No false positives for the sake of false positives.** A hunt that reports weak signal to look
+thorough spends the reader's trust to buy the author's cover, and the next real finding arrives in
+a queue the reader has already learned to discount. Two specific prohibitions:
+
+- **Do not report hygiene as compromise.** Unpinned action refs and bulk secrets exposure are real
+  and worth fixing, and neither is evidence this campaign reached us. They travel under `FINDINGS`
+  with `is_compromise_evidence` false, and only compromise evidence drives the verdict to RED.
+- **Do not report a triaged-benign hit as a hit.** Show it, say what explains it, and keep it out
+  of the counts that carry the verdict. The reference run found exactly one Bun execution
+  estate-wide — Homebrew, on a macOS laptop, parented by `zsh`. It appears in the report in full,
+  as an explained row, and it moved no status.
+
+The rule cuts symmetrically. Suppressing a real finding because it is inconvenient is the same
+defect as inflating a weak one, and both are caught the same way: by requiring the evidence next
+to the claim.
 
 ---
 
