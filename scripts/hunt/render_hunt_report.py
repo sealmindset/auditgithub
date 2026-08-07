@@ -67,11 +67,43 @@ HUNT = REPO_ROOT / "exports/hunt"
 # Every status is a statement of fact with a number behind it. There is deliberately no
 # status meaning "probably fine" or "weak", because such a status asks the reader to hold
 # a doubt they cannot act on or discharge - and a report that produces unresolvable doubt
-# is worse than one that produces a work item. Where a check did not cover everything, the
-# gap is stated as a count of NAMED items (INCOMPLETE), which someone can close. Where a
-# method can never cover everything, it does not get a coverage status at all
-# (CORROBORATING), because grading it on that scale implies a completeness it will never
-# reach no matter how much work is done.
+# is worse than one that produces a work item. Where a method can never cover everything,
+# it does not get a coverage status at all (CORROBORATING), because grading it on that
+# scale implies a completeness it will never reach no matter how much work is done.
+#
+# TWO AXES, NOT ONE. THIS IS THE IMPORTANT PART.
+#
+# A hunt answers two different questions and they were being collapsed into one letter:
+#
+#   RESULT   - in the population we can observe, did we find the thing?
+#   COVERAGE - how much of the estate is that population, and what is the rest?
+#
+# These are independent. A hunt can find nothing across a population it observes perfectly,
+# and a hunt can find nothing across a population that is a third of the estate. Both used
+# to render as INCOMPLETE -> AMBER, and the second reason swamped the first: the endpoint
+# vector found no trace of the campaign on 3,424 devices and reported AMBER, because 1,379
+# other devices do not send telemetry at all.
+#
+# That is wrong in both directions. It reads as though the hunt found something worrying,
+# when the worrying thing is that a third of the estate is dark - a fact about our
+# instrumentation that no amount of hunting will change and that no hunt result should be
+# allowed to imply. And it makes the RAG letter uninformative: it says AMBER every day, for
+# a structural reason, so the day it goes AMBER for a real one nobody notices.
+#
+# So the axes are split. `status` is the RESULT axis only, and is judged against the
+# population the vector could actually observe. Everything about the unobservable remainder
+# lives in `coverage_gaps`, which is reported in its own register, priced, and never
+# folded into the result.
+#
+# The distinction that decides which one a shortfall belongs to:
+#
+#   INCOMPLETE     - we did not finish. We have the access and the data; we have not read
+#                    it yet. Reading it is OUR work and it stays on the result axis,
+#                    because an unfinished hunt is not a clean hunt.
+#   coverage_gaps  - we cannot look, and no amount of our own effort changes that. It needs
+#                    a privilege we do not hold, a device onboarded, a feature enabled, a
+#                    log retained. Within it we can neither confirm nor deny, and saying so
+#                    plainly is more useful than a colour.
 CLEAR = "CLEAR"
 INCOMPLETE = "INCOMPLETE"
 CORROBORATING = "CORROBORATING"
@@ -80,17 +112,28 @@ BLOCKED = "BLOCKED"
 NOT_RUN = "NOT RUN"
 
 STATUS_NOTE = {
-    CLEAR: "Looked everywhere in scope, could have found it, did not find it. "
-           "Nothing outstanding.",
-    INCOMPLETE: "Found nothing in what was read. A named, counted set of items was not "
-                "read. Those items are listed; reading them closes this.",
+    CLEAR: "Across the population this check could observe, it could have found the "
+           "thing and did not. Read with the coverage register: CLEAR is a statement "
+           "about the observed population, never about the estate.",
+    INCOMPLETE: "Found nothing in what was read, and a named, counted set of items was "
+                "not read - items we have the access to read and have not. Reading them "
+                "closes this. This is our unfinished work, not a blind spot.",
     CORROBORATING: "Supporting evidence only. This method cannot cover the whole estate "
                    "by design, so it can confirm a finding but never produce a clean "
                    "result. Its zero carries no weight and is not counted as one.",
     FINDINGS: "Something to act on.",
-    BLOCKED: "Could not look. No result, in either direction.",
+    BLOCKED: "Could not look at all. No result, in either direction.",
     NOT_RUN: "Did not run this cycle.",
 }
+
+# Coverage gaps. Populations the hunt cannot observe, reported on their own axis.
+#
+# Each is a place where the honest answer is "we can neither confirm nor deny", and the
+# only useful thing a report can add is exactly what would change that. `closed_by` carries
+# it; `closable` records whether anything can. A gap that cannot be closed at any price is
+# still reported - it is a permanent limit of this hunt and a reader is entitled to know
+# the shape of what it will never see.
+COVERAGE_GAP_FIELDS = ("gap", "population", "cannot_confirm_or_deny", "closed_by", "owner")
 
 
 # ----------------------------------------------------------------------------------
@@ -177,6 +220,26 @@ def read_json(path: Path) -> Optional[dict]:
     except Exception as exc:  # noqa: BLE001 - a corrupt artefact must not be silently clean
         print(f"[report] unreadable {path}: {exc}", file=sys.stderr)
         return None
+
+
+def latest_round(pattern: str, fallback: str) -> Path:
+    """Resolve `foo_r<N>_coverage.json` to the highest N present on disk.
+
+    A round number in a filename is a version, and a default pinned to one specific
+    round is a default that silently goes stale. It did: this renderer defaulted to
+    `repo_trees_r3_coverage.json` while `repo_trees_r4_coverage.json` sat beside it,
+    three hours newer, carrying the `resolution_accounting` that resolved all 50 of r3's
+    `tree_failed` repositories as empty repositories with no commits. The report told its
+    reader 50 repositories were unread. They had been read, and the answer was on disk.
+
+    Reading the newest is not a heuristic here - a later round of the same collector is
+    strictly a re-run of the earlier one over the same repository set. What matters is
+    that the choice is printed, so a reader can see which artefact the numbers came from
+    rather than inferring it from a default buried in an argument list.
+    """
+    rounds = sorted(HUNT.glob(pattern),
+                    key=lambda p: int(p.name.split("_r")[-1].split("_")[0]))
+    return rounds[-1] if rounds else HUNT / fallback
 
 
 def pct(numerator: int, denominator: int) -> str:
@@ -1753,7 +1816,12 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--trees", type=Path, default=HUNT / "repo_trees_r3_coverage.json")
+    parser.add_argument("--trees", type=Path,
+                        default=latest_round("repo_trees_r*_coverage.json",
+                                             "repo_trees_r3_coverage.json"),
+                        help="Repository file-tree coverage. Defaults to the highest round "
+                             "present, because a pinned round number is a default that "
+                             "goes stale without saying so.")
     parser.add_argument("--branches", type=Path, default=HUNT / "branch_hunt_r3_coverage.json")
     parser.add_argument("--code-search", type=Path, default=HUNT / "code_search_r3.json")
     parser.add_argument("--ioc", type=Path, default=HUNT / "ioc_match_r3.json")
@@ -1876,6 +1944,9 @@ def main() -> int:
         args.state.write_text(json.dumps(current_state, indent=2, default=str))
 
     print(f"[report] {verdict['rag']} -> {out_path}", file=sys.stderr)
+    # Which artefact each number came from. A default that resolves to a file is a default
+    # that can resolve to the wrong file, and the only cheap defence is saying which one.
+    print(f"  read trees={args.trees.name} endpoint={args.endpoint.name}", file=sys.stderr)
     for vector in vectors:
         print(f"  {vector['status']:22s} {vector['name']}", file=sys.stderr)
     print(f"  {len(actions)} action(s)", file=sys.stderr)

@@ -341,3 +341,47 @@ def test_a_vector_that_vanishes_with_no_replacement_is_lost_coverage():
     text = _delta(["Registry ground truth", "Endpoint / identity"], ["Registry ground truth"])
     assert "WARNING - vector no longer reported: Endpoint / identity" in text
     assert "not as clean" in text
+
+
+# ----------------------------------------------------------------------------------
+# Artefact selection. The bucket arithmetic above was correct and still produced a false
+# statement, because it was applied to the wrong file: the renderer defaulted to
+# `repo_trees_r3_coverage.json` while `repo_trees_r4_coverage.json` sat beside it, three
+# hours newer, carrying the accounting that resolved all 50 of r3's `tree_failed` entries
+# as repositories with no commits. The report said 50 repositories were unread. GitHub had
+# already answered `HTTP 409: Git Repository is empty` for 49 of them and `file_count: 0`
+# for the last. Nothing was unread; the answer was on disk and the default did not reach it.
+# ----------------------------------------------------------------------------------
+
+def test_the_newest_round_is_selected(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "HUNT", tmp_path)
+    for name in ("repo_trees_r3_coverage.json", "repo_trees_r4_coverage.json",
+                 "repo_trees_r10_coverage.json"):
+        (tmp_path / name).write_text("{}")
+    chosen = R.latest_round("repo_trees_r*_coverage.json", "repo_trees_r3_coverage.json")
+    # Lexical sorting would pick r4 over r10. Round numbers are numbers.
+    assert chosen.name == "repo_trees_r10_coverage.json"
+
+
+def test_no_rounds_on_disk_falls_back_rather_than_raising(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "HUNT", tmp_path)
+    chosen = R.latest_round("repo_trees_r*_coverage.json", "repo_trees_r3_coverage.json")
+    assert chosen.name == "repo_trees_r3_coverage.json"
+    assert R.read_json(chosen) is None
+
+
+def test_a_repository_with_no_commits_is_resolved_not_unread():
+    """49 of the 50 returned GitHub's own 409 'Git Repository is empty'.
+
+    A repository with no files cannot hold a file-based indicator, so counting it as
+    unread manufactures a gap that no amount of re-running the collector can close.
+    """
+    vector = R.vector_repo_files(
+        {"totals": {"repos": 2810, "tree_ok": 2760, "tree_failed": 50,
+                    "repos_with_indicator_hits": 0},
+         "resolution_accounting": {"read": 2760, "no_files": 50, "unresolved": 0},
+         "orgs": {}, "bun_artifacts": {}})
+    assert vector["status"] == R.CLEAR
+    assert vector["unresolved_items"] == []
+    assert vector["counts"]["Resolved - repository holds no files at all"] == 50
+    assert vector["counts"]["UNRESOLVED - enumerated but not read"] == 0
