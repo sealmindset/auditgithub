@@ -1131,7 +1131,8 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
 
 def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[dict],
            ioc: dict, ci: dict, registry: dict, owners: Optional[dict],
-           reusable: dict, as_of: str, campaign: str) -> str:
+           reusable: dict, as_of: str, campaign: str,
+           sources: Optional[List[dict]] = None) -> str:
     out: List[str] = []
     w = out.append
 
@@ -1491,6 +1492,42 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w(f"**Blocked by.** {vector['blocked_by']}")
             w("")
 
+    # The Bun question, in one place. This is the campaign's execution vehicle, so it is the
+    # single question the endpoint vector exists to answer - and it is not one question. It
+    # is seven, they fail independently, and they were previously spread across six query
+    # results, two detection files that had never been executed, and a network surface
+    # nobody had looked at. A reader adding those up by hand cannot tell which zeros were
+    # readable, which is the condition under which a zero gets over-read.
+    bun_questions = (endpoint_vector or {}).get("bun_questions") or []
+    if bun_questions:
+        answered = [q for q in bun_questions if q.get("readable")]
+        w(heading("The Bun question, answered - every check and the control that earns it"))
+        w("")
+        w(f"Bun is how this campaign executes: a compromised package fetches a Bun release "
+          f"and runs an obfuscated payload under it, bypassing the Node runtime a defender "
+          f"would be watching. {len(answered)} of {len(bun_questions)} questions below "
+          f"returned an answer the control supports. "
+          + ("Every question was answerable."
+             if len(answered) == len(bun_questions) else
+             f"The other {len(bun_questions) - len(answered)} are withdrawn, not reported "
+             f"as clean, and appear in the unresolved list."))
+        w("")
+        w("| # | Question | Answer | Control that makes it readable | What the answer covers |")
+        w("|---|---|---|---|---|")
+        for index, question in enumerate(bun_questions, 1):
+            mark = "" if question.get("readable") else "**NO ANSWER** - "
+            w(f"| {index} | {question['question']} | {mark}{question['verdict']} "
+              f"| {question['control']} | {question['covers']} |")
+        w("")
+        # Said explicitly because it is the sentence a reader would otherwise construct for
+        # themselves, wrongly. Seven zeros in a row read as estate-wide clearance; two of
+        # these are structurally narrower than that and say so in their own row.
+        w("> Read the last column before generalising any row. A rule keyed on Bun as the "
+          "parent process cannot fire on a device where Bun never runs, so its zero clears "
+          "only the devices where Bun executes - not the estate. The rows that are "
+          "estate-wide say so.")
+        w("")
+
     # Vector-specific detail that does not fit the generic shape.
     if reusable.get("ranked_sinks"):
         w(heading("Target list - shared build steps receiving the whole secrets context"))
@@ -1659,6 +1696,31 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w(f"- {line}")
         w("")
 
+    # Artefact ages. A report assembled from collectors that ran on different days is
+    # normal - the registry window is fixed history and re-reading it changes nothing,
+    # while the endpoint surface moves hourly. What is not acceptable is presenting them
+    # as one moment in time. Every "as of today" in the document is only true of the rows
+    # that were collected today, and §0.6(a) does not let that go unstated.
+    if sources:
+        w(heading("How old is each answer"))
+        w("")
+        w("Collectors run independently and are not all re-run every cycle. A stale "
+          "artefact is not wrong, but it answers a question about the day it was "
+          "collected, and this table is how a reader tells the two apart.")
+        w("")
+        w("| Feeds | Artefact | Collected | Age at render |")
+        w("|---|---|---|---|")
+        for source in sources:
+            w(f"| {source['feeds']} | `{source['path']}` | {source['collected']} "
+              f"| {source['age']} |")
+        w("")
+        stale = [s for s in sources if s["age_hours"] is not None and s["age_hours"] > 36]
+        if stale:
+            w(f"**{plural(len(stale), 'artefact')} older than 36 hours: "
+              + ", ".join(f"`{s['path']}` ({s['age']})" for s in stale)
+              + ".** Re-run those collectors before treating their vectors as current.")
+            w("")
+
     w(heading("Reproducing this report"))
     w("")
     w("```bash")
@@ -1769,8 +1831,42 @@ def main() -> int:
     delta = render_delta(read_json(args.state), current_state, args.added_checks)
     actions = build_actions(ci, endpoint, ioc, owners, registry, reusable)
 
+    # Provenance, read from the filesystem rather than declared. A collector that was not
+    # re-run leaves its artefact untouched, so mtime is the only honest answer to "when was
+    # this measured" - and it is the one number nobody can forget to update.
+    now = datetime.now(timezone.utc)
+    sources = []
+    for feeds, path in (("Repository files on disk", args.trees),
+                        ("Branches and commits in the window", args.branches),
+                        ("Corroborating code search", args.code_search),
+                        ("Dependency inventory vs IOCs", args.ioc),
+                        ("CI / Actions posture", args.posture),
+                        ("Shared reusable workflows", args.reusable),
+                        ("Registry ground truth", args.registry),
+                        ("Endpoint / Defender", args.endpoint),
+                        ("CODEOWNERS and blast radius", args.owners)):
+        # Repo-relative, always. The default paths are absolute, and this report is
+        # circulated - an absolute path publishes the analyst's home directory and
+        # username alongside a document about repositories and staff.
+        try:
+            shown = str(path.resolve().relative_to(REPO_ROOT))
+        except ValueError:
+            shown = path.name
+        if not path.exists():
+            sources.append({"feeds": feeds, "path": shown, "collected": "not present",
+                            "age": "vector renders NOT RUN", "age_hours": None})
+            continue
+        stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        hours = (now - stamp).total_seconds() / 3600
+        sources.append({
+            "feeds": feeds, "path": shown,
+            "collected": stamp.strftime("%Y-%m-%d %H:%M UTC"),
+            "age": (f"{hours:.1f} h" if hours < 48 else f"{hours / 24:.1f} days"),
+            "age_hours": hours,
+        })
+
     document = render(vectors, verdict, delta, actions, ioc, ci, registry, owners,
-                      reusable, as_of, campaign)
+                      reusable, as_of, campaign, sources=sources)
 
     out_path = args.out or (HUNT / "reports" / f"hunt-report-{as_of}.md")
     out_path.parent.mkdir(parents=True, exist_ok=True)
