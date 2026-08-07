@@ -14,6 +14,8 @@ from ..dependencies import get_tenant_db
 from .. import models
 from ...ai_agent.agent import AIAgent
 from ..utils.repo_context import clone_repo_to_temp as clone_repo, cleanup_repo
+from ..utils.repo_origin import (RepositoryOriginError, get_token_for_org,
+                                 resolve_clone_target)
 from ..config import settings # Keep settings as it's used later
 from src.rbac.dependencies import check_permission, require_permissions
 from src.auth.models import User
@@ -28,37 +30,26 @@ async def get_github_token_for_repo(db: Session, repo: models.Repository) -> str
     """
     Get the GitHub token for a repository's organization.
     Falls back to the default GITHUB_TOKEN if no org-specific token is found.
+
+    Kept for callers that only need a credential. Anything that is about to *clone* should
+    call `resolve_clone_target` instead: this function resolves the token from
+    `organization_id` while the clone URL comes from `repo.url`, and 483 of 2,540 rows have
+    those two disagreeing - which presents one organization's credential to another
+    organization's path and fails with `remote: Repository not found.`
     """
-    # If repo has an organization_id, try to get the org's token
+    org_name = None
     if repo.organization_id:
         try:
             org = db.query(models.Organization).filter(
                 models.Organization.id == repo.organization_id
             ).first()
-            
-            if org:
-                # Try to get token from secrets manager
-                try:
-                    import sys
-                    sys.path.insert(0, '/app/execution')
-                    from secrets_manager import get_org_credentials
-                    creds = await get_org_credentials(org.name)
-                    if creds and creds.get('github_token'):
-                        logger.info(f"Using org-specific token for {org.name}")
-                        return creds['github_token']
-                except Exception as e:
-                    logger.warning(f"Could not get org credentials from secrets manager: {e}")
-                
-                # Try environment variable pattern ORG_{NAME}_TOKEN
-                env_token = os.environ.get(f"ORG_{org.name}_TOKEN")
-                if env_token:
-                    logger.info(f"Using env token for org {org.name}")
-                    return env_token
+            org_name = org.name if org else None
         except Exception as e:
             logger.warning(f"Error getting org token: {e}")
-    
-    # Fall back to default token
-    return settings.GITHUB_TOKEN
+
+    token, source = await get_token_for_org(db, org_name)
+    logger.info(f"GitHub token for {repo.name}: {source}")
+    return token
 
 def _is_error_response(response: str) -> bool:
     """Check if an AI response is an error message."""
@@ -1162,12 +1153,13 @@ async def get_architecture_prompt(
 
     # Clone repo to temp dir to analyze structure
     try:
-        # Get org-specific token for this repository
-        token = await get_github_token_for_repo(db, project)
-        
+        # Resolve the owning org and its token together. Taking the URL from one column and
+        # the credential from another is what produced "remote: Repository not found."
+        target = await resolve_clone_target(db, project)
+
         # clone_repo_to_temp creates a new temp dir and returns the path
-        temp_dir = clone_repo_to_temp(project.url, token)
-        
+        temp_dir = clone_repo_to_temp(target.url, target.token)
+
         try:
             # Analyze structure
             from ..utils.repo_context import get_repo_structure, get_config_files
@@ -1183,6 +1175,9 @@ async def get_architecture_prompt(
         finally:
             cleanup_repo(temp_dir)
             
+    except RepositoryOriginError as e:
+        logger.error(f"Could not resolve repository origin: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error building prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1519,11 +1514,10 @@ async def generate_architecture(request: ArchitectureRequest, db: Session = Depe
         
     repo_path = None
     try:
-        # Clone repo to temp
-        # Get org-specific token for this repository
-        token = await get_github_token_for_repo(db, project)
-        repo_path = clone_repo_to_temp(project.url, token)
-        
+        # Clone repo to temp. URL and credential come from one resolution, not two columns.
+        target = await resolve_clone_target(db, project)
+        repo_path = clone_repo_to_temp(target.url, target.token)
+
         # Get context
         structure, configs = get_repo_context(repo_path)
         
@@ -1587,6 +1581,9 @@ async def generate_architecture(request: ArchitectureRequest, db: Session = Depe
             image=image_b64
         )
         
+    except RepositoryOriginError as e:
+        logger.error(f"Could not resolve repository origin: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error generating architecture: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1866,10 +1863,11 @@ async def preprocess_architecture(
 
     repo_path = None
     try:
-        # Clone repo
-        # Get org-specific token for this repository
-        token = await get_github_token_for_repo(db, project)
-        repo_path = clone_repo_to_temp(project.url, token)
+        # Clone repo. This is the endpoint that surfaced the mismatch: the architecture run
+        # asked for SleepNumberInc/web-webadmin with a sleepnumberlabs token, and the repo
+        # is sleepnumberlabs/web-webadmin.
+        target = await resolve_clone_target(db, project)
+        repo_path = clone_repo_to_temp(target.url, target.token)
 
         # Create preprocessor and run
         preprocessor = ArchitecturePreprocessor(ai_agent.provider)
@@ -1907,6 +1905,9 @@ async def preprocess_architecture(
             cached=False
         )
 
+    except RepositoryOriginError as e:
+        logger.error(f"Could not resolve repository origin: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error preprocessing architecture: {e}")
         raise HTTPException(status_code=500, detail=str(e))

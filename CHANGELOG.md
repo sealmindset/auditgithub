@@ -4,6 +4,67 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — the clone URL and the credential came from different columns (2026-08-07)
+
+"Generate System Architecture" failed on `web-webadmin` with `remote: Repository not found.`
+against `https://github.com/SleepNumberInc/web-webadmin/`. The repository exists — it is
+`sleepnumberlabs/web-webadmin`, private and not archived.
+
+Three signals had to be discounted before the cause was visible:
+
+- **git redacts credentials.** A clone through `https://x-access-token:<token>@github.com/...`
+  prints the bare URL on failure and appends a trailing slash. The absence of a token in the
+  error text is not evidence that no token was sent.
+- **`remote: Repository not found.` means the credential authenticated and then could not see
+  the repository.** A credential that failed to authenticate says `Invalid username or token`.
+  One is a rights problem, the other a naming problem, and they read identically to a human
+  skimming the log.
+- **The row disagreed with itself.** `Repository.url` named `SleepNumberInc`;
+  `Repository.organization_id` pointed at `sleepnumberlabs`. The caller took the token from the
+  foreign key and the path from the string column, so it presented one organization's
+  credential to another organization's path — which can only ever fail.
+
+**Neither column is authoritative.** 483 of 2,540 rows disagree, in both directions: 445 with
+`url=SleepNumberInc, fk=sleepnumberlabs` and 38 the reverse. Every sampled row, in both
+directions, resolved to *sleepnumberlabs*. So "trust the foreign key" is wrong for 445 rows and
+"trust the URL" is wrong for 38, and there is no third column to break the tie.
+
+- **New `src/api/utils/repo_origin.py`.** `resolve_clone_target` probes each candidate
+  organization with *that* organization's credential, clones from whichever answers 200, takes
+  GitHub's own `full_name` (a renamed repository still answers under its old name via a
+  redirect, so the response's spelling is the only one that will not re-stale), and writes the
+  correction back — a row is repaired the first time anything touches it. One request in the
+  common case.
+- **`RepositoryOriginError` replaces the bare 404.** It names every organization asked, the
+  status each returned, and which credential was used — the one thing git will never tell you.
+  Per §0.6 it also prices the privilege that would settle the question: with `repo` scope on the
+  owning organization a 404 becomes proof of absence rather than proof of blindness. Before
+  this, `generate_architecture_cli.py` treated the 404 as permanent and would have reported
+  `web-webadmin` as deleted.
+- Rewired the four database-driven clone paths: three in `src/api/routers/ai.py` and the
+  `validate_repo_exists` gate in `scripts/architecture/generate_architecture_cli.py`. The scan
+  paths were checked and are unaffected — `scan_repos.py` and `src/__main__.py` clone from
+  API-derived `clone_url`, not the stored column.
+- **`scripts/maintenance/repair_repo_origins.py`** repairs the rows from an organization
+  inventory rather than per-repository lookups — **33 requests against the shared 5000/hr
+  budget instead of 483 to 966**, and it answers for every row rather than only the broken
+  ones. Dry run is the default. Run 2026-08-07: 482 self-contradictory rows examined, **481
+  corrected, every one of them to `sleepnumberlabs`** (443 URL rewrites, 38 foreign-key
+  rewrites — the 38 already had the right URL and the wrong key). A re-run examines 1 row, so
+  the repair converged. Neither column ever named the third organization.
+- **The completeness control is what makes the repair safe (§0.1).** Absence from an inventory
+  is only evidence of absence if the inventory is complete, so each listing is checked against
+  the count GitHub reports for that organization. `sleepnumberinc` listed 2,285 of 2,285 and
+  `sleepnumberlabs` 516 of 516; **`sleepnumber` listed 9 of 12** and was therefore excluded
+  from resolution rather than treated as empty. Without that check a truncated listing would
+  have moved rows to the wrong organization with full confidence.
+- **1 row left deliberately unrepaired:** `terraform-module-template` exists in both
+  `sleepnumberinc` and `sleepnumberlabs`, and an inventory cannot say which one this row means.
+  It is left for `resolve_clone_target` to settle by probing on first touch.
+- 12 probes in `tests/test_repo_origin.py`, including both mismatch directions, the rename
+  redirect, a failed write still returning a usable target, and the absence message naming the
+  privilege that would close the gap.
+
 ### Changed — American English everywhere, and one metric that could never be non-zero (2026-08-07)
 
 Standing principle: reports, docstrings, comments, commit messages, CHANGELOG and TODO

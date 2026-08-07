@@ -36,6 +36,7 @@ from src.api.database_router import database_router
 from src.api.database import SessionLocal, MULTI_TENANT_ENABLED
 from src.api.config import settings
 from src.api.utils.repo_context import get_repo_context, clone_repo_to_temp, cleanup_repo
+from src.api.utils.repo_origin import RepositoryOriginError, resolve_clone_target
 from src.api.utils.diagrams_indexer import get_diagrams_index
 from src.api.utils.diagram_executor import execute_with_self_annealing
 from src.ai_agent.agent import AIAgent
@@ -149,6 +150,12 @@ async def validate_repo_exists(repo_url: str, token: str) -> Tuple[bool, str]:
     """
     Quick validation that repository exists and is accessible.
     Returns (exists, error_message).
+
+    No longer on the clone path. It validated whatever URL it was handed, and a URL naming
+    the wrong organization fails here identically to a deleted repository - so it returned
+    `(False, "not found")` and the caller treated that as permanent and gave up. Kept
+    because it is a genuine reachability probe; use `resolve_clone_target` to decide *what*
+    to probe before probing it.
     """
     try:
         # Use git ls-remote to check if repo exists without cloning
@@ -323,25 +330,26 @@ async def generate_architecture_for_repo(repo_identifier: str, tenant_slug: str 
         diagrams_index = get_diagrams_index()
         logger.info(f"Loaded {len(diagrams_index)} diagram node types")
 
-        # Get GitHub token
-        token = await get_github_token_for_repo(db, project)
+        # Resolve which organization actually owns this repository, and get that org's
+        # token in the same step. `validate_repo_exists(project.url, ...)` used to stand
+        # here, and on a 404 it declared a permanent error and returned False - so a row
+        # whose `url` names the wrong organization was written off as a deleted repository.
+        # 483 of 2,540 rows name an organization that disagrees with their own foreign key,
+        # and every sampled one of them is present under the other name.
+        logger.info(f"Resolving repository origin for {project.name}...")
+        try:
+            target = await resolve_clone_target(db, project)
+        except RepositoryOriginError as e:
+            # Now a real absence: every known organization was asked and none answered.
+            logger.error(f"Repository origin unresolved: {e}")
+            return False
 
-        # Self-healing: Validate repository exists before attempting to clone
-        logger.info(f"Validating repository access: {project.url}...")
-        repo_exists, validation_error = await validate_repo_exists(project.url, token)
-
-        if not repo_exists:
-            logger.error(f"Repository validation failed: {validation_error}")
-            if is_permanent_error(validation_error):
-                logger.error("Permanent error detected - repository does not exist or is inaccessible")
-                return False
-            logger.warning("Transient error detected - will attempt clone anyway")
-
-        # Clone repository with timeout protection
-        logger.info(f"Cloning repository from {project.url}...")
+        if target.corrected:
+            logger.warning(f"Stored URL was wrong; corrected to {target.url}")
+        logger.info(f"Cloning {target.url} (token: {target.token_source})...")
         try:
             # Use timeout-protected clone
-            repo_path = clone_repo_to_temp(project.url, token)
+            repo_path = clone_repo_to_temp(target.url, target.token)
             logger.info(f"Repository cloned successfully to: {repo_path}")
         except Exception as e:
             error_msg = str(e)
