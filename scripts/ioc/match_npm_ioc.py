@@ -6,7 +6,7 @@ This is the version-precise layer of npm supply-chain detection. It belongs here
 than in EDR telemetry for one reason: resolved package versions only exist in lockfiles.
 A process command line shows what the developer typed ("npm ci"), not what npm resolved,
 and node_modules paths carry a package name with no version. Endpoint detection therefore
-has to key on behaviour and hashes; exact name@version matching happens against this table.
+has to key on behavior and hashes; exact name@version matching happens against this table.
 
 Two classes of result, and the distinction matters:
 

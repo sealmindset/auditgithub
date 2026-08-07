@@ -127,7 +127,7 @@ def get(url: str, config: Path, attempts: int = 3) -> Tuple[Optional[dict], Opti
         except json.JSONDecodeError:
             if raw.lstrip().lower().startswith(("<!doctype", "<html")):
                 # A sign-in page rather than JSON: not authenticated for this org.
-                return None, "HTML sign-in page (not authenticated for this organisation)"
+                return None, "HTML sign-in page (not authenticated for this organization)"
             if attempt == attempts - 1:
                 return None, f"unparseable 200 body: {raw[:120]!r}"
     return None, "exhausted attempts"
@@ -238,8 +238,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path,
                         default=REPO_ROOT / "exports/hunt/azure_artifacts_feeds.json")
     parser.add_argument("--orgs", nargs="*", default=None,
-                        help="Restrict to these ADO organisations. Default: every "
-                             "organisation the authenticated identity belongs to.")
+                        help="Restrict to these ADO organizations. Default: every "
+                             "organization the authenticated identity belongs to.")
     parser.add_argument("--page-size", type=int, default=200)
     args = parser.parse_args()
 
@@ -286,9 +286,9 @@ def run(args: argparse.Namespace, config: Path) -> int:
     else:
         orgs, org_error = list_orgs(config)
     if org_error:
-        print(f"cannot enumerate organisations: {org_error}", file=sys.stderr)
+        print(f"cannot enumerate organizations: {org_error}", file=sys.stderr)
         return 2
-    print(f"organisations: {orgs}", file=sys.stderr)
+    print(f"organizations: {orgs}", file=sys.stderr)
 
     results: List[dict] = []
     for org in orgs:
@@ -437,7 +437,7 @@ def run(args: argparse.Namespace, config: Path) -> int:
             "affected_names_proxied_but_no_malicious_version"
         ),
         # The estate-level control. At least one feed must have returned rows, or every
-        # zero here is a measurement artefact rather than a finding.
+        # zero here is a measurement artifact rather than a finding.
         "control_passed_endpoint_returns_rows_somewhere": bool(proved_rows),
         # A negative finding stands only for feeds this identity could actually read, and
         # only matters as a gap where an unreadable feed also has an npmjs upstream.
@@ -466,8 +466,8 @@ def run(args: argparse.Namespace, config: Path) -> int:
             "are recorded alongside the result.",
         ],
         "limits": [
-            "Covers feeds visible to the authenticated identity in the organisations it "
-            "belongs to. A feed in an organisation this identity does not belong to is "
+            "Covers feeds visible to the authenticated identity in the organizations it "
+            "belongs to. A feed in an organization this identity does not belong to is "
             "outside this run entirely.",
             "Feed-level view only. It does not show whether a build actually resolved "
             "through the feed, and it does not cover npm caches baked into container "

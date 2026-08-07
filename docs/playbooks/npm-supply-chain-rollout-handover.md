@@ -13,7 +13,7 @@
 > 1. **Three new rules** — `npm-shaihulud-token-monitor`, `npm-shaihulud-bun-fetch`, `npm-shaihulud-runner-mem-scrape`. **All three ship unarmed**, so they add detection surface without widening approval 3. §7 and Appendix A cover them.
 > 2. **The incident-response order changed** (§8). The worm installs a watchdog that fires the payload *when a stolen token is revoked*. Revocation is its trigger, not its remedy. A new step 1 removes it before anything is rotated.
 > 3. **One missing indicator was found** — C2 domain `awqhnjewqjkl.icu` was in an ingested source file while no rule and no indicator list referenced it. It is now in both. Recorded plainly because it was a process failure on our side, not a vendor's.
-> 4. **Approval 3's blast radius is unchanged**, and one blind spot is now documented that was not before: the malware declines to run on hosts with a Russian locale, so every *behavioural* rule reads clean there while the dropper sits on disk (§7 GAP 3).
+> 4. **Approval 3's blast radius is unchanged**, and one blind spot is now documented that was not before: the malware declines to run on hosts with a Russian locale, so every *behavioral* rule reads clean there while the dropper sits on disk (§7 GAP 3).
 
 ---
 
@@ -25,7 +25,7 @@ Three approvals. They are independent — approving 1 and 2 delivers detection w
 |---|---|---|---|
 | 1 | Create a dedicated enterprise service principal (§3) and grant it `CustomDetection.ReadWrite.All` | Non-human identity can create/modify custom detection rules | Rules must be hand-built in the portal; no version control, no reviewable change history |
 | 2 | Grant the same principal `Ti.ReadWrite.All` (WindowsDefenderATP) | Non-human identity can publish IOC block indicators | No preventive blocking; detection only |
-| 3 | Authorise **automated device isolation** on 5 of 9 rules (§7) | A false positive isolates a developer or a CI runner mid-build | Containment waits on human triage; this worm exfiltrates credentials in seconds and republishes within hours |
+| 3 | Authorize **automated device isolation** on 5 of 9 rules (§7) | A false positive isolates a developer or a CI runner mid-build | Containment waits on human triage; this worm exfiltrates credentials in seconds and republishes within hours |
 
 Approval 3's scope did not grow with the rule set: 9 rules, **5 armed in file** — the same 5 as on 2026-08-05. The three added on 2026-08-06 and `bun-from-node` are all unarmed pending baseline.
 
@@ -51,7 +51,7 @@ Secondary chain, **no npm required**: repo opened in VS Code or an agent runtime
 Five things make it hard:
 
 1. **Provenance does not help — and it fails twice.** Initial access was the keyv maintainer's compromised GitHub account, and releases were cut through the project's own GitHub Actions release workflow, so `keyv@6.0.0` carries a *genuine, valid* SLSA provenance attestation for a real build from a real commit. The commit was malicious. Separately, the worm **self-mints** Sigstore attestations (`fulcio.sigstore.dev`, `rekor.sigstore.dev`) for packages it repacks. A provenance-verifying control passes both. Provenance attests the build, not the source.
-2. **Version lists go stale on arrival.** The worm republishes every package writable with each stolen credential set, incrementing patch versions. Vendor counts already disagree (JFrog 428 packages, Cloudsmith ~444, StepSecurity 444 / 2,212 versions, Aikido 868). Detection therefore keys on **behaviour and file hashes**, which are version-independent.
+2. **Version lists go stale on arrival.** The worm republishes every package writable with each stolen credential set, incrementing patch versions. Vendor counts already disagree (JFrog 428 packages, Cloudsmith ~444, StepSecurity 444 / 2,212 versions, Aikido 868). Detection therefore keys on **behavior and file hashes**, which are version-independent.
 3. **C2 is resolved on-chain, with 75 fallbacks.** The payload reads its live C2 address from Ethereum contract `0xE1f2395ee43e45A1556EC6438a88c31B83493103` (selector `0x53ed5143`) by trying **75 public RPC endpoints in sequence**, and falls back to GitHub commit search if that fails. Blocking domains does not sever control. The real chokepoint is one hop earlier: the dropper carries no payload and must fetch Bun from the GitHub release CDN before anything runs.
 4. **Revoking the stolen token is what triggers the payload.** A watchdog polls `api.github.com/user` every 60 seconds for 24 hours and re-runs collection when the token stops authenticating. It lives outside every path a normal clean-up touches, so a host cleaned of `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/` is still armed. This inverts the standard IR order — see §8.
 5. **It reads secrets out of runner memory.** On a self-hosted runner, a `sudo python3` helper reads `/proc/<Runner.Worker pid>/mem` and greps for `"isSecret":true`, taking every secret the runner handled during that job — including masked secrets never written to a log. Masking is not a mitigation here.
@@ -61,7 +61,7 @@ Five things make it hard:
 | Layer | Where | What it does | Status |
 |---|---|---|---|
 | 1 — Inventory | `scripts/ioc/match_npm_ioc.py` against the dependency database | Exact `name@version` matching against 2,235 known-malicious pairs. Only place resolved versions exist. | **Working.** Result below. |
-| 2 — Detection + containment | Defender XDR custom detection rules (this rollout) | Behaviour and hash detection on the endpoint, with optional automated containment | **Built, not deployed.** Blocked on §1 approvals. |
+| 2 — Detection + containment | Defender XDR custom detection rules (this rollout) | Behavior and hash detection on the endpoint, with optional automated containment | **Built, not deployed.** Blocked on §1 approvals. |
 | 3 — Prevention | MDE indicators + npm configuration | Block known-bad hashes/domains; stop lifecycle scripts running at all | **Blocked** on approval 2; the npm half needs no Microsoft approval |
 
 ### Layer 1 result (already complete)
@@ -219,7 +219,7 @@ Three things this step must establish, in this order:
 
 1. **Coverage, before anything else.** `coverage/01`–`07` answer what the estate can actually see. Every "0 results" later in the rollout is meaningless without them. `coverage/02` produces the exact device-group names needed for `--scope`, which closes Appendix D item 2 without any new permission.
 
-2. **The backlog.** Custom detections are **not retroactive**, so anything already on disk is invisible to the rules permanently. `backlog/20` runs the original six detection signals over the full 30-day retention window in a single query. Run it **before** the rules are deployed: once a rule is armed, a three-week-old artefact can isolate a machine that has been clean for weeks. **It does not cover A7–A9** — the watchdog, the Bun fetch and the memory scrape have no backlog query, so for those three the historical window is simply unexamined rather than clean.
+2. **The backlog.** Custom detections are **not retroactive**, so anything already on disk is invisible to the rules permanently. `backlog/20` runs the original six detection signals over the full 30-day retention window in a single query. Run it **before** the rules are deployed: once a rule is armed, a three-week-old artifact can isolate a machine that has been clean for weeks. **It does not cover A7–A9** — the watchdog, the Bun fetch and the memory scrape have no backlog query, so for those three the historical window is simply unexamined rather than clean.
 
 3. **Network Protection state.** Rule 5 (`npm-shaihulud-c2-contact`) reads `RemoteUrl`, which is empty unless Network Protection is in block or audit mode — node performs its own TLS and Defender records only the IP. Without it, that rule deploys, runs, and reports clean forever. This is a prerequisite, not an enhancement.
 
@@ -360,11 +360,11 @@ Device isolation support differs between Windows and macOS/Linux in MDE. **Confi
 
 ### GAP — The malware declines to run on some hosts, and those hosts read as clean
 
-CHAINDROP reads the `LANG` environment variable and exits without executing if it indicates a Russian locale. On such a host the dropper is on disk and would have executed under any other locale, but **every behavioural rule returns nothing** — no Bun spawn, no loader execution, no C2 contact, no exfil artefact. Only the file-write rules fire: `payload-hash`, `agent-hook-drop`, and the new `token-monitor`.
+CHAINDROP reads the `LANG` environment variable and exits without executing if it indicates a Russian locale. On such a host the dropper is on disk and would have executed under any other locale, but **every behavioral rule returns nothing** — no Bun spawn, no loader execution, no C2 contact, no exfil artifact. Only the file-write rules fire: `payload-hash`, `agent-hook-drop`, and the new `token-monitor`.
 
-This is not a curiosity; it is the general shape of the problem. A rule set weighted towards behaviour has a false-negative surface exactly equal to the malware's own evasion logic, and that surface grows with each variant. Two consequences for how this rollout should be read:
+This is not a curiosity; it is the general shape of the problem. A rule set weighted towards behavior has a false-negative surface exactly equal to the malware's own evasion logic, and that surface grows with each variant. Two consequences for how this rollout should be read:
 
-- **Enumerate estate locales before reporting a behavioural zero as clean.** This is cheap and has not been done.
+- **Enumerate estate locales before reporting a behavioral zero as clean.** This is cheap and has not been done.
 - **File and hash telemetry stays the primary surface** wherever the payload has a known hash, because that surface does not care whether the code ran. It is also the reason `payload-hash` is the only rule armed at `isolate-full` on a file event.
 
 ### GAP — The three new rules have no proof-of-concept coverage yet
@@ -412,7 +412,7 @@ Five judgment calls worth a reviewer's attention:
 2. **`bun-from-node` and `bun-fetch` are unarmed for the same reason.** They are the two medium-confidence rules, and they trip on the same population: a toolchain that legitimately drives Bun from a node script, or installs Bun through one. Isolation would take that developer offline for doing nothing wrong. Baseline both for a full cycle, then flip `armed` in a reviewed change.
 3. **`token-monitor` is the one new rule that should be armed soon, and it is quarantine-only.** An *alert* on this rule does not disarm the watchdog, and the watchdog fires the payload when a stolen token is revoked — so between the alert and a human reading it, an unrelated routine credential rotation can trigger re-exfiltration. Quarantining the script closes that window at machine speed and takes nobody offline. It is unarmed today only because it has never run against this tenant. There is no legitimate file called `gh-token-monitor.sh`, so the expected benign rate is zero; one baseline cycle should be enough. **Note that quarantine removes the script but not the systemd unit or launchd plist** — §8 step 1 still runs by hand.
 4. **`runner-mem-scrape` must be scoped, and arming it is a change-control decision, not a detection decision.** Its target is a shared build runner, so `isolate-full` takes out every pipeline on that host, not one developer. That may still be right — a runner that has read `/proc/<Runner.Worker>/mem` has already surrendered every secret it handled — but it needs the CI owners' sign-off. Deploy with `--scope` on the self-hosted-runner device group; on a developer workstation, `python3` touching `/proc` has benign explanations (profilers, debuggers) that do not exist on a build agent, so tenant-wide deployment turns a high-signal rule into noise.
-5. **No file quarantine on process-event rules.** `stopAndQuarantineFiles` keys on the file the query returns. On a process rule that file is the interpreter — `node.exe` or `bun.exe`. Quarantining it bricks the toolchain and does nothing to the payload, which is a script. File actions attach only to file-event rules, where the returned hash is the malicious artefact.
+5. **No file quarantine on process-event rules.** `stopAndQuarantineFiles` keys on the file the query returns. On a process rule that file is the interpreter — `node.exe` or `bun.exe`. Quarantining it bricks the toolchain and does nothing to the payload, which is a script. File actions attach only to file-event rules, where the returned hash is the malicious artifact.
 
 ### Validation without isolating a real developer
 
@@ -431,7 +431,7 @@ Where a trigger is genuinely needed:
 1. Use a dedicated, expendable, onboarded test device — not a laptop in use, not a CI runner.
 2. Confirm the rule is unarmed: `deploy_detection_rules.py --kill-switch-status`, and `--disarm --apply` if it is not.
 3. Follow the Form B block in the relevant `poc/` file, then confirm the alert arrived with `poc/36`.
-4. Log the test. A synthetic artefact later found in a backlog sweep and worked as a real infection costs an IR cycle.
+4. Log the test. A synthetic artifact later found in a backlog sweep and worked as a real infection costs an IR cycle.
 
 Two of the triggers are genuine rule matches and cannot be made otherwise: `poc/31` runs `node setup.mjs`, which is a literal match for `npm-shaihulud-loader-exec` (armed, selective isolation), and `poc/33` writes `.vscode/setup.mjs`, which matches `npm-shaihulud-agent-hook-drop` (armed, quarantine only — device stays online). Both are documented as such in the files.
 
@@ -492,7 +492,7 @@ If a rule fires, containment has likely **already happened**. Start from there.
    pgrep -af gh-token-monitor
    ```
 
-   `kql/ir/52` (persistence sweep) finds it across the estate. **This does not reverse "rotate before eradicate"** — the payload still exfiltrates first, so a full clean-up before rotation still destroys evidence while credentials stay live. The order is: *remove the watchdog* → *rotate* → *eradicate the rest*. It is a carve-out for the one artefact whose removal must precede rotation. If the device is fully isolated the watchdog cannot observe the revocation, but do not rely on that: `selective` isolation and any pre-isolation window both leave it live.
+   `kql/ir/52` (persistence sweep) finds it across the estate. **This does not reverse "rotate before eradicate"** — the payload still exfiltrates first, so a full clean-up before rotation still destroys evidence while credentials stay live. The order is: *remove the watchdog* → *rotate* → *eradicate the rest*. It is a carve-out for the one artifact whose removal must precede rotation. If the device is fully isolated the watchdog cannot observe the revocation, but do not rely on that: `selective` isolation and any pre-isolation window both leave it live.
 
 2. **Rotate credentials before eradication, and scope it wider than GitHub and npm.** The payload exfiltrates first, so eradicating first just means the attacker keeps working tokens. The collector matches 300+ patterns across ~140 hotspot paths. Revoke, for that user context:
    - npm publish tokens — **especially any with `bypass_2fa: true`**, which the collector explicitly prefers — GitHub PATs, GitHub Actions tokens, JWT and session tokens
@@ -506,7 +506,7 @@ If a rule fires, containment has likely **already happened**. Start from there.
    **If the device is one of the six self-hosted runners,** rotate **every secret any workflow on that runner consumed in the window**, not just the triggering repository's — including org and environment secrets. The memory scrape reads masked values out of heap, so secrets the compromised step never referenced are also disclosed. Then rotate the runner registration token and re-provision the host: a self-hosted runner that has executed attacker code cannot be cleaned in place.
 3. **Capture before remediating.** The file and its parent directory. The investigation package is collected automatically on every armed rule.
 4. **Search the working tree** for `setup.mjs`, `math_init.js`, `Math_Symbol.js`, `format-results.txt`, `.claude/`, `.vscode/`, `.github/workflows/codeql_analysis.yml`. Match `setup.mjs` **by hash** where possible — there are two malicious variants (29,918 B and 11,017 B) and legitimate `setup.mjs` files exist. Also check the temp directory for `bun-dl-*` staging directories and `tmp.dpkg_<pid>.lock` beacons.
-5. **Check the GitHub side.** Branch `dependabot/github_actions/format/setup-formatter`; commit message `chore: update config`; forged trailer `Co-authored-by: claude <claude@users.noreply.github.com>`; workflow author `github-advanced-security[bot]`; new repos described `Shai-Hulud: Here We Go Again` or named from Dune vocabulary (sardaukar, fremen, atreides); staging repos holding `results-*.json`. **Delete any `format-results` Actions artefact — it contains the stolen credentials.** Two additions:
+5. **Check the GitHub side.** Branch `dependabot/github_actions/format/setup-formatter`; commit message `chore: update config`; forged trailer `Co-authored-by: claude <claude@users.noreply.github.com>`; workflow author `github-advanced-security[bot]`; new repos described `Shai-Hulud: Here We Go Again` or named from Dune vocabulary (sardaukar, fremen, atreides); staging repos holding `results-*.json`. **Delete any `format-results` Actions artifact — it contains the stolen credentials.** Two additions:
    - **Enumerate every branch, not just the default.** Where a GitHub App token is stolen the worm commits to up to 50 branches per accessible repository, so a default-branch check reads a compromised repository as clean.
    - **Search the primitive, not the filename.** Two exfil-workflow variants are documented: `codeql_analysis.yml`, and a workflow named `Run Copilot` on `push`. Both write `${{ toJSON(secrets) }}` to a file and upload it. Grep every workflow added or modified by a non-human identity for `toJSON(secrets)`.
 6. **Identify the delivering package.** `python3 scripts/ioc/match_npm_ioc.py --target sleepnumberinc` — exit code 2 means an exact match.
@@ -644,7 +644,7 @@ MITRE: Exfiltration T1567.002, Credential Access T1552.001
 
 ### A7. `npm-shaihulud-token-monitor` — high — quarantine-only (**new 2026-08-06, UNARMED**)
 
-The token-revocation watchdog. It is the only artefact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/`, so a host cleaned on that basis is still armed. There is no legitimate `gh-token-monitor.sh`, so the expected benign rate is zero and this is the one new rule that should be armed quickly — an *alert* does not disarm a watchdog, and a routine credential rotation between the alert and a human reading it re-triggers exfiltration.
+The token-revocation watchdog. It is the only artifact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/`, so a host cleaned on that basis is still armed. There is no legitimate `gh-token-monitor.sh`, so the expected benign rate is zero and this is the one new rule that should be armed quickly — an *alert* does not disarm a watchdog, and a routine credential rotation between the alert and a human reading it re-triggers exfiltration.
 
 ```kql
 DeviceFileEvents
@@ -770,7 +770,7 @@ Full bundle: `github_conf/ioc/shai_hulud_2026_08.json`. Per-source assertions, k
 
 `54dc7ea5…` was originally recorded as a "payload variant observed in the internal hunt window"; StepSecurity identifies it as the first-stage `setup.mjs`, which is why there are two loader hashes rather than one. **Match `setup.mjs` by hash, not by name** — legitimate `setup.mjs` files exist, and there are two malicious ones.
 
-**Two exfil-workflow variants are documented,** not one: `.github/workflows/codeql_analysis.yml` attributed to `github-advanced-security[bot]`, and a workflow named `Run Copilot` triggered on `push`. Both write `${{ toJSON(secrets) }}` to a file and upload it as an artefact. Hunt the primitive, not the filename.
+**Two exfil-workflow variants are documented,** not one: `.github/workflows/codeql_analysis.yml` attributed to `github-advanced-security[bot]`, and a workflow named `Run Copilot` triggered on `push`. Both write `${{ toJSON(secrets) }}` to a file and upload it as an artifact. Hunt the primitive, not the filename.
 
 ### Network
 
@@ -793,9 +793,9 @@ Full bundle: `github_conf/ioc/shai_hulud_2026_08.json`. Per-source assertions, k
 
 `LaunchAgents`, `.config/systemd/user`, `.local/bin`, `.claude`, `.vscode`
 
-Token-revocation watchdog — the artefact set that survives cleaning the paths above:
+Token-revocation watchdog — the artifact set that survives cleaning the paths above:
 
-| Artefact | Platform |
+| Artifact | Platform |
 |---|---|
 | `~/.local/bin/gh-token-monitor.sh` | both |
 | `~/.config/gh-token-monitor/` | both |
@@ -830,7 +830,7 @@ Stated so the reviewer knows what is and is not built.
 | Scope surfaced in the arming confirmation, `--list`, `--kill-switch-status`, and the audit record | throughout |
 | Deploy workflow with two-person control and a tenant-wide arming guard | `.github/workflows/deploy-detection-rules.yml` |
 | 30-query proof-of-concept KQL library — coverage, backlog, rules, shape proofs, baselines, IR, prevention | `github_conf/detections/kql/` (Appendix E) |
-| PoC runner — lints every query with the repo's own `lint_kql`, refuses to send parameterised IR queries with placeholders intact | `scripts/ioc/run_kql_poc.py` |
+| PoC runner — lints every query with the repo's own `lint_kql`, refuses to send parameterized IR queries with placeholders intact | `scripts/ioc/run_kql_poc.py` |
 
 **Requires tenant access — cannot be completed from this repo:**
 
@@ -847,7 +847,7 @@ Stated so the reviewer knows what is and is not built.
 |---|---|---|---|
 | 5 | Shape proofs for A7, A8 and A9. No `poc/` file exists for any of them, so the library covers 6 of 9 rules | Recording the three new rules as coverage at all | hours |
 | 6 | Confirm A7's quarantine has a target — `stopAndQuarantineFiles` needs `SHA1` populated on the matching `DeviceFileEvents` rows. `coverage/07` measures this generally; A7 needs it confirmed for its own filenames | Arming A7, which is the new rule most worth arming | minutes once `coverage/07` runs |
-| 7 | Enumerate `LANG` / locale across the estate. The payload declines to run under a Russian locale, and those hosts read as clean on every behavioural rule — only A1, A4 and A7 (file/hash) still fire | Knowing the size of the behavioural blind spot | minutes to run |
+| 7 | Enumerate `LANG` / locale across the estate. The payload declines to run under a Russian locale, and those hosts read as clean on every behavioral rule — only A1, A4 and A7 (file/hash) still fire | Knowing the size of the behavioral blind spot | minutes to run |
 | 8 | Egress allowlist on build agents. Stops the chain at its first hop and needs no Microsoft approval — but it is a network-team change, not a security-team one | Nothing; independent prevention | days, cross-team |
 | 9 | Roll out a package-manager-native release-age gate (§6 Step 5 table). Needs a version floor per manager and a lockfile-refresh window | Nothing; independent prevention | days |
 | 10 | Remove passwordless `sudo` from the self-hosted runner service accounts. The memory scrape needs root; without it A9's whole class is prevented rather than detected | Nothing; independent prevention. Verify no build step depends on it first | hours, needs CI-owner sign-off |

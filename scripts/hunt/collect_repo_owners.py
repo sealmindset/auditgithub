@@ -5,7 +5,7 @@ A finding with no owner is a finding nobody will fix. The manager section of the
 hunt report is only actionable if each line lands on someone, so this resolves two
 independent questions per repository and keeps them separate:
 
-  WHO  - CODEOWNERS on the default branch. Checked at the three locations GitHub honours
+  WHO  - CODEOWNERS on the default branch. Checked at the three locations GitHub honors
          (.github/, root, docs/), in that precedence order, because a repository with a
          root CODEOWNERS and an empty .github/CODEOWNERS is owned by the root one.
   WHAT - repo_deployment_coverage.reaches_production, dumped from the topology tables.
@@ -45,7 +45,7 @@ from check_declared_ranges import (  # noqa: E402
     load_env,
 )
 
-# GitHub honours CODEOWNERS at exactly these three paths, in this precedence order.
+# GitHub honors CODEOWNERS at exactly these three paths, in this precedence order.
 CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 
 # An owner token is @user, @org/team, or a bare email. Anything else on the line is a

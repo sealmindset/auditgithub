@@ -4,7 +4,7 @@ Document rendering for AuditGH reports.
 Every report this system produces is authored in Markdown. This package owns the
 single path from that Markdown to a paginated document:
 
-    Markdown  ->  HTML (semantic, sanitised)  ->  PDF (CSS Paged Media)
+    Markdown  ->  HTML (semantic, sanitized)  ->  PDF (CSS Paged Media)
     Markdown  ->  DOCX (same token stream, python-docx elements)
 
 There is deliberately one renderer. The previous arrangement had three independent

@@ -229,7 +229,7 @@ def hunt_arbitrate(claims: List[Dict[str, Any]],
             # A dropped claim must surface in the return value, not only in the log. Every
             # claim silently discarded shrinks the verdict set, and an empty verdict set is
             # indistinguishable from "nothing was found" to any caller — including the LLM
-            # synthesising the report. Rejecting all four inputs once produced a completely
+            # synthesizing the report. Rejecting all four inputs once produced a completely
             # clean-looking arbitration result.
             logger.warning(f"Skipping malformed claim {spec!r}: {exc}")
             rejected.append({
@@ -635,7 +635,7 @@ def hunt_dead_drop_repos(db, markers: List[str],
 
     Worm-class supply-chain malware exfiltrates by creating a repository under the
     victim's own account and writing the stolen data into it. Those repositories carry a
-    recognisable description — `Shai-Hulud: Here We Go Again.` in the reference incident
+    recognizable description — `Shai-Hulud: Here We Go Again.` in the reference incident
     — so the inventory itself is an exfiltration detector.
 
     Matches description, name and topics, because the marker string has appeared in all

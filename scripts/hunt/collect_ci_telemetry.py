@@ -328,7 +328,7 @@ def main() -> int:
 
     # The estate-level control. Per-repo zeros are expected and uninformative; a zero
     # across the whole estate would mean the query never worked, and every negative
-    # below would be a measurement artefact rather than a finding.
+    # below would be a measurement artifact rather than a finding.
     query_proven = bool(total_runs)
     coverage_ok = query_proven and not throttled and not other_errors
 

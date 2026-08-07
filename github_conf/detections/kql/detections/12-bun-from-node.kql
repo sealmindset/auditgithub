@@ -4,7 +4,7 @@
 //                                            isolateDevices=selective,
 //                                            armed=false, requiresForce=true)
 // Table        DeviceProcessEvents
-// Confidence   MEDIUM — the only rule in the set that is behavioural rather than
+// Confidence   MEDIUM — the only rule in the set that is behavioral rather than
 //              indicator-based. Bun driven by node is unusual but not inherently
 //              malicious. It is deliberately shipped unarmed and needs --force in
 //              addition to --arm.

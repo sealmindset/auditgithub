@@ -1,6 +1,6 @@
-// 22 — BACKLOG SWEEP: the Bun runtime as an artefact, with the Windows binary
+// 22 — BACKLOG SWEEP: the Bun runtime as an artifact, with the Windows binary
 //
-// Purpose      Identify bun.exe (and its POSIX sibling) as an ARTEFACT ON DISK and as a
+// Purpose      Identify bun.exe (and its POSIX sibling) as an ARTIFACT ON DISK and as a
 //              process, retroactively across the retention window. Every existing Bun
 //              query in this library asks a narrower question:
 //                * detections/12 and baseline/40 require InitiatingProcessFileName to be
@@ -29,7 +29,7 @@
 // Expected     Some rows. Bun is a legitimate runtime and setup-bun is a normal CI step.
 //              This is a PROVENANCE query, not a detection: the finding is a Bun binary
 //              in a temp or staging path, written by something that is not a package
-//              manager or an installer the estate recognises.
+//              manager or an installer the estate recognizes.
 // Read it as   Triage on FolderPath first, then SHA256. A bun.exe under a versioned
 //              install root (…\bun\bin\bun.exe, ~/.bun/bin/bun) written by a developer's
 //              own shell is the benign population. A bun.exe under a temp path, or one

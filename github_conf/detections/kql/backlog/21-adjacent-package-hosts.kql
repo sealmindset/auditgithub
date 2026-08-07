@@ -11,7 +11,7 @@
 // Permission   ThreatHunting.Read.All
 // Expected     Many rows. This is exposure surface, NOT compromise. Do not treat a hit
 //              here as an incident.
-// Read it as   The population to prioritise for the pinning work — the fix is
+// Read it as   The population to prioritize for the pinning work — the fix is
 //              known_clean_pins (keyv@5.2.3, cacheable@1.8.8), not remediation.
 //              A device here that ALSO appears in 20 is an incident.
 //

@@ -36,7 +36,7 @@ def _vector(name: str, status: str, **extra) -> dict:
 
 
 def _render(vectors) -> str:
-    """Drive `render` with empty detail artefacts.
+    """Drive `render` with empty detail artifacts.
 
     The detail sections are suppressed by empty inputs, which is the point: it isolates
     the parts of the document that are emitted unconditionally.
@@ -49,11 +49,11 @@ def _render(vectors) -> str:
 
 
 # ----------------------------------------------------------------------------------
-# The endpoint vector's fallback. A missing artefact means the collector did not run. It
+# The endpoint vector's fallback. A missing artifact means the collector did not run. It
 # has never meant, and must never again mean, that access was refused.
 # ----------------------------------------------------------------------------------
 
-def test_a_missing_endpoint_artefact_is_not_run_not_blocked():
+def test_a_missing_endpoint_artifact_is_not_run_not_blocked():
     vector = R.vector_endpoint(None)
     assert vector["status"] == R.NOT_RUN
     assert vector["status"] != R.BLOCKED
@@ -72,7 +72,7 @@ def test_the_endpoint_fallback_makes_no_claim_about_credentials():
     assert "blocked_by" not in R.vector_endpoint(None)
 
 
-def test_a_supplied_endpoint_artefact_is_passed_through_untouched():
+def test_a_supplied_endpoint_artifact_is_passed_through_untouched():
     supplied = _vector("Endpoint / identity (Microsoft Defender)", R.CLEAR,
                        counts={"Hunting queries executed": 6})
     assert R.vector_endpoint(supplied) is supplied
@@ -221,8 +221,8 @@ def test_a_clean_endpoint_generates_no_endpoint_action():
 # proving the queries could have found it - and reported INCOMPLETE, and drove the whole
 # report to AMBER, because 1,379 other devices send no telemetry at all. That reads as
 # though the hunt found something worrying. The worrying thing was our instrumentation, it
-# will not change no matter how much hunting is done, and folding it into the colour meant
-# the colour said AMBER every day - including the day it would have meant something.
+# will not change no matter how much hunting is done, and folding it into the color meant
+# the color said AMBER every day - including the day it would have meant something.
 #
 # So a population we cannot observe is reported on its own axis, priced, enumerable, and
 # kept out of the verdict entirely.
@@ -251,7 +251,7 @@ def test_an_unobservable_population_does_not_stop_a_vector_being_clear():
 
 
 def test_an_unobservable_population_never_colours_the_verdict():
-    """Two vectors, identical results; one has a blind spot. Same colour, different coverage."""
+    """Two vectors, identical results; one has a blind spot. Same color, different coverage."""
     without = [_vector("V", R.CLEAR, coverage=["control"])]
     with_gap = [_clean_with_gap()]
     assert R.compute_verdict(without)["rag"] == R.compute_verdict(with_gap)["rag"]
@@ -387,7 +387,7 @@ def test_the_decisions_block_follows_the_endpoint_status():
     """It used to read 'approve the access request' on every cycle, unconditionally.
 
     On a cycle where the hunt ran, that told a reader the laptops were unseen and asked
-    them to authorise something already granted.
+    them to authorize something already granted.
     """
     def decisions(status: str, **extra) -> str:
         document = _render([_vector("Endpoint / identity (Microsoft Defender)",
@@ -412,7 +412,7 @@ def test_the_decisions_block_follows_the_endpoint_status():
 # `tree_failed: 50` with an empty `resolution_accounting` and an empty `unresolved_repos`,
 # and the vector rendered CLEAR over 2,760 of 2,810 repositories. Fifty repositories left
 # no trace anywhere in the document - not a caveat, not a count, nothing. The renderer had
-# asked the artefact whether anything was unresolved instead of working it out.
+# asked the artifact whether anything was unresolved instead of working it out.
 # ----------------------------------------------------------------------------------
 
 def _trees(**totals) -> dict:
@@ -457,6 +457,41 @@ def test_a_repository_named_as_unresolved_is_not_double_counted():
 
 
 # ----------------------------------------------------------------------------------
+# `bun_artifacts_changed` is a field on each commit record. The branches vector read it
+# off the sweep's top-level dict, so it always took the default and always printed zero -
+# and zero was the truth, which is why it survived. A metric that cannot be non-zero is
+# not a zero; it is a blank wearing a number. These two tests fix the number in place by
+# proving it moves.
+# ----------------------------------------------------------------------------------
+
+def _branches(flagged) -> dict:
+    return {"repos_in_estate": 2810, "repos_inspected": 83, "branches_enumerated": 900,
+            "commits_inspected": 83, "campaign_branches_found": [],
+            "flagged_commits": flagged,
+            "branch_enumeration_query_proven": True,
+            "commit_inspection_query_proven": True,
+            "coverage_supports_negative_finding": True}
+
+
+def test_a_commit_carrying_bun_files_is_counted():
+    vector = R.vector_branches(_branches([
+        {"sha": "aaa", "bun_artifacts_changed": ["bun.exe"], "flags": ["bun_artifact_written"]},
+        {"sha": "bbb", "bun_artifacts_changed": [], "flags": ["campaign_file_written"]},
+    ]))
+    assert vector["counts"]["Bun-artifact commits"] == 1
+    assert vector["counts"]["Flagged commits"] == 2
+
+
+def test_the_bun_count_is_not_read_from_the_top_level_dict():
+    """The old bug: the key at the top level was authoritative and the commits were not."""
+    branches = _branches([
+        {"sha": "aaa", "bun_artifacts_changed": ["bunx.exe"], "flags": ["bun_artifact_written"]},
+    ])
+    branches["bun_artifacts_changed"] = []          # what the collector never writes here
+    assert R.vector_branches(branches)["counts"]["Bun-artifact commits"] == 1
+
+
+# ----------------------------------------------------------------------------------
 # The delta. A vector that gains a word in its name is a rename; a vector that disappears
 # with nothing in its place is lost coverage. The section printed the same WARNING for
 # both, and then admitted in its own sentence that it could not tell them apart - so the
@@ -482,7 +517,7 @@ def test_a_vector_that_vanishes_with_no_replacement_is_lost_coverage():
 
 
 # ----------------------------------------------------------------------------------
-# Artefact selection. The bucket arithmetic above was correct and still produced a false
+# Artifact selection. The bucket arithmetic above was correct and still produced a false
 # statement, because it was applied to the wrong file: the renderer defaulted to
 # `repo_trees_r3_coverage.json` while `repo_trees_r4_coverage.json` sat beside it, three
 # hours newer, carrying the accounting that resolved all 50 of r3's `tree_failed` entries

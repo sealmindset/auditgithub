@@ -15,11 +15,11 @@ Two things this deliberately does NOT do.
    already carries. Deployment lives in deploy_detection_rules.py, behind a separate
    permission the automation account does not yet have.
 
-2. It does not run the parameterised IR queries by default. ir/50-53 carry placeholder
+2. It does not run the parameterized IR queries by default. ir/50-53 carry placeholder
    device names and anchor timestamps; running them unedited would send a query for a
    device called "REPLACE-WITH-DEVICE-NAME" and report zero rows, which is worse than
    refusing, because zero rows reads as "nothing found". Pass --params to supply real
-   values, or --include-parameterised to send them as-is anyway.
+   values, or --include-parameterized to send them as-is anyway.
 
 Every query is linted with the repo's own lint_kql() before it is sent. KQL cannot be
 syntax-checked without a tenant, so the lint is not a correctness guarantee — it catches
@@ -139,7 +139,7 @@ class AzCliHuntingClient:
         """
         try:
             rows, error = self._post("DeviceInfo | project DeviceId | limit 1")
-        except Exception as exc:  # noqa: BLE001 - the message is the useful artefact
+        except Exception as exc:  # noqa: BLE001 - the message is the useful artifact
             return False, str(exc)
         return (True, "ok") if error is None else (False, error)
 
@@ -198,7 +198,7 @@ class Query:
     error: Optional[str] = None
 
     @property
-    def parameterised(self) -> bool:
+    def parameterized(self) -> bool:
         return bool(self.placeholders)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -207,7 +207,7 @@ class Query:
             "group": self.group,
             "title": self.title,
             "status": self.status,
-            "parameterised": self.parameterised,
+            "parameterized": self.parameterized,
             "placeholders": self.placeholders,
             "lint_error": self.lint_error,
             "lint_warnings": self.lint_warnings,
@@ -225,7 +225,7 @@ def strip_comments(text: str) -> str:
 
     Used for placeholder detection only, NOT for linting. Several files document a Form B
     trigger in comments, including its placeholders; a placeholder inside a comment does
-    not affect what Graph evaluates, so treating those files as parameterised would skip a
+    not affect what Graph evaluates, so treating those files as parameterized would skip a
     perfectly runnable Form A query.
 
     Only full-line comments are removed. Stripping trailing comments would need to know
@@ -354,8 +354,8 @@ def print_plan(queries: List[Query], run: bool, include_param: bool) -> None:
         flag = ""
         if q.lint_error:
             flag = "  LINT FAIL"
-        elif q.parameterised and not include_param:
-            flag = "  needs --params" if run else "  parameterised"
+        elif q.parameterized and not include_param:
+            flag = "  needs --params" if run else "  parameterized"
         elif q.lint_warnings:
             flag = f"  {len(q.lint_warnings)} lint warning(s)"
         print(f"    {q.rel:<48}{flag}")
@@ -422,8 +422,8 @@ def main() -> int:
     parser.add_argument("--params", action="append", default=[], metavar="KEY=VALUE",
                         help="fill a placeholder, e.g. --params device=WS-1234 "
                              "(fills REPLACE-WITH-DEVICE-NAME)")
-    parser.add_argument("--include-parameterised", action="store_true",
-                        help="send parameterised queries with placeholders still in them. "
+    parser.add_argument("--include-parameterized", action="store_true",
+                        help="send parameterized queries with placeholders still in them. "
                              "They will return zero rows; only useful for syntax checking.")
     parser.add_argument("--az-cli", action="store_true",
                         help="Authenticate as the signed-in az CLI user (delegated) "
@@ -563,7 +563,7 @@ def main() -> int:
     for q in queries:
         text = apply_params(q.text, params) if params else q.text
 
-        if q.parameterised and not args.include_parameterised:
+        if q.parameterized and not args.include_parameterised:
             q.status = "skipped"
             print_result(q)
             continue

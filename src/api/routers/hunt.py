@@ -134,7 +134,7 @@ async def list_sources(ecosystem: Optional[str] = None, max_tier: int = 3):
     summary="List the hunt tools available to the analyst agent",
 )
 async def list_tools():
-    """The tool catalogue the zero-day planner is given, with signatures."""
+    """The tool catalog the zero-day planner is given, with signatures."""
     from ...ai_agent import zda_prompt
 
     return {
@@ -265,7 +265,7 @@ async def ci_activity(request: CiActivityRequest, db: Session = Depends(get_tena
 async def dead_drops(request: DeadDropRequest, db: Session = Depends(get_tenant_db)):
     """
     Worm-class supply-chain malware exfiltrates into a repository it creates under the
-    victim's account, with a recognisable description. The inventory is therefore itself
+    victim's account, with a recognizable description. The inventory is therefore itself
     a detector.
 
     Note the scope limit in the response: dead drops created under a user namespace sit

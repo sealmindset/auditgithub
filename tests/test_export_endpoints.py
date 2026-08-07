@@ -174,7 +174,7 @@ def test_the_exported_analysis_is_the_three_part_document(client):
                     "## 3.3 Mitigations and Safeguards"):
         assert heading in markdown, heading
 
-    # The evidence is still there in full -- it moved, it was not summarised.
+    # The evidence is still there in full -- it moved, it was not summarized.
     assert "keyv@4.5.4" in markdown
     assert "confirmed malicious" in markdown
     # ...and so are the limits on what the run could see. A hunt report without its
@@ -300,7 +300,7 @@ def test_an_analysis_that_is_missing_says_so_rather_than_printing_none(client):
 
 
 # --------------------------------------------------------------------------- #
-# The rendered artefact
+# The rendered artifact
 # --------------------------------------------------------------------------- #
 
 def test_the_pdf_has_more_than_a_cover_page(client):

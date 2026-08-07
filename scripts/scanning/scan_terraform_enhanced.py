@@ -861,7 +861,7 @@ def run_terraform_enhanced(
 
     Writes per-capability JSON reports plus a combined JSON and Markdown report.
 
-    Returns a synthetic CompletedProcess summarising the scan, or None if no .tf
+    Returns a synthetic CompletedProcess summarizing the scan, or None if no .tf
     files were found.
     """
     os.makedirs(report_dir, exist_ok=True)

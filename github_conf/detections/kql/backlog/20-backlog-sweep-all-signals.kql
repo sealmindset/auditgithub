@@ -4,7 +4,7 @@
 //              scheduled run forward. Anything the worm already did is invisible to all
 //              six rules, permanently. This query is the only pass that covers the
 //              existing window, and it should be run BEFORE the rules are deployed —
-//              once a rule is armed, a 30-day-old artefact can trigger isolation on a
+//              once a rule is armed, a 30-day-old artifact can trigger isolation on a
 //              machine that has been clean for weeks.
 // Tables       DeviceFileEvents, DeviceProcessEvents, DeviceNetworkEvents
 // Permission   ThreatHunting.Read.All
@@ -26,7 +26,7 @@
 //   * The DeviceNetworkEvents branch depends entirely on Network Protection populating
 //     RemoteUrl and has no IP fallback (see the comment on that branch). Read its zero
 //     together with coverage/04 and coverage/05, never alone.
-//   * Each branch normalises to the same six columns; Signal names match the rule ids.
+//   * Each branch normalizes to the same six columns; Signal names match the rule ids.
 
 let Lookback = 30d;
 let PayloadHashes = dynamic([
@@ -105,7 +105,7 @@ union withsource=SourceTable
                              " by ", InitiatingProcessFileName)
   ),
   (
-    // 15 — exfil staging artefact written by node/bun
+    // 15 — exfil staging artifact written by node/bun
     DeviceFileEvents
     | where Timestamp > ago(Lookback)
     | where ActionType in~ ("FileCreated","FileModified","FileRenamed")

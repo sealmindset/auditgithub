@@ -3,7 +3,7 @@ Shared read-only GitHub HTTP layer for the deployment-topology phases.
 
 Extracted from the P1 topology service so every phase (P1 reusable-workflow
 propagation, P2 deployment observation, later static/IaC phases) shares one set
-of behaviours that took real incidents to get right:
+of behaviors that took real incidents to get right:
 
 * **A 403 is not automatically a permission denial.** GitHub returns 403 for
   primary and secondary throttling too. Throttling is reported as the internal

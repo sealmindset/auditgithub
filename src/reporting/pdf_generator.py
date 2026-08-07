@@ -34,8 +34,8 @@ from .md_to_pdf import (
 logger = logging.getLogger(__name__)
 
 # Order matters: a report is read top-down and the reader must meet the worst finding
-# first. Anything with an unrecognised severity is counted under "other" rather than
-# dropped, because a finding that vanishes from the summary is worse than a miscategorised
+# first. Anything with an unrecognized severity is counted under "other" rather than
+# dropped, because a finding that vanishes from the summary is worse than a miscategorized
 # one.
 _SEVERITIES = ("critical", "high", "medium", "low", "info")
 
@@ -100,7 +100,7 @@ def _scan_evidence_markdown(
     scan_data: Dict[str, Any],
     findings: Sequence[Dict[str, Any]],
 ) -> str:
-    """The scanner detail, in full and unsummarised. Part 3.1 of the briefed document."""
+    """The scanner detail, in full and unsummarized. Part 3.1 of the briefed document."""
     counts = {name: 0 for name in _SEVERITIES}
     counts["other"] = 0
     for finding in findings:

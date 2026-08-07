@@ -12,7 +12,7 @@
 //
 // Read it as   The worm's chain is ordered: package install -> setup.mjs -> Bun download
 //              -> math_init.js -> on-chain C2 read -> credential harvest -> exfil
-//              artefacts -> republish. Finding the chain in that order confirms the
+//              artifacts -> republish. Finding the chain in that order confirms the
 //              infection. Finding only the middle of it means look earlier for the entry
 //              vector than this 8h window allows.
 

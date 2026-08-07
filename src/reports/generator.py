@@ -171,7 +171,7 @@ class ReportGenerator:
     def _scan_findings(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Flatten every scanner's vulnerabilities into the shape the briefing reads.
 
-        `remediation` is synthesised from `fixed_versions` where the scanner supplied
+        `remediation` is synthesized from `fixed_versions` where the scanner supplied
         one, because that string is what the effort estimator reads: a finding with a
         published fixed version is a version bump, and one without is an open question.
         """

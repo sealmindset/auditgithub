@@ -5,7 +5,7 @@ Again** (2026-08-04, [JFrog](https://research.jfrog.com/post/shai-hulud-is-back-
 tracked as **CHAINDROP** ([Elastic](https://www.elastic.co/security-labs/shai-hulud-chaindrop-npm-supply-chain),
 [StepSecurity](https://www.stepsecurity.io/blog/chaindrop-npm-worm)).
 
-| Artefact | Path |
+| Artifact | Path |
 |---|---|
 | IOC bundle | `github_conf/ioc/shai_hulud_2026_08.json` |
 | Source file — Elastic Security Labs | `github_conf/ioc/chaindrop_elastic_2026_08.json` |
@@ -63,7 +63,7 @@ Layer 1  VERSION-PRECISE MATCHING          where versions exist
          lockfiles -> dependencies table -> 2235 name@version IOC pairs
          scripts/ioc/match_npm_ioc.py                        [IDS, authoritative]
 
-Layer 2  BEHAVIOUR + HASH DETECTION        where versions do not exist
+Layer 2  BEHAVIOR + HASH DETECTION        where versions do not exist
          Defender XDR custom detection rules over Device* tables
          + armed kill switch: isolate / quarantine / collect
          github_conf/detections/npm_supply_chain_rules.json   [IDS + auto-containment]
@@ -127,7 +127,7 @@ Nine rules, all version-independent. None of them mentions a package name.
 
 | Rule id | Signal | Severity | Status |
 |---|---|---|---|
-| `npm-shaihulud-payload-hash` | SHA-256 of any of 7 published payload/loader/hook artefacts on disk | high | deployed |
+| `npm-shaihulud-payload-hash` | SHA-256 of any of 7 published payload/loader/hook artifacts on disk | high | deployed |
 | `npm-shaihulud-loader-exec` | node/bun executing `setup.mjs`, `math_init.js`, `Math_Symbol.js` | high | deployed |
 | `npm-shaihulud-bun-from-node` | Bun spawned **by node or npm** — the loader fetches Bun 1.3.13 to run outside the project's Node runtime | medium | deployed, **unarmed** |
 | `npm-shaihulud-agent-hook-drop` | loader or known-bad hook config written into `.claude/` or `.vscode/` — **the npm-12 path** | high | deployed |
@@ -151,7 +151,7 @@ been deployed or tenant-verified.
 * **`npm-shaihulud-token-monitor`** — the watchdog (`~/.local/bin/gh-token-monitor.sh`,
   `~/.config/gh-token-monitor/`, `gh-token-monitor.service`, `com.user.gh-token-monitor`)
   polls `api.github.com/user` every 60 s for 24 h and **fires the payload when the token stops
-  authenticating**. It is the *only* artefact that survives deleting `setup.mjs`,
+  authenticating**. It is the *only* artifact that survives deleting `setup.mjs`,
   `math_init.js`, `.claude/` and `.vscode/` — so without this rule a host cleaned by §7 step 3
   reads as eradicated while still armed. `DeviceFileEvents` on those four names is a narrow,
   low-noise match: nothing legitimate ships a file called `gh-token-monitor.sh`.
@@ -280,7 +280,7 @@ Three judgment calls behind that table:
 * **No file quarantine on process-event rules.** `stopAndQuarantineFiles` acts on the file
   the query returns. On `DeviceProcessEvents` that file is `node.exe` or `bun.exe`, so
   quarantining it bricks the toolchain and leaves the payload — a script — untouched. File
-  actions attach only to file-event rules, where the returned hash *is* the artefact.
+  actions attach only to file-event rules, where the returned hash *is* the artifact.
 * **`bun-from-node` ships unarmed.** It is the one medium-confidence rule; isolating a
   developer whose toolchain legitimately spawns Bun is the false positive that gets
   automated response switched off org-wide. Its actions are defined and validated, waiting
@@ -541,13 +541,13 @@ Three structural gaps to state plainly:
   and to Actions log review.
 * **The malware declines to run on some hosts, and those hosts look clean.** CHAINDROP reads
   `LANG` and exits without executing if it indicates a Russian locale (StepSecurity). On such a
-  host the dropper is on disk and would have executed, but every *behavioural* rule returns
-  nothing — no Bun spawn (rule 3), no loader exec (rule 2), no C2 (rule 5), no exfil artefact
+  host the dropper is on disk and would have executed, but every *behavioral* rule returns
+  nothing — no Bun spawn (rule 3), no loader exec (rule 2), no C2 (rule 5), no exfil artifact
   (rule 6). Only the file-hash rules (1, 4, and the new 7) fire.
 
   This is not exotic; it is the general shape of the problem. A rule set weighted towards
-  behaviour has a false-negative surface equal to the malware's own evasion logic. Two
-  consequences: **enumerate estate locales before reading a behavioural zero as clean**, and
+  behavior has a false-negative surface equal to the malware's own evasion logic. Two
+  consequences: **enumerate estate locales before reading a behavioral zero as clean**, and
   keep file-hash and file-write telemetry as the primary surface wherever the payload has a
   known hash — that surface is indifferent to whether the code ran.
 
@@ -562,7 +562,7 @@ incident.
 deleting files first only destroys evidence while the credentials stay live.
 
 If the kill switch is armed, containment has already happened: the device is isolated and
-the artefact quarantined before you read the alert. Step 0 is therefore to tell the
+the artifact quarantined before you read the alert. Step 0 is therefore to tell the
 developer why their machine went offline — then work the list. Do not release the device
 until step 2 is done.
 
@@ -577,7 +577,7 @@ until step 2 is done.
    trigger condition, not its remedy: it responds by re-collecting and re-exfiltrating from
    whatever credentials are still live on the host.
 
-   On the isolated device, remove all four artefacts and confirm the service is gone:
+   On the isolated device, remove all four artifacts and confirm the service is gone:
 
    ```bash
    # Linux
@@ -601,8 +601,8 @@ until step 2 is done.
    **This does not reverse "rotate before you eradicate."** The payload still exfiltrates first,
    so a full clean-up before rotation still destroys evidence while credentials stay live. The
    order is: *sweep and remove the monitor* → *rotate* → *eradicate the rest*. Step 1.5 is a
-   narrow carve-out for the one artefact whose removal must precede rotation, and it is also the
-   only artefact that survives step 3 — a host cleaned by step 3 alone is still armed. If the
+   narrow carve-out for the one artifact whose removal must precede rotation, and it is also the
+   only artifact that survives step 3 — a host cleaned by step 3 alone is still armed. If the
    device is fully isolated and the monitor cannot reach `api.github.com`, it cannot observe the
    revocation; do not rely on that, because `selective` isolation and any pre-isolation window
    both leave it live.
@@ -647,7 +647,7 @@ until step 2 is done.
      `codeql_analysis.yml` and a workflow named `Run Copilot` on `push`. Both write
      `${{ toJSON(secrets) }}` to a file and upload it. Grep every workflow added or modified by
      a non-human identity for `toJSON(secrets)`; keying on either filename misses the other.
-5. Delete any `format-results` artefact from Actions — it contains the stolen credentials. Also
+5. Delete any `format-results` artifact from Actions — it contains the stolen credentials. Also
    look for staging repositories under the victim account holding `results-*.json`.
 6. Run Layer 1 against the affected repo to identify the delivering `name@version`.
 
@@ -662,5 +662,5 @@ until step 2 is done.
    source file while every rule and the indicator list omitted it. Ingesting a source file
    creates the *appearance* of coverage.
 3. Add hashes and domains to the IOC bundle and the package CSV, add or edit rules in
-   `npm_supply_chain_rules.json`, re-run the deployer. The rules key on behaviour, so a new
+   `npm_supply_chain_rules.json`, re-run the deployer. The rules key on behavior, so a new
    variant of the same family usually needs only new hashes.

@@ -240,7 +240,7 @@ def test_bold_text_resolves_to_a_bold_face():
     """
     `strong` carried `font-weight: 650`, which WeasyPrint 69 drops as an invalid value,
     so emphasis rendered at the inherited weight. Nothing failed and nothing looked
-    obviously broken; the words a finding leans on just stopped being emphasised.
+    obviously broken; the words a finding leans on just stopped being emphasized.
 
     Deliberately no heading in the source: an `<h1>` is bold on its own and would satisfy
     this assertion no matter what `strong` resolved to.
@@ -255,7 +255,7 @@ def test_bold_text_resolves_to_a_bold_face():
 
 def test_digits_do_not_get_captured_by_the_emoji_font():
     """
-    Colour emoji fonts carry the ASCII digits, because those are the bases of the keycap
+    Color emoji fonts carry the ASCII digits, because those are the bases of the keycap
     sequences. Pango gives them every digit in the document the moment such a family
     appears anywhere in the stack — ahead of DejaVu Sans, not after it — and the CBDT
     bitmaps draw as nothing. The digits keep their place in the text layer and their
@@ -295,7 +295,7 @@ def test_emoji_are_not_drawn_from_a_bitmap_only_font():
     pdf = markdown_to_pdf(f"Marks {REPORT_MARKS} and digits 0123456789.\n",
                           DocumentMeta(title="T", cover=False, toc=False))
     assert not bitmap_only_fonts(pdf), (
-        "these marks were embedded as colour bitmaps and will render as gaps: "
+        "these marks were embedded as color bitmaps and will render as gaps: "
         f"{bitmap_only_fonts(pdf)}")
     fonts = embedded_fonts(pdf)
     assert len(fonts) > 1, f"the marks did not reach a symbol face at all: {fonts}"
@@ -343,7 +343,7 @@ def test_every_mark_the_reports_use_is_inside_a_fence_that_covers_it(mark):
     Symbola predates Unicode 12 and has no 🟠🟡🟢🟣 at all, which is how the second face
     came to exist — so the ranges are checked against the actual cmaps.
 
-    Skipped where the Linux fallback is not installed: on a macOS host the colour font
+    Skipped where the Linux fallback is not installed: on a macOS host the color font
     earlier in each `src` list serves these, and it is the container that has to be right.
     """
     import glob
@@ -369,7 +369,7 @@ def test_every_mark_the_reports_use_is_inside_a_fence_that_covers_it(mark):
 
 def test_marks_are_asked_for_in_their_monochrome_form_but_only_in_prose():
     """
-    Pango routes an emoji-presentation run to a colour font before the CSS stack is read,
+    Pango routes an emoji-presentation run to a color font before the CSS stack is read,
     so the selector is what makes the fences reachable at all. It must not reach code:
     a reader copies a command out of a fenced block, and an invisible U+FE0E riding along
     turns a working command into one that fails somewhere else entirely.

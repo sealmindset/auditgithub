@@ -7,7 +7,7 @@ where it was shown to operators. Nothing kept them equal. Editing the real promp
 the endpoint reporting a prompt that had not been used for some time, which is worse than
 having no endpoint, because it looks authoritative.
 
-The tool catalogue is generated from DB_TOOL_SPECS and HUNT_TOOL_SPECS rather than typed
+The tool catalog is generated from DB_TOOL_SPECS and HUNT_TOOL_SPECS rather than typed
 out here, so a tool the dispatcher can call is always advertised, and a tool that is
 advertised always exists.
 """
@@ -31,7 +31,7 @@ def tool_names() -> List[str]:
 
 
 def render_tool_catalog() -> str:
-    """Render the catalogue as two labelled groups, database first."""
+    """Render the catalog as two labeled groups, database first."""
     lines = ["LOCAL DATABASE TOOLS (previously collected scan data):"]
     for i, spec in enumerate(DB_TOOL_SPECS, 1):
         lines.append(f"{i:>2}. {spec['signature']}")
@@ -190,7 +190,7 @@ def build_synthesis_prompt(**values: Any) -> str:
 
 def planning_prompt_template() -> str:
     """
-    The template as an operator should see it: tool catalogue expanded, request-specific
+    The template as an operator should see it: tool catalog expanded, request-specific
     placeholders left visible so it is obvious what is substituted per query.
 
     This is what GET /ai/zero-day/prompt returns, and it is the same string reasoning.py

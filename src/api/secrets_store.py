@@ -113,7 +113,7 @@ def decrypt(stored: str) -> str:
         return stored
     if not stored.startswith(_PREFIX):
         raise SecretDecryptionError(
-            f"Unrecognised encryption scheme on stored value (expected {_SCHEME})."
+            f"Unrecognized encryption scheme on stored value (expected {_SCHEME})."
         )
     token = stored[len(_PREFIX):]
     try:

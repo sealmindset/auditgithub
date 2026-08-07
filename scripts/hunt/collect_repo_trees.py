@@ -190,9 +190,9 @@ def load_indicator_basenames() -> Dict[str, List[str]]:
 
 def load_bun_artifacts() -> Dict[str, List[str]]:
     """
-    Build the Bun-runtime artefact set, including the Windows binary.
+    Build the Bun-runtime artifact set, including the Windows binary.
 
-    Why this is separate from the indicator set above: a Bun artefact is not evidence of
+    Why this is separate from the indicator set above: a Bun artifact is not evidence of
     compromise the way math_init.js is. Bun is a legitimate runtime and some repositories
     vendor or reference it deliberately. These are *leads with a provenance question* —
     "why is a runtime binary in a git tree, and which build wrote it" — and they are kept
@@ -243,7 +243,7 @@ def load_bun_artifacts() -> Dict[str, List[str]]:
 
 class RateLimiter:
     """
-    Serialise the decision to pause on rate limiting.
+    Serialize the decision to pause on rate limiting.
 
     Without the lock, every worker independently reads a near-zero remaining count and
     they all sleep for the full reset interval one after another, turning a single
@@ -378,7 +378,7 @@ def classify_tree(paths: Iterable[str], indicators: Dict[str, List[str]],
         lower = path.lower()
         base = lower.rsplit("/", 1)[-1]
 
-        # Bun artefacts are classified by *why* they are interesting, not lumped into
+        # Bun artifacts are classified by *why* they are interesting, not lumped into
         # one flag: a committed bun.exe is a different conversation from a workflow that
         # downloads the Windows zip, and a bun-dl-* directory in a git tree is a third
         # thing again (staging that was supposed to be deleted and got committed).
@@ -761,7 +761,7 @@ def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[st
     record.update(classify_tree(paths, indicators, bun))
 
     # Resolve every hook-file lead into a determination while the token and ref are in
-    # hand. Leaving them as filename hits would push the judgement into the report,
+    # hand. Leaving them as filename hits would push the judgment into the report,
     # where the evidence needed to make it is no longer available.
     hook_paths = [p for p in paths if p.lower() in HOOK_FILES]
     record["hook_files"] = [
@@ -807,7 +807,7 @@ def main() -> int:
         # and those must not read the same in the coverage block.
         print("WARNING: chaindrop_stepsecurity_2026_08.json absent; Bun release-asset "
               "names unavailable, checking binaries only", file=sys.stderr)
-    print(f"bun artefacts loaded: {len(bun['binaries'])} binaries "
+    print(f"bun artifacts loaded: {len(bun['binaries'])} binaries "
           f"({', '.join(bun['binaries'])}), {len(bun['release_assets'])} release assets, "
           f"staging prefixes {bun['staging_prefixes']}", file=sys.stderr)
 

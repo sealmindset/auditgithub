@@ -99,7 +99,7 @@ class ResolvedCredential:
 
 def _truncate_id(value: Optional[str]) -> Optional[str]:
     """Identifiers are not secret, but full tenant/client GUIDs are unnecessary in
-    reports that get shared. Show enough to recognise, not enough to copy."""
+    reports that get shared. Show enough to recognize, not enough to copy."""
     if not value:
         return None
     return f"{value[:8]}…" if len(value) > 8 else value

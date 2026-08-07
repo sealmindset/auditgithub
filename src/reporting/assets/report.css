@@ -61,7 +61,7 @@
   @bottom-right { content: none; }
 }
 
-/* An emoji font named in a font stack does not wait its turn. Colour emoji fonts carry
+/* An emoji font named in a font stack does not wait its turn. Color emoji fonts carry
    glyphs for the ASCII digits — they are the bases of the keycap sequences (1️⃣) — and
    Pango hands every digit in the document to Noto Color Emoji even when DejaVu Sans is
    listed ahead of it. Those glyphs are CBDT bitmaps that WeasyPrint draws as nothing, so
@@ -71,8 +71,8 @@
 
    Fencing the family behind `unicode-range` keeps it reachable for the verdict marks and
    unreachable for anything else. Do not put a raw emoji family in `--sans`. */
-/* Naming the family is only half of it. Pango itemises a run whose codepoints default to
-   *emoji* presentation onto a colour emoji font before the CSS stack is consulted, so
+/* Naming the family is only half of it. Pango itemizes a run whose codepoints default to
+   *emoji* presentation onto a color emoji font before the CSS stack is consulted, so
    `font-family: Symbola` on a ✅ still produced Noto Color Emoji — whose CBDT bitmaps
    WeasyPrint embeds and then draws as nothing. `_force_text_presentation` in md_to_pdf.py
    appends U+FE0E to every codepoint fenced below, which switches the run to text
@@ -86,8 +86,8 @@
    `test_every_mark_in_the_report_templates_has_a_glyph`, which enumerates the corpus. */
 @font-face {
   font-family: "Report Emoji";
-  /* Apple's and Microsoft's colour fonts draw correctly, so a macOS or Windows host keeps
-     colour marks; Symbola is the Linux fallback that guarantees ink. */
+  /* Apple's and Microsoft's color fonts draw correctly, so a macOS or Windows host keeps
+     color marks; Symbola is the Linux fallback that guarantees ink. */
   src: local("Apple Color Emoji"), local("Segoe UI Emoji"), local("Symbola");
   unicode-range: U+203C, U+2049, U+20E3, U+2122, U+2139, U+2194-21AA, U+231A-231B,
                  U+2328, U+23CF-23FA, U+24C2, U+25AA-25FE, U+2600-27BF, U+2934-2935,

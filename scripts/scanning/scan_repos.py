@@ -3085,7 +3085,7 @@ def process_repo(repo: Dict[str, Any], report_dir: str, force_rescan: bool = Fal
 def run_safety_scan(requirements_path, repo_name, report_dir):
     """Run safety scan on requirements file with DOE self-annealing.
 
-    Self-healing behaviours:
+    Self-healing behaviors:
     - Checks cooldown before running (skips if scanner recently failed repeatedly)
     - Adjusts timeout dynamically based on observed failures
     - Falls back through alternative commands: safety scan v3 -> safety check v2 -> pip-audit

@@ -26,7 +26,7 @@ DEFAULT_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
 _DEFAULT_TIMEOUT = 20
 
-# Honour the platform-wide TLS setting. Corporate TLS interception (Zscaler) means
+# Honor the platform-wide TLS setting. Corporate TLS interception (Zscaler) means
 # SSL_VERIFY may legitimately point at a custom CA bundle rather than being disabled.
 _SSL_VERIFY_RAW = os.environ.get("SSL_VERIFY", "true").strip()
 
@@ -46,7 +46,7 @@ def cache_dir() -> str:
     """
     Resolve the on-disk cache directory, creating it if absent.
 
-    Honours THREAT_INTEL_CACHE_DIR, then falls back to <repo-root>/.cache so the
+    Honors THREAT_INTEL_CACHE_DIR, then falls back to <repo-root>/.cache so the
     existing kev.json / epss.json live alongside.
     """
     override = os.environ.get("THREAT_INTEL_CACHE_DIR")

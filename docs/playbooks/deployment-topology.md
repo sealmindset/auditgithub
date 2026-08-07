@@ -5,7 +5,7 @@ credentials?" Built as **coverage-as-data**: every repository is either resolved
 evidence or is an explicit, counted unknown. A repository with no rows is **not** a
 repository that deploys nowhere.
 
-| Artefact | Path |
+| Artifact | Path |
 |---|---|
 | Schema (2 tables + coverage view) | `migrations/020_deployment_topology.sql` |
 | Schema (P2 indexes / upsert target) | `migrations/021_deployment_observation.sql` |

@@ -38,7 +38,7 @@
       "50-branches-per-repository propagation count (Elastic-only)"
     ],
     "contradicts": [
-      "Second-wave close: StepSecurity states propagation ran 09:38-13:20 UTC. The Tier 0 registry oracle bounds the last malicious publish at @thiennq/docs-viewer@1.6.4, 12:11:19.909Z. This is a DISAGREEMENT and must be escalated to Tier 0 per §1.2 - do not average the two. Either the oracle's candidate set is short a package published between 12:11 and 13:20, or StepSecurity rounded to its last observed artefact rather than a publish timestamp. Resolve by re-running derive_malicious_set across the second-wave namespace list below with a bracket extending past 14:00Z.",
+      "Second-wave close: StepSecurity states propagation ran 09:38-13:20 UTC. The Tier 0 registry oracle bounds the last malicious publish at @thiennq/docs-viewer@1.6.4, 12:11:19.909Z. This is a DISAGREEMENT and must be escalated to Tier 0 per §1.2 - do not average the two. Either the oracle's candidate set is short a package published between 12:11 and 13:20, or StepSecurity rounded to its last observed artifact rather than a publish timestamp. Resolve by re-running derive_malicious_set across the second-wave namespace list below with a bracket extending past 14:00Z.",
       "Campaign footprint: StepSecurity states 444 packages / 2,212 versions as of 2026-08-04 18:10 UTC, and 433 packages / 2,201 versions for the second wave alone. Consistent with SafeDep and Cloudsmith, higher than JFrog. Still a floor, not a count - see §1.4."
     ],
     "note": "Silence is not denial. An indicator absent here is unclaimed by StepSecurity, not refuted by it, and stays in hunt scope on the other source's assertion."
@@ -105,13 +105,13 @@
     },
     "redundancy": "The two sets cross-reference each other. Removing one leaves the other live, and opening the repository in either tool re-executes the chain with no npm install involved.",
     "token_monitor": {
-      "artefacts": [
+      "artifacts": [
         "~/.local/bin/gh-token-monitor.sh",
         "~/.config/gh-token-monitor/",
         "gh-token-monitor.service",
         "com.user.gh-token-monitor"
       ],
-      "behaviour": "Polls https://api.github.com/user every 60 seconds for 24 hours and fires the payload when the token stops authenticating.",
+      "behavior": "Polls https://api.github.com/user every 60 seconds for 24 hours and fires the payload when the token stops authenticating.",
       "_operational_consequence": [
         "This inverts the standard IR order. Revoking the stolen token is the trigger",
         "condition, not the remediation: the monitor treats revocation as the signal to",
@@ -127,7 +127,7 @@
       "contract": "0xE1f2395ee43e45A1556EC6438a88c31B83493103",
       "selector": "0x53ed5143",
       "rpc_endpoint_count": 75,
-      "behaviour": "Tries 75 public Ethereum RPC endpoints in sequence until one returns the current C2 address."
+      "behavior": "Tries 75 public Ethereum RPC endpoints in sequence until one returns the current C2 address."
     },
     "exfil": {
       "url": "https://npm-cache.com:443/router",
@@ -314,12 +314,12 @@
   },
   "evasion": {
     "locale_kill_switch": {
-      "behaviour": "Reads the LANG environment variable and exits without executing if it indicates a Russian locale.",
+      "behavior": "Reads the LANG environment variable and exits without executing if it indicates a Russian locale.",
       "_hunting_consequence": [
         "This is a false-negative source, not just trivia. A host with a Russian locale returns",
-        "clean from every behavioural rule in the detection set - no Bun spawn, no stage 2, no",
+        "clean from every behavioral rule in the detection set - no Bun spawn, no stage 2, no",
         "C2 - while the dropper is on disk and would have run. The file-hash rules still fire;",
-        "the process and network rules do not. Any zero from a behavioural rule must be paired",
+        "the process and network rules do not. Any zero from a behavioral rule must be paired",
         "with a locale check before it is read as clean. Consistent with CIS-based operator",
         "avoidance of domestic prosecution, which is an attribution hint and nothing more."
       ]
@@ -337,7 +337,7 @@
     "Hunt the two setup.mjs variants by hash, not by name or size. Same filename, 29,918 and 11,017 bytes, both malicious - and legitimate setup.mjs files exist in many repositories.",
     "The Bun fetch is a better detection than the C2 contact: one origin, no on-chain indirection, and it happens before any credential is read. It needs RemoteUrl, so it needs Network Protection.",
     "Runner-memory scraping is invisible to file and network telemetry. Hunt it as a process pattern - python3 under sudo with /proc in the command line, initiated from a runner work directory - and only on self-hosted runners.",
-    "The token monitor is the only artefact that survives a clean-up of setup.mjs, math_init.js, .claude/ and .vscode/. Sweep for it separately, and before revocation.",
+    "The token monitor is the only artifact that survives a clean-up of setup.mjs, math_init.js, .claude/ and .vscode/. Sweep for it separately, and before revocation.",
     "A host that reached npm-cache.com had inbound eval() available to the attacker. Scope it as arbitrary code execution, not as credential theft."
   ]
 }

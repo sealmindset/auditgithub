@@ -7,7 +7,7 @@ Why code search rather than another tree sweep
 The tree sweep (collect_repo_trees.py) reads one recursive tree per repository — 2,810
 requests against the core quota, which this hunt has already exhausted once. Code search
 draws on a separate bucket (`code_search`, 10 requests/minute) and answers a filename or
-content question across an entire organisation in a single request. For the indicators
+content question across an entire organization in a single request. For the indicators
 learned late from the Elastic and JFrog write-ups, that is the difference between a
 30-request hunt and a full re-sweep.
 
@@ -96,7 +96,7 @@ QUERIES: List[Dict[str, str]] = [
     # --- Bun bootstrap, including the Windows binary -------------------------
     # These are text queries on purpose. `filename:bun.exe` is deliberately NOT here:
     # GitHub's code-search index excludes binaries, so a committed bun.exe returns
-    # total_count 0 from this API and the zero would be an artefact of the index, not a
+    # total_count 0 from this API and the zero would be an artifact of the index, not a
     # fact about the estate. Binary presence is answered authoritatively by the tree
     # sweep (collect_repo_trees.py, bun_artifact_hits), which reads the git tree itself.
     #
@@ -202,7 +202,7 @@ def main() -> int:
     # The first run reported 7 hits; every content hit was this repository's
     # github_conf/ioc/*.json and docs/playbooks/*.md, plus a sibling audit tool's
     # CHANGELOG. Those are the files that define the indicators, so matching them is
-    # correct behaviour and a useless finding. Excluded by name, and the exclusions are
+    # correct behavior and a useless finding. Excluded by name, and the exclusions are
     # recorded in the output so the omission is visible rather than silent.
     excluded = {name.lower() for name in args.exclude_repos}
 
@@ -280,7 +280,7 @@ def main() -> int:
                 exact = [i for i in items
                          if (i["path"] or "").lower() == spec["expect_path"].lower()]
             elif spec["q"].startswith("filename:"):
-                # `filename:` matches tokenised names, not exact basenames:
+                # `filename:` matches tokenized names, not exact basenames:
                 # "filename:setup.mjs" returned scripts/gh-session-setup.mjs. Requiring
                 # the basename to match exactly keeps a legitimately-named file from
                 # being reported as the campaign's dropper.

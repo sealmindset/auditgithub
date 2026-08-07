@@ -14,9 +14,9 @@ So the document is ordered by *question*, not by audience, and each part is comp
 its own — a reader who stops after Part 1 has a true, if coarse, picture, and a reader
 who forwards only Part 2 has not forwarded something unsupported.
 
-The split of labour
+The split of labor
 -------------------
-Two things in Parts 1 and 2 are judgement, and one is arithmetic. They are separated
+Two things in Parts 1 and 2 are judgment, and one is arithmetic. They are separated
 deliberately, because the failure modes differ:
 
     Ordering      -> code.  `rank_actions` is a pure function of severity and blast
@@ -175,7 +175,7 @@ class BriefingRejected(ValueError):
 @dataclass
 class Finding:
     """
-    One thing that is wrong, normalised across report types.
+    One thing that is wrong, normalized across report types.
 
     `id` is what Parts 1 and 2 cite and what Part 3 anchors, so it must be stable for a
     given payload. `reach` is optional and defaults to "unknown" rather than to a guess:
@@ -316,7 +316,7 @@ class Briefing:
 
 
 # --------------------------------------------------------------------------- #
-# Normalising payloads into findings
+# Normalizing payloads into findings
 # --------------------------------------------------------------------------- #
 
 _PRODUCTION_HINT = re.compile(r"\b(prod|production|live)\b", re.IGNORECASE)
@@ -358,7 +358,7 @@ def _reach_of(entry: Dict[str, Any]) -> str:
             return "archived"
         if _DEVELOPMENT_HINT.search(haystack):
             return "development"
-        # Anything named but unrecognised: staging, qa, uat, a team's own label. Treated
+        # Anything named but unrecognized: staging, qa, uat, a team's own label. Treated
         # as internal rather than as unknown, because the entry did say where it runs.
         return "internal"
     return "unknown"
@@ -1040,7 +1040,7 @@ def author_briefing(
 
 def briefing_to_dict(briefing: Briefing) -> Dict[str, Any]:
     """
-    Serialise a briefing for storage alongside the analysis that produced it.
+    Serialize a briefing for storage alongside the analysis that produced it.
 
     Authoring happens once, at analysis time; every later export reads this back. That
     is what keeps a re-exported report identical to the original — and it is why the
@@ -1354,7 +1354,7 @@ def evidence_markdown(
     lines = [
         f"# {PART_TITLES[3]}",
         "",
-        "*Everything behind Parts 1 and 2, in full. Nothing here is summarised.*",
+        "*Everything behind Parts 1 and 2, in full. Nothing here is summarized.*",
         "",
         "## 3.1 Proof",
         "",

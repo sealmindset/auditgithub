@@ -1410,7 +1410,7 @@
   </div>
   
 </div>
-      <scrollable-region data-labelled-by="feedback-dialog-title">
+      <scrollable-region data-labeled-by="feedback-dialog-title">
         <div data-view-component="true" class="Overlay-body">        <!-- '"` --><!-- </textarea></xmp> --></option></form><form id="code-search-feedback-form" data-turbo="false" action="/search/feedback" accept-charset="UTF-8" method="post"><input type="hidden" data-csrf="true" name="authenticity_token" value="orfFGyA0ppN8Tif9jfN/x8NNz6Cqm+aaAfUW5ntbvcjCHNNHrZyUzEANSbcfQHhvjwB54TvuHia5PJK7QkOrBA==" />
           <p>We read every piece of feedback, and take your input very seriously.</p>
           <textarea name="feedback" class="form-control width-full mb-2" style="height: 120px" id="feedback"></textarea>
@@ -1445,7 +1445,7 @@
   </div>
   
 </div>
-      <scrollable-region data-labelled-by="custom-scopes-dialog-title">
+      <scrollable-region data-labeled-by="custom-scopes-dialog-title">
         <div data-view-component="true" class="Overlay-body">        <div data-target="custom-scopes.customScopesModalDialogFlash"></div>
 
         <div hidden class="create-custom-scope-form" data-target="custom-scopes.createCustomScopeForm">

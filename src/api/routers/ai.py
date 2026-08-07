@@ -696,7 +696,7 @@ async def get_zero_day_prompt():
     copy of the text, which had fallen out of date and advertised four tools when the
     analyst had more.
 
-    The tool catalogue is generated from the tool specs, so it lists exactly what the
+    The tool catalog is generated from the tool specs, so it lists exactly what the
     dispatcher can execute. Requires findings:read.
     """
     from src.ai_agent import zda_prompt

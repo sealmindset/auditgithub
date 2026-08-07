@@ -341,7 +341,7 @@ class GraphClient:
             raise GraphPermissionError(
                 f"The token carries no application roles, so '{capability}' cannot "
                 "succeed. Any empty result from this client would be a permission "
-                "artefact, not evidence."
+                "artifact, not evidence."
             )
         if not have.intersection(needed):
             raise GraphPermissionError(
@@ -618,7 +618,7 @@ DeviceProcessEvents
         """
         Read Entra sign-in logs. Follows @odata.nextLink, which this endpoint does supply.
 
-        Retention is 30 days on most licences (7 for some). Absence of a sign-in beyond
+        Retention is 30 days on most licenses (7 for some). Absence of a sign-in beyond
         the retention horizon is not evidence it did not happen — rule 0.5.
         """
         self.require_role("signIns")

@@ -117,7 +117,7 @@ def _summarize_hunt_evidence(name: str, payload: Any) -> str:
                      f"{payload.get('analyst_tooling_count')} analyst tooling")
         if payload.get("hits_per_indicator"):
             lines.append(f"  hits per indicator: {payload['hits_per_indicator']}")
-        # Label every row with why it matched. Handed an unlabelled list, the model has no
+        # Label every row with why it matched. Handed an unlabeled list, the model has no
         # way to tell a browser opening an article about the indicator from the indicator
         # executing, and the two lead to opposite conclusions.
         for r in payload.get("rows", [])[:_EVIDENCE_ROW_LIMIT]:
@@ -398,7 +398,7 @@ class ReasoningEngine:
         Run a zero-day / supply-chain hunt.
 
         Tool-use pattern:
-        1. Ask the LLM for a plan over the full tool catalogue
+        1. Ask the LLM for a plan over the full tool catalog
         2. Execute the plan, recording coverage limits alongside results
         3. Pass results plus coverage back to the LLM for synthesis
 
@@ -461,7 +461,7 @@ class ReasoningEngine:
 
             # Step 1: Determine Plan.
             # The prompt is built from zda_prompt so that GET /ai/zero-day/prompt returns
-            # the prompt actually in use, and so the advertised tool catalogue is
+            # the prompt actually in use, and so the advertised tool catalog is
             # generated from the same specs the dispatcher below can execute.
             planning_prompt = zda_prompt.build_planning_prompt(
                 query=query, scope=scope, organizations=org_names,

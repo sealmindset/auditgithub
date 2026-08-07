@@ -64,7 +64,7 @@ _STYLESHEET = _ASSETS / "report.css"
 # requires 0 <= number". `zipfile` converts through `time.localtime`, so 1980-01-01 UTC
 # fails the same way anywhere west of Greenwich. A date comfortably inside the range
 # avoids both, and the failure it avoids surfaces two modules away in a format this one
-# does not produce, only on a Python new enough to honour the variable.
+# does not produce, only on a Python new enough to honor the variable.
 os.environ.setdefault("SOURCE_DATE_EPOCH", "1577836800")
 
 # A table wider than this gets a condensed type size so it stops overflowing the
@@ -381,7 +381,7 @@ def _force_text_presentation(text: str) -> str:
     Ask for the monochrome form of every emoji the stylesheet fences.
 
     Pango decides which font shapes a run before CSS is consulted: a codepoint whose
-    default is emoji presentation goes to a colour emoji font whatever the stack says. On
+    default is emoji presentation goes to a color emoji font whatever the stack says. On
     Linux that font is Noto Color Emoji, whose glyphs are CBDT bitmaps — WeasyPrint embeds
     them and draws nothing, so the mark occupies its width and shows blank. Appending
     U+FE0E (VARIATION SELECTOR-15, "text presentation") moves the run back onto the
@@ -458,7 +458,7 @@ def markdown_to_html(
 
     ``emoji_text_presentation`` forces the monochrome form of the stylesheet's fenced
     emoji. It defaults off because it is a workaround for how Pango picks a font, and a
-    browser does not have that problem: HTML served to a reader should keep the colour
+    browser does not have that problem: HTML served to a reader should keep the color
     marks. The PDF path turns it on. See `_force_text_presentation`.
     """
     try:

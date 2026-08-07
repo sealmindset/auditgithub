@@ -3,7 +3,7 @@
 // Purpose      This worm propagates through the registry, not the network: it republishes
 //              packages using credentials stolen from the first victim, and the next victim
 //              is whoever installs those packages. So "spread" means other devices showing
-//              the same artefacts in the same window, not lateral movement.
+//              the same artifacts in the same window, not lateral movement.
 // Tables       DeviceFileEvents, DeviceProcessEvents
 // Permission   ThreatHunting.Read.All
 //

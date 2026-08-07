@@ -193,7 +193,7 @@ def check_permission(permission: str) -> Callable:
     """
     Create a dependency that REPORTS whether the user holds a permission, as a bool.
 
-    Unlike require_permissions, this never raises. It exists for routes whose behaviour
+    Unlike require_permissions, this never raises. It exists for routes whose behavior
     degrades rather than fails: the zero-day analyst runs its database tools for any
     caller with findings:write, but reaches live external systems only with
     hunt:execute, and the response records which surfaces went unexamined.

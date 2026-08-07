@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Render the daily supply-chain threat hunt report from the hunt's own artefacts.
+"""Render the daily supply-chain threat hunt report from the hunt's own artifacts.
 
 WHY THIS IS A SCRIPT AND NOT A DOCUMENT
 
-The hunt produces a dozen JSON coverage artefacts a day. Transcribing their numbers into
+The hunt produces a dozen JSON coverage artifacts a day. Transcribing their numbers into
 prose by hand is where a report starts lying: a stale count gets copied forward, a zero
 loses the coverage proof that made it meaningful, and nobody can tell. Every number in the
-output of this script is read from an artefact at render time, and every vector that has
-no artefact is printed as NOT RUN rather than omitted. A missing section is invisible; a
+output of this script is read from an artifact at render time, and every vector that has
+no artifact is printed as NOT RUN rather than omitted. A missing section is invisible; a
 NOT RUN row is not.
 
 STRUCTURE - one reader, three states of attention
@@ -46,7 +46,7 @@ So incomplete coverage is now a COUNT OF NAMED ITEMS (INCOMPLETE) - finite, list
 closable - and a method that cannot ever be complete is removed from the coverage verdict
 altogether (CORROBORATING). Doubt is only ever expressed as a work item.
 
-Absence of an artefact is never absence of a problem. That distinction is the whole point
+Absence of an artifact is never absence of a problem. That distinction is the whole point
 of the status column.
 """
 from __future__ import annotations
@@ -103,7 +103,7 @@ HUNT = REPO_ROOT / "exports/hunt"
 #   coverage_gaps  - we cannot look, and no amount of our own effort changes that. It needs
 #                    a privilege we do not hold, a device onboarded, a feature enabled, a
 #                    log retained. Within it we can neither confirm nor deny, and saying so
-#                    plainly is more useful than a colour.
+#                    plainly is more useful than a color.
 CLEAR = "CLEAR"
 INCOMPLETE = "INCOMPLETE"
 CORROBORATING = "CORROBORATING"
@@ -151,7 +151,7 @@ COVERAGE_GAP_FIELDS = ("gap", "population", "cannot_confirm_or_deny", "closed_by
 #
 # So the requirement is structural. A vector claiming it could not look must hand over six
 # named fields, and it is not possible to fill in `permission` and `granted_by` from an
-# empty `.env` - you have to go and ask the tenant, which is the behaviour the rule exists
+# empty `.env` - you have to go and ask the tenant, which is the behavior the rule exists
 # to force. A vector claiming it found something must name what it found. A vector claiming
 # any status at all must show the coverage evidence that earns it.
 #
@@ -168,7 +168,7 @@ ACCESS_GAP_FIELDS = ("api", "endpoint", "permission", "grant_type", "granted_by"
 # list before a single device gets onboarded, and if that list cannot be produced then the
 # sentence is a statement of unease, not a work item.
 #
-# So `named_by` is required and it means something narrow: the artefact or query that
+# So `named_by` is required and it means something narrow: the artifact or query that
 # returns the individual members of the population, by an identifier the owner can act on.
 # Not "Defender knows" - the actual query, with the actual identifier column. If a hunt
 # cannot say how to enumerate the set, it does not get to call the set a gap.
@@ -230,7 +230,7 @@ def validate_vectors(vectors: List[dict]) -> List[str]:
     for vector in vectors:
         name, status = vector.get("name", "(unnamed vector)"), vector.get("status")
 
-        # (a) A status is a conclusion from an artefact. NOT RUN is exempt - it is the one
+        # (a) A status is a conclusion from an artifact. NOT RUN is exempt - it is the one
         #     status that asserts nothing about the estate, so it has nothing to prove.
         if status != NOT_RUN and not vector.get("coverage"):
             problems.append(f"{name}: status {status} with no coverage evidence. §0.6(a) - "
@@ -254,7 +254,7 @@ def validate_vectors(vectors: List[dict]) -> List[str]:
 
         # (b) again, on the coverage axis. A population we cannot observe is reportable only
         #     if we can hand somebody the list. `named_by` is the field that cannot be
-        #     bluffed - it has to be a query or an artefact that returns the members.
+        #     bluffed - it has to be a query or an artifact that returns the members.
         for index, gap in enumerate(vector.get("coverage_gaps") or []):
             missing = [f for f in COVERAGE_GAP_FIELDS if not (gap.get(f) or "").strip()]
             if missing:
@@ -279,7 +279,7 @@ def read_json(path: Path) -> Optional[dict]:
         return None
     try:
         return json.loads(path.read_text())
-    except Exception as exc:  # noqa: BLE001 - a corrupt artefact must not be silently clean
+    except Exception as exc:  # noqa: BLE001 - a corrupt artifact must not be silently clean
         print(f"[report] unreadable {path}: {exc}", file=sys.stderr)
         return None
 
@@ -296,7 +296,7 @@ def latest_round(pattern: str, fallback: str) -> Path:
 
     Reading the newest is not a heuristic here - a later round of the same collector is
     strictly a re-run of the earlier one over the same repository set. What matters is
-    that the choice is printed, so a reader can see which artefact the numbers came from
+    that the choice is printed, so a reader can see which artifact the numbers came from
     rather than inferring it from a default buried in an argument list.
     """
     rounds = sorted(HUNT.glob(pattern),
@@ -334,14 +334,14 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
     total_repos = totals.get("repos", 0)
     walked = totals.get("truncation_resolved_by_walk", 0)
 
-    # CLEAR used to be decided by `unresolved_repos` alone. An artefact that reported
+    # CLEAR used to be decided by `unresolved_repos` alone. An artifact that reported
     # `tree_failed: 50` with an empty `resolution_accounting` and an empty
     # `unresolved_repos` therefore rendered as CLEAR over 2,760 of 2,810 repositories, and
     # the fifty that could not be read left no trace anywhere in the document. The one
     # coverage line that would have exposed it printed "Buckets sum to the enumerated
     # total: None", which reads as a missing field rather than as a failed assertion.
     #
-    # So the arithmetic is done here instead of trusted from the artefact. Whatever the
+    # So the arithmetic is done here instead of trusted from the artifact. Whatever the
     # collector did or did not populate, a repository is resolved or it is not, and the
     # difference between the two is a count this vector must carry. A sweep may only claim
     # CLEAR when its buckets actually sum.
@@ -353,7 +353,7 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
         failed = totals.get("tree_failed")
         named_unresolved.append(
             f"{unaccounted - len(named_unresolved)} repository tree(s) enumerated but not "
-            f"read, and not named in the artefact"
+            f"read, and not named in the artifact"
             + (f" (collector recorded tree_failed={failed})" if failed else "")
             + ". Re-run scripts/hunt/collect_repo_trees.py to resolve or name them.")
 
@@ -401,7 +401,7 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
             "Oversized trees re-read per-subtree to completion": walked,
             "npm-relevant repositories": totals.get("npm_relevant", 0),
             "Repos matching a campaign filename": hits,
-            "Bun artefacts found (bun.exe, bunx.exe, release zips, bun-dl- staging)": 0,
+            "Bun artifacts found (bun.exe, bunx.exe, release zips, bun-dl- staging)": 0,
         },
         "coverage": coverage,
         "limits": trees.get("limits", []),
@@ -435,7 +435,15 @@ def vector_branches(branches: Optional[dict]) -> dict:
             "Commits inspected": branches.get("commits_inspected", 0),
             "Campaign branches found": len(campaign),
             "Flagged commits": len(flagged),
-            "Bun-artefact commits": len(branches.get("bun_artifacts_changed", []) or []),
+            # `bun_artifacts_changed` is a field on each *commit* record, not a key on the
+            # sweep's top-level dict, so reading it from `branches` returned the default
+            # every time and this metric was structurally incapable of being non-zero. It
+            # happened to print the truth - the flagged set is empty - which is exactly why
+            # nothing caught it. Counted from the flagged commits instead: `inspect_commit`
+            # adds `bun_artifact_written` to `flags` whenever it finds Bun files, and any
+            # commit with a flag is in `flagged_commits`, so that set is complete.
+            "Bun-artifact commits": sum(
+                1 for c in flagged if c.get("bun_artifacts_changed")),
         },
         "coverage": [
             f"Window: {branches.get('window', {}).get('start')} to "
@@ -471,7 +479,7 @@ def vector_code_search(search: Optional[dict]) -> dict:
     return {
         "name": "GitHub code search (corroborating only)",
         "status": status,
-        # Excluded from the clean/unclean verdict by construction, not by judgement.
+        # Excluded from the clean/unclean verdict by construction, not by judgment.
         "counts_toward_coverage": False,
         "scope": f"{len(search.get('orgs') or {})} orgs, index holds ~{worst:.0%} of the "
                  f"worst-covered one",
@@ -547,7 +555,7 @@ def vector_ci(posture: Optional[dict], owners: Optional[dict]) -> dict:
     status = FINDINGS if (tojson or curl_sh or critical or mutable) else CLEAR
 
     # §0.6(c). Name the specific things that earned FINDINGS, so nobody has to reverse the
-    # boolean above to find out what is wrong. Every entry is a count from the artefact -
+    # boolean above to find out what is wrong. Every entry is a count from the artifact -
     # none of it is an assessment, and none of it is evidence of compromise, which is why
     # this vector never sets is_compromise_evidence.
     earned = []
@@ -612,7 +620,7 @@ def vector_reusable(reusable: Optional[dict]) -> dict:
     """Shared reusable workflows, weighted by how many repositories call them.
 
     This vector exists because the per-repository posture sweep systematically
-    under-ranks the estate's real exposure. Deployment logic here is centralised: a
+    under-ranks the estate's real exposure. Deployment logic here is centralized: a
     weakness in one shared workflow definition is not one finding, it is one finding
     multiplied by its consumer count. Ranking by repository would put a shared workflow
     with 246 consumers below a leaf repository with none.
@@ -645,7 +653,7 @@ def vector_reusable(reusable: Optional[dict]) -> dict:
         record["mechanisms"] = sorted(m for m in record["mechanisms"] if m)
         # toJSON renders every secret value into the job's shell as text, where it can be
         # written to a file or echoed. `secrets: inherit` passes the context to a called
-        # workflow without serialising it. Both are broad; only one is a text rendering,
+        # workflow without serializing it. Both are broad; only one is a text rendering,
         # and collapsing them would overstate the second and understate the first.
         record["serialises_to_text"] = "toJSON(secrets)" in record["mechanisms"]
         # A sink on a mutable ref can be changed by whoever owns it, with no version
@@ -666,7 +674,7 @@ def vector_reusable(reusable: Optional[dict]) -> dict:
             "Consumer repositories behind those definitions": sum(
                 r.get("consumer_count") or 0 for r in bulk),
             "Distinct sinks receiving the whole secrets context": len(ranked),
-            "Sinks that SERIALISE secrets to text AND sit on a mutable ref": len(worst),
+            "Sinks that SERIALIZE secrets to text AND sit on a mutable ref": len(worst),
             "Definitions that deploy": sum(1 for r in bulk if r.get("is_deploying")),
             "Definitions using OIDC instead of long-lived secrets": sum(
                 1 for r in rows if r.get("oidc_used")),
@@ -696,7 +704,7 @@ def vector_reusable(reusable: Optional[dict]) -> dict:
             f"{s['sink']} receives the whole secrets context from "
             f"{plural(s['workflows'], 'shared definition')} behind "
             f"{s['consumer_refs']} consumer reference(s)"
-            + (" - serialised to text, on a mutable ref" if s["serialises_to_text"]
+            + (" - serialized to text, on a mutable ref" if s["serialises_to_text"]
                and s["sink_ref_mutable"] else "")
             for s in ranked[:10]
         ],
@@ -726,7 +734,7 @@ def vector_registry(rederive: Optional[dict]) -> dict:
             f"publish {times[0] if times else 'n/a'}, last {times[-1] if times else 'n/a'}.",
             f"Query window {rederive.get('window', {}).get('start')} to "
             f"{rederive.get('window', {}).get('end')}, wider than the derived result, so "
-            f"the close of the window is a finding and not an artefact of where we stopped looking.",
+            f"the close of the window is a finding and not an artifact of where we stopped looking.",
         ],
         "window_first": times[0] if times else None,
         "window_last": times[-1] if times else None,
@@ -756,7 +764,7 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
     permissions queue for a permission already granted, while the query that would have
     answered the question took under a minute to run.
 
-    So this fallback no longer infers anything about access. Absence of the artefact means
+    So this fallback no longer infers anything about access. Absence of the artifact means
     the collector did not run; whether it *could* have run is a question only
     `scripts/hunt/hunt_endpoint_defender.py` is entitled to answer, because it is the only
     thing here that actually asks the tenant.
@@ -769,27 +777,27 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
         "scope": "0 devices queried",
         "counts": {"Hunting queries executed": 0},
         "coverage": [
-            "No endpoint_hunt.json artefact was supplied, so the Defender advanced-hunting "
+            "No endpoint_hunt.json artifact was supplied, so the Defender advanced-hunting "
             "collector did not run this cycle. This is a gap in the hunt, not a statement "
             "about access - run scripts/hunt/hunt_endpoint_defender.py, which resolves "
             "credentials from the encrypted store and reports the real permission state.",
             "The queries exist and are lint-clean: "
             "kql/coverage/08-bun-exe-telemetry-shape.kql (the control that makes a zero "
             "readable) and kql/backlog/22-bun-windows-artifact-sweep.kql (the bun.exe "
-            "artefact question).",
+            "artifact question).",
         ],
         "findings": [],
     }
 
 
 # ----------------------------------------------------------------------------------
-# Verdict. Deterministic, so the same artefacts always produce the same colour and nobody
+# Verdict. Deterministic, so the same artifacts always produce the same color and nobody
 # has to argue about whether today felt amber.
 #
-# The colour answers ONE question: in the population we can observe, is there evidence of
+# The color answers ONE question: in the population we can observe, is there evidence of
 # compromise? Coverage is computed alongside it and reported next to it, but it does not
 # move it. See the two-axes note at the top of this file for why - in short, folding the
-# dark third of the estate into the colour made the colour say AMBER every day for a reason
+# dark third of the estate into the color made the color say AMBER every day for a reason
 # no hunt result can change, which is how a RAG letter stops being read.
 # ----------------------------------------------------------------------------------
 
@@ -863,7 +871,7 @@ def compute_verdict(vectors: List[dict]) -> dict:
         # "Nothing in the estate" was the wording here, and it does not survive the coverage
         # split - nor did it survive scrutiny before it. This hunt reads the sources it can
         # reach. Saying "nothing we can observe" costs one clause and is the difference
-        # between a claim the artefacts support and one they do not.
+        # between a claim the artifacts support and one they do not.
         return {"rag": "AMBER",
                 "breached": "No - nothing we can observe matches this campaign, and every "
                             "check that says so proved it could have found it. The coverage "
@@ -963,7 +971,7 @@ def render_delta(previous: Optional[dict], current: dict,
     # A vector that was reported yesterday and is absent today is the most dangerous
     # possible delta and the easiest to miss: the reader sees a shorter table and no
     # warning. Iterating only today's vectors would let a broken collector silently
-    # remove a whole line of defence and still print "no change since the previous run".
+    # remove a whole line of defense and still print "no change since the previous run".
     #
     # But the alarm has to be earned. The previous version raised a WARNING for every
     # disappeared name and then admitted, in the same sentence, that it could not tell a
@@ -1018,7 +1026,7 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
     #                move. Someone else can change the code that already holds the secrets.
     #   inline     - secrets rendered to text inside a step we own. No third party can move
     #                it, but the values are still in the shell where anything can read them.
-    #   forwarded  - context passed onward without being serialised. Widest scope, lowest
+    #   forwarded  - context passed onward without being serialized. Widest scope, lowest
     #                immediacy.
     sinks = reusable.get("ranked_sinks", []) or []
     chokepoints = [s for s in sinks if s["serialises_to_text"] and s["sink_ref_mutable"]]
@@ -1029,7 +1037,7 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
             "priority": 1,
             "title": f"Pin and narrow the shared build steps that receive every secret - "
                      f"the largest takes {top['consumer_refs']} pipeline references",
-            "why_now": "Our build pipelines are centralised, which is normally a strength. "
+            "why_now": "Our build pipelines are centralized, which is normally a strength. "
                        "Here it concentrates risk: a small number of shared build steps "
                        "receive the complete set of secrets from a very large number of "
                        "repositories, and they are referenced by a moving label rather "
@@ -1076,11 +1084,11 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
         actions.append({
             "priority": 3,
             "title": "Narrow the shared workflows that forward the whole secrets context "
-                     "without serialising it",
+                     "without serializing it",
             "why_now": "These pass every secret to another workflow we own. That is "
                        "materially safer than writing them out as text - the values are "
                        "not rendered into a shell - but the receiving workflow still gets "
-                       "far more than it needs. Worth fixing after the serialising ones.",
+                       "far more than it needs. Worth fixing after the serializing ones.",
             "scope": f"{len(inherit_sinks)} shared workflows, "
                      f"{sum(s['consumer_refs'] for s in inherit_sinks)} pipeline references",
             "targets": [f"{s['sink']} - {s['consumer_refs']} pipeline refs"
@@ -1108,7 +1116,7 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
 
         Deployment topology resolves only the repositories whose deploy path could be
         inferred with evidence. Treating an unresolved repository as "does not reach
-        production" would de-prioritise it on the strength of a fact nobody established.
+        production" would de-prioritize it on the strength of a fact nobody established.
         """
         row = owner_index.get(repo) or {}
         return row.get("reaches_production")
@@ -1173,7 +1181,7 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
     #    priority-1 request for a permission the tenant had already granted. BLOCKED is a
     #    permissions problem and the fix is an access request. NOT RUN is an operations
     #    problem and the fix is running the collector, which costs a minute. Only the
-    #    artefact can say which one is true, so neither branch guesses.
+    #    artifact can say which one is true, so neither branch guesses.
     if endpoint.get("status") == BLOCKED:
         # §0.6(b). The targets used to be one hardcoded string naming ThreatHunting.Read.All
         # - which is the permission the tenant already held, so on the run that produced
@@ -1241,7 +1249,7 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
         # vector - the only one that can see a laptop - permanently at AMBER for a reason no
         # query will ever resolve. The hunt is clean over what it observes. What is
         # outstanding is that the observable set is smaller than the estate, which is
-        # somebody's budget and somebody's onboarding queue, not an unread artefact.
+        # somebody's budget and somebody's onboarding queue, not an unread artifact.
         #
         # Priority 2, not 1: nothing here is evidence of anything. It is the reason a future
         # answer might not exist.
@@ -1303,7 +1311,7 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
             "targets": [f"{ref} ({n} references)"
                         for ref, n in ci.get("unpinned_third_party", [])[:15]],
             "owners": ["Platform / DevOps"],
-            "effort": "Programme of work. Start with third-party, then first-party.",
+            "effort": "Program of work. Start with third-party, then first-party.",
             "blocked_by": None,
         })
 
@@ -1387,7 +1395,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w(f'  Overall status: "{verdict["rag"]}"')
     w(f'  Coverage: "{coverage["state"]}"')
     w('  Produced by: "scripts/hunt/render_hunt_report.py"')
-    w('  Evidence: "Every number is read from a hunt coverage artefact at render time."')
+    w('  Evidence: "Every number is read from a hunt coverage artifact at render time."')
     w("toc: true")
     w("---")
     w("")
@@ -1397,7 +1405,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w(f"**Report date:** {as_of}  ")
     w(f"**Classification:** Internal - names repositories, staff and infrastructure  ")
     w(f"**Produced by:** `scripts/hunt/render_hunt_report.py` from the hunt's own "
-      f"coverage artefacts. Every number is read from an artefact, not typed.")
+      f"coverage artifacts. Every number is read from an artifact, not typed.")
     w("")
     w("> **How to read this.** Section 1 answers your boss. Section 2 tells you what to "
       "do and in what order. Section 3 is the proof, the target list and the fixes for "
@@ -1413,7 +1421,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w("")
     w(f"**Are we breached? {verdict['breached']}**")
     w("")
-    # Two lines, not one, and the second one is not a footnote. The colour is a statement
+    # Two lines, not one, and the second one is not a footnote. The color is a statement
     # about what we can see; the coverage state is a statement about how much that is. A
     # reader given only the first will over-read it, and a reader given them fused into one
     # letter gets a letter that means neither thing.
@@ -1454,15 +1462,15 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     # The scope column is not decoration. Section 1 is where a reader forms the belief they
     # will repeat to their boss, and a result with no denominator beside it is the easiest
     # place in the document to over-read. Every number in it comes from the vector's own
-    # artefact.
+    # artifact.
     w("| We checked | How much of it | Result |")
     w("|---|---|---|")
     # Plain-language labels for what each vector looked at. These used to open with
     # "Every": every file in every repository we own, every third-party building block we
     # use, every automated build pipeline. None of that was provable. The sweep reads the
-    # GitHub organisations it was pointed at - not a repository on someone's laptop, not
+    # GitHub organizations it was pointed at - not a repository on someone's laptop, not
     # another VCS, not a private fork - and "every building block we use" is a claim about
-    # the estate, whereas the artefact only knows what it inventoried.
+    # the estate, whereas the artifact only knows what it inventoried.
     #
     # A label that overclaims is worse than a vague one, because it converts a measured
     # result into an unmeasured one at the exact point in the document where the reader is
@@ -1522,7 +1530,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     # problem whether or not one had been found.
     #
     # Both halves are now derived. The scope-limiting phrase is not hedging - it is the
-    # difference between a claim the artefacts support and one they do not.
+    # difference between a claim the artifacts support and one they do not.
     compromise = [v for v in vectors if v["status"] == FINDINGS
                   and v.get("is_compromise_evidence")]
     residue = sum(len(v.get("unresolved_items") or []) for v in vectors)
@@ -1615,7 +1623,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w("**Decisions needed from you.**")
     w("")
     # The first decision is derived, not fixed. It used to read "approve the access request
-    # for endpoint telemetry" unconditionally, which asked an executive to authorise a
+    # for endpoint telemetry" unconditionally, which asked an executive to authorize a
     # permission the tenant already held - and, worse, told them the laptops were unseen on
     # a cycle where they had been searched. What a reader is asked to decide has to follow
     # from what was actually found.
@@ -1703,7 +1711,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
           f"can query. Inside them a query returns nothing whether or not the campaign is "
           f"present, so no result from this report - clean or otherwise - describes them. "
           f"They are listed separately from the findings, they are not counted as findings, "
-          f"and they do not colour the verdict. That is not leniency: a colour driven by an "
+          f"and they do not color the verdict. That is not leniency: a color driven by an "
           f"unobservable population would say the same thing every day forever, and would "
           f"say it on the day something real happened.")
         w("")
@@ -1870,7 +1878,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         # Said explicitly because it is the sentence a reader would otherwise construct for
         # themselves, wrongly. Seven zeros in a row read as estate-wide clearance; two of
         # these are structurally narrower than that and say so in their own row.
-        w("> Read the last column before generalising any row. A rule keyed on Bun as the "
+        w("> Read the last column before generalizing any row. A rule keyed on Bun as the "
           "parent process cannot fire on a device where Bun never runs, so its zero clears "
           "only the devices where Bun executes - not the estate. The rows that are "
           "estate-wide say so.")
@@ -1897,7 +1905,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
           "`toJSON` renders every secret VALUE into the job as text, where it can be "
           "written to a file, echoed, or captured by any step that follows. "
           "`secrets: inherit` forwards the context to a called workflow without "
-          "serialising it. Both are wider than they need to be; only the first puts the "
+          "serializing it. Both are wider than they need to be; only the first puts the "
           "values in the shell.")
         w("")
         w("**Mitigation, in order.**")
@@ -1948,7 +1956,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("Where a step genuinely needs many secrets, prefer OIDC federation to the cloud "
           "provider over long-lived secrets, and scope the federated role to the "
           "environment. Where the whole context is passed to a reusable workflow, use "
-          "`secrets: inherit` on a called workflow you control instead of serialising to "
+          "`secrets: inherit` on a called workflow you control instead of serializing to "
           "text - `toJSON` renders every value into the job's shell, where it can be "
           "written to disk or logged.")
         w("")
@@ -2044,7 +2052,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w(f"- {line}")
         w("")
 
-    # Artefact ages. A report assembled from collectors that ran on different days is
+    # Artifact ages. A report assembled from collectors that ran on different days is
     # normal - the registry window is fixed history and re-reading it changes nothing,
     # while the endpoint surface moves hourly. What is not acceptable is presenting them
     # as one moment in time. Every "as of today" in the document is only true of the rows
@@ -2053,10 +2061,10 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w(heading("How old is each answer"))
         w("")
         w("Collectors run independently and are not all re-run every cycle. A stale "
-          "artefact is not wrong, but it answers a question about the day it was "
+          "artifact is not wrong, but it answers a question about the day it was "
           "collected, and this table is how a reader tells the two apart.")
         w("")
-        w("| Feeds | Artefact | Collected | Age at render |")
+        w("| Feeds | Artifact | Collected | Age at render |")
         w("|---|---|---|---|")
         for source in sources:
             w(f"| {source['feeds']} | `{source['path']}` | {source['collected']} "
@@ -2064,7 +2072,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("")
         stale = [s for s in sources if s["age_hours"] is not None and s["age_hours"] > 36]
         if stale:
-            w(f"**{plural(len(stale), 'artefact')} older than 36 hours: "
+            w(f"**{plural(len(stale), 'artifact')} older than 36 hours: "
               + ", ".join(f"`{s['path']}` ({s['age']})" for s in stale)
               + ".** Re-run those collectors before treating their vectors as current.")
             w("")
@@ -2072,7 +2080,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w(heading("Reproducing this report"))
     w("")
     w("```bash")
-    w("python3 scripts/hunt/collect_repo_trees.py        # files on disk, incl. Bun artefacts")
+    w("python3 scripts/hunt/collect_repo_trees.py        # files on disk, incl. Bun artifacts")
     w("python3 scripts/hunt/hunt_code_search.py          # corroborating index search")
     w("python3 scripts/hunt/hunt_branches.py             # branches and commits in the window")
     w("python3 scripts/ioc/match_npm_ioc.py --json exports/hunt/ioc_match_r3.json")
@@ -2186,7 +2194,7 @@ def main() -> int:
     actions = build_actions(ci, endpoint, ioc, owners, registry, reusable)
 
     # Provenance, read from the filesystem rather than declared. A collector that was not
-    # re-run leaves its artefact untouched, so mtime is the only honest answer to "when was
+    # re-run leaves its artifact untouched, so mtime is the only honest answer to "when was
     # this measured" - and it is the one number nobody can forget to update.
     now = datetime.now(timezone.utc)
     sources = []
@@ -2230,8 +2238,8 @@ def main() -> int:
         args.state.write_text(json.dumps(current_state, indent=2, default=str))
 
     print(f"[report] {verdict['rag']} -> {out_path}", file=sys.stderr)
-    # Which artefact each number came from. A default that resolves to a file is a default
-    # that can resolve to the wrong file, and the only cheap defence is saying which one.
+    # Which artifact each number came from. A default that resolves to a file is a default
+    # that can resolve to the wrong file, and the only cheap defense is saying which one.
     print(f"  read trees={args.trees.name} endpoint={args.endpoint.name}", file=sys.stderr)
     for vector in vectors:
         print(f"  {vector['status']:22s} {vector['name']}", file=sys.stderr)

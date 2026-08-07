@@ -4,12 +4,63 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — American English everywhere, and one metric that could never be non-zero (2026-08-07)
+
+Standing principle: reports, docstrings, comments, commit messages, CHANGELOG and TODO
+entries all use American English. The reports go to a US business audience, where a
+British spelling reads as a typo and spends the same credibility the §0.6 rule below
+exists to protect.
+
+Swept across every tracked text file — 42 files in the prose pass, plus the IOC and
+detection JSON and the 34 KQL files, whose British spellings were all in `//` comment
+headers rather than query text. Deliberately **not** rewritten, because they are external
+contracts rather than our prose:
+
+- `cancelled` — the GitHub Actions API spells the conclusion that way, and `asyncio` spells
+  `Task.cancelled()` that way. Changing it would break both.
+- `colors.grey` — a `reportlab` attribute name.
+- `@img/colour` in `src/web-ui/package-lock.json` — a real npm package name.
+- `aria-labelledby` — the HTML attribute.
+- `analyses` — already the correct American plural of *analysis*, and it dominates the
+  residue scan, so the scan filters it explicitly rather than by eye.
+
+**No identifier, dict key or JSON key was renamed.** That was checked rather than assumed:
+every changed line in every code file was grepped for identifiers, and the only two
+candidates turned out to be a producer/consumer pair (`bun_artifacts_changed`, written by
+`hunt_branches.py` and read by `render_hunt_report.py`) that were *already* spelled the
+American way. `bun_artefact_sweep` in `hunt_endpoint_defender.py` was renamed on its own,
+after confirming `interpret()` only ever runs on freshly collected evidence and no consumer
+reads that key out of a stored artifact — so the six saved `endpoint_hunt*.json` files
+carrying the old key cannot be read into a `KeyError`.
+
+Two count-metric labels did change — `Bun artefacts found …` and `Bun-artefact commits`.
+The report's delta section compares metrics by label, so both will skip their comparison
+for exactly one cycle. Named here because a silently skipped comparison looks identical to
+a comparison that found nothing.
+
+**And that identifier audit found a real defect, which is the more useful half of this
+entry.** `Bun-artifact commits` was computed as
+`len(branches.get("bun_artifacts_changed", []))` — but `bun_artifacts_changed` is a field on
+each individual *commit* record, never a key on the sweep's top-level dict. The `.get`
+returned its default on every run, so the metric was structurally incapable of reporting
+anything but zero. It printed `0`, which was the truth, which is precisely why nobody caught
+it: a blank wearing a number is indistinguishable from a measurement whenever the real
+answer happens to be nothing. Now counted from `flagged_commits`, which is complete for
+this purpose because `inspect_commit` adds `bun_artifact_written` to `flags` whenever it
+finds Bun files and every flagged commit lands in that list. Two probes pin it down: one
+asserts the count moves when a commit carries Bun files, the other sets the old top-level
+key to `[]` and asserts the answer still comes from the commits. 47 tests in
+`tests/test_hunt_report.py`, 180 across the report suite.
+
+**Verified:** 180 tests green in the container; the hunt report re-renders `AMBER` at exit
+0 with 8 vectors and 12 actions, and zero British spellings survive in the output.
+
 ### Changed — the hunt report now refuses to publish a claim it cannot substantiate (2026-08-07)
 
 **Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.
 
 Doctrine §0.6, added after the `BLOCKED` incident below: nothing goes in a report that
-cannot be proved from an artefact. The one permitted exception is a gap that more access
+cannot be proved from an artifact. The one permitted exception is a gap that more access
 would close, and it is only valid if the report prices that access in exact privileges. No
 false positives manufactured to look thorough — a padded report spends the reader's
 credibility on caveats and buries the findings that are real.
@@ -25,12 +76,12 @@ observation was accurate and the inference was not.
   `proves`; `FINDINGS` must name what was found. It returns every violation rather than
   raising on the first, so an author fixes the report instead of the checker's opinion.
 - **The six-field contract cannot be satisfied from an empty `.env`.** Filling in
-  `permission` and `granted_by` requires asking the tenant, which is the behaviour the rule
+  `permission` and `granted_by` requires asking the tenant, which is the behavior the rule
   exists to force. The endpoint collector now emits the `AuditLog.Read.All` gap as a
   structured entry, and it renders as a sentence a reader can forward to a tenant admin
   without a follow-up conversation.
 - **The repository sweep's buckets are now asserted to sum in the renderer.** `CLEAR` was
-  decided by `unresolved_repos` alone, so an artefact reporting `tree_failed: 50` with an
+  decided by `unresolved_repos` alone, so an artifact reporting `tree_failed: 50` with an
   empty `resolution_accounting` and an empty `unresolved_repos` printed `CLEAR` over 2,760
   of 2,810 with no trace of the other 50. The one coverage line that should have caught it
   printed "Buckets sum to the enumerated total: None", which reads as a missing field
@@ -38,7 +89,7 @@ observation was accurate and the inference was not.
   renderer does, not a field it trusts.
 - **…and the first thing that arithmetic reported was itself a false positive, which is
   the more useful half of this entry.** It said 50 repositories were enumerated and never
-  read. They had been read. `repo_trees_r4_coverage.json` sat beside the r3 artefact,
+  read. They had been read. `repo_trees_r4_coverage.json` sat beside the r3 artifact,
   three hours newer, with `resolution_accounting: {read: 2760, no_files: 50, unresolved: 0,
   sums_to_repos: true}` — the 50 are empty repositories, 49 answering GitHub's own
   `HTTP 409: Git Repository is empty` and one with a single commit and `file_count: 0`. A
@@ -47,8 +98,8 @@ observation was accurate and the inference was not.
   pinned to `repo_trees_r3_coverage.json`; a round number in a filename is a version, and a
   default pinned to one version is a default that goes stale in silence. `latest_round()`
   now resolves the highest round present (numerically — lexically, r4 beats r10), and the
-  run prints which artefact each number came from. The vector is `CLEAR`, on buckets that
-  sum. Checked for the same class of error: the 50 carry **0** indicator and Bun-artefact
+  run prints which artifact each number came from. The vector is `CLEAR`, on buckets that
+  sum. Checked for the same class of error: the 50 carry **0** indicator and Bun-artifact
   hits, and the newest `pushed_at` among them is 2026-06-10, outside the attack window.
 - **The delta section emitted a false positive and admitted it in the same sentence.**
   "GitHub code search (corroborating)" gained the word "only" and was reported as a
@@ -69,7 +120,7 @@ refusals (missing coverage, `NOT RUN` exemption, unpriced `BLOCKED`, half-filled
 gap, unnamed `INCOMPLETE` residue, unnamed `FINDINGS`), that the validator reports every
 violation rather than the first, that the collector's privilege reaches the page, the four
 bucket-arithmetic cases including a named repository not being double-counted, the two
-delta cases that separate a rename from lost coverage, and three on artefact selection —
+delta cases that separate a rename from lost coverage, and three on artifact selection —
 numeric round ordering, the fallback when no round exists, and that a repository with no
 commits is resolved rather than unread. Render re-run end to end: AMBER, 8 vectors, 12
 actions, files-on-disk `CLEAR` on buckets that sum.
@@ -100,7 +151,7 @@ minute.
   re-read against a different rule without re-querying the tenant. No GitHub budget is
   touched.
 - **`vector_endpoint` now falls back to `NOT RUN`, not `BLOCKED`,** and makes no claim
-  about credentials it cannot see. Absence of the artefact means the collector did not run;
+  about credentials it cannot see. Absence of the artifact means the collector did not run;
   whether it *could* have is a question only the collector may answer.
 - **The derived action follows the status.** `BLOCKED` still asks for access — that ask is
   correct when access is genuinely the blocker. `NOT RUN` asks someone to run it.
@@ -145,12 +196,12 @@ SQLite cannot compile the Postgres `ARRAY`/`JSONB` columns those fixtures build)
 **Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.
 
 The common thread: none of these raised, logged an error, or changed a byte count, a page
-count or `pdftotext` output. Two were found only by rasterising a page and looking at it.
+count or `pdftotext` output. Two were found only by rasterizing a page and looking at it.
 Each fix therefore ships with the probe that would have caught it — `tests/pdf_probes.py`
 reads facts back out of a PDF (WeasyPrint packs its objects into deflated `/ObjStm`
 streams, so grepping one as plaintext finds neither a font nor a page).
 
-- **Every digit in every report was invisible.** A colour emoji font carries the ASCII
+- **Every digit in every report was invisible.** A color emoji font carries the ASCII
   digits — they are the bases of the keycap sequences — and Pango hands it every digit in
   the document the moment the family appears anywhere in the stack, ahead of DejaVu rather
   than after it. Its CBDT bitmaps embed and then draw as nothing, so the digits kept their
@@ -158,7 +209,7 @@ streams, so grepping one as plaintext finds neither a font nor a page).
   and a blank for every count and page number. Fixed by fencing the emoji family behind
   `unicode-range`.
 - **The ✅/⚠️/🔴 marks were blank for the same reason**, and naming a monochrome family did
-  not help: Pango itemises an emoji-presentation run onto a colour font *before* the CSS
+  not help: Pango itemizes an emoji-presentation run onto a color font *before* the CSS
   stack is read. `_force_text_presentation` now appends U+FE0E to the fenced codepoints,
   which hands the run back to the stylesheet — prose only, never code blocks, where an
   invisible selector riding along on a copied command breaks it somewhere else entirely.
@@ -175,13 +226,13 @@ streams, so grepping one as plaintext finds neither a font nor a page).
   weights off the 100-step ladder, so `strong` rendered at the inherited weight, and five
   `word-break: break-word`. CSS Text 3 defines that deprecated value *as*
   `overflow-wrap: anywhere`, so on a table cell it caused the min-content starvation the
-  neighbouring rule exists to prevent. `requirements.txt` now floors at 69: the open floor
+  neighboring rule exists to prevent. `requirements.txt` now floors at 69: the open floor
   meant the host resolved 68 and the image 69, and the container rendered a different
   document from the one that had been reviewed.
 - **The `development` reach band was unreachable from an environment name**, so a
   repository deployed only to a sandbox was weighted 1.5× instead of 1.0× and described to
   the reader as "Internal-facing". A ranking defect, not a wording one — reach is the
-  multiplier the whole of Part 2 turns on. Named-but-unrecognised environments (staging,
+  multiplier the whole of Part 2 turns on. Named-but-unrecognized environments (staging,
   uat, a team's own label) still map to `internal`: the entry did say where it runs.
 - **`tests/test_export_endpoints.py` had never passed.** `AuthenticationMiddleware` reads
   `AUTH_REQUIRED` and returns 401 before any dependency resolves, so `dependency_overrides`
@@ -192,7 +243,7 @@ streams, so grepping one as plaintext finds neither a font nor a page).
 Linux fallback fonts are absent. A seven-page report rendered and inspected as images.
 `Dockerfile.api` gains `fonts-symbola`, `fonts-noto-core` and a build-time `fc-cache`.
 
-**Known limitation.** 🔴🟠🟡🔵 differ only by colour, and the fonts that make them visible
+**Known limitation.** 🔴🟠🟡🔵 differ only by color, and the fonts that make them visible
 are monochrome, so the severity marker column is now four near-identical hatched circles.
 The Severity column beside it carries the meaning; the marker no longer adds any.
 
@@ -200,7 +251,7 @@ The Severity column beside it carries the meaning; the marker no longer adds any
 
 **Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.
 
-**The problem.** A report went to someone wearing several hats, and it was organised the way
+**The problem.** A report went to someone wearing several hats, and it was organized the way
 the data was collected rather than the way that person reads it. They open the same document
 three times with three different questions, and had to reconstruct the answer each time.
 
@@ -210,12 +261,12 @@ three times with three different questions, and had to reconstruct the answer ea
     Part 2  What To Do, In Order     "What do I actually do, and first?"
     Part 3  Evidence, Targets, Fixes "Engineering wants proof and targets."
 
-Part 3 splits into **3.1 Proof** (the full evidence, unsummarised), **3.2 Target Resources**
+Part 3 splits into **3.1 Proof** (the full evidence, unsummarized), **3.2 Target Resources**
 (every finding with the id the earlier parts cite) and **3.3 Mitigations and Safeguards**.
 Not three audiences — one reader, three moments. Each part is complete on its own, so
 forwarding only Part 2 does not forward something unsupported.
 
-**The split of labour.** Ordering and every figure are computed in code; only the phrasing
+**The split of labor.** Ordering and every figure are computed in code; only the phrasing
 may come from a model, because the failure modes differ.
 - **Ordering → code.** `rank_actions` is a pure function of severity and blast radius. A
   priority list that reshuffles between renders is not a plan.
@@ -234,7 +285,7 @@ genuinely hard work sinks to the bottom of a list and stays there. Part 2 says s
 
 **Unknowns are counted, not rounded down.** A finding with no recorded blast radius ranks as
 `unknown`, and the count is printed in Parts 1, 2 and 3.2 — an unestablished reach must not
-silently rank as a small one. Same for unsized effort: assumed mid-range and labelled as
+silently rank as a small one. Same for unsized effort: assumed mid-range and labeled as
 assumed, because guessed-cheap is the estimate that wrecks a plan.
 
 **Changed — authored once, at analysis time**
@@ -304,7 +355,7 @@ a "did it render" check passes on it.
 **Changed — every producer now goes through it**
 - `src/api/routers/ai.py`: the six zero-day export endpoints are thin wrappers over one
   builder. `_pdf_evidence_sections()` and `_docx_evidence_sections()` deleted.
-- `src/api/utils/zda_report.py` gained the Markdown serialiser. The analysis text passes
+- `src/api/utils/zda_report.py` gained the Markdown serializer. The analysis text passes
   through **verbatim** — it is already Markdown, and escaping it was the original bug; only
   the generated scaffolding around it is escaped.
 - `src/reporting/pdf_generator.py` rewritten off dead reportlab code.
@@ -343,9 +394,9 @@ shared with another active session whose in-flight KQL work sits in three of the
 so nothing was staged. See `handoff.md` for what belongs to whom.
 
 **Added — three detection rules, 6 → 9 in `github_conf/detections/npm_supply_chain_rules.json`**
-- `npm-shaihulud-token-monitor` (high, quarantine-only) — the token-revocation watchdog, which is the only artefact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/`. A host cleaned on that basis is still armed.
+- `npm-shaihulud-token-monitor` (high, quarantine-only) — the token-revocation watchdog, which is the only artifact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/`. A host cleaned on that basis is still armed.
 - `npm-shaihulud-bun-fetch` (medium, isolate-selective) — the dropper's Bun release fetch. The earliest network event in the chain: it precedes credential collection, where the C2 rule only fires after collection completed.
-- `npm-shaihulud-runner-mem-scrape` (high, isolate-full) — `sudo python3` reading `/proc/<Runner.Worker pid>/mem` for `"isSecret":true`. It writes no file and opens no connection, so the hash, C2 and exfil-artefact rules are all blind to it.
+- `npm-shaihulud-runner-mem-scrape` (high, isolate-full) — `sudo python3` reading `/proc/<Runner.Worker pid>/mem` for `"isSecret":true`. It writes no file and opens no connection, so the hash, C2 and exfil-artifact rules are all blind to it.
 - All three are `armed: false`, undeployed, and have **no proof-of-concept coverage** — recorded as such on every surface rather than counted as detection. The KQL library covers 6 of 9 rules, so for those three the 30-day history is unexamined, not clean.
 - Verified: 9/9 validate clean under the deployer's own checks. Dry run remains the default and `--force` still does not override `armed: false`.
 
@@ -369,7 +420,7 @@ so nothing was staged. See `handoff.md` for what belongs to whom.
 - Removing passwordless `sudo` from self-hosted runner service accounts, which prevents the memory-scrape class rather than detecting it.
 
 **Known blind spot recorded, not closed**
-- The payload declines to run under a Russian locale, and those hosts read clean on every behavioural rule — only the file/hash rules still fire. Estate locale enumeration is outstanding.
+- The payload declines to run under a Russian locale, and those hosts read clean on every behavioral rule — only the file/hash rules still fire. Estate locale enumeration is outstanding.
 
 ### Added — Deployment Topology P1/P2 and Shared GitHub Budget Governor (2026-08-06)
 

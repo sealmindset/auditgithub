@@ -51,7 +51,7 @@ covers the existing 30-day window.
 | `20-backlog-sweep-all-signals.kql` | All six detection signals, 30 days, one result set |
 | `21-adjacent-package-hosts.kql` | Which *devices* hold the affected package trees on disk — the endpoint-level view of the 81 repos Layer 1 flagged as adjacent. Exposure surface, not compromise. |
 
-Run `20` **before** deploying the rules. Once a rule is armed, a three-week-old artefact
+Run `20` **before** deploying the rules. Once a rule is armed, a three-week-old artifact
 can isolate a machine that has been clean for weeks.
 
 ### 3. `detections/` — the six rules, verbatim

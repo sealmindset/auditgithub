@@ -557,7 +557,7 @@ def get_repository_deployment_status(
 
 
 # Tools advertised to the zero-day planner, kept beside the implementations so the
-# catalogue in the prompt cannot drift from what the dispatcher can actually call.
+# catalog in the prompt cannot drift from what the dispatcher can actually call.
 # search_deployments and search_workflow_runs existed here for a long time without ever
 # being reachable by the agent, which is why the planner could not ask whether a build
 # ran during an attack window.

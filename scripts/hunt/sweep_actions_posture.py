@@ -24,19 +24,19 @@ What is measured
     request's head. That pair runs untrusted code with the base repository's secrets and
     is the highest-severity Actions misconfiguration there is.
   * Absent `permissions:` blocks. Without one the workflow gets the repository default,
-    which on many organisations is still read-write on contents.
+    which on many organizations is still read-write on contents.
   * Self-hosted runners, where a compromised job can persist on the host between jobs.
   * Piped remote code (`curl ... | sh`) in run steps.
   * Secrets interpolated directly into `run:` script bodies, where they land in process
     arguments rather than the environment.
 
 Each is reported as a count with the evidence attached, not as a pass or fail. Which of
-these are acceptable is an organisational decision; the sweep's job is to make the
+these are acceptable is an organizational decision; the sweep's job is to make the
 current state legible.
 
 Coverage
 --------
-Workflow files found versus read is reported per organisation, and a run whose read rate
+Workflow files found versus read is reported per organization, and a run whose read rate
 falls below the threshold is marked as not supporting any statement about prevalence.
 """
 
@@ -78,7 +78,7 @@ CURL_PIPE_RE = re.compile(r"(?:curl|wget)[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba)?sh
 SECRET_IN_RUN_RE = re.compile(r"\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}")
 # The exfil primitive itself, not the two filenames it has been seen under. Both
 # documented variants -- `codeql_analysis.yml` on a dependabot branch, and a workflow
-# named `Run Copilot` on push -- do one thing: serialise the whole secrets context and
+# named `Run Copilot` on push -- do one thing: serialize the whole secrets context and
 # upload it. Keying on either filename misses the other, and misses the next one.
 TOJSON_SECRETS_RE = re.compile(r"toJSON\s*\(\s*secrets\s*\)", re.IGNORECASE)
 # Bun bootstrap in CI, including the Windows binary. `bun.exe` is listed explicitly
@@ -385,7 +385,7 @@ def main() -> int:
             "pull_request_target or workflow_run combined with a checkout of the pull "
             "request head runs untrusted code with the base repository's secrets. Any hit "
             "here is a standalone critical finding independent of any campaign.",
-            "A workflow with no permissions block inherits the organisation default. Where "
+            "A workflow with no permissions block inherits the organization default. Where "
             "that default is read-write, a planted step can commit — which is exactly the "
             "capability CHAINDROP's exfiltration workflow used.",
             "Counts are only interpretable as prevalence where read_rate meets the "
@@ -406,7 +406,7 @@ def main() -> int:
             ".github/workflows files.",
             "Static text analysis. A composite action referenced by a pinned SHA can "
             "itself use mutable refs internally, which is not visible here.",
-            "Reusable workflows called with workflow_call are analysed where they live in "
+            "Reusable workflows called with workflow_call are analyzed where they live in "
             "this estate and not where they are external.",
         ],
     }

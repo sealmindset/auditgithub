@@ -86,7 +86,7 @@ union
 """
 
 # The write, not the execution. The campaign fetches a Bun release archive and unpacks it;
-# on Windows there is no chmod step, so the file write is the earliest artefact that exists
+# on Windows there is no chmod step, so the file write is the earliest artifact that exists
 # at all. Nothing else in the library looks at it.
 Q_BUN_WRITTEN = """
 let BunBinaries = dynamic(["bun.exe", "bunx.exe", "bun", "bunx"]);
@@ -186,7 +186,7 @@ def _clean(rows: List[dict]) -> List[dict]:
     """Drop Kusto's `@odata.type` companion keys.
 
     The Graph JSON carries a `Foo@odata.type` sibling for every non-string column. They
-    double the size of the artefact and none of them is evidence.
+    double the size of the artifact and none of them is evidence.
     """
     return [{k: v for k, v in row.items() if not k.endswith("@odata.type")} for row in rows]
 
@@ -221,7 +221,7 @@ def run(lookback_days: int) -> Dict[str, Any]:
         "toolchain_visibility": hunt(
             "coverage_08",
             (KQL / "coverage/08-bun-exe-telemetry-shape.kql").read_text()),
-        "bun_artefact_sweep": hunt(
+        "bun_artifact_sweep": hunt(
             "backlog_22",
             (KQL / "backlog/22-bun-windows-artifact-sweep.kql").read_text()),
         # The fetch, and the control that decides whether its zero can be read at all.
@@ -378,7 +378,7 @@ def build_bun_questions(ev: Dict[str, Any], lookback: int, bun_rows: List[dict],
         {
             "question": "Where Bun did execute, did it run from a temp or staging path?",
             "hits": len(suspicious),
-            "error": failed("bun_artefact_sweep"),
+            "error": failed("bun_artifact_sweep"),
             "control": f"The sweep returned Bun activity on {bun_devices} device(s) "
                        f"({', '.join(bun_platforms) or 'no platform'}), so it is reading "
                        f"real rows and each is triaged individually.",
@@ -444,7 +444,7 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
     bun_exe = ev["bun_exe_any_table"]
     written = ev["bun_binary_or_archive_written"]["rows"]
     written_events = written[0].get("Events", 0) if written else 0
-    sweep_rows = ev["bun_artefact_sweep"]["rows"]
+    sweep_rows = ev["bun_artifact_sweep"]["rows"]
 
     # A sweep row is only a finding if it is NOT explained. Explained means: outside a temp
     # or staging path, and not spawned by a package manager. That is the benign developer
@@ -471,7 +471,7 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
     # had found something unresolved when what it had found was nothing at all across
     # 3,424 devices with controls proving the queries worked - and it made the endpoint
     # vector, the only one that can see a laptop, permanently amber for a reason no query
-    # will ever resolve. A colour that never changes is a colour nobody reads.
+    # will ever resolve. A color that never changes is a color nobody reads.
     #
     # The test for which list an item belongs in is: can WE close it with the access we
     # already hold?
@@ -530,7 +530,7 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
                          "DeviceId, DeviceName, OSPlatform` - one row per device, carrying "
                          "the identifier the endpoint team acts on"),
             "cannot_confirm_or_deny": "whether any Bun execution, credential access or "
-                                      "campaign artefact occurred on them - they emit no "
+                                      "campaign artifact occurred on them - they emit no "
                                       "events, so every query returns nothing whether or "
                                       "not it happened",
             "closed_by": closed_by,
@@ -684,7 +684,7 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
             f"DeviceProcessEvents, DeviceFileEvents and DeviceImageLoadEvents over "
             f"{lookback} days, and zero Bun release archives or bun-dl- staging directories "
             f"were written anywhere in the estate.")
-    # The Bun question set, stated as coverage rather than left in the artefact, because
+    # The Bun question set, stated as coverage rather than left in the artifact, because
     # "did Bun run here" is the question this vector exists to answer and it is seven
     # questions that fail independently.
     answered = sum(1 for q in bun_questions if q["readable"])

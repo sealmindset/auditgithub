@@ -38,7 +38,7 @@ def page_count(pdf: bytes) -> int:
 
 def bitmap_only_fonts(pdf: bytes) -> set:
     """
-    Embedded fonts whose glyphs are colour bitmaps rather than outlines.
+    Embedded fonts whose glyphs are color bitmaps rather than outlines.
 
     WeasyPrint embeds a CBDT/sbix font quite happily and then draws nothing from it: the
     glyph keeps its advance width and the reader sees a gap. Nothing about that is

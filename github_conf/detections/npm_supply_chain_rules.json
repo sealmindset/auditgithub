@@ -12,7 +12,7 @@
   },
   "design_notes": {
     "why_not_name_matching": "These rules deliberately never mention keyv, cacheable, flat-cache, file-entry-cache or cacheable-request by name. Those are ubiquitous legitimate dependencies and EDR telemetry does not expose the resolved version, so a name-keyed endpoint rule alerts on normal installs and nothing else. Exact name@version matching happens against the dependency inventory — scripts/ioc/match_npm_ioc.py.",
-    "why_behaviour_and_hashes": "The worm republishes continuously with incremented patch versions, so any version list is stale on arrival. Loader behaviour (node -> setup.mjs -> Bun -> math_init.js) and payload hashes are version-independent.",
+    "why_behaviour_and_hashes": "The worm republishes continuously with incremented patch versions, so any version list is stale on arrival. Loader behavior (node -> setup.mjs -> Bun -> math_init.js) and payload hashes are version-independent.",
     "npm_12_gap": "npm >= 12 does not run preinstall hooks by default, so a rule keyed on npm execution misses the IDE/agent autostart chain entirely. npm-shaihulud-agent-hook-drop covers that path, and it fires with no npm involvement at all.",
     "required_query_columns": "Defender custom detections require the query to return Timestamp and ReportId, plus every column referenced by an entityMappings entry. A mapping that names a column the query does not project makes the rule fail at create time.",
     "query_lookback_matches_frequency": "Each query's ago() window equals its schedule.frequency. A longer window re-alerts on the same event every run; a shorter one drops events between runs.",
@@ -22,7 +22,7 @@
       "bun_release_url_as_an_indicator_block": "github.com/oven-sh/bun/releases/download/* is the best detection point in the chain (npm-shaihulud-bun-fetch) and the best prevention point, but prevention belongs in a CI egress allowlist, not a tenant-wide URL indicator on a legitimate GitHub origin. Blocking it in Defender would break every developer installing Bun."
     },
     "automated_response": "Automated response is defined per rule under `killSwitch` and requires TWO independent keys to fire: killSwitch.armed must be true in this file (a git-reviewable change) AND the operator must pass --arm at deploy time. A plain --apply strips automatedActions and warns. Neither key alone does anything.",
-    "locale_kill_switch_false_negative": "CHAINDROP reads LANG and exits without executing if it indicates a Russian locale (StepSecurity). On such a host the dropper is on disk and would have run, but every behavioural rule here returns nothing: no Bun spawn, no loader exec, no C2, no exfil artefact. Only the file-write rules fire — payload-hash, agent-hook-drop and token-monitor. This is the structural argument for weighting the set towards file telemetry: that surface is indifferent to whether the code ran. Enumerate estate locales before reading a behavioural zero as clean.",
+    "locale_kill_switch_false_negative": "CHAINDROP reads LANG and exits without executing if it indicates a Russian locale (StepSecurity). On such a host the dropper is on disk and would have run, but every behavioral rule here returns nothing: no Bun spawn, no loader exec, no C2, no exfil artifact. Only the file-write rules fire — payload-hash, agent-hook-drop and token-monitor. This is the structural argument for weighting the set towards file telemetry: that surface is indifferent to whether the code ran. Enumerate estate locales before reading a behavioral zero as clean.",
     "detect_the_primitive_not_the_filename": "The exfil workflow has two observed dressings: codeql_analysis.yml on branch dependabot/github_actions/format/setup-formatter, and a workflow named 'Run Copilot' on push (StepSecurity). Both do one thing — write ${{ toJSON(secrets) }} to a file and upload it as an artifact. npm-shaihulud-exfil-artifacts keys on node/bun writing the file, which covers both because the primitive is the file write. A rule keyed on either workflow filename would miss the other variant and the next one.",
     "provenance_is_not_a_control": "Provenance fails twice in this campaign and neither failure is fixable by verifying harder. The attacker self-mints Sigstore attestations via fulcio.sigstore.dev and rekor.sigstore.dev from the stolen publisher context; and keyv@6.0.0 was published by the project's own legitimate release workflow and carries genuine, valid SLSA provenance attesting a real build from a real commit. The commit was malicious. A provenance-verifying control passes that package. The reviewable upstream signal is a diff to release tooling that relocates a version or channel decision from CI configuration into repository-controlled state — commit ee2681a moved latestMajor out of an env var and into the repo's own package.json."
   },
@@ -39,7 +39,7 @@
       "isolate-full": "Total network isolation. Use only where the finding is confirmed-malicious on its own, with no benign explanation."
     },
     "release_is_manual_and_out_of_band": "Nothing here un-isolates a device. Release is a deliberate human action via the Defender portal or POST /api/machines/{id}/unisolate on api.securitycenter.microsoft.com (Machine.Isolate scope). Confirm eradication and credential rotation before releasing — a device released with the loader still on disk re-isolates on the next hourly run.",
-    "why_no_file_quarantine_on_process_rules": "stopAndQuarantineFiles keys on the file the query returns. On a process-event rule that file is the interpreter — node.exe or bun.exe. Quarantining it bricks the developer's toolchain and does nothing to the payload, which is a script. File actions are therefore attached only to file-event rules, where the returned hash is the malicious artefact itself.",
+    "why_no_file_quarantine_on_process_rules": "stopAndQuarantineFiles keys on the file the query returns. On a process-event rule that file is the interpreter — node.exe or bun.exe. Quarantining it bricks the developer's toolchain and does nothing to the payload, which is a script. File actions are therefore attached only to file-event rules, where the returned hash is the malicious artifact itself.",
     "unverified_action_types": "automatedActionSet also exposes blockFiles, allowFiles, disableUsers, forceUserPasswordResets, markUsersAsCompromised and the six email actions. Their nested column-property names are NOT verified against the Microsoft reference here, so the deployer rejects them rather than guessing and sending a 400 — or worse, a wrong-shaped payload that a future schema change silently reinterprets. Verify the resource doc, then add them.",
     "disarm": "scripts/ioc/deploy_detection_rules.py --disarm --apply strips automatedActions from every deployed rule immediately. It needs no confirmation because it only ever reduces capability. Verify with --kill-switch-status, which reads the tenant rather than this file."
   },
@@ -82,7 +82,7 @@
       "detectionAction": {
         "alertTemplate": {
           "title": "Shai-Hulud npm worm payload written to disk",
-          "description": "A file matching a known Shai-Hulud August 2026 SHA-256 was created on this device. This is a confirmed-malicious artefact, not a heuristic.",
+          "description": "A file matching a known Shai-Hulud August 2026 SHA-256 was created on this device. This is a confirmed-malicious artifact, not a heuristic.",
           "severity": "high",
           "recommendedActions": "Treat the device as credential-compromised. 1) Capture the file and its parent directory before remediation. 2) Revoke every credential reachable from that user context: npm publish tokens, GitHub PATs and Actions tokens, cloud keys, and anything in the shell environment. 3) Search the repo working tree for setup.mjs, math_init.js, .claude/ and .vscode/ hooks, and .github/workflows/codeql_analysis.yml. 4) Check GitHub audit logs for pushes on branch dependabot/github_actions/format/setup-formatter and for new repos described 'Shai-Hulud: Here We Go Again'. 5) Run scripts/ioc/match_npm_ioc.py to identify which repo and package version delivered it.",
           "entityMappings": {
@@ -232,7 +232,7 @@
         }
       },
       "displayName": "Shai-Hulud npm worm — Bun runtime spawned by node or npm",
-      "description": "The loader downloads Bun 1.3.13 from the official GitHub release and runs the payload under it, sidestepping Node-level hardening. Bun launched by a shell is normal developer behaviour; Bun launched by node or npm during an install is not.",
+      "description": "The loader downloads Bun 1.3.13 from the official GitHub release and runs the payload under it, sidestepping Node-level hardening. Bun launched by a shell is normal developer behavior; Bun launched by node or npm during an install is not.",
       "status": "enabled",
       "queryCondition": {
         "queryText": "DeviceProcessEvents\n| where Timestamp > ago(1h)\n| where FileName in~ (\"bun\",\"bun.exe\",\"bunx\",\"bunx.exe\")\n| where InitiatingProcessFileName in~ (\"node\",\"node.exe\",\"npm\",\"npm.exe\",\"npm-cli.js\")\n| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,\n          FileName, FolderPath, ProcessCommandLine, SHA256,\n          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath\n| limit 1000"
@@ -453,7 +453,7 @@
       "killSwitch": {
         "armed": true,
         "tier": "isolate-selective",
-        "justification": "The staging file or the forged exfil workflow was written by node/bun. Isolating stops the local push; quarantining the artefact removes the staged credential dump. Selective so the responder can reach the developer while the GitHub-side cleanup runs — the workflow may already be on the remote, and that half is not containable from the endpoint.",
+        "justification": "The staging file or the forged exfil workflow was written by node/bun. Isolating stops the local push; quarantining the artifact removes the staged credential dump. Selective so the responder can reach the developer while the GitHub-side cleanup runs — the workflow may already be on the remote, and that half is not containable from the endpoint.",
         "automatedActions": {
           "isolateDevices": [
             {
@@ -474,7 +474,7 @@
           ]
         }
       },
-      "displayName": "Shai-Hulud npm worm — exfil workflow or results artefact written by node/bun",
+      "displayName": "Shai-Hulud npm worm — exfil workflow or results artifact written by node/bun",
       "description": "The worm stages stolen data as format-results.txt and exfiltrates it through a forged .github/workflows/codeql_analysis.yml attributed to github-advanced-security[bot]. Both filenames are legitimate in isolation; a node or bun process writing them is not.",
       "status": "enabled",
       "queryCondition": {
@@ -485,10 +485,10 @@
       },
       "detectionAction": {
         "alertTemplate": {
-          "title": "Shai-Hulud exfil artefact written by a Node/Bun process",
-          "description": "A Node or Bun process wrote the worm's staging file or its forged CodeQL workflow. The workflow is the exfiltration channel: it runs in GitHub Actions with repo credentials and uploads the harvested data as a build artefact.",
+          "title": "Shai-Hulud exfil artifact written by a Node/Bun process",
+          "description": "A Node or Bun process wrote the worm's staging file or its forged CodeQL workflow. The workflow is the exfiltration channel: it runs in GitHub Actions with repo credentials and uploads the harvested data as a build artifact.",
           "severity": "high",
-          "recommendedActions": "Check the repo's remote for a pushed workflow change and for the branch dependabot/github_actions/format/setup-formatter. Delete any format-results artefact from Actions — it contains the stolen credentials. Rotate the Actions token and every secret the workflow could read. Review the org audit log for repos created with the description 'Shai-Hulud: Here We Go Again' or named from Dune vocabulary.",
+          "recommendedActions": "Check the repo's remote for a pushed workflow change and for the branch dependabot/github_actions/format/setup-formatter. Delete any format-results artifact from Actions — it contains the stolen credentials. Rotate the Actions token and every secret the workflow could read. Review the org audit log for repos created with the description 'Shai-Hulud: Here We Go Again' or named from Dune vocabulary.",
           "entityMappings": {
             "hosts": [
               {
@@ -554,7 +554,7 @@
         }
       },
       "displayName": "Shai-Hulud npm worm — token-revocation watchdog dropped",
-      "description": "CHAINDROP installs a watchdog that polls https://api.github.com/user every 60 seconds for 24 hours and fires the payload when the token stops authenticating. It is the only artefact that survives deleting setup.mjs, math_init.js, .claude/ and .vscode/, so a host cleaned on that basis is still armed. It also inverts incident-response order: revoking the stolen credential is the trigger condition, not the remedy.",
+      "description": "CHAINDROP installs a watchdog that polls https://api.github.com/user every 60 seconds for 24 hours and fires the payload when the token stops authenticating. It is the only artifact that survives deleting setup.mjs, math_init.js, .claude/ and .vscode/, so a host cleaned on that basis is still armed. It also inverts incident-response order: revoking the stolen credential is the trigger condition, not the remedy.",
       "status": "enabled",
       "queryCondition": {
         "queryText": "DeviceFileEvents\n| where Timestamp > ago(1h)\n| where ActionType in~ (\"FileCreated\",\"FileModified\",\"FileRenamed\")\n| where FileName in~ (\"gh-token-monitor.sh\",\"gh-token-monitor.service\",\n                      \"com.user.gh-token-monitor.plist\",\"com.user.gh-token-monitor\")\n     or FolderPath has_any (\"\\\\gh-token-monitor\",\"/gh-token-monitor\")\n| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,\n          ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessAccountName, InitiatingProcessAccountDomain,\n          InitiatingProcessAccountSid\n| limit 1000"
@@ -565,7 +565,7 @@
       "detectionAction": {
         "alertTemplate": {
           "title": "Shai-Hulud token-revocation watchdog written to disk",
-          "description": "A gh-token-monitor artefact was created. This watchdog polls api.github.com/user every 60s for 24h and executes the payload when the token it is watching stops working. Do not revoke any credential on this host until the watchdog is removed.",
+          "description": "A gh-token-monitor artifact was created. This watchdog polls api.github.com/user every 60s for 24h and executes the payload when the token it is watching stops working. Do not revoke any credential on this host until the watchdog is removed.",
           "severity": "high",
           "recommendedActions": "READ THIS BEFORE ROTATING ANYTHING. 1) Remove the watchdog first — disable and delete ~/.local/bin/gh-token-monitor.sh, ~/.config/gh-token-monitor/, the gh-token-monitor.service user unit (Linux) or the com.user.gh-token-monitor launchd label (macOS), then confirm with `pgrep -af gh-token-monitor` returning nothing. Revoking a credential while this is live is the condition it waits for, and it responds by re-collecting and re-exfiltrating from whatever is still valid. 2) Then rotate, using the wide scope in playbook §7 step 2 — npm tokens (especially any with bypass_2fa true), GitHub PATs and Actions tokens, AI-tool credentials under .claude/.codex/.cursor/.openai/.anthropic/.gemini, cloud keys plus anything reachable via IMDSv2 or ECS task metadata, Vault tokens, SSH keys, Kubernetes service-account tokens. 3) Then eradicate the rest. This ordering is a carve-out to 'rotate before you eradicate', not a reversal of it.",
           "entityMappings": {
@@ -613,7 +613,7 @@
       "operational_caveats": [
         "Filename matching is acceptable here and nowhere else in this rule set: nothing legitimate ships a file called gh-token-monitor.sh, whereas setup.mjs and Math_Symbol.js both have benign homonyms. If a future variant renames it, the rule goes quiet — pair it with the process-level pattern of a repeating 60-second outbound request to api.github.com from a non-git, non-gh process.",
         "Quarantining the script does not remove the systemd unit or the launchd plist. The unit will fail to start rather than run, which is the desired outcome, but the host is not clean until the unit is removed by hand — playbook §7 step 1.5.",
-        "Because this rule detects a persistence artefact rather than execution, it is unaffected by the Russian-locale kill switch that silences every behavioural rule in this set."
+        "Because this rule detects a persistence artifact rather than execution, it is unaffected by the Russian-locale kill switch that silences every behavioral rule in this set."
       ]
     },
     {
@@ -715,7 +715,7 @@
         }
       },
       "displayName": "Shai-Hulud npm worm — runner process memory scraped for masked secrets",
-      "description": "A sudo python3 helper reads /proc/<Runner.Worker pid>/mem and greps for \"isSecret\":true, which defeats masked-secret hygiene entirely: a secret never written to a log or a file is still in the runner process's heap. It takes every secret the runner handled during that job, not only those the compromised step referenced. It writes no file and opens no connection, so it is invisible to the hash, C2 and exfil-artefact rules.",
+      "description": "A sudo python3 helper reads /proc/<Runner.Worker pid>/mem and greps for \"isSecret\":true, which defeats masked-secret hygiene entirely: a secret never written to a log or a file is still in the runner process's heap. It takes every secret the runner handled during that job, not only those the compromised step referenced. It writes no file and opens no connection, so it is invisible to the hash, C2 and exfil-artifact rules.",
       "status": "enabled",
       "queryCondition": {
         "queryText": "DeviceProcessEvents\n| where Timestamp > ago(1h)\n| where FileName in~ (\"python\",\"python3\",\"python.exe\",\"python3.exe\")\n| where ProcessCommandLine matches regex @\"/proc/[0-9]+/mem\"\n     or ProcessCommandLine has_any (\"Runner.Worker\",\"isSecret\")\n     or (InitiatingProcessFileName in~ (\"sudo\",\"sh\",\"bash\",\"dash\")\n         and ProcessCommandLine has \"/proc/\")\n| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,\n          FileName, FolderPath, ProcessCommandLine, SHA256,\n          InitiatingProcessFileName, InitiatingProcessCommandLine,\n          InitiatingProcessFolderPath\n| limit 1000"
@@ -773,7 +773,7 @@
       "operational_caveats": [
         "SCOPE THIS RULE. Deploy with --scope on the self-hosted-runner device group (cxdkrprdapp12-17.comfort.com; use kql/coverage/02 to get the exact group names). GitHub-hosted runners have no agent and cannot be covered at all. On a developer workstation, python3 touching /proc has benign explanations — profilers, debuggers, memory tools — that do not exist on a build agent, so tenant-wide deployment converts a high-signal rule into noise.",
         "The third predicate is deliberately loose and is the weakest of the three. If the helper builds the /proc path at runtime instead of passing it on the command line, the first two predicates miss it entirely and the detection degrades to 'python3 under sudo touching /proc' — which is why a baseline is mandatory before arming rather than optional.",
-        "There is no file and no network artefact on this path, so a zero from the payload-hash, C2-contact and exfil-artefact rules says nothing about whether this happened. This rule is the only coverage for it."
+        "There is no file and no network artifact on this path, so a zero from the payload-hash, C2-contact and exfil-artifact rules says nothing about whether this happened. This rule is the only coverage for it."
       ]
     }
   ],

@@ -451,7 +451,7 @@ def test_a_briefing_without_prose_is_not_restored():
 
 
 # --------------------------------------------------------------------------- #
-# Payload normalisation
+# Payload normalization
 # --------------------------------------------------------------------------- #
 
 def test_zero_day_dependency_matches_outrank_bare_context_matches():
@@ -487,7 +487,7 @@ def test_a_reach_that_was_never_recorded_reads_as_unknown_not_as_development():
     ("development", "development"),
     ("dev", "development"),
     ("sandbox", "development"),
-    # Named but unrecognised. The entry did say where it runs, so it is not "unknown";
+    # Named but unrecognized. The entry did say where it runs, so it is not "unknown";
     # it is just not a name this maps, and "internal" is the honest middle.
     ("staging", "internal"),
     ("uat", "internal"),
@@ -536,7 +536,7 @@ def test_a_scan_report_is_briefed_by_default_and_keeps_its_evidence():
     )
     for number in (1, 2, 3):
         assert f"# {PART_TITLES[number]}" in markdown
-    # The scanner detail is still there in full -- it moved, it was not summarised.
+    # The scanner detail is still there in full -- it moved, it was not summarized.
     assert "Hardcoded key" in markdown
     assert "Committed credential." in markdown
     assert "### Detailed Findings" in markdown, "demoted under 3.1 Proof"

@@ -5,7 +5,7 @@ Implements docs/playbooks/supply-chain-hunt-ttp.md section 1.2: normalize each c
 tabulate which sources assert / deny / omit it, classify the result, and escalate
 disagreements to tier-0 ground truth.
 
-Two behaviours are deliberate and load-bearing:
+Two behaviors are deliberate and load-bearing:
 
 1. Omission is not denial. A source that never mentions a package has not cleared it.
    Collapsing those two states is how a real finding gets dropped.
@@ -217,7 +217,7 @@ def arbitrate(
         accepted_value = None
         rationale = (
             "Sources conflict and tier-0 ground truth could not resolve it. Report as "
-            "unresolved; do not average or pick a favourite vendor."
+            "unresolved; do not average or pick a favorite vendor."
         )
 
     else:  # UNSUPPORTED

@@ -12,7 +12,7 @@ Section shape:
 Both `paragraphs` and `table` are optional. The caller renders them; this module decides
 only what is worth saying.
 
-Sections are also serialised to Markdown here (`sections_to_markdown` and the two
+Sections are also serialized to Markdown here (`sections_to_markdown` and the two
 document builders below), because Markdown is now the single intermediate form every
 export passes through: Markdown -> HTML -> PDF, and Markdown -> DOCX. Building the
 document once means the PDF and the Word file cannot drift apart.
@@ -369,7 +369,7 @@ def build_sections(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
-# Markdown serialisation
+# Markdown serialization
 # --------------------------------------------------------------------------- #
 
 # Escaping lives in `src/reporting/mdwrite.py`, one layer down, because the briefing

@@ -89,7 +89,7 @@ All uncommitted.
 
 | Rule | Severity | Tier | Why it exists |
 |---|---|---|---|
-| `npm-shaihulud-token-monitor` | high | quarantine-only | The watchdog is the only artefact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/` |
+| `npm-shaihulud-token-monitor` | high | quarantine-only | The watchdog is the only artifact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/` |
 | `npm-shaihulud-bun-fetch` | medium | isolate-selective | Earliest network event in the chain — fires *before* credential collection, where `c2-contact` fires after |
 | `npm-shaihulud-runner-mem-scrape` | high | isolate-full | Writes no file, opens no connection; the hash/C2/exfil rules are all blind to it |
 
@@ -114,7 +114,7 @@ Bun release CDN marked explicitly **do not create an indicator** (blocking it br
 legitimate installs — detect via A8); 75-endpoint on-chain RPC fallback, so the three RPC
 hostnames are telemetry not a chokepoint; bidirectional exfil (`code` field → `eval()`),
 therefore a contacted host is scoped as arbitrary code execution; `gh-token-monitor.*`
-artefact table; AI credential paths (`.claude/credentials.json`, `.codex/auth.json`,
+artifact table; AI credential paths (`.claude/credentials.json`, `.codex/auth.json`,
 `.cursor/credentials.json`, `.openai/auth.json`, `.anthropic/auth.json`, `.gemini/.env`);
 two exfil-workflow variants (`codeql_analysis.yml` **and** a `Run Copilot` push workflow),
 both keyed on the `${{ toJSON(secrets) }}` primitive; `bun-dl-*` staging dirs and
@@ -169,9 +169,9 @@ Design decisions worth not re-litigating:
   (step 2 is *diff the new source file against the indicator list and the deployed rules,
   and record the diff*), the §1.3 round-2 process-failure note, and `_ioc_source_files_note`
   in the rules JSON.
-- **Trusting a behavioural zero.** The malware declines to run under a Russian `LANG`, so
-  those hosts read clean on every behavioural rule. Conclusion: a control proves the query
-  *could* find the thing, not that the malware *would have run* — a behavioural zero needs a
+- **Trusting a behavioral zero.** The malware declines to run under a Russian `LANG`, so
+  those hosts read clean on every behavioral rule. Conclusion: a control proves the query
+  *could* find the thing, not that the malware *would have run* — a behavioral zero needs a
   control **and** an evasion-condition check. Recorded in §0.1 of the TTP doc.
 - **Provenance/SLSA as a control.** Defeated twice in this campaign: self-minted
   attestations, and the project's *own legitimate release workflow* publishing `keyv@6.0.0`

@@ -388,7 +388,7 @@ def main() -> int:
     activity = [{"repo": r["full_name"], **a}
                 for r in results for a in (r.get("activity_in_window") or [])]
     commits_inspected = sum(len(r.get("commits_inspected") or []) for r in results)
-    # Recorded, not hidden. Demoting the trailer is a judgement call about this estate,
+    # Recorded, not hidden. Demoting the trailer is a judgment call about this estate,
     # so the size of what it demotes is stated rather than left to be inferred.
     trailer_only = [
         {"repo": r["full_name"], "sha": c["sha"], "author_email": c.get("author_email"),

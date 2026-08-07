@@ -2,8 +2,8 @@
 //
 // Purpose      Rule 12 is the only medium-confidence rule in the set and ships
 //              armed=false, requiresForce=true. This query is the evidence required
-//              before anyone arms it. Selective isolation on a behavioural rule with an
-//              unmeasured false-positive rate is how a detection programme loses its
+//              before anyone arms it. Selective isolation on a behavioral rule with an
+//              unmeasured false-positive rate is how a detection program loses its
 //              mandate.
 // Table        DeviceProcessEvents (+ DeviceInfo for the device group)
 // Permission   ThreatHunting.Read.All

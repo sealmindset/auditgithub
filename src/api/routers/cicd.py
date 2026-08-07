@@ -806,7 +806,7 @@ async def sync_deployment_topology(
     **Required permissions:** `findings:write`
 
     Args:
-        request: Sync scope, consumer threshold, and rate-limit behaviour.
+        request: Sync scope, consumer threshold, and rate-limit behavior.
         background_tasks: FastAPI background tasks runner.
 
     Returns:
@@ -1075,7 +1075,7 @@ async def sync_deployment_observations(
     **Required permissions:** `findings:write`
 
     Args:
-        request: Sync scope, history depth, and budget behaviour.
+        request: Sync scope, history depth, and budget behavior.
 
     Returns:
         Sync status and statistics, including rights gaps and coverage counts.

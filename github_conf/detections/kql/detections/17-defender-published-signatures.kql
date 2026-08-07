@@ -1,7 +1,7 @@
 // 17 — RULE: Microsoft's own published signatures for this campaign fired
 //
 // Tables       AlertInfo / AlertEvidence
-// Confidence   HIGHEST in the set. This is not our inference about behaviour; it is
+// Confidence   HIGHEST in the set. This is not our inference about behavior; it is
 //              Microsoft's own verdict on a sample, delivered by the vendor who published
 //              the campaign analysis.
 // Source       Microsoft Security Blog, 2026-08-04, "ChainDrop supply chain compromise:
@@ -20,7 +20,7 @@
 //
 // Read that signature's existence precisely (doctrine §0.6(a)). Provable: Microsoft
 // published a Win32 variant alongside the Linux one, so the vendor considered the Windows
-// execution path worth shipping a behavioural detection for. NOT provable from that fact:
+// execution path worth shipping a behavioral detection for. NOT provable from that fact:
 // that the Windows path has been observed in the wild, or that it has been observed here.
 // An earlier draft of this comment claimed the signature was "independent confirmation
 // that the Windows bun.exe path is real" — it is confirmation of what Microsoft chose to
@@ -82,7 +82,7 @@ let CampaignSignatures = dynamic([
 // match on today's five strings goes stale the first time they ship a variant.
 let CampaignFamilies = dynamic(["ShaiLoader", "MalBun", "ShaiWorm", "SuspBunActivity"]);
 // Both tables are searched and the AlertIds unioned. The signature name surfaces in
-// AlertInfo.Title when the detection came from EDR behaviour, and in
+// AlertInfo.Title when the detection came from EDR behavior, and in
 // AlertEvidence.ThreatFamily when it came from AV — matching one table alone silently
 // halves the rule.
 let MatchedAlerts = union
