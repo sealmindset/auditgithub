@@ -93,6 +93,91 @@ def load_msgraph():
 # Query discovery
 # =============================================================================
 
+class AzCliHuntingClient:
+    """Run advanced hunting as the signed-in az CLI user, with no app registration.
+
+    Exists because the app-only path asks someone to create an app registration, mint a
+    secret, grant an application role and get admin consent - four steps, all of which
+    were unnecessary. The Azure CLI's own first-party client already obtains a token that
+    api.security.microsoft.com accepts; what is missing is a Defender XDR role on the
+    account. Removing three of those four steps is the difference between an access
+    request that lands this week and one that does not.
+
+    Delegated, so every query is attributable to a named human in the tenant's audit log
+    rather than to a shared service principal. For a read-only hunt that is the better
+    default, not a compromise.
+    """
+
+    RESOURCE = "https://api.security.microsoft.com"
+    ENDPOINT = f"{RESOURCE}/api/advancedhunting/run"
+
+    def __init__(self) -> None:
+        self._token: Optional[str] = None
+
+    def _get_token(self) -> str:
+        if self._token:
+            return self._token
+        import subprocess
+        result = subprocess.run(
+            ["az", "account", "get-access-token", "--resource", self.RESOURCE,
+             "--query", "accessToken", "-o", "tsv"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "az CLI could not issue a token for the Defender API. Run `az login` "
+                f"first. stderr: {result.stderr.strip()[:200]}")
+        self._token = result.stdout.strip()
+        return self._token
+
+    def probe(self):
+        """Confirm the tenant will answer before running the whole set.
+
+        Returns (ok, detail). A permission failure here is reported verbatim from the API,
+        because the API names the exact permissions it wants and a paraphrase of that is
+        what produced an access request for the wrong role the first time round.
+        """
+        try:
+            rows, error = self._post("DeviceInfo | project DeviceId | limit 1")
+        except Exception as exc:  # noqa: BLE001 - the message is the useful artefact
+            return False, str(exc)
+        return (True, "ok") if error is None else (False, error)
+
+    def _post(self, query: str):
+        import urllib.error
+        import urllib.request
+        request = urllib.request.Request(
+            self.ENDPOINT,
+            data=json.dumps({"Query": query}).encode(),
+            headers={"Authorization": f"Bearer {self._get_token()}",
+                     "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                return json.loads(response.read()).get("Results", []), None
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode(errors="replace")
+            try:
+                message = json.loads(body).get("error", {}).get("message", body)
+            except Exception:  # noqa: BLE001
+                message = body
+            return None, f"HTTP {exc.code}: {message[:400]}"
+
+    def run_hunting_query(self, text: str, strict_lint: bool = True):
+        rows, error = self._post(text)
+        if error is not None:
+            raise RuntimeError(error)
+        # Shaped to match GraphClient's result object so the caller does not branch.
+        return type("Result", (), {
+            "rows": rows, "count": len(rows),
+            # The Defender API caps a result set at 100k rows and does not flag it, so
+            # a run that lands exactly on the cap is reported as truncated rather than
+            # silently presented as the whole answer.
+            "truncated": len(rows) >= 100000,
+            "duration_ms": None, "warnings": [],
+        })()
+
+
 @dataclass
 class Query:
     path: Path
@@ -340,6 +425,10 @@ def main() -> int:
     parser.add_argument("--include-parameterised", action="store_true",
                         help="send parameterised queries with placeholders still in them. "
                              "They will return zero rows; only useful for syntax checking.")
+    parser.add_argument("--az-cli", action="store_true",
+                        help="Authenticate as the signed-in az CLI user (delegated) "
+                             "instead of an app registration. Needs Defender XDR RBAC on "
+                             "that account, not a client secret.")
     parser.add_argument("--json", metavar="PATH",
                         help="write the full result set as JSON")
     parser.add_argument("--no-strict-lint", action="store_true",
@@ -400,39 +489,69 @@ def main() -> int:
 
     if not args.run:
         print("Lint only. Add --run to execute against the tenant.")
-        print("Requires GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET and the")
-        print("ThreatHunting.Read.All application role.")
+        print()
+        print("Two ways to authenticate:")
+        print("  --az-cli   delegated, as the signed-in az CLI user. No app registration,")
+        print("             no client secret. Needs Defender XDR RBAC on that account.")
+        print("  (default)  app-only, via GRAPH_TENANT_ID / GRAPH_CLIENT_ID /")
+        print("             GRAPH_CLIENT_SECRET.")
+        print()
+        print("Permissions, as reported by the API itself on 2026-08-07 rather than as")
+        print("read off the documentation:")
+        print("  graph.microsoft.com/v1.0/security/runHuntingQuery")
+        print("      -> SecurityData.Read, TvmData.Read")
+        print("  api.security.microsoft.com/api/advancedhunting/run")
+        print("      -> SecurityData.Read, SecurityData.Hunting.Read")
         if args.json:
             write_json(args.json, queries, None)
         return 0
 
     # ---- credentials -----------------------------------------------------------
-    tenant_id = os.environ.get("GRAPH_TENANT_ID")
-    client_id = os.environ.get("GRAPH_CLIENT_ID")
-    client_secret = os.environ.get("GRAPH_CLIENT_SECRET")
-    if not (tenant_id and client_id and client_secret):
-        print("error: --run needs GRAPH_TENANT_ID, GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET.",
-              file=sys.stderr)
-        print("       Hunting is read-only; this is the existing hunting credential, not the",
-              file=sys.stderr)
-        print("       detection-deployment identity.", file=sys.stderr)
-        return 1
+    # Delegated first, because it is the path that needs nothing created. The 403 this
+    # script was written against turned out not to be a missing app registration at all:
+    # an az CLI token is ACCEPTED by the hunting API, and the refusal is "user permissions:
+    # ." - an empty Defender RBAC assignment on the signed-in account. That is a role
+    # grant, not an onboarding project, and asking for the wrong one costs weeks.
+    if args.az_cli:
+        client = AzCliHuntingClient()
+        ok, detail = client.probe()
+        if not ok:
+            print(f"error: {detail}", file=sys.stderr)
+            print("       The token was obtained; the tenant refused the query. This is an",
+                  file=sys.stderr)
+            print("       RBAC assignment on the signed-in user, not a credential problem.",
+                  file=sys.stderr)
+            return 1
+    else:
+        tenant_id = os.environ.get("GRAPH_TENANT_ID")
+        client_id = os.environ.get("GRAPH_CLIENT_ID")
+        client_secret = os.environ.get("GRAPH_CLIENT_SECRET")
+        if not (tenant_id and client_id and client_secret):
+            print("error: --run needs GRAPH_TENANT_ID, GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET,",
+                  file=sys.stderr)
+            print("       or --az-cli to run as the signed-in az CLI user instead.",
+                  file=sys.stderr)
+            print("       Hunting is read-only; this is the existing hunting credential, not the",
+                  file=sys.stderr)
+            print("       detection-deployment identity.", file=sys.stderr)
+            return 1
 
-    client = msgraph.GraphClient(
-        client_id=client_id,
-        client_secret=client_secret,
-        tenant_id=tenant_id,
-        provenance={"source": "run_kql_poc.py"},
-    )
+        client = msgraph.GraphClient(
+            client_id=client_id,
+            client_secret=client_secret,
+            tenant_id=tenant_id,
+            provenance={"source": "run_kql_poc.py"},
+        )
 
     # Fail on a missing role rather than reporting zero rows for every query: an app-only
     # token without ThreatHunting.Read.All returns an empty result that is indistinguishable
     # from a clean estate.
-    try:
-        client.require_role("runHuntingQuery")
-    except Exception as exc:                      # GraphPermissionError, GraphError
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+    if not args.az_cli:
+        try:
+            client.require_role("runHuntingQuery")
+        except Exception as exc:                  # GraphPermissionError, GraphError
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     print("Running. Advanced hunting is throttled to 15 requests/minute; the client")
     print("self-paces, so a full run takes a few minutes.\n")

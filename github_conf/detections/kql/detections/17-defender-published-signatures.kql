@@ -1,0 +1,47 @@
+// 17 — RULE: Microsoft's own published signatures for this campaign fired
+//
+// Tables       AlertInfo / AlertEvidence
+// Confidence   HIGHEST in the set. This is not our inference about behaviour; it is
+//              Microsoft's own verdict on a sample, delivered by the vendor who published
+//              the campaign analysis.
+// Source       Microsoft Security Blog, 2026-08-04, "ChainDrop supply chain compromise:
+//              anatomy of a self-propagating worm" — detections section.
+//
+// WHY A RULE FOR ALERTS WE WOULD ALREADY BE SENT
+//
+// Because being sent an alert and noticing it are different things. These signature names
+// land in the same queue as everything else Defender raises. This query pulls exactly the
+// campaign's own detections out of that queue and puts them on the hunt's own report, so a
+// hit cannot be lost to alert volume during the window when it matters most.
+//
+// It is also the cheapest possible confirmation that the endpoint fleet is reporting at
+// all: if Microsoft's signatures for the campaign of the moment exist and our tenant has
+// never evaluated one, that is worth knowing on its own.
+//
+// Behavior:Win32/SuspBunActivity.A is the load-bearing one for this estate. Microsoft
+// shipped a Win32 variant alongside the Linux one, which is independent confirmation that
+// the Windows bun.exe path is real and not a theoretical extension of the POSIX chain.
+
+let CampaignSignatures = dynamic([
+    "Trojan:NPM/ShaiLoader.BY",
+    "Trojan:NPM/MalBun.A",
+    "Trojan:NPM/ShaiWorm.DAY!MTB",
+    "Behavior:Linux/SuspBunActivity.A",
+    "Behavior:Win32/SuspBunActivity.A"
+]);
+AlertInfo
+| where Timestamp > ago(30d)
+// Matched on both the title and the threat family, because the signature name surfaces in
+// different fields depending on whether the detection came from AV or from EDR behaviour.
+| where Title has_any (CampaignSignatures)
+    or ThreatFamilyName has_any (dynamic(["ShaiLoader","MalBun","ShaiWorm","SuspBunActivity"]))
+| join kind=leftouter (
+    AlertEvidence
+    | where Timestamp > ago(30d)
+    | project AlertId, EvidenceRole, EntityType, DeviceName, FileName, SHA256,
+              AccountName, RemoteUrl, RemoteIP
+) on AlertId
+| project Timestamp, AlertId, Title, Severity, Category, ThreatFamilyName, ServiceSource,
+          DetectionSource, DeviceName, EntityType, EvidenceRole, FileName, SHA256,
+          AccountName, RemoteUrl, RemoteIP
+| limit 1000
