@@ -1,0 +1,26 @@
+// 05 — Is Network Protection actually firing (empirical, not configured-state)
+//
+// Purpose      04 says what is configured. This says what is happening. Configuration
+//              assessment can report compliant while the component emits nothing —
+//              policy applied is not the same as policy enforced.
+// Table        DeviceEvents
+// Permission   ThreatHunting.Read.All
+// Expected     Non-zero ExploitGuardNetworkProtection* events across a meaningful
+//              device count over 30 days. Audited-only is fine for detection purposes;
+//              the C2 rule needs RemoteUrl to be populated, not blocked.
+// Read it as   Zero events + compliant config in 04 == treat RemoteUrl as unreliable
+//              and rely on the other five rules for coverage of this actor.
+//
+// startswith rather than an exact ActionType list: the Blocked/Audited suffix pair is
+// documented, but asserting exact names risks a false zero if the vocabulary differs.
+
+DeviceEvents
+| where Timestamp > ago(30d)
+| where ActionType startswith "ExploitGuardNetworkProtection"
+| summarize Events   = count(),
+            Devices  = dcount(DeviceId),
+            FirstSeen = min(Timestamp),
+            LastSeen  = max(Timestamp)
+    by ActionType
+| order by Events desc
+| limit 50

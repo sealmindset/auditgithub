@@ -1,0 +1,35 @@
+// 06 — Can we see the developer toolchain at all, per platform
+//
+// Purpose      Turn a future "0 detections" into evidence. Four of the six rules key on
+//              node / npm / bun process events. If DeviceProcessEvents shows no node on
+//              macOS, then a macOS zero means blind, not clean.
+// Tables       DeviceProcessEvents + DeviceInfo (for platform)
+// Permission   ThreatHunting.Read.All
+// Expected     node and npm on every platform where developers work; bun rare or absent
+//              (relevant: the worm ships its own Bun 1.3.13).
+// Read it as   Compare the Devices column here against 01. A platform with 300 onboarded
+//              devices and 2 devices showing node is either not a dev platform or not
+//              reporting process telemetry.
+//
+// DeviceProcessEvents has no OSPlatform column, hence the join to current DeviceInfo
+// state.
+
+let Platform =
+    DeviceInfo
+    | where Timestamp > ago(7d)
+    | summarize arg_max(Timestamp, OSPlatform) by DeviceId
+    | project DeviceId, OSPlatform;
+DeviceProcessEvents
+| where Timestamp > ago(30d)
+| where FileName in~ ("node", "node.exe", "npm", "npm.exe", "npm-cli.js",
+                      "npx", "npx.cmd", "pnpm", "pnpm.exe", "yarn", "yarn.cmd",
+                      "bun", "bun.exe", "bunx", "corepack")
+| join kind=leftouter Platform on DeviceId
+| extend Platform = iff(isempty(OSPlatform), "unknown", OSPlatform)
+| summarize Events    = count(),
+            Devices   = dcount(DeviceId),
+            Tools     = make_set(FileName, 20),
+            LastSeen  = max(Timestamp)
+    by Platform
+| order by Devices desc
+| limit 50

@@ -1,0 +1,343 @@
+{
+  "schema_version": 1,
+  "campaign": "shai-hulud-here-we-go-again",
+  "source_name": "StepSecurity",
+  "source_url": "https://www.stepsecurity.io/blog/chaindrop-npm-worm",
+  "compiled_at": "2026-08-06",
+  "_why_a_separate_file": [
+    "Same reason as chaindrop_elastic_2026_08.json: one source, one file, so a claim can be",
+    "attributed, scored and contradicted. StepSecurity is the deepest technical teardown of",
+    "this campaign published so far and is the only source for the pre-publish GitHub",
+    "timeline, the token-revocation monitor, the runner-memory scrape and the self-republish",
+    "chain. Merging it would destroy the provenance that makes §1.2 arbitration possible.",
+    "The hunt queries the union of all source files; it reports the arbitrated verdict set."
+  ],
+  "_relationship_to_shai_hulud_2026_08": {
+    "confirms": [
+      "payload hash 9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+      "loader hash fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+      "loader hash 54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668",
+      "C2 domain npm-cache.com, exfil path /router",
+      "ethereum C2 resolver contract 0xE1f2395ee43e45A1556EC6438a88c31B83493103",
+      "ethereum call selector 0x53ed5143",
+      "signed marker thebeautifulmarchoftime",
+      "token-append string IfYouBlockThisAPIKeyItWillCrashTheLiveProductionServersOfAllThirdPartyClients",
+      "Bun 1.3.13 bootstrap downloaded from the official GitHub release",
+      "IDE autostart persistence via .claude/settings.json SessionStart hook and .vscode/tasks.json folderOpen",
+      "npm preinstall hook as the primary execution trigger",
+      "beacon/lock file tmp.dpkg in the temp directory",
+      "commits authored as claude <claude@users.noreply.github.com>"
+    ],
+    "does_not_mention": [
+      "C2 domains js-mirror.com and pypi-get.com",
+      "C2 domain awqhnjewqjkl.icu (Elastic-only)",
+      "C2 IP 104.21.35.216",
+      "hashes 927387d0..., 14eb4ce0..., 3f3f42d0..., 29ac906c...",
+      "the npm >= 12 preinstall caveat",
+      "the Dune-fiction payload strings (Elastic-only)",
+      "50-branches-per-repository propagation count (Elastic-only)"
+    ],
+    "contradicts": [
+      "Second-wave close: StepSecurity states propagation ran 09:38-13:20 UTC. The Tier 0 registry oracle bounds the last malicious publish at @thiennq/docs-viewer@1.6.4, 12:11:19.909Z. This is a DISAGREEMENT and must be escalated to Tier 0 per §1.2 - do not average the two. Either the oracle's candidate set is short a package published between 12:11 and 13:20, or StepSecurity rounded to its last observed artefact rather than a publish timestamp. Resolve by re-running derive_malicious_set across the second-wave namespace list below with a bracket extending past 14:00Z.",
+      "Campaign footprint: StepSecurity states 444 packages / 2,212 versions as of 2026-08-04 18:10 UTC, and 433 packages / 2,201 versions for the second wave alone. Consistent with SafeDep and Cloudsmith, higher than JFrog. Still a floor, not a count - see §1.4."
+    ],
+    "note": "Silence is not denial. An indicator absent here is unclaimed by StepSecurity, not refuted by it, and stays in hunt scope on the other source's assertion."
+  },
+  "aliases_added": [
+    "CHAINDROP"
+  ],
+  "hashes": {
+    "setup.mjs_v1": {
+      "sha256": "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668",
+      "size_bytes": 29918,
+      "role": "First-wave dropper. Larger because it carries the full Bun bootstrap inline."
+    },
+    "setup.mjs_v2": {
+      "sha256": "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+      "size_bytes": 11017,
+      "role": "Second-wave dropper, trimmed. Two sizes for one filename - another reason filename hunting is worthless here."
+    },
+    "stage2": {
+      "sha256": "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+      "size_bytes": 727680,
+      "filenames": [
+        "Math_Symbol.js",
+        "math_init.js"
+      ],
+      "role": "Credential collector. Same bytes under two names."
+    }
+  },
+  "bun_bootstrap": {
+    "release_base_url": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/",
+    "assets": [
+      "bun-linux-x64-baseline.zip",
+      "bun-linux-x64-musl-baseline.zip",
+      "bun-linux-aarch64.zip",
+      "bun-darwin-aarch64.zip",
+      "bun-darwin-x64.zip",
+      "bun-windows-x64-baseline.zip",
+      "bun-windows-aarch64.zip"
+    ],
+    "musl_detection": "ldd --version plus /etc/os-release",
+    "staging_dir": "mkdtemp('/tmp/bun-dl-')",
+    "post_download": "chmod 755, execute stage 2, then delete the staging directory",
+    "_why_this_is_the_chokepoint": [
+      "The dropper carries no payload. It fetches Bun from github.com over HTTPS, and the",
+      "payload only runs under Bun. An egress allowlist that does not include the GitHub",
+      "release CDN stops the chain at its first hop - stage 2 never executes and no",
+      "credential is ever read. This is the single highest-value preventive control in the",
+      "campaign, and it is cheaper than blocking C2 because it is one origin, not 75.",
+      "Blocking github.com wholesale is not the ask; the ask is that build agents fetch",
+      "release binaries through a controlled mirror."
+    ]
+  },
+  "persistence": {
+    "repository_scoped": [
+      ".claude/setup.mjs",
+      ".claude/settings.json",
+      ".claude/math_init.js",
+      ".vscode/setup.mjs",
+      ".vscode/tasks.json"
+    ],
+    "triggers": {
+      ".claude/settings.json": "SessionStart hook",
+      ".vscode/tasks.json": "\"runOn\": \"folderOpen\""
+    },
+    "redundancy": "The two sets cross-reference each other. Removing one leaves the other live, and opening the repository in either tool re-executes the chain with no npm install involved.",
+    "token_monitor": {
+      "artefacts": [
+        "~/.local/bin/gh-token-monitor.sh",
+        "~/.config/gh-token-monitor/",
+        "gh-token-monitor.service",
+        "com.user.gh-token-monitor"
+      ],
+      "behaviour": "Polls https://api.github.com/user every 60 seconds for 24 hours and fires the payload when the token stops authenticating.",
+      "_operational_consequence": [
+        "This inverts the standard IR order. Revoking the stolen token is the trigger",
+        "condition, not the remediation: the monitor treats revocation as the signal to",
+        "re-run collection and re-exfiltrate from whatever credentials are still live.",
+        "The monitor must be removed from every affected host BEFORE the first revocation.",
+        "It is also a persistence mechanism that survives cleanup of setup.mjs, math_init.js,",
+        ".claude/ and .vscode/ entirely - none of those paths contain it."
+      ]
+    }
+  },
+  "c2": {
+    "ethereum": {
+      "contract": "0xE1f2395ee43e45A1556EC6438a88c31B83493103",
+      "selector": "0x53ed5143",
+      "rpc_endpoint_count": 75,
+      "behaviour": "Tries 75 public Ethereum RPC endpoints in sequence until one returns the current C2 address."
+    },
+    "exfil": {
+      "url": "https://npm-cache.com:443/router",
+      "method": "POST",
+      "healthcheck": "GET /router, which deliberately returns 400 or 404 so the host looks broken to a casual probe"
+    },
+    "fallback_discovery": {
+      "channel": "GitHub commit search",
+      "markers": [
+        "thebeautifulmarchoftime",
+        "IfYouBlockThisAPIKeyItWillCrashTheLiveProductionServersOfAllThirdPartyClients"
+      ]
+    },
+    "beacon": "$TMPDIR/tmp.dpkg_<pid>.lock",
+    "_domain_blocking_is_insufficient": [
+      "Blocking npm-cache.com removes the primary exfil channel and is worth doing. It does",
+      "not sever control: the address is resolved on chain at runtime, and where the",
+      "blockchain read also fails the worm falls back to GitHub commit search. Three",
+      "independent channels. The RPC providers and the Bun fetch are the chokepoints."
+    ]
+  },
+  "exfil_envelope": {
+    "chain": "gzip(JSON) -> AES-256-GCM -> RSA-OAEP-SHA256 wrapped key -> base64 -> POST",
+    "bidirectional": "A response containing a `code` field is passed to eval(). The channel is not exfil-only; it is remote code execution back into the victim.",
+    "_consequence": "A host that reached npm-cache.com cannot be scoped as 'credentials stolen'. It must be scoped as 'attacker had arbitrary code execution for the duration of the connection'."
+  },
+  "credential_targets": {
+    "hotspot_path_count_claimed": 140,
+    "regex_pattern_count_claimed": 19,
+    "ai_tooling_paths": [
+      ".claude/credentials.json",
+      ".codex/auth.json",
+      ".cursor/credentials.json",
+      ".openai/auth.json",
+      ".anthropic/auth.json",
+      ".gemini/.env"
+    ],
+    "aws": {
+      "signing": "SigV4, requests signed with any harvested key",
+      "calls": [
+        "sts:GetCallerIdentity",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:GetSecretValue",
+        "ssm:GetParameters"
+      ],
+      "region_count": 16,
+      "metadata_chains": [
+        "IMDSv2",
+        "ECS task metadata"
+      ]
+    },
+    "vault": [
+      "Kubernetes auth",
+      "IAM auth"
+    ],
+    "kubernetes": "kubeconfig discovery plus service-account token theft",
+    "runner_memory_scrape": {
+      "technique": "A sudo python3 helper reads /proc/<Runner.Worker pid>/mem and greps for \"isSecret\":true",
+      "_consequence": [
+        "This defeats masked-secret hygiene entirely. A secret never written to a log or a",
+        "file is still in the runner process's heap, and any job with passwordless sudo on a",
+        "self-hosted runner can read it. It affects every secret the runner has ever handled",
+        "in that job, not just the ones the compromised step referenced.",
+        "Scope: self-hosted Linux runners only. GitHub-hosted runners are discarded per job,",
+        "and the estate's runners cxdkrprdapp12-17.comfort.com are exactly in scope."
+      ]
+    }
+  },
+  "self_republish": {
+    "npm_endpoints": [
+      "/-/v1/search?text=maintainer:<account>",
+      "/-/org/",
+      "/-/whoami",
+      "/-/npm/v1/tokens",
+      "/-/npm/v1/oidc/token/exchange/*"
+    ],
+    "user_agent": "npm/11.13.1 node/v24.10.0",
+    "tarball_handling": "Recomputes SHA-512 and SHA-1 so the repacked tarball passes integrity checks",
+    "provenance": "Self-mints Sigstore attestations via fulcio.sigstore.dev and rekor.sigstore.dev",
+    "_provenance_is_not_a_defence": [
+      "Two independent paths defeat provenance in this campaign. First, the attacker mints",
+      "its own Sigstore attestation from the compromised publisher context. Second - and",
+      "worse - the first-wave publish went out through the project's own legitimate release",
+      "workflow, so keyv@6.0.0 carries genuine, valid SLSA provenance attesting that it was",
+      "built from the jaredwray/keyv repository at a real commit. It was. The commit was",
+      "malicious. Provenance proves build integrity, not source integrity, and a control",
+      "that verifies provenance would have passed this package."
+    ]
+  },
+  "github_abuse": {
+    "workflow_name": "Run Copilot",
+    "workflow_trigger": "on: push",
+    "workflow_behaviour": "Writes ${{ toJSON(secrets) }} to format-results.txt and uploads it as an artifact",
+    "artifact_names": [
+      "format-results"
+    ],
+    "graphql": [
+      "FetchBranches",
+      "createCommitOnBranch"
+    ],
+    "commit_identity": "claude <claude@users.noreply.github.com>",
+    "exfil_staging_repos": "Repositories created under the victim account holding results-*.json",
+    "_variant_not_contradiction": [
+      "shai_hulud_2026_08.json records the exfil workflow as codeql_analysis.yml with a",
+      "format-results artifact, on branch dependabot/github_actions/format/setup-formatter.",
+      "StepSecurity records it as a workflow named 'Run Copilot'. These are two observed",
+      "variants of the same primitive - dump toJSON(secrets) into a file, upload the file -",
+      "not conflicting claims. Detect on the primitive: a workflow file added by a",
+      "non-human identity that references toJSON(secrets). Detecting on either filename",
+      "misses the other variant and the next one."
+    ]
+  },
+  "pre_publish_timeline_utc": {
+    "_provenance": "StepSecurity is the only source for this sequence. Single-source, unverified against Tier 0 - the commits are in a third-party repository we do not control and cannot query as ground truth. High value: it shows the compromise began 33 minutes before the first malicious publish, which is the only part of the campaign where detection was still possible.",
+    "events": [
+      {
+        "time": "09:02:37",
+        "event": "Account compromise. Commit ee2681a to jaredwray/keyv main adds the dropper, adds \"preinstall\": \"node setup.mjs\", adds the dropper to the package `files` array, adds a fake cover test at core/keyv/test/preinstall.test.ts, and modifies scripts/release-publish.ts to read `latestMajor` from the repository's own package.json instead of an environment variable."
+      },
+      {
+        "time": "09:04:30",
+        "event": "Persistence commit d8c850c."
+      },
+      {
+        "time": "09:23:50",
+        "event": "Cover-test deletion f97eabc."
+      },
+      {
+        "time": "09:31:03.692",
+        "event": "First malicious publish, @keyv/mongo@6.0.0. Tier 0 confirmed - see supply-chain-hunt-ttp.md §1.3."
+      },
+      {
+        "time": "09:35:00.763",
+        "event": "keyv@6.0.0 published by the project's own legitimate release workflow, with valid SLSA provenance. Tier 0 confirmed."
+      },
+      {
+        "time": "09:38 - 13:20",
+        "event": "Second wave. 433 packages / 2,201 versions from stolen publish tokens. Close time disputed - see contradicts[] above."
+      }
+    ],
+    "_release_tooling_hijack": [
+      "The release-publish.ts edit is the mechanism, and it is the most reusable technique in",
+      "the campaign. Moving latestMajor out of a protected CI variable and into a file the",
+      "attacker already controls means the malicious major publishes as `latest` through the",
+      "project's real, signed, provenance-emitting release pipeline. Nothing in the pipeline",
+      "was compromised. It did exactly what its configuration told it to.",
+      "Detection surface: a diff to release or publish tooling that relocates a version or",
+      "channel decision from CI configuration into repository-controlled state. That is a",
+      "reviewable event in a pull request, and it is upstream of every downstream indicator",
+      "in this file."
+    ]
+  },
+  "second_wave_namespaces": {
+    "_use": "Input to the Tier 0 re-derivation that resolves the 12:11 vs 13:20 disagreement, and to the §1.4 full-campaign scope expansion.",
+    "counts": {
+      "@servicetitan": 141,
+      "@onereach": 78,
+      "@or-sdk": 74,
+      "@ornikar": 42,
+      "@qlik": 28,
+      "@nebula.js": 22,
+      "@deliveroo": 2,
+      "@picsart": 2,
+      "@adminide-stack": 2,
+      "unscoped": 26
+    },
+    "first_observed_second_wave": "@thiennq/docs-viewer@1.6.2",
+    "compromised_publishers": [
+      "jaredwray",
+      "thiennq",
+      "hubsyncdevops",
+      "abarreir-ornikar",
+      "sitthidet_arv",
+      "rooci",
+      "picsart-npm-service-owner",
+      "onereach.user"
+    ]
+  },
+  "totals_claimed": {
+    "packages": 444,
+    "versions": 2212,
+    "as_of": "2026-08-04T18:10:00Z",
+    "note": "A snapshot of a spreading worm. Treat as a floor."
+  },
+  "evasion": {
+    "locale_kill_switch": {
+      "behaviour": "Reads the LANG environment variable and exits without executing if it indicates a Russian locale.",
+      "_hunting_consequence": [
+        "This is a false-negative source, not just trivia. A host with a Russian locale returns",
+        "clean from every behavioural rule in the detection set - no Bun spawn, no stage 2, no",
+        "C2 - while the dropper is on disk and would have run. The file-hash rules still fire;",
+        "the process and network rules do not. Any zero from a behavioural rule must be paired",
+        "with a locale check before it is read as clean. Consistent with CIS-based operator",
+        "avoidance of domestic prosecution, which is an attribution hint and nothing more."
+      ]
+    }
+  },
+  "mitigations_recommended": [
+    "npm ci --ignore-scripts in CI, always. Never npm install.",
+    "Egress allowlist on build agents. Blocks the Bun fetch at the first hop, so stage 2 never runs.",
+    "Package-manager-native release-age gate: npm 11.10+ min-release-age, pnpm 10.16+ minimumReleaseAge, Yarn 4.10+ npmMinimalAgeGate, Bun 1.3+ minimumReleaseAge, Dependabot cooldown. Every malicious version in this campaign was unpublished within hours; a 24-72h gate makes the entire window a non-event without a registry proxy.",
+    "Branch protection plus required commit signing on release-critical repositories. The pre-publish sequence was four unsigned commits to main.",
+    "Remove the token monitor from every affected host before revoking any credential.",
+    "Global blocklist for npm-cache.com."
+  ],
+  "hunting_notes": [
+    "Hunt the two setup.mjs variants by hash, not by name or size. Same filename, 29,918 and 11,017 bytes, both malicious - and legitimate setup.mjs files exist in many repositories.",
+    "The Bun fetch is a better detection than the C2 contact: one origin, no on-chain indirection, and it happens before any credential is read. It needs RemoteUrl, so it needs Network Protection.",
+    "Runner-memory scraping is invisible to file and network telemetry. Hunt it as a process pattern - python3 under sudo with /proc in the command line, initiated from a runner work directory - and only on self-hosted runners.",
+    "The token monitor is the only artefact that survives a clean-up of setup.mjs, math_init.js, .claude/ and .vscode/. Sweep for it separately, and before revocation.",
+    "A host that reached npm-cache.com had inbound eval() available to the attacker. Scope it as arbitrary code execution, not as credential theft."
+  ]
+}

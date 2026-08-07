@@ -1,0 +1,76 @@
+// 31 — PoC: prove the loader-exec rule's shape  (rule 11, npm-shaihulud-loader-exec)
+//
+// !! HIGHEST-RISK POC IN THE SET. READ THIS BEFORE RUNNING ANYTHING.
+//
+//    Rule 11 matches on a node/bun/npm process whose command line contains "setup.mjs".
+//    There is no way to trigger that shape without producing something the rule cannot
+//    distinguish from the real loader. Rule 11 ships ARMED for selective isolation.
+//
+//    If you run the Form B trigger while rule 11 is armed, the test device WILL be
+//    isolated. That is the rule working correctly. Do not run it on a device anyone needs.
+//
+//    Before Form B:
+//      python3 scripts/ioc/deploy_detection_rules.py --kill-switch-status
+//      python3 scripts/ioc/deploy_detection_rules.py --disarm --apply    # if armed
+//
+// What this proves
+//   DeviceProcessEvents records the process name, the full command line, and the
+//   initiating-process fields that rule 11's parent/child logic depends on.
+//
+// ---------------------------------------------------------------------------------------
+// FORM A — no trigger, zero risk. Substitutes a benign command-line marker that every
+// dev machine already produces, keeping rule 11's exact structure and project list.
+// ---------------------------------------------------------------------------------------
+
+DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where FileName in~ ("node","node.exe","bun","bun.exe","npm","npm.exe","npm-cli.js","pnpm","yarn")
+     or InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","npm","npm.exe")
+// the only changed line: benign markers instead of ("setup.mjs","math_init.js",...)
+| where ProcessCommandLine has_any ("install","--version","-v","run","exec")
+| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,
+          FileName, FolderPath, ProcessCommandLine, SHA256,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath
+| summarize Rows = count(),
+            Devices        = dcount(DeviceId),
+            NoDeviceId     = countif(isempty(DeviceId)),
+            NoReportId     = countif(isempty(tostring(ReportId))),
+            NoAccountSid   = countif(isempty(AccountSid)),
+            NoCommandLine  = countif(isempty(ProcessCommandLine)),
+            NoInitProc     = countif(isempty(InitiatingProcessFileName)),
+            NoInitCmdLine  = countif(isempty(InitiatingProcessCommandLine))
+| extend Verdict = case(
+    Rows == 0,                        "FAIL - no dev-toolchain process telemetry (see coverage/06)",
+    NoDeviceId > 0 or NoReportId > 0,  "FAIL - rule cannot map entities or isolate",
+    NoCommandLine > 0,                "FAIL - command-line matching is the whole rule",
+    NoInitProc > 0,                   "WARN - parent-process half of the rule is partial",
+    "PASS - rule 11 shape is sound")
+| limit 1
+
+// ---------------------------------------------------------------------------------------
+// FORM B — real trigger. DESTRUCTIVE TO AVAILABILITY IF RULE 11 IS ARMED.
+//
+// Only after: rule 11 confirmed unarmed, expendable onboarded test device, change logged.
+//
+//   mkdir -p /tmp/shaihulud-poc && cd /tmp/shaihulud-poc
+//   printf 'console.log("shai-hulud detection poc, benign");\n' > setup.mjs
+//   node setup.mjs
+//
+// The file content is inert — no network, no filesystem writes, no child process. Only
+// the NAME and the invoking binary match the rule, which is exactly what is being tested.
+//
+// Then confirm the rule would fire, using its deployed query unchanged except the window:
+//
+//   DeviceProcessEvents
+//   | where Timestamp > ago(1h)
+//   | where FileName in~ ("node","node.exe","bun","bun.exe","npm","npm.exe","npm-cli.js","pnpm","yarn")
+//        or InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","npm","npm.exe")
+//   | where ProcessCommandLine has_any ("setup.mjs","math_init.js","math_init","Math_Symbol")
+//   | project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,
+//             FileName, FolderPath, ProcessCommandLine, SHA256,
+//             InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath
+//   | limit 1000
+//
+// Cleanup:  rm -rf /tmp/shaihulud-poc
+// Then verify the alert arrived (poc/36) and close it as a documented test.
+// ---------------------------------------------------------------------------------------

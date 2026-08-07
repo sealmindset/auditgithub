@@ -1,0 +1,27 @@
+// 11 — RULE: node/bun executing setup.mjs or math_init.js
+//
+// Deployed as  npm-shaihulud-loader-exec   (severity high, PT1H, isolateDevices=selective, ARMED)
+// Table        DeviceProcessEvents
+// Confidence   High. Filename + parent-process pair, not filename alone. A repo can
+//              legitimately contain a setup.mjs; having node execute one named exactly
+//              that, in the install window, is the worm's documented loader step
+//              (preinstall -> node setup.mjs -> Bun 1.3.13 -> math_init.js).
+// Kill switch  Selective isolation — Defender-managed comms stay up, so SecOps can
+//              investigate the box without a desk visit.
+//
+// Prerequisite coverage/06 must show node visible on the platforms you care about.
+// PoC          poc/31 — WARNING: the trigger literally runs `node setup.mjs`. That
+//              matches this rule for real. Only on an expendable device, only while
+//              this rule is unarmed.
+//
+// Backlog variant: ago(1h) -> ago(30d).
+
+DeviceProcessEvents
+| where Timestamp > ago(1h)
+| where FileName in~ ("node","node.exe","bun","bun.exe","npm","npm.exe","npm-cli.js","pnpm","yarn")
+     or InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","npm","npm.exe")
+| where ProcessCommandLine has_any ("setup.mjs","math_init.js","math_init","Math_Symbol")
+| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,
+          FileName, FolderPath, ProcessCommandLine, SHA256,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath
+| limit 1000

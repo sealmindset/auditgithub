@@ -31,6 +31,17 @@ unindexed org, or a missing permission.
 > devices / 10,152 distinct package directories**. Defender does record per-package writes, so the
 > absence was a real absence.
 
+**The malware itself is a false-negative source.** A control proves the *query* could have found
+the thing; it does not prove the *malware would have run*. CHAINDROP reads `LANG` and exits without
+executing if it indicates a Russian locale (StepSecurity). On such a host every behavioural rule
+returns clean — no Bun spawn, no stage 2, no C2 — while the dropper sits on disk and would have
+executed under any other locale. File-hash rules still fire; process and network rules do not.
+
+So a behavioural zero needs **two** pairings: a control query, and a check that the evasion
+condition was absent. Enumerate the estate's locales before reading a behavioural zero as clean,
+and prefer file-hash and file-write telemetry as the primary surface wherever the payload has a
+known hash — that surface is indifferent to whether the code ran.
+
 ### 0.2 Registry ground truth beats every vendor advisory
 
 Vendor advisories are snapshots taken during a live incident. They disagree, they lag, and some are
@@ -107,6 +118,15 @@ Sources are tiered by evidentiary weight. **Tier 0 decides**; tiers 1–3 genera
 | Snyk | `https://snyk.io/blog/inside-keyv-npm-compromise-preinstall-malware-trusted-provenance-ide-hooks/` | Exploit-maturity rating; provenance analysis |
 | Cloudsmith | `https://cloudsmith.com/blog/keyv-and-cacheable-npm-packages-compromised-in-active-supply-chain-attack` | ~444 packages / ~2,236 malicious versions; registry-operator view |
 | Kodem | `https://www.kodemsecurity.com/resources/keyv-supply-chain-attack-shai-hulud-npm-worm-affected-versions-iocs-and-first-hour-response-runbook` | Consolidated IoC list + first-hour runbook |
+| **Elastic Security Labs** | `https://www.elastic.co/security-labs/shai-hulud-chaindrop-npm-supply-chain` | Named the campaign **CHAINDROP**; C2 domain `awqhnjewqjkl.icu`; the `node  setup.mjs` double-space execution variant; 50-branches-per-repository propagation via stolen GitHub App tokens; Dune-fiction payload strings; AI-tooling credential targets |
+| **StepSecurity** | `https://www.stepsecurity.io/blog/chaindrop-npm-worm` | Deepest teardown published. Sole source for: the **pre-publish GitHub timeline** (§1.5); the `release-publish.ts` hijack; the **token-revocation monitor**; the **runner-memory scrape** via `/proc/<Runner.Worker>/mem`; the self-republish chain incl. self-minted Sigstore; the Russian-locale kill switch; the second-wave namespace breakdown; both `setup.mjs` byte sizes |
+
+> **Keep this table synchronised with `github_conf/ioc/`.** Elastic and StepSecurity were
+> incorporated into that directory as `chaindrop_elastic_2026_08.json` and
+> `chaindrop_stepsecurity_2026_08.json` *before* they appeared here, so for a period the registry
+> under-reported the sources the hunt was actually running on. **One source, one file, and a row in
+> this table** — a source in `github_conf/ioc/` but not in §1.1 has no tier, and an untiered source
+> cannot be arbitrated.
 
 #### Tier 3 — press (timeline only, never IoCs)
 
@@ -152,10 +172,40 @@ registry on 2026-08-05 and are reproducible with `RegistryOracle().derive_malici
 | Payload hash `9fc2570b…cf1bcc` (`Math_Symbol.js` / `math_init.js`) | — | ✅ | — | Kodem ✅ | n/a | **Consensus, confirmed IoC.** |
 | Safe restore versions | `keyv@5.6.0`, `flat-cache@6.1.23`, `cache-manager@7.2.9`, `cacheable-request@13.0.19` | — | — | — | ✅ present in registry | **Accepted** as pin targets. |
 
+**Round 2 — CHAINDROP claims (Elastic, StepSecurity), arbitrated 2026-08-06.**
+
+| Claim | Elastic | StepSecurity | Others | Tier 0 registry | Resolution |
+|---|---|---|---|---|---|
+| **Last malicious publish / propagation close** | omitted | **09:38 – 13:20Z** | Socket implies ~10:14Z | **12:11:19.909Z** (`@thiennq/docs-viewer@1.6.4`) | **DISAGREEMENT → open, escalated to Tier 0.** 69 minutes unaccounted for. Either the oracle's candidate set is missing a package published between 12:11 and 13:20, or StepSecurity anchored on its last observed *artefact* rather than a publish timestamp. **Do not average.** Re-run `derive_malicious_set` across the second-wave namespaces (§1.4) with a bracket past 14:00Z. Until resolved, hunt to 13:20Z and report 12:11:19.909Z. |
+| `setup.mjs` has **two** distinct hashes | ✅ both listed, no sizes | ✅ **29,918 B** (v1) and **11,017 B** (v2) | — | n/a | **Consensus, StepSecurity adds the sizes.** Both were already in the payload-hash rule. Confirms the doctrine: one filename, two byte sizes, both malicious — filename and size hunting are both worthless. |
+| C2 domain `awqhnjewqjkl.icu` | ✅ | omitted | — | n/a | **Single-source, accepted into hunt scope.** It was in `chaindrop_elastic_2026_08.json` and **absent from the indicator block list and every detection rule** until 2026-08-06 — a known C2 domain we were not blocking. Ingesting a source file is not the same as acting on it. |
+| Ethereum resolution tries **75** RPC endpoints | "multiple fallbacks" | ✅ 75, selector `0x53ed5143` | Wiz ✅ mechanism | n/a | **Consensus on mechanism, StepSecurity quantifies it.** Decides a control question: blocking three RPC hosts is not a chokepoint at 75. See §6. |
+| Token-revocation monitor fires the payload | omitted | ✅ `~/.local/bin/gh-token-monitor.sh`, polls `api.github.com/user` /60s for 24h | — | n/a | **Single-source, high value, acted on.** Inverts IR order — revocation is the *trigger*. Also the only artefact surviving cleanup of `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/`. |
+| Runner memory scraped for masked secrets | omitted | ✅ `sudo python3` reading `/proc/<Runner.Worker pid>/mem`, grep `"isSecret":true` | — | n/a | **Single-source, high value.** Defeats masked-secret hygiene entirely: it takes every secret the runner handled in the job, not only those the compromised step referenced. Self-hosted Linux only — `cxdkrprdapp12–17.comfort.com` are in scope. |
+| Exfil channel is **bidirectional** (`code` field → `eval()`) | "exfil" only | ✅ | — | n/a | **Single-source, changes incident scoping.** A host that reached `npm-cache.com` must be scoped as *arbitrary code execution*, not *credential theft*. |
+| Provenance defeated **twice** — self-minted Sigstore, and the real release workflow | omitted | ✅ `fulcio.sigstore.dev` + `rekor.sigstore.dev`; and `keyv@6.0.0` published by the project's own workflow | Snyk ✅ provenance analysis | ✅ `keyv@6.0.0` present with valid attestation | **Consensus, confirmed.** A provenance-verifying control **passes** this package. Provenance proves build integrity, not source integrity. |
+| Russian-locale kill switch (`LANG`) | omitted | ✅ | — | n/a | **Single-source. Promoted to doctrine (§0.1)** as a behavioural-rule false-negative source, not filed as trivia. |
+| Campaign footprint | "over 400 packages" | **444 pkgs / 2,212 versions** @ 2026-08-04 18:10Z | SafeDep 444/2,234 · Cloudsmith 444/~2,236 · JFrog 428/1,700+ | not enumerable in one call | **Tier 2 consensus at ~444 names**, JFrog low. Still a floor (§1.4). |
+| Exfil workflow identity | omitted | **`Run Copilot`**, `on: push` | prior set: `codeql_analysis.yml` on `dependabot/github_actions/format/setup-formatter` | n/a | **Variant, not contradiction.** Two observed dressings of one primitive: dump `${{ toJSON(secrets) }}` to a file, upload the file. **Detect the primitive** — a workflow added by a non-human identity referencing `toJSON(secrets)`. Keying on either filename misses the other and the next one. |
+
 **Scorecard from the reference run:** Chainguard 1 material error (`ecto`). Socket accurate on
 versions, conservative on scope. Phoenix accurate but methodological rather than enumerative — its
 contribution was the *detection-philosophy* argument (lifecycle-script delta rules catch this class;
 CVE and signature controls have no detection surface for it), not an IoC list.
+
+**Round-2 scorecard:** no contradictions of Tier 0 by either source, and no source-vs-source
+conflict except the propagation close time. Elastic's distinct value is breadth (new C2 domain,
+propagation scale, evasion strings); StepSecurity's is depth, and it is the only source describing
+the part of the campaign that occurred **before** any malicious publish — which is the only phase
+where prevention was still available. Both earn Tier 2. Neither is promotable to Tier 1: the
+material claims are single-source and not registry-verifiable, because they concern commits and
+processes in repositories and hosts we do not control.
+
+**Round-2 process failure, recorded per §1.2 step 4.** The failure was ours, not a vendor's:
+`awqhnjewqjkl.icu` sat in `chaindrop_elastic_2026_08.json` while every detection rule and the
+indicator-block list omitted it. Ingesting a source file created the *appearance* of coverage. Rule:
+adding a source file is step 1 of 3 — arbitrate it into §1.3, then diff it against the deployed
+rules and the indicator list, and record the diff.
 
 ### 1.4 The scope-reconciliation trap — read this
 
@@ -173,6 +223,32 @@ built only from the **seed** packages will under-scope.
 **Mandatory step:** after seed reconciliation, expand to the full campaign name set (Tier 2
 enumerations, deduplicated) and re-run Phase 3 against it. Log the delta between seed-set and
 full-set coverage. Never report seed-set coverage as campaign coverage.
+
+**Expand by namespace, not by name.** StepSecurity breaks the second wave (433 packages / 2,201
+versions, first observed `@thiennq/docs-viewer@1.6.2`) down by the publisher account it was stolen
+from, which is the shape the expansion should follow:
+
+| Namespace | Versions | Namespace | Versions |
+|---|---|---|---|
+| `@servicetitan` | 141 | `@nebula.js` | 22 |
+| `@onereach` | 78 | `@deliveroo` | 2 |
+| `@or-sdk` | 74 | `@picsart` | 2 |
+| `@ornikar` | 42 | `@adminide-stack` | 2 |
+| `@qlik` | 28 | unscoped | 26 |
+
+Compromised publishers: `jaredwray` · `thiennq` · `hubsyncdevops` · `abarreir-ornikar` ·
+`sitthidet_arv` · `rooci` · `picsart-npm-service-owner` · `onereach.user`.
+
+Two reasons this is the better expansion unit. First, a **name** list is stale the moment the worm
+republishes; a **namespace** is stable for as long as the token is live, so
+`/-/v1/search?text=maintainer:<account>` against each compromised publisher enumerates the
+blast radius directly from Tier 0 instead of from a vendor snapshot. Second, `grep`ping nine scope
+prefixes across every lockfile in the estate is one cheap pass, where 444 exact names is not —
+and a hit on `@servicetitan/*` at *any* version is worth triaging even if that exact version was
+never in anyone's list.
+
+This is also the input set for the unresolved propagation-close question (§1.3, §1.5): re-run the
+oracle across these namespaces with a bracket past 14:00Z.
 
 ### 1.5 Derive the attack window from the registry, never from the advisories
 
@@ -203,6 +279,86 @@ bracket (days, not hours), then take the window as
 > reports' window claim was wrong, and a campaign that *had* touched a consumed package in that
 > extra 91 minutes would have been missed. Re-run install-activity checks against the derived
 > window, not the assumed one.
+
+**~~The window is still open at the far end.~~ RESOLVED 2026-08-07 at Tier 0 — in StepSecurity's
+favour.** The disagreement was: StepSecurity put second-wave propagation at **09:38 – 13:20Z**,
+while the oracle's last malicious publish was **12:11:19.909Z** — 69 minutes where a vendor claimed
+publishing activity and Tier 0 recorded none. Per §1.2 that escalated rather than averaging.
+
+Re-ran `derive_malicious_set` over the **full 443-name campaign list** (`keyv-packages-wiz.csv`),
+bracket **09:00 – 14:00Z**, deliberately past both claims:
+
+| | Prior derivation | Round-3 re-derivation |
+|---|---|---|
+| Package set | 20 seed pairs | **443 names** |
+| Malicious specs | 20 | **2,206** |
+| First malicious publish | `@keyv/mongo@6.0.0` 09:31:03.692Z | `keyv@6.0.0` **09:35:00.763Z** |
+| Last malicious publish | `@thiennq/docs-viewer@1.6.4` 12:11:19.909Z | `@umacloud/cli-linux-musl-x64@1.0.74` **13:18:41.376Z** |
+| Publishes after the prior close | — | **207** |
+
+**The 12:11:19.909Z close was an artefact of the 20-package seed set, not a fact about the
+registry.** It is superseded. StepSecurity's 13:20Z is corroborated at Tier 0 to within 79 seconds
+— the last malicious publish lands at 13:18:41.376Z, *inside* their claim. The escalation is
+closed and the interim "hunt to 13:20Z, report 12:11:19.909Z" rule is withdrawn.
+
+**Two qualifications, both of which widen scope rather than narrow it:**
+
+1. **Hunt scope runs to 13:30:46.398Z, not 13:20Z.** The *suspected-uncleaned* set — registry
+   cleanup misses that are still installable, and which §1.5 already requires be folded into scope
+   rather than the verdict — extends past the malicious tail to `@adminide-stack/yantra-mobile@12.0.33-alpha.3`
+   at **13:30:46.398Z**. Twenty-four specs, five of them after the old close.
+2. **The 14:00Z bracket is a real bound, not a truncation.** The latest hit of any kind sits 29
+   minutes inside the bracket end, so the close is measured rather than clipped — which is exactly
+   the check the generous-bracket rule above exists to make possible.
+
+**One unresolved package:** `@hubsync/web-sdk-react` could not be authoritatively resolved
+(1 of 443). Per §0.1 it is **unknown, not clean**, and it is the only name in the campaign set with
+no Tier 0 verdict.
+
+> **Consequence for the estate hunt, stated plainly.** Every GitHub-side check in round 3 already
+> ran to 13:18:42Z, so those are covered. The **endpoint install-activity check is not** — it was
+> last run against a window ending 12:00Z, and there are now 207 known malicious publishes after
+> that. Nothing in this round could re-run it: the Graph hunting credential is absent from this
+> environment (§5.1). That is an open gap, not a clean result. See §9 item 1.
+
+#### The window has a front end too, and it is where prevention lived
+
+The derived window bounds *publishes*. The **compromise** starts earlier, and every hunt so far has
+treated `09:31:03.692Z` as t=0. StepSecurity's reconstruction of `jaredwray/keyv` (single-source;
+the commits are in a repository we do not control, so this is **not** Tier 0 verifiable):
+
+| Time (UTC) | Event |
+|---|---|
+| **09:02:37** | Commit `ee2681a` to `main`: adds the dropper, adds `"preinstall": "node setup.mjs"`, adds the dropper to the package `files` array, adds a **fake cover test** at `core/keyv/test/preinstall.test.ts`, and edits `scripts/release-publish.ts` |
+| **09:04:30** | Persistence commit `d8c850c` |
+| **09:23:50** | Cover-test deletion `f97eabc` |
+| **09:31:03.692** | First malicious publish, `@keyv/mongo@6.0.0` — Tier 0 |
+| **09:35:00.763** | `keyv@6.0.0` published **by the project's own release workflow**, valid SLSA provenance — Tier 0 |
+| **09:38 – 13:20** | Second wave from stolen publish tokens (close time disputed, above) |
+
+**28 minutes and 30 seconds of visible, reviewable malicious commits before the first publish.**
+
+The `release-publish.ts` edit is the mechanism and the most reusable technique in the campaign: it
+moves `latestMajor` out of a protected CI variable and into the repository's own `package.json` —
+a file the attacker already controls. The malicious major then publishes as `latest` through the
+real, signed, provenance-emitting release pipeline. **Nothing in the pipeline was compromised.** It
+did exactly what its configuration told it to, which is why `keyv@6.0.0` carries genuine SLSA
+provenance and why any control that verifies provenance passes this package (see §1.3 round 2).
+
+**Three consequences for how we hunt and how we defend:**
+
+1. **Widen the derived window backwards for the *source* surface.** `[min(published), max(published)]`
+   is the right bracket for registry and install-activity questions. It is the wrong bracket for
+   *commit* questions — history manipulation, lifecycle-hook additions, release-tooling diffs. For
+   those, extend at least an hour earlier and search on shape, not on timestamp.
+2. **A cover test is an IoC of intent.** A test added and deleted 21 minutes later, whose only job
+   was to make a lifecycle-hook addition look routine to a reviewer, is a strong signal on its own.
+   Add "test file added and removed within the same day, touching install or lifecycle behaviour"
+   to the §6 lifecycle-script delta control.
+3. **Release-tooling diffs are the highest-leverage review gate in this attack class.** A change
+   that relocates a version, channel or `latest`-tag decision from CI configuration into
+   repository-controlled state is upstream of every indicator elsewhere in this playbook, and it is
+   plainly visible in a pull request. This applies to us as a publisher, not only as a consumer.
 
 ### 1.6 Exposure-mechanics refinement
 
@@ -381,10 +537,46 @@ Ten queries, each with a control. Adapt the indicator lists per incident.
 6. **Persistence** — `LaunchAgents`, `.config/systemd/user`, `.local/bin`, **`.claude`**,
    **`.vscode`** (this campaign wrote Claude Code hooks and VS Code `tasks.json`)
 7. **Affected-family `node_modules` directories written** — per-package granularity
-8. **Alternate runtime installed or executed** — `bun` was the delivery mechanism here
+8. **Alternate runtime installed or executed** — `bun` was the delivery mechanism here.
+   **Hunt the binary on both platforms and on all three tables** — see §5.3.1
 9. **Credential-store reads** — `.npmrc`, `.git-credentials`, `.config/gh`, `.aws/credentials`,
    `.ssh`, Vault tokens, kubeconfig, by `node`/`npm`/`curl`/shell
 10. **Alerts on any runner host or developer machine** in the window
+
+#### 5.3.1 The Bun bootstrap is described in POSIX and executes on Windows
+
+Query 8 above, and every Bun query in the deployed rule set, was written from the documented
+bootstrap: `mkdtemp('/tmp/bun-dl-')` → `chmod 755` → execute stage 2 → delete the staging
+directory. **Two of those three steps do not exist on Windows.** The same source that documents
+them (`chaindrop_stepsecurity_2026_08.json`, `bun_bootstrap.assets`) also lists
+`bun-windows-x64-baseline.zip` and `bun-windows-aarch64.zip` among the fetched release assets.
+Those unpack to **`bun.exe`**, under `%TEMP%` / `%LOCALAPPDATA%\Temp`, with no `chmod` and no
+`/tmp` path anywhere on the chain.
+
+This estate's endpoint population is overwhelmingly Windows. A hunt that models only the POSIX
+shape reads a bootstrapped Windows host as clean.
+
+Three specific blind spots, each with the query that closes it:
+
+| Blind spot | Why the existing coverage misses it | Closed by |
+|---|---|---|
+| The **binary write itself** | Nothing in the library queried `DeviceFileEvents` for the Bun binary. Only execution and network fetch were covered. | `backlog/22`, `DeviceFileEvents` branch |
+| **Non-package-manager parents** | `detections/12` and `baseline/40` require `InitiatingProcessFileName` to be `node`/`npm`. Correct for a low-noise *rule*; wrong for a *hunt*. A drop by `cmd.exe`, `powershell.exe` or an extraction helper is invisible. | `backlog/22` reports the parent instead of filtering on it |
+| **Side-loaded rather than spawned** | A `bun.exe` loaded into a host process produces no `DeviceProcessEvents` row. | `backlog/22`, `DeviceImageLoadEvents` branch |
+
+**Triage rule.** A Bun artefact is a **provenance question, not a detection**. Bun is a legitimate
+runtime and `setup-bun` is an ordinary CI step. The discriminators, in order: is the path a temp or
+staging directory rather than a versioned install root; does a `bun-dl-` segment appear; is the
+parent process a package manager or a shell; does the `SHA256` match the published release for that
+version. `bun.lock` and `bun.lockb` are **not** indicators — including them turns the hunt into a
+"does anyone here use Bun" census, which is a different and much larger question.
+
+**Read the zero against `coverage/08` before believing it.** That query reports Bun *beside*
+`node`/`npm` on the same table and the same platform, because "no Bun on this estate" is only a
+finding if node and npm are non-zero next to it. If every tool is zero on a platform, the platform
+is not reporting and no Bun conclusion is available at all (§0.1). `coverage/08` also reports
+`SHA256` population per table: the provenance triage above *is* a hash comparison, so a row with an
+empty hash cannot be triaged no matter how suspicious its path.
 
 ### 5.4 Pivot: who actually ran the package manager
 
@@ -471,7 +663,97 @@ therefore proves much less than it appears to.
 6. **Lifecycle-script delta** — diff `preinstall` / `postinstall` / `prepare` across dependency
    updates. This is Phoenix's central argument and the highest-signal generic control for this
    entire attack class: it needs no IoC list and no CVE, and would have fired on every Shai-Hulud
-   wave to date.
+   wave to date. **Extend it** (per §1.5) to a test file added and deleted the same day that touches
+   install or lifecycle behaviour — CHAINDROP shipped a cover test for exactly this reason.
+7. **Non-default branches.** Where a GitHub App token is stolen, CHAINDROP commits hooks to up to
+   **50 branches per accessible repository** (Elastic), as `claude <claude@users.noreply.github.com>`
+   with the message `chore: update config`, via GraphQL `FetchBranches` + `createCommitOnBranch`.
+   **A sweep that inspects only the default branch reads a compromised repository as clean.**
+   Enumerate all branches; search on the author identity and the commit message, not on file paths.
+8. **The exfil-workflow primitive, not its filename.** Two variants are documented — a workflow
+   named `Run Copilot` on `push` (StepSecurity), and `codeql_analysis.yml` on branch
+   `dependabot/github_actions/format/setup-formatter` (prior set). Both do one thing: write
+   `${{ toJSON(secrets) }}` to a file and upload it as an artifact (`format-results`), plus staging
+   repositories holding `results-*.json`. **Detect the primitive** — any workflow added or modified
+   by a non-human identity that references `toJSON(secrets)`. Keying on either filename misses the
+   other variant, and the next one.
+9. **npm publisher-side abuse on our own scopes.** The worm authenticates as the stolen publisher
+   and calls `/-/whoami`, `/-/org/`, `/-/npm/v1/tokens`, `/-/v1/search?text=maintainer:<account>`
+   and `/-/npm/v1/oidc/token/exchange/*` with UA `npm/11.13.1 node/v24.10.0`, then repacks tarballs
+   with recomputed SHA-512/SHA-1 and **self-mints Sigstore attestations** through
+   `fulcio.sigstore.dev` and `rekor.sigstore.dev`. For any scope we publish: enumerate automation
+   tokens, check for tokens with `bypass_2fa: true` (the collector explicitly prefers these), and
+   review recent attestations against known-good release runs.
+10. **Bun artefacts in the source estate, including `bun.exe`.** Two surfaces, and they answer
+    different questions. **Git trees** answer whether a Bun binary or release archive is committed
+    (`bun.exe`, `bunx.exe`, the seven `bun-*.zip` assets, any `bun-dl-` path segment) — this is
+    authoritative, because it reads the tree itself. **Code search** answers whether a workflow or
+    script *fetches* one, and is the weaker of the two: GitHub's code-search index excludes
+    binaries, so `filename:bun.exe` returns `total_count: 0` for a repository that has one
+    committed. That zero is a property of the index, not of the estate. Never report it as
+    coverage — the tree sweep is what clears binary presence.
+    On the CI side the useful signal is not the presence of Bun but whether the fetch is **pinned
+    and mirrored**: the release CDN is the dropper's first hop and it is *one* egress origin,
+    against 75 RPC endpoints downstream. See §5.3.1 for the endpoint half.
+
+### 6.1 Persistence that survives eradication — sweep this before revoking anything
+
+Two artefacts sit outside every path a normal cleanup touches.
+
+**The token-revocation monitor** (StepSecurity, single-source):
+
+| Artefact | Platform |
+|---|---|
+| `~/.local/bin/gh-token-monitor.sh` | all |
+| `~/.config/gh-token-monitor/` | all |
+| `gh-token-monitor.service` | Linux (systemd) |
+| `com.user.gh-token-monitor` | macOS (launchd) |
+
+It polls `https://api.github.com/user` every 60 seconds for 24 hours and **fires the payload when
+the token stops authenticating**. Two consequences, and both invert normal practice:
+
+- **It survives clean-up.** Deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/` removes
+  nothing here. None of those paths contain it. A host declared eradicated on that basis is not.
+- **Revocation is the trigger, not the remedy.** Rotating the stolen token is the condition the
+  monitor waits for, and it responds by re-collecting and re-exfiltrating from whatever credentials
+  are still live. **Remove the monitor from every affected host before the first revocation.** This
+  is a carve-out to "rotate before you eradicate", not a reversal of it — the payload still
+  exfiltrates first, so the ordering is: sweep and remove the monitor, then rotate, then eradicate
+  the rest.
+
+**Runner memory scraping** (StepSecurity, single-source). A `sudo python3` helper reads
+`/proc/<Runner.Worker pid>/mem` and greps for `"isSecret":true`. This defeats masked-secret hygiene
+completely: a secret never written to a log or a file is still in the runner process's heap, and any
+job with passwordless `sudo` can read it. It takes **every secret the runner handled during that
+job**, not only those the compromised step referenced.
+
+Scope: **self-hosted Linux runners only** — GitHub-hosted runners are discarded per job. The
+estate's `cxdkrprdapp12–17.comfort.com` are directly in scope. It leaves no file and no network
+trace, so hunt it as a process pattern (`python3` under `sudo` with `/proc` in the command line,
+initiated from a runner work directory) and expand the rotation scope for any affected runner to
+every secret any workflow on it consumed in the window — not the secrets of the triggering repo.
+
+### 6.2 Credential-rotation scope
+
+Scoping rotation to GitHub and npm tokens leaves behind most of what the collector was built to
+take: ~140 hotspot paths and 19 regex secret patterns, 300+ claimed unique patterns.
+
+- **AI tooling** (new in this campaign, and present on this estate's workstations):
+  `.claude/credentials.json` · `.codex/auth.json` · `.cursor/credentials.json` ·
+  `.openai/auth.json` · `.anthropic/auth.json` · `.gemini/.env`
+- **Cloud:** SigV4-signed `sts:GetCallerIdentity`, `secretsmanager:ListSecrets`,
+  `secretsmanager:GetSecretValue`, `ssm:GetParameters` across **16 regions**, plus IMDSv2 and ECS
+  task-metadata chains. **CloudTrail is the detection surface here** — mass `ListSecrets` /
+  `GetSecretValue` from a single principal across many regions in a short window is a strong,
+  cheap signal and does not depend on any endpoint telemetry.
+- **Vault:** Kubernetes auth and IAM auth token exchange.
+- **Kubernetes:** kubeconfig discovery and service-account token theft.
+
+**Scope a contacted host as code execution, not credential theft.** The exfil envelope is
+`gzip(JSON)` → AES-256-GCM → RSA-OAEP-SHA256-wrapped key → base64 → `POST`, and a response
+containing a `code` field is passed to `eval()`. The channel is bidirectional. Any host that reached
+`npm-cache.com` gave the attacker arbitrary code execution for the duration of the connection, so
+the rotation scope is everything reachable from that host, not a list of file paths.
 
 > **Reference run — coverage gap.** Checks 1–4 were **not performed**. The hunt tested
 > network-egress C2 (`npm-cache.com`, `js-mirror.com`, `pypi-get.com`, the blockchain RPC hosts,
@@ -482,6 +764,12 @@ therefore proves much less than it appears to.
 > The estate verdict is not overturned — with zero installs in the window there was no execution to
 > exfiltrate from — but **the dead-drop sweep is cheap, decisive, and must run.** It is now
 > mandatory in this playbook.
+>
+> **Checks 7–9 and §6.1–§6.2 were added on 2026-08-06** from the CHAINDROP round-2 arbitration and
+> have never been performed either. The same reasoning covers them — no execution means nothing to
+> persist — but note that §6.1's token monitor and §6.2's runner-memory scrape would have been
+> invisible to every surface the reference run examined, and the non-default-branch sweep (check 7)
+> is a gap in the dead-drop hunt as originally written, not just an unperformed step.
 
 ---
 
@@ -499,7 +787,10 @@ gap. No blanks, no implied coverage.
 | Runner hosts | | host-level telemetry, not just logs | non-onboarded hosts |
 | Endpoints | | per-table event + device counts for the window | in-container / Docker VM blind spot |
 | Identity | | per-identity cohort check, not just tenant aggregate | log retention window |
-| Attacker infra | | dead-drop repo search across all orgs | — |
+| Attacker infra | | dead-drop repo search across all orgs, **all branches** (§6 check 7) | non-default branches never enumerated |
+| Persistence | | token-monitor sweep (§6.1) run *before* any revocation | monitor survives normal eradication; leaves no file/network trace on the scrape path |
+| Publisher side | | automation-token + attestation review on our own npm scopes (§6 check 9) | — |
+| Cloud identity | | CloudTrail: mass `ListSecrets`/`GetSecretValue` per principal across regions (§6.2) | — |
 
 **Report obligations:**
 
@@ -539,13 +830,37 @@ window used in every report under `exports/` — see §1.5.
 
 ## 9. Open items carried forward
 
-1. **Run the dead-drop repository sweep** (§6 checks 1–4) across all three orgs. Never performed.
-2. **Re-run Phase 3 against the full ~444-name campaign set**, not the 20 seed pairs (§1.4).
-3. **Re-run the install-activity check against the registry-derived window** ending
+1. ~~**Resolve the propagation-close disagreement.**~~ **DONE 2026-08-07.** Re-derived over the
+   full 443-name set with a 09:00–14:00Z bracket: 2,206 malicious specs, last at **13:18:41.376Z**,
+   corroborating StepSecurity's 13:20Z at Tier 0. See §1.5. **What this leaves open is bigger than
+   what it closed:** the endpoint install-activity check was last run to 12:00Z and there are 207
+   malicious publishes after that. Re-run it against **09:35:00.763Z – 13:30:46.398Z** (the
+   suspected-uncleaned tail, not the malicious tail) the moment Graph credentials are available.
+   `@hubsync/web-sdk-react` remains unresolved at Tier 0 — unknown, not clean.
+2. **Run the dead-drop repository sweep** (§6 checks 1–4) across all three orgs. Never performed.
+3. **Enumerate non-default branches** in that sweep (§6 check 7) — up to 50 branches per repo are
+   committed to, and a default-branch-only sweep reads a compromised repo as clean.
+4. **Re-run Phase 3 against the full ~444-name campaign set**, not the 20 seed pairs (§1.4).
+   Expand by **namespace** via `maintainer:` search, not by name list.
+5. **Re-run the install-activity check against the registry-derived window** ending
    **12:11:19.909Z**, not 10:40Z or 12:00Z (§1.5). Specifically cover 12:00–12:20Z, which no hunt
-   has examined.
-3. **Verify the npm major version on every builder** — npm ≥ 12 disables `preinstall` by default
+   has examined; extend to 13:20Z pending item 1.
+6. **Sweep for the token-revocation monitor** (§6.1) across all onboarded hosts — and confirm it is
+   removed **before** any credential rotation in a future incident. It survives normal eradication.
+7. **Verify the npm major version on every builder** — npm ≥ 12 disables `preinstall` by default
    and may be the control that actually mattered (JFrog, single-source).
-4. **Implement the lifecycle-script delta rule** (§6 check 6) as a standing control.
-5. **Obtain org `owner` on `sleepnumber`** — 3 private repos remain invisible.
-6. `organization_self_hosted_runners:read` — not needed for hunting, useful for inventory hygiene.
+8. **Enumerate estate locales** (§0.1) so a behavioural-rule zero can be read. A Russian-locale host
+   returns clean from every behavioural rule with the dropper on disk.
+9. **Implement the lifecycle-script delta rule** (§6 check 6) as a standing control, including the
+   same-day added-and-deleted test-file case (§1.5).
+10. **Add a release-tooling-diff review gate** (§1.5) — flag any change relocating a version,
+    channel or `latest`-tag decision from CI configuration into repository-controlled state. Applies
+    to us as a publisher.
+11. **Adopt a package-manager-native release-age gate** across the estate — npm 11.10+
+    `min-release-age`, pnpm 10.16+ `minimumReleaseAge`, Yarn 4.10+ `npmMinimalAgeGate`, Bun 1.3+
+    `minimumReleaseAge`, Dependabot `cooldown`. Every malicious version here was unpublished within
+    hours, so a 24–72h gate makes the whole window a non-event without a registry proxy.
+12. **CloudTrail detection for mass secret enumeration** (§6.2) — `ListSecrets` / `GetSecretValue`
+    from one principal across many regions in a short window. Independent of endpoint telemetry.
+13. **Obtain org `owner` on `sleepnumber`** — 3 private repos remain invisible.
+14. `organization_self_hosted_runners:read` — not needed for hunting, useful for inventory hygiene.

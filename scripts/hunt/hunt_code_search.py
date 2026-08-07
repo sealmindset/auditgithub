@@ -93,6 +93,28 @@ QUERIES: List[Dict[str, str]] = [
      "means": "Claude SessionStart hook wired to the dropper"},
     {"key": "folderopen_node", "q": "\"folderOpen\" \"setup.mjs\"",
      "means": "VS Code folderOpen task wired to the dropper"},
+    # --- Bun bootstrap, including the Windows binary -------------------------
+    # These are text queries on purpose. `filename:bun.exe` is deliberately NOT here:
+    # GitHub's code-search index excludes binaries, so a committed bun.exe returns
+    # total_count 0 from this API and the zero would be an artefact of the index, not a
+    # fact about the estate. Binary presence is answered authoritatively by the tree
+    # sweep (collect_repo_trees.py, bun_artifact_hits), which reads the git tree itself.
+    #
+    # A hit here is a lead about *provenance*, not a detection. Bun is a legitimate
+    # runtime; the question a hit raises is which build step fetches it, from where, and
+    # whether that step is pinned.
+    {"key": "bun_exe_string", "q": "\"bun.exe\"",
+     "means": "Windows Bun binary referenced in a script, workflow or task file. The "
+              "campaign's bun-windows-*.zip assets unpack to this name into %TEMP%, "
+              "which is the Windows form of the /tmp/bun-dl- bootstrap"},
+    {"key": "bun_release_cdn", "q": "\"oven-sh/bun/releases/download\"",
+     "means": "direct fetch of a Bun release binary — the dropper's first hop, and the "
+              "one origin an egress allowlist would have to cover"},
+    {"key": "bun_windows_asset", "q": "\"bun-windows-x64-baseline\"",
+     "means": "the exact Windows release asset named in the StepSecurity fetch list"},
+    {"key": "bun_staging_stem", "q": "\"bun-dl-\"",
+     "means": "the dropper's mkdtemp staging stem, which is platform-independent even "
+              "though the documented path (/tmp/bun-dl-) is not"},
 ]
 
 

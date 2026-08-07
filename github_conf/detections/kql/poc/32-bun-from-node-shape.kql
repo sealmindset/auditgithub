@@ -1,0 +1,50 @@
+// 32 — PoC: prove parent/child process pairing is recorded  (rule 12, bun-from-node)
+//
+// What this proves
+//   Rule 12 is entirely a parent/child assertion: child in (bun*), parent in (node*|npm*).
+//   If Defender does not reliably record InitiatingProcessFileName on this platform, the
+//   rule cannot fire regardless of what runs. This tests that mechanism with a benign
+//   pairing instead of bun.
+//
+// Risk: NONE for Form A. Form B spawns a harmless child from node and does not match any
+// deployed rule (no IOC filename, and the child is not bun).
+//
+// ---------------------------------------------------------------------------------------
+// FORM A — no trigger. Does node spawning anything get recorded with the parent intact?
+// ---------------------------------------------------------------------------------------
+
+DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where InitiatingProcessFileName in~ ("node","node.exe","npm","npm.exe","npm-cli.js")
+| summarize Rows          = count(),
+            Devices       = dcount(DeviceId),
+            Children      = make_set(FileName, 25),
+            NoDeviceId    = countif(isempty(DeviceId)),
+            NoInitCmdLine = countif(isempty(InitiatingProcessCommandLine)),
+            BunSeen       = countif(FileName in~ ("bun","bun.exe","bunx","bunx.exe"))
+| extend Verdict = case(
+    Rows == 0,       "FAIL - no child processes attributed to node/npm; rule 12 cannot fire",
+    NoDeviceId > 0,  "FAIL - rule cannot map entities or isolate",
+    BunSeen > 0,     "PASS - and bun-from-node already occurs here: run baseline/40 before arming",
+    "PASS - parent attribution works; bun-from-node not currently observed")
+| limit 1
+
+// ---------------------------------------------------------------------------------------
+// FORM B — benign trigger, no rule match.
+//
+//   node -e "require('child_process').execSync('echo shai-hulud-poc-child')"
+//
+// Then look for the child with node as its parent:
+//
+//   DeviceProcessEvents
+//   | where Timestamp > ago(1h)
+//   | where InitiatingProcessFileName in~ ("node","node.exe")
+//   | where ProcessCommandLine has "shai-hulud-poc-child"
+//   | project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountSid,
+//             FileName, ProcessCommandLine,
+//             InitiatingProcessFileName, InitiatingProcessCommandLine
+//   | limit 100
+//
+// A row proves the pairing mechanism. Rule 12 then differs only in which child name it
+// matches, so its shape is proven without installing Bun.
+// ---------------------------------------------------------------------------------------

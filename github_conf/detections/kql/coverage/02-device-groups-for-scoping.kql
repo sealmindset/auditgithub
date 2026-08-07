@@ -1,0 +1,33 @@
+// 02 — Device groups available for --scope
+//
+// Purpose      Produce the exact strings to pass to
+//                deploy_detection_rules.py --scope "<name>"
+//              and to the deploy workflow's device_group input. This closes the
+//              "enumerate device groups" item in the handover's Appendix D.
+// Table        DeviceInfo
+// Permission   ThreatHunting.Read.All
+// Expected     One row per Defender device group, with device counts and a name sample
+//              so you can tell a developer-workstation group from a server group.
+//
+// IMPORTANT    Graph accepts a scopeNames entry that matches no device group. The rule
+//              then evaluates against nothing and reports zero hits — indistinguishable
+//              from a clean estate. Copy names from THIS output; do not type them from
+//              memory.
+//
+// Devices with no group assignment show an empty MachineGroup here and appear as
+// "UnassignedGroup" in the portal / API. That literal string is what organizationalScope
+// expects for them.
+
+DeviceInfo
+| where Timestamp > ago(7d)
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend ScopeName = iff(isempty(MachineGroup), "UnassignedGroup", MachineGroup)
+| summarize Devices      = count(),
+            Platforms    = make_set(OSPlatform, 10),
+            DeviceTypes  = make_set(DeviceType, 10),
+            SampleNames  = make_set(DeviceName, 5)
+    by ScopeName
+| extend UngroupedPlaceholder = iff(ScopeName == "UnassignedGroup",
+                                    "synthetic — devices with no group", "")
+| order by Devices desc
+| limit 200

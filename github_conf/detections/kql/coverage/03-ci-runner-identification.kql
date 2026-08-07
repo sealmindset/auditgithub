@@ -1,0 +1,28 @@
+// 03 — Self-hosted CI runners: are they onboarded, and which group are they in
+//
+// Purpose      Answer handover §7 DECISION 1. Six self-hosted runners
+//              (cxdkrprdapp12-17.comfort.com) run package installs constantly and are
+//              exactly what this worm targets. If an armed isolate rule covers them,
+//              one detection stops builds org-wide.
+// Table        DeviceInfo
+// Permission   ThreatHunting.Read.All
+// Expected     6 rows. If fewer, the missing runners are not reporting and the highest-
+//              exposure machines in the estate are also the blind ones.
+// Read it as   The MachineGroup column here is the decision input:
+//                * runners in their own group  -> scope rules away from it, or arm
+//                                                 detect-only there
+//                * runners share a group with developer workstations -> you cannot
+//                                                 separate them with organizationalScope
+//                                                 and must split the group first
+//
+// Prefix match rather than an FQDN list so a newly built runner is caught too.
+
+let RunnerPrefix = "cxdkrprdapp";
+DeviceInfo
+| where Timestamp > ago(7d)
+| where DeviceName startswith RunnerPrefix
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend ScopeName = iff(isempty(MachineGroup), "UnassignedGroup", MachineGroup)
+| project DeviceName, DeviceId, ScopeName, OSPlatform, OSVersion,
+          OnboardingStatus, LastSeen = Timestamp
+| top 50 by DeviceName asc

@@ -1,181 +1,236 @@
-# Handoff -- AuditGitHub (deployment topology P1/P2)
-_Written 2026-08-06 by /clear-it. Read this file in full before continuing work._
+# Handoff -- AuditGitHub (CHAINDROP threat-hunting corpus)
+_Written 2026-08-06 15:32 by /clear-it. Read this file in full before continuing work._
+
+> The previous handoff (deployment topology P1/P2) is archived in `.handoff-history.md`.
+> That work is now **committed** (`5b749b9`, `9e27efc`) but its next steps are still open —
+> see §6 item 6 below. This session went somewhere else entirely.
 
 ## 1. Goal
 
-Map deployment topology for the SleepNumberInc estate (~2540 repos): for each repository,
-which environments its code can reach, with which cloud identity, and whether a deploy was
-actually observed. Coverage-as-data: every repo is resolved-with-evidence or an explicit
-counted unknown; `unknown` never means "deploys nowhere".
+Rob's ask: *"Review the following analysis — https://www.stepsecurity.io/blog/chaindrop-npm-worm
+and determine what should be incorporated or included in the NDA/Threat Hunting"*, then
+**"Yes plus All four hunt docs"** — i.e. write the determination into the whole npm
+supply-chain corpus, not just one playbook.
 
-Constraints given by Rob, still in force:
+Four write targets:
+- `docs/playbooks/supply-chain-hunt-ttp.md` (hunt methodology)
+- `docs/playbooks/npm-supply-chain-ids-ips.md` (technical playbook)
+- `docs/playbooks/npm-supply-chain-rollout-handover.md` (approval/rollout doc)
+- `github_conf/detections/npm_supply_chain_rules.json` + the `github_conf/ioc/` files
+
+Acceptance: every new claim attributable to a named source, contradictions recorded rather
+than averaged, and no new rule presented as coverage before its plumbing is proven.
+
+Constraints from Rob, still in force:
 - Use only existing credentials (`GITHUB_TOKEN`, `DATABASE_URL`). Any permission denial is
   reported as a rights gap with the exact endpoint so an access request can be filed.
-- Do not drain the shared 5000/hr GitHub budget; background work runs on demand / when idle.
-
-Phases: **P1** capability from centrally-shared reusable workflows (done, verified).
-**P2** observation via the GitHub Deployments API (code complete, not yet run).
-P3 in-repo workflow parsing, P4 IaC, P5 run logs (feature-flagged off; logs can carry live
-secrets) — not started.
+- Do not drain the shared 5000/hr GitHub budget.
+- Deployer invariant: **dry run is the default; `--force` does NOT override
+  `killSwitch.armed: false`** — that would collapse the two-key control into one key.
 
 ## 2. Current State
 
-Branch `main`, everything **uncommitted**. Last commit `dc87754` predates all of this work.
+Branch `deployment-topology-p1-p2`. **This session's work is COMPLETE and verified.
+Nothing was committed** — deliberately; see §5.
 
-**P1: complete and verified against the live estate.**
-- Final DB state: 4207 `repo_deployment_map` rows across 374 repos, 288 repos reach
-  production, 84 central contracts parsed, 46 contracts with bulk-secret exposure.
-- Coverage: 333 resolved / 41 unresolved / 2166 unknown (all non-archived, of 2540).
-- One open rights gap: `GET /orgs/SleepNumberInc/actions/variables` → 403 "You must be an
-  org admin or have the actions variables fine-grained permission." Ask: org admin or
-  fine-grained `organization_actions_variables: read`. Lowers precision, not coverage.
-- Budget governor live and verified (`backend: redis`, real remaining/used observed).
-- Scheduler deprioritized and verified in container log: "Repository scan cron jobs NOT
-  registered (SCHEDULER_AUTO_REGISTER_REPO_SCANS=false): 2499 active schedules remain
-  on-demand only."
+`git status`:
+```
+ M docs/playbooks/npm-supply-chain-ids-ips.md
+ M docs/playbooks/npm-supply-chain-rollout-handover.md
+ M docs/playbooks/supply-chain-hunt-ttp.md
+ M github_conf/detections/npm_supply_chain_rules.json
+?? github_conf/ioc/chaindrop_stepsecurity_2026_08.json
+?? github_conf/IOC_KQL.zip
+?? github_conf/detections/kql/
+?? nmptemp
+?? scripts/ioc/run_kql_poc.py
+```
+Diffstat vs HEAD: 4 files, +1406 / −178.
 
-**P2: code complete, never executed. Not usable until migration 021 is applied.**
-- New observer service, CLI, 2 API routes, migration, 19 tests written.
-- 19/19 P2 tests pass locally. 55/55 P1 parser tests pass locally (proves the P1 HTTP-layer
-  refactor did not break imports or behaviour at test level).
-- 5/12 `tests/test_github_budget.py` fail **on the host only** — no Redis there, so the
-  governor's `degraded` branch refuses background work with a different reason string than
-  the tests assert. Not a regression; those tests pass in the container.
-- Container could not be reached this session: `docker exec` and even `docker ps` hung past
-  120s (Docker Desktop unresponsive). So: container test run, route registration check, and
-  migration 021 are all **unverified**.
+**Verified:** `npm_supply_chain_rules.json` parses; `python3 scripts/ioc/deploy_detection_rules.py`
+(dry run is the default) reports **9/9 rules validated, nothing sent** — 5 `[skip: no --arm]`
+for the armed-in-file rules, 4 `[skip: armed=false in file]` for the unarmed ones. Two-key
+control intact.
+
+**The last four `??` entries and three of the four `M` files carry ANOTHER SESSION's
+uncommitted work.** `github_conf/detections/kql/`, `scripts/ioc/run_kql_poc.py`,
+`github_conf/IOC_KQL.zip` and `nmptemp` are entirely theirs — I never touched them. My edits
+to the two npm playbooks and the rules JSON are layered on top of their in-flight edits to
+the same files. **Staging is Rob's call.**
+
+Not done, and never claimed as done: the three new detection rules are undeployed, unarmed,
+and have no proof-of-concept/shape-proof coverage.
 
 ## 3. Active Files
 
-- `src/api/utils/github_reader.py` — NEW. Shared read-only GitHub HTTP layer extracted from
-  P1 so P2 reuses it: throttle-vs-denial classification, budget publication, rights-gap
-  recording, `RATE_LIMITED = 1429` sentinel.
-- `src/api/utils/deployment_observation_service.py` — NEW. P2 observer. Pure row-building
-  functions (`_latest_per_environment`, `build_environment_rows`, `_payload_keys`) are
-  separate from I/O so they are testable without network.
-- `src/api/utils/deployment_topology_service.py` — P1 resolver, now
-  `DeploymentTopologyService(GitHubReader)`; ~175 duplicated lines deleted, `RATE_LIMITED`
-  re-exported for callers that branch on it.
-- `migrations/021_deployment_observation.sql` — NEW. **Not applied.** Adds
-  `uq_deployments_repo_external_id` on `deployments(repository_id, deployment_id)`, which is
-  the conflict target P2's upsert requires, plus two indexes and two column comments.
-- `src/api/routers/cicd.py` — appended `GET /cicd/topology/activity` (capability vs
-  observation comparison) and `POST /cicd/topology/observe`.
-- `scripts/sync_deployment_observations.py` — NEW. P2 CLI with `--dry-run` cost sizing.
-- `tests/test_deployment_observation.py` — NEW, 19 tests.
-- `docs/playbooks/deployment-topology.md` — §1–§12 written (P1). P2 documentation is
-  **half-done**: the artefact table is updated, §2 and §3 are not, §13 does not exist yet.
-- `src/api/utils/github_budget.py`, `src/api/scheduler.py`,
-  `src/services/schedule_executor.py`, `src/api/routers/scheduler.py` — the budget/scheduler
-  work; done and verified, listed here only because they are uncommitted.
+- `github_conf/ioc/chaindrop_stepsecurity_2026_08.json` — NEW. StepSecurity assertions,
+  one source per file so a claim can be attributed and contradicted. **First file in the
+  corpus with a non-empty `contradicts` array** (2 entries, both unresolved).
+- `github_conf/detections/npm_supply_chain_rules.json` — 6 → 9 rules. Patched via a
+  throwaway Python script, not by hand-editing JSON.
+- `docs/playbooks/supply-chain-hunt-ttp.md` — 8 edits. §1.1 source tiering, §1.3 round-2
+  arbitration table, §1.4 namespace expansion, §1.5 both ends of the window, §6 checks 7–9,
+  new §6.1 (persistence sweep) and §6.2 (rotation scope), §7 verdicts, §9 rewritten as 14
+  numbered items.
+- `docs/playbooks/npm-supply-chain-ids-ips.md` — 10 edits. §4.1 nine rules with a Status
+  column, §4.6 arming count, §4.7 library-coverage caveat, §5.1 indicators, §5.2 six
+  prevention controls, §6 third structural gap, §7 step 1.5.
+- `docs/playbooks/npm-supply-chain-rollout-handover.md` — ~13 edits. Revision block, §2
+  five-things, §6 Step 5, §7 containment table + two GAP subsections, **§8 reordered**,
+  Appendix A (6)→(9) with A7–A9, Appendix C rebuilt, Appendix D items 5–10, Appendix E
+  de-staled, Related documents.
+- `scripts/ioc/deploy_detection_rules.py` — NOT modified. Used only as the validator.
 
 ## 4. Changes Made
 
 All uncommitted.
 
-- P1 (earlier in session, verified live): parser, resolver, migration 020, CLI, 4 API
-  routes, models, playbook §1–§12, 55 tests.
-- Budget governor `src/api/utils/github_budget.py` + `GET /scheduler/github-budget` +
-  12 tests; `GitHubAPI._make_request` and the topology service now publish observed
-  `X-RateLimit-*` headers.
-- Scheduler deprioritization: repo-scan cron jobs no longer registered at startup
-  (`SCHEDULER_AUTO_REGISTER_REPO_SCANS=false` default); deterministic minute spread + jitter;
-  `SCAN_MAX_CONCURRENCY=1`; `asyncio.create_subprocess_exec` replacing blocking
-  `subprocess.run`; deferrals written as `last_execution_status='deferred_rate_budget'`.
-- `scripts/setup_database.sh`: hardcoded 001–006 replaced with a sorted glob loop (it was
-  silently skipping migrations 007–020); dev-only `*seed_mock*` gated behind
-  `SEED_MOCK_USERS=true`.
-- `requirements.txt`: added `PyYAML>=6.0.1`.
-- P2 this session: `github_reader.py` extraction, `deployment_observation_service.py`,
-  `migrations/021_deployment_observation.sql`, `scripts/sync_deployment_observations.py`,
-  2 cicd routes, 19 tests, partial playbook edits.
+**Three new rules, all `armed: false`:**
 
-P2 design decisions worth not re-litigating:
-- `method='github_deployment'`, additive — each method writes its own rows, so an observed
-  deploy never overwrites P1's inference and the two can be compared.
-- Confidence: 0.95 success/inactive, 0.85 in_progress/queued/pending/failure/error, 0.90
-  when the statuses call was not spent, −0.05 stale (older than `--active-days`).
-- Cost control: 1 deployments-list call + at most `--statuses-per-repo` (default 4) status
-  calls per repo, spent on the newest deploy of each environment, newest environment first.
-- Resume mechanism is the candidate ordering, not a new state table: repos are probed
-  oldest-`last_observed_at`-first and skipped for `--refresh-days`, so a run stopped at the
-  budget floor continues next invocation.
-- Repos probed with zero deployment records get an explicit `is_resolved=false`,
-  `unresolved_reason='no_deployments_observed'` row.
-- **Security**: deployment `payload` values are dropped at ingest; only key names are stored
-  (`evidence.payload_keys`). Payload is caller-supplied JSON and can carry credentials.
+| Rule | Severity | Tier | Why it exists |
+|---|---|---|---|
+| `npm-shaihulud-token-monitor` | high | quarantine-only | The watchdog is the only artefact that survives deleting `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/` |
+| `npm-shaihulud-bun-fetch` | medium | isolate-selective | Earliest network event in the chain — fires *before* credential collection, where `c2-contact` fires after |
+| `npm-shaihulud-runner-mem-scrape` | high | isolate-full | Writes no file, opens no connection; the hash/C2/exfil rules are all blind to it |
+
+**Fixed a pre-existing factual error** in `npm-shaihulud-c2-contact`'s `recommendedActions`:
+it described "the four attacker-controlled domains (npm-cache.com, js-mirror.com,
+pypi-get.com, and the `/router` path)" — counting a URL *path* as a domain. The fourth
+domain is `awqhnjewqjkl.icu`, and `/router` is separately the exfil path.
+
+**The safety-critical change.** `npm-supply-chain-rollout-handover.md` §8 step 1 was
+*"Rotate credentials before eradication."* CHAINDROP's watchdog polls
+`https://api.github.com/user` every 60s for 24h and **executes the payload when the token
+stops authenticating** — revocation is its trigger, not its remedy. A new step 1 (watchdog
+removal, with runnable Linux/macOS commands) now precedes rotation, matching
+`npm-supply-chain-ids-ips.md` §7 step 1.5. Order is **remove watchdog → rotate → eradicate**.
+Written explicitly as a narrow carve-out that does *not* reverse "rotate before eradicate" —
+the payload still exfiltrates first, so cleaning everything before rotating still destroys
+evidence while credentials stay live.
+
+**Content added across the corpus:** two `setup.mjs` loader hashes with byte sizes
+(29,918 / 11,017) instead of one; stage-2 hash at 727,680 B; `awqhnjewqjkl.icu` → `Block`;
+Bun release CDN marked explicitly **do not create an indicator** (blocking it breaks
+legitimate installs — detect via A8); 75-endpoint on-chain RPC fallback, so the three RPC
+hostnames are telemetry not a chokepoint; bidirectional exfil (`code` field → `eval()`),
+therefore a contacted host is scoped as arbitrary code execution; `gh-token-monitor.*`
+artefact table; AI credential paths (`.claude/credentials.json`, `.codex/auth.json`,
+`.cursor/credentials.json`, `.openai/auth.json`, `.anthropic/auth.json`, `.gemini/.env`);
+two exfil-workflow variants (`codeql_analysis.yml` **and** a `Run Copilot` push workflow),
+both keyed on the `${{ toJSON(secrets) }}` primitive; `bun-dl-*` staging dirs and
+`tmp.dpkg_<pid>.lock`; 10 second-wave namespaces and 8 publishers; the pre-publish timeline
+(09:02:37 `ee2681a` → 09:35:00.763 `keyv@6.0.0` via the project's own legitimate release
+workflow); package-manager-native release-age gates (npm 11.10+, pnpm 10.16+, Yarn 4.10+,
+Bun 1.3+, Dependabot `cooldown`).
+
+Design decisions worth not re-litigating:
+- **One source, one file.** StepSecurity claims went into their own file rather than being
+  merged into `shai_hulud_2026_08.json`, so a claim can be attributed and a contradiction can
+  be recorded instead of averaged away.
+- **Namespaces, not names.** Expansion is by npm scope (`@servicetitan` 141,
+  `@onereach` 78, `@or-sdk` 74, …) and by `maintainer:` search, because namespaces are stable
+  while the token is live and both enumerate from Tier 0.
+- **Version deliberately omitted** from `bun-fetch`'s predicate so a Bun version bump does
+  not blind the rule.
+- **`runner-mem-scrape` must be `--scope`d** to the CI device group, never tenant-wide. Its
+  third predicate (shell-initiated python touching `/proc/`) is admitted in the file as the
+  weakest of the three.
+- **All three new rules unarmed**, but for three *different* reasons, each recorded in its
+  own `justification`: `token-monitor` only awaits a baseline cycle and a `SHA1` check;
+  `bun-fetch` has a real benign population; `runner-mem-scrape` needs CI-owner sign-off
+  because isolating a shared runner takes out every pipeline on it.
 
 ## 5. Failed Approaches -- DO NOT RETRY
 
-- **Trusting `GET /rate_limit`.** Assumed it reports the real budget. It reported 4990
-  remaining while the very next real request 403'd with `X-RateLimit-Used: 5019`; on a later
-  run it said 5000 vs a real 2423. Conclusion: the only authoritative source is
-  `X-RateLimit-*` on real responses. `rate_limit_status()` now cross-checks a real `GET
-  /user` and takes the smaller number. Do not "simplify" that back.
-- **Blaming the scheduler for the exhausted window.** Assumed the ~2500 repo-scan cron jobs
-  drained it. Log evidence showed no "Executing scheduled scan" lines and `scan_repos.py`
-  does not exist in `/app`; the real drain was `POST /organizations/sleepnumber/import`
-  at 14:37. Conclusion: the scheduler collision was latent, not the incident. Attribute
-  drains from headers/logs, not from plausibility.
-- **Letting tests share governor Redis keys.** Assumed test isolation. The test run flushed
-  the live estate's budget state (`snapshot()` went `redis_empty`). Fixed with
-  `GITHUB_BUDGET_KEY_PREFIX` plus an import-time assertion. Never remove that assert.
-- **Reading `vars.CD_PLAN_ENVIRONMENTS` as the deployable set.** Only the `plan` job is
-  gated by it; `apply-terraform` and `deploy-function-app` are not. Using it would
-  undercount production reach. The deployable set is all of a repo's GitHub Environments.
-- **`--min-consumers 9` as a meaningful cap.** Assumed it was hiding coverage. The uncapped
-  re-run added only ~3 repos. Conclusion: the cap is cheap insurance, not a coverage gap.
-- **Assuming the 2166 unknowns are undetected central-contract consumers.** Measured
-  instead: only 399 repos have any `github-action-workflow` dependency row, and in a
-  deterministic 60-repo sample 54 had no `.github/workflows` at all (10% have workflows,
-  95% CI ≈ 4–21%). Conclusion: P1's coverage of the central-contract path is effectively
-  complete; the residual is in-repo workflows (P3), ~90–450 repos.
-- **`subprocess.run` inside the async scan handler.** Blocked the FastAPI event loop for up
-  to the 2-hour scan timeout — one scheduled scan stalled every request in the process.
-  Replaced with `asyncio.create_subprocess_exec` + `wait_for`.
-- **Ad-hoc scripts using raw `requests`.** The unknown-bucket sampling probe did this and
-  its ~60 calls never reached the budget governor, so the shared view drifted stale. Any
-  one-off GitHub script must go through `GitHubAPI` or a `GitHubReader` subclass.
-- **Verifying routes via `/openapi.json`.** It is auth-protected. Also `app.routes` holds a
-  custom lazy `_IncludedRouter`, so `r.path` raises `AttributeError`; resolve via
-  `r.original_router.routes` in-process.
-- **`docker exec`/`docker ps` this session.** Both hung past 120s. Docker Desktop was
-  unresponsive; do not block on container commands — check daemon health first, and run host
-  pytest with `--noconftest` (conftest pulls `src/api/main.py`, which needs `loguru`) as the
-  fallback.
-- **Editing the playbook by long multi-line `old_string`.** One §2 edit failed on an exact
-  string mismatch. Re-read the exact lines before editing that file again.
+**From this session:**
+
+- **The worktree instinct.** Standard discipline says branch/worktree for new work. Caught
+  before acting: the files to edit were *uncommitted in this checkout and shared with
+  another live session*, so a worktree would branch from the last commit and silently drop
+  their in-flight edits. Conclusion: when targets are uncommitted and shared, **edit in
+  place and commit nothing**. Verify by diffing the other session's changes first — theirs
+  were confined to KQL-PoC material (§4.7, Appendix E, Step 0/Step 2), which did not overlap.
+- **Asking two AskUserQuestion questions at once.** Rob interrupted the tool call, then
+  answered `"1"`. He answers terse and will combine answers across earlier option lists
+  ("Yes plus All four hunt docs"). Conclusion: one question, fewer options.
+- **Assuming a presented menu constrains him.** He redirected off the offered
+  deployment-topology P2 menu entirely via free text. Do not treat option lists as
+  exhaustive.
+- **Believing a zero-result grep over the corpus.** A coverage matrix returned 0 for all 55
+  patterns including `keyv`; `grep -c "keyv" docs/playbooks/supply-chain-hunt-ttp.md`
+  returned 23. Cause: unparenthesized `find … -name '*.kql' -o -name '*.md'` feeding
+  `grep -ril --`. Conclusion: **grep was broken, not the corpus.** Write the file list to
+  `/tmp/corpus.txt` with a properly parenthesized `find` first, and prove any zero with a
+  single-file positive control before reporting it.
+- **Treating "the IOC file has it" as coverage.** `awqhnjewqjkl.icu` sat in an ingested
+  source file while every rule and every indicator list omitted it, for an unknown period.
+  Conclusion: **ingesting a source file creates the appearance of coverage.** Encoded in
+  three places so it cannot recur silently — the §7 "adding a new campaign" 3-step process
+  (step 2 is *diff the new source file against the indicator list and the deployed rules,
+  and record the diff*), the §1.3 round-2 process-failure note, and `_ioc_source_files_note`
+  in the rules JSON.
+- **Trusting a behavioural zero.** The malware declines to run under a Russian `LANG`, so
+  those hosts read clean on every behavioural rule. Conclusion: a control proves the query
+  *could* find the thing, not that the malware *would have run* — a behavioural zero needs a
+  control **and** an evasion-condition check. Recorded in §0.1 of the TTP doc.
+- **Provenance/SLSA as a control.** Defeated twice in this campaign: self-minted
+  attestations, and the project's *own legitimate release workflow* publishing `keyv@6.0.0`
+  at 09:35:00.763. Conclusion: attestation proves *who built it*, not *that it is safe*. The
+  usable control is review-time diffing of release tooling (`release-publish.ts`), not
+  verification at install time.
+
+**Carried forward (still relevant, from the archived deployment-topology handoff):**
+
+- **Trusting `GET /rate_limit`** *(carried forward)* — it reported 4990 remaining while the
+  next real request 403'd with `X-RateLimit-Used: 5019`. Only `X-RateLimit-*` on real
+  responses is authoritative. Do not "simplify" `rate_limit_status()`'s cross-check away.
+- **Letting tests share governor Redis keys** *(carried forward)* — a test run flushed the
+  live estate's budget state. Fixed with `GITHUB_BUDGET_KEY_PREFIX` plus an import-time
+  assertion. **Never remove that assert.**
+- **Ad-hoc scripts using raw `requests`** *(carried forward)* — ~60 calls bypassed the budget
+  governor and the shared view drifted stale. Any one-off GitHub script must go through
+  `GitHubAPI` or a `GitHubReader` subclass.
+- **`docker exec` / `docker ps`** *(carried forward)* — both hung past 120s last session
+  (Docker Desktop unresponsive). Check daemon health first; host fallback is
+  `python3 -m pytest --noconftest` (conftest imports `src/api/main.py`, which needs `loguru`).
+- **Editing playbooks by long multi-line `old_string`** *(carried forward)* — one edit failed
+  on exact string mismatch. Avoided entirely this session by reading the exact lines
+  immediately before each edit. Keep doing that.
 
 ## 6. Next Steps
 
-1. **Finish the P2 playbook documentation** in `docs/playbooks/deployment-topology.md`
-   (this is the step that was in progress — one edit failed on string mismatch, so re-read
-   §2 and §3 first):
-   - §2: add the converse warning — absence of a P2 row is not evidence a path is unused;
-     workflows that deploy without creating a Deployment object are invisible to P2 by
-     construction, and most Azure Function App / Terraform pushes in this estate are that.
-   - §3: fill the `github_deployment` base confidence (0.90) and the state→confidence rubric.
-   - New §13 "P2 — observed deployments": what it sees and cannot see, per-repo cost,
-     resume semantics, payload-key-names-only security note, the two new endpoints, CLI
-     flags, and the capability-vs-observation SQL.
-2. **Apply `migrations/021_deployment_observation.sql`.** Required before any P2 write —
-   the `deployments` upsert uses `ON CONFLICT (repository_id, deployment_id)`, which needs
-   `uq_deployments_repo_external_id`. P2 will fail loudly without it.
-3. **Verify the container** once Docker responds: run
-   `docker exec -w /app auditgh_api python3 -m pytest tests/test_deployment_observation.py
-   tests/test_reusable_workflow_parser.py tests/test_github_budget.py -q` (expect 74 + 12)
-   and confirm `POST /cicd/topology/observe` and `GET /cicd/topology/activity` are
-   registered via `original_router.routes` in-process.
-4. **Dry-run P2 to size it**: `python3 scripts/sync_deployment_observations.py --org
-   SleepNumberInc --dry-run` → candidate count (expect ~374 with `only_mapped`), worst-case
-   calls (~5/repo ≈ 1900), and repos reachable this window above the 400 on-demand floor.
-5. **Run P2** small first (`--repo-limit 25`), sanity-check rows (`method='github_deployment'`,
-   `evidence.payload_keys` present with no values, `no_deployments_observed` rows appearing),
-   then the full mapped set. Re-run to prove resume skips completed repos.
-6. **Report to Rob**: observed vs wired production paths, `production_wired_but_never_observed`,
-   observed-production recency buckets, any new rights gap, and whether P2 changed the
-   coverage numbers. Then offer P3 (~2200 calls, closes the ~90–450 repo in-repo gap).
-7. **Still open from P1, awaiting Rob's direction**: file tickets for the 9 dangling `uses:`
-   refs to deleted branches (org-member → CD privilege escalation, amplified by
-   `toJSON(secrets)` / `secrets: inherit`) and for pinning
-   `terraform-setup-composite-action@v2` to a commit SHA.
+1. **Rob decides staging.** Nothing is committed. Three modified files and the working tree
+   are shared with another live session, so `git add -A` would sweep up their in-flight KQL
+   work. Ask before staging anything; a targeted `git add` of the four files I touched is
+   the safest option, and even that stages their edits to three of them.
+2. **Resolve the open Tier 0 escalation.** StepSecurity puts the propagation close at
+   13:20 UTC; the Tier 0 registry oracle bounds the last malicious publish at
+   `@thiennq/docs-viewer@1.6.4`, 12:11:19.909Z. Per §1.2 this is a DISAGREEMENT and escalates
+   to Tier 0 — **do not average the two.** Resolve by re-running `derive_malicious_set` across
+   the second-wave namespace list in `chaindrop_stepsecurity_2026_08.json` with a bracket
+   extending past 14:00Z. Interim rule now written into all four docs: **hunt to 13:20Z,
+   report 12:11:19.909Z.**
+3. **Write shape proofs for A7/A8/A9** (Appendix D item 5). The KQL library covers 6 of 9
+   rules — there is no `detections/`, `backlog/` or `poc/` file for the watchdog, the Bun
+   fetch or the memory scrape, so their 30-day history is *unexamined*, not clean. Note
+   `github_conf/detections/kql/` is the other session's uncommitted directory; coordinate
+   before adding files to it.
+4. **Run `coverage/07` to confirm `SHA1` is populated** on `DeviceFileEvents` for
+   `gh-token-monitor.*` filenames. `stopAndQuarantineFiles` silently alerts-without-
+   quarantining if `SHA1` is empty. This is the single blocker on arming `token-monitor`,
+   which is the new rule most worth arming — an *alert* does not disarm a watchdog.
+5. **Run the never-performed hunt checks.** §6 checks 7–9 and §6.1–§6.2 of
+   `supply-chain-hunt-ttp.md` were added 2026-08-06 and have **never been executed**: all
+   branches (up to 50/repo), the `toJSON(secrets)` primitive rather than the filename, npm
+   publisher-side abuse (`bypass_2fa: true` tokens, self-minted attestations), the
+   persistence sweep, and the wide credential-rotation scope.
+6. **Deployment topology P2 is still outstanding** — unblocked and unchanged since it was
+   committed. In order: apply `migrations/021_deployment_observation.sql` (P2 writes fail
+   without `uq_deployments_repo_external_id`); verify the container once Docker responds
+   (86 tests, two new `/cicd/topology/*` routes); `--dry-run`; `--repo-limit 25`; then the
+   full mapped set. Full detail in `.handoff-history.md`.
+7. **Still awaiting Rob's direction, from P1**: file tickets for the 9 dangling `uses:` refs
+   to deleted branches (org member → CD privilege escalation) and for pinning
+   `terraform-setup-composite-action` to a commit SHA instead of the moving `@v2` tag. The
+   CHAINDROP work sharpened the second one: 46 central contracts hand `${{ toJSON(secrets) }}`
+   to that moving tag, which is exactly the primitive this worm's exfil workflows use.

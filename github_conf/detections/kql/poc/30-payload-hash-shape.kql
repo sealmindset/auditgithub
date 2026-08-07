@@ -1,0 +1,68 @@
+// 30 — PoC: prove the payload-hash rule's shape  (rule 10, npm-shaihulud-payload-hash)
+//
+// What this proves
+//   That DeviceFileEvents records SHA256 for JS files written on this estate, and that
+//   every column rule 10 projects — including the entityMappings columns and the
+//   isolateDevices target DeviceId — is present and non-empty.
+//
+// Why a benign hash
+//   A matching malicious SHA-256 cannot be synthesised. So the malicious hash list is
+//   swapped for the hash of a file you create yourself; everything else is byte-identical
+//   to the deployed rule. If this returns a fully-populated row, rule 10 will too.
+//
+// NO TRIGGER NEEDED for the first form below: it hunts real recent .mjs/.js writes and
+// checks column completeness. Use the second form only if the first returns nothing.
+//
+// ---------------------------------------------------------------------------------------
+// FORM A — no trigger. Column completeness over real telemetry.
+// ---------------------------------------------------------------------------------------
+
+DeviceFileEvents
+| where Timestamp > ago(7d)
+| where FileName endswith ".mjs" or FileName endswith ".js"
+| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,
+          ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid
+| summarize Rows = count(),
+            // entity mapping + automated action prerequisites
+            NoDeviceId   = countif(isempty(DeviceId)),
+            NoReportId   = countif(isempty(tostring(ReportId))),
+            NoSHA256     = countif(isempty(SHA256)),
+            NoSHA1       = countif(isempty(SHA1)),
+            NoAccountSid = countif(isempty(InitiatingProcessAccountSid)),
+            NoInitProc   = countif(isempty(InitiatingProcessFileName))
+| extend Verdict = case(
+    Rows == 0,                                "FAIL - no .js/.mjs file telemetry at all",
+    NoDeviceId > 0 or NoReportId > 0,          "FAIL - rule cannot map entities or isolate",
+    NoSHA256 > 0,                              "FAIL - hash matching will miss rows",
+    NoSHA1 > 0,                                "WARN - quarantine action may no-op (see coverage/07)",
+    "PASS - rule 10 shape is sound")
+| limit 1
+
+// ---------------------------------------------------------------------------------------
+// FORM B — with a trigger. Only if Form A returns Rows == 0.
+//
+// SAFE: this creates an inert text file. It does NOT match any deployed rule — the
+// filename is not an IOC and the hash is your own. Nothing here can trigger isolation.
+//
+//   On the test device:
+//     mkdir -p /tmp/shaihulud-poc && cd /tmp/shaihulud-poc
+//     printf 'poc marker %s\n' "$(hostname)" > poc-payload-marker.js
+//     shasum -a 256 poc-payload-marker.js       # macOS/Linux
+//     Get-FileHash .\poc-payload-marker.js -Algorithm SHA256   # Windows
+//
+// Paste the hash below, wait for telemetry (usually a few minutes), then run:
+//
+//   let PocSha256 = "<paste the sha256 here>";
+//   DeviceFileEvents
+//   | where Timestamp > ago(1h)
+//   | where SHA256 in~ (PocSha256)
+//   | project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,
+//             ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,
+//             InitiatingProcessAccountName, InitiatingProcessAccountDomain,
+//             InitiatingProcessAccountSid
+//   | limit 1000
+//
+// A row here means rule 10 is functional. Then clean up:
+//     rm -rf /tmp/shaihulud-poc
+// ---------------------------------------------------------------------------------------

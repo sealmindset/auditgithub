@@ -139,12 +139,21 @@ def load_indicator_basenames() -> Dict[str, List[str]]:
     """
     basenames: set[str] = set()
     exact_paths: set[str] = set()
-    for name in ("shai_hulud_2026_08.json", "chaindrop_elastic_2026_08.json"):
+    # chaindrop_stepsecurity_2026_08.json was ingested on 2026-08-06 and was NOT read
+    # here until 2026-08-07. Its .claude/setup.mjs and .vscode/setup.mjs persistence
+    # paths were therefore absent from every tree sweep run against it: the file existed
+    # under version control and looked like coverage. It uses a different schema from
+    # the other two (persistence.repository_scoped rather than dropped_files), which is
+    # why a loader that only understood one shape skipped it silently.
+    for name in ("shai_hulud_2026_08.json", "chaindrop_elastic_2026_08.json",
+                 "chaindrop_stepsecurity_2026_08.json"):
         path = IOC_DIR / name
         if not path.exists():
             continue
         data = json.loads(path.read_text())
-        for entry in data.get("dropped_files", []) or []:
+        persistence = data.get("persistence", {}) or {}
+        repo_scoped = persistence.get("repository_scoped", []) or []
+        for entry in list(data.get("dropped_files", []) or []) + list(repo_scoped):
             if entry.startswith("/"):
                 continue  # absolute host paths (e.g. /tmp locks) cannot appear in a repo tree
             if "/" in entry:
@@ -166,10 +175,69 @@ def load_indicator_basenames() -> Dict[str, List[str]]:
         marker = (data.get("github_markers", {}) or {}).get("workflow_file")
         if marker:
             basenames.add(marker.lower())
+        # StepSecurity records the stage-2 collector as one hash under two filenames.
+        # Both names are already known from the other sources, but reading them from
+        # here too means a future rename in this file propagates without a code change.
+        for meta in (data.get("hashes", {}) or {}).values():
+            for filename in (meta or {}).get("filenames", []) or []:
+                basenames.add(str(filename).lower())
     # Persistence directories are checked as path prefixes, not basenames.
     return {
         "basenames": sorted(basenames),
         "exact_paths": sorted(exact_paths),
+    }
+
+
+def load_bun_artifacts() -> Dict[str, List[str]]:
+    """
+    Build the Bun-runtime artefact set, including the Windows binary.
+
+    Why this is separate from the indicator set above: a Bun artefact is not evidence of
+    compromise the way math_init.js is. Bun is a legitimate runtime and some repositories
+    vendor or reference it deliberately. These are *leads with a provenance question* —
+    "why is a runtime binary in a git tree, and which build wrote it" — and they are kept
+    in their own bucket so a hit does not inflate the indicator count.
+
+    The Windows case is the reason this exists at all. Every prior pass modelled the Bun
+    bootstrap as POSIX: the StepSecurity assertion is mkdtemp('/tmp/bun-dl-'), chmod 755,
+    execute. But the same file lists bun-windows-x64-baseline.zip and
+    bun-windows-aarch64.zip among the fetched release assets, and those unpack to
+    **bun.exe**, into %TEMP%\\bun-dl-*, with no chmod and no /tmp path anywhere. On an
+    estate whose endpoint population is overwhelmingly Windows, a hunt that only knew the
+    POSIX shape could read a bootstrapped host as clean.
+
+    bun.lock and bun.lockb are deliberately NOT included. They are ordinary Bun project
+    files and would turn this into a "does anyone use Bun" census, which is a different
+    question with a much larger answer.
+    """
+    # Exact basenames only. "bun" as a bare name is excluded: it collides with source
+    # directories called bun/ and with shell wrappers, and the executable form is what
+    # the bootstrap actually writes.
+    binaries = {"bun.exe", "bunx.exe"}
+    assets: set[str] = set()
+    staging_prefixes = {"bun-dl-"}
+
+    path = IOC_DIR / "chaindrop_stepsecurity_2026_08.json"
+    if path.exists():
+        bootstrap = (json.loads(path.read_text()).get("bun_bootstrap", {}) or {})
+        for asset in bootstrap.get("assets", []) or []:
+            assets.add(str(asset).lower())
+        # "mkdtemp('/tmp/bun-dl-')" -> the "bun-dl-" stem, so the Windows %TEMP% form of
+        # the same staging directory matches on the stem rather than on the POSIX path.
+        staging = str(bootstrap.get("staging_dir", ""))
+        stem = re.search(r"([A-Za-z0-9_.-]*bun-dl-)", staging)
+        if stem:
+            staging_prefixes.add(stem.group(1).lower().lstrip("/").split("/")[-1])
+    else:
+        # Recorded rather than silently degraded: without the source file the asset list
+        # is unknown and only the binary names are checked.
+        assets.add("_ioc_file_missing_")
+
+    return {
+        "binaries": sorted(binaries),
+        "release_assets": sorted(a for a in assets if a != "_ioc_file_missing_"),
+        "staging_prefixes": sorted(staging_prefixes),
+        "source_file_present": path.exists(),
     }
 
 
@@ -289,20 +357,41 @@ def list_org_repos(org: str, token: str) -> Tuple[List[dict], Optional[str]]:
             return repos, "pagination guard hit at page 100"
 
 
-def classify_tree(paths: Iterable[str], indicators: Dict[str, List[str]]) -> dict:
+def classify_tree(paths: Iterable[str], indicators: Dict[str, List[str]],
+                  bun: Optional[Dict[str, List[str]]] = None) -> dict:
     """Turn a flat path list into the facts the hunt needs."""
     npm_hits: List[str] = []
     ecosystems: set[str] = set()
     indicator_hits: List[str] = []
     mjs_files: List[str] = []
+    bun_hits: List[dict] = []
     workflow_count = 0
 
     basenames = set(indicators["basenames"])
     exact_paths = set(indicators["exact_paths"])
+    bun = bun or {"binaries": [], "release_assets": [], "staging_prefixes": []}
+    bun_binaries = set(bun.get("binaries", []))
+    bun_assets = set(bun.get("release_assets", []))
+    bun_prefixes = tuple(bun.get("staging_prefixes", []))
 
     for path in paths:
         lower = path.lower()
         base = lower.rsplit("/", 1)[-1]
+
+        # Bun artefacts are classified by *why* they are interesting, not lumped into
+        # one flag: a committed bun.exe is a different conversation from a workflow that
+        # downloads the Windows zip, and a bun-dl-* directory in a git tree is a third
+        # thing again (staging that was supposed to be deleted and got committed).
+        if base in bun_binaries:
+            bun_hits.append({"path": path, "kind": "binary", "why":
+                             "Bun runtime executable committed to the tree. The Windows "
+                             "bootstrap unpacks exactly this name; verify provenance by hash."})
+        elif base in bun_assets:
+            bun_hits.append({"path": path, "kind": "release_asset", "why":
+                             "A Bun release archive named in the campaign's fetch list."})
+        elif any(seg.startswith(bun_prefixes) for seg in lower.split("/") if bun_prefixes):
+            bun_hits.append({"path": path, "kind": "staging_dir", "why":
+                             "Path segment matches the dropper's mkdtemp staging stem."})
 
         if base in NPM_MANIFESTS:
             npm_hits.append(path)
@@ -326,6 +415,8 @@ def classify_tree(paths: Iterable[str], indicators: Dict[str, List[str]]) -> dic
         "indicator_hits": sorted(indicator_hits),
         "mjs_files": sorted(mjs_files)[:100],
         "mjs_count": len(mjs_files),
+        "bun_artifact_hits": bun_hits,
+        "bun_artifact_count": len(bun_hits),
         "workflow_count": workflow_count,
     }
 
@@ -498,7 +589,8 @@ def inspect_hook_file(org: str, repo_name: str, ref: str, path: str, token: str)
     return result
 
 
-def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[str]]) -> dict:
+def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[str]],
+                 bun: Optional[Dict[str, List[str]]] = None) -> dict:
     name = repo["name"]
     branch = repo.get("default_branch")
     record = {
@@ -578,7 +670,7 @@ def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[st
     record["tree_ok"] = True
     record["truncated"] = bool(body.get("truncated"))
     record["file_count"] = len(paths)
-    record.update(classify_tree(paths, indicators))
+    record.update(classify_tree(paths, indicators, bun))
 
     # Resolve every hook-file lead into a determination while the token and ref are in
     # hand. Leaving them as filename hits would push the judgement into the report,
@@ -620,18 +712,31 @@ def main() -> int:
         return 2
     print(f"file indicators loaded: {len(indicators['basenames'])} basenames, "
           f"{len(indicators['exact_paths'])} exact paths", file=sys.stderr)
+    bun = load_bun_artifacts()
+    if not bun["source_file_present"]:
+        # Not fatal — the binary names are known independently — but it is the difference
+        # between "no Bun release archive in any tree" and "the archive list was empty",
+        # and those must not read the same in the coverage block.
+        print("WARNING: chaindrop_stepsecurity_2026_08.json absent; Bun release-asset "
+              "names unavailable, checking binaries only", file=sys.stderr)
+    print(f"bun artefacts loaded: {len(bun['binaries'])} binaries "
+          f"({', '.join(bun['binaries'])}), {len(bun['release_assets'])} release assets, "
+          f"staging prefixes {bun['staging_prefixes']}", file=sys.stderr)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     coverage = {
         "orgs": {},
         "totals": Counter(),
         "indicator_basenames": indicators["basenames"],
+        "bun_artifacts": bun,
         "limits": [
             "default branch only; the worm is reported to write hooks to up to 50 "
             "branches per repository, so a clean result here does not clear other branches",
             "trees API truncates very large trees; truncated repositories are counted "
             "separately and a negative result on them is not evidence of absence",
             "filename matches are leads requiring a hash or a second indicator",
+            "bun.exe / bunx.exe / bun-*.zip hits are provenance questions, not "
+            "indicators: Bun is a legitimate runtime and this counts them separately",
         ],
     }
 
@@ -660,7 +765,7 @@ def main() -> int:
             counts = Counter()
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 futures = {
-                    pool.submit(collect_repo, org, repo, token, indicators): repo["name"]
+                    pool.submit(collect_repo, org, repo, token, indicators, bun): repo["name"]
                     for repo in repos
                 }
                 for done, future in enumerate(as_completed(futures), 1):
@@ -682,6 +787,12 @@ def main() -> int:
                         for hit in record["indicator_hits"]:
                             print(f"  INDICATOR {org}/{record['repo']}: {hit}",
                                   file=sys.stderr)
+                    if record.get("bun_artifact_hits"):
+                        counts["repos_with_bun_artifacts"] += 1
+                        for hit in record["bun_artifact_hits"]:
+                            counts[f"bun_{hit['kind']}"] += 1
+                            print(f"  BUN {org}/{record['repo']}: "
+                                  f"{hit['kind']} {hit['path']}", file=sys.stderr)
                     if record.get("hooks_running_code"):
                         counts["repos_with_hooks_running_code"] += 1
                         for hook in record["hook_files"]:

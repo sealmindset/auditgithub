@@ -1,0 +1,80 @@
+// 33 — PoC: prove the agent-hook-drop rule's shape  (rule 13, npm-shaihulud-agent-hook-drop)
+//
+// What this proves
+//   Two things, and the second is the important one:
+//     1. FolderPath matching on ".vscode" / ".claude" works, with both separator styles
+//        (the rule carries "\\.vscode" and "/.vscode" precisely because Windows and
+//        macOS/Linux paths differ and one form alone silently loses a platform).
+//     2. SHA1 is populated on those rows. Rule 13's armed action is stopAndQuarantineFiles,
+//        which needs a sha1Column. If SHA1 is empty the alert still fires and the file is
+//        NOT quarantined — the worst failure mode in the set, because it reads as handled.
+//
+// Risk: NONE for Form A. Form B creates a file named setup.mjs under .vscode — see the
+// warning there.
+//
+// ---------------------------------------------------------------------------------------
+// FORM A — no trigger. Real .vscode/.claude writes, per platform, with SHA1 coverage.
+// ---------------------------------------------------------------------------------------
+
+let Platform =
+    DeviceInfo
+    | where Timestamp > ago(7d)
+    | summarize arg_max(Timestamp, OSPlatform) by DeviceId
+    | project DeviceId, OSPlatform;
+DeviceFileEvents
+| where Timestamp > ago(7d)
+| where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+| where FolderPath has_any ("\\.claude","/.claude","\\.vscode","/.vscode")
+| join kind=leftouter Platform on DeviceId
+| extend PathStyle = iff(FolderPath has "\\", "windows-style", "posix-style"),
+         Plat = iff(isempty(OSPlatform), "unknown", OSPlatform)
+| summarize Rows         = count(),
+            Devices      = dcount(DeviceId),
+            NoDeviceId   = countif(isempty(DeviceId)),
+            NoSHA1       = countif(isempty(SHA1)),
+            NoSHA256     = countif(isempty(SHA256)),
+            NoAccountSid = countif(isempty(InitiatingProcessAccountSid)),
+            HookFiles    = countif(FileName in~ ("settings.json","tasks.json"))
+    by Plat, PathStyle
+| extend Sha1CoveragePct = round(100.0 * (Rows - NoSHA1) / Rows, 1)
+| extend Verdict = case(
+    Rows == 0,            "FAIL - no .vscode/.claude file telemetry on this platform",
+    NoDeviceId > 0,       "FAIL - rule cannot map entities",
+    Sha1CoveragePct < 100.0,
+        "WARN - stopAndQuarantineFiles will NO-OP on the rows missing SHA1: keep detect-only here",
+    "PASS - rule 13 shape sound and the quarantine action has a target")
+| order by Rows desc
+| limit 50
+
+// ---------------------------------------------------------------------------------------
+// FORM B — trigger. MATCHES RULE 13 FOR REAL.
+//
+// Rule 13's first predicate is FileName in~ ("setup.mjs","math_init.js","Math_Symbol.js")
+// under a .vscode/.claude path. Creating such a file is a genuine match — the hash branch
+// is not required. Rule 13 is armed for QUARANTINE ONLY, not isolation, so the blast
+// radius is the file rather than the device; the file will be quarantined and removed.
+//
+// Confirm unarmed first, and use an expendable device:
+//   python3 scripts/ioc/deploy_detection_rules.py --kill-switch-status
+//
+//   mkdir -p /tmp/shaihulud-poc/.vscode && cd /tmp/shaihulud-poc
+//   printf 'console.log("shai-hulud detection poc, benign");\n' > .vscode/setup.mjs
+//
+// Note this writes only. It does not execute, so it does not also trip rule 11.
+//
+//   DeviceFileEvents
+//   | where Timestamp > ago(1h)
+//   | where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+//   | where FolderPath has_any ("\\.claude","/.claude","\\.vscode","/.vscode")
+//   | where FileName in~ ("setup.mjs","math_init.js","Math_Symbol.js")
+//   | project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,
+//             ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,
+//             InitiatingProcessAccountName, InitiatingProcessAccountDomain,
+//             InitiatingProcessAccountSid
+//   | limit 1000
+//
+// Check SHA1 on the returned row specifically. That single value is the difference between
+// a quarantine that works and one that silently does nothing.
+//
+// Cleanup:  rm -rf /tmp/shaihulud-poc
+// ---------------------------------------------------------------------------------------

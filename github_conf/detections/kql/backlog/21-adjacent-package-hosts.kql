@@ -1,0 +1,42 @@
+// 21 — Which devices have the affected package names on disk (any version)
+//
+// Purpose      Layer 1 found 0 exact version matches but 81 distinct repos depending on
+//              adjacent versions of the compromised packages:
+//                  keyv 77 · cacheable-request 76 · file-entry-cache 12 · flat-cache 12
+//              That is a repository-level view from the scan database. This is the
+//              endpoint-level view: which actual machines have these package trees
+//              installed, and therefore which machines would have pulled a poisoned
+//              release had the version resolved differently.
+// Table        DeviceFileEvents
+// Permission   ThreatHunting.Read.All
+// Expected     Many rows. This is exposure surface, NOT compromise. Do not treat a hit
+//              here as an incident.
+// Read it as   The population to prioritise for the pinning work — the fix is
+//              known_clean_pins (keyv@5.2.3, cacheable@1.8.8), not remediation.
+//              A device here that ALSO appears in 20 is an incident.
+//
+// Path match rather than a package manifest read: Defender has no package inventory, so
+// the node_modules directory name is the only available signal. It is a proxy — a
+// vendored copy or a cache directory counts the same as a real dependency.
+//
+// Deliberately does not filter on version: the whole point is to find machines adjacent
+// to the compromised releases, and version is not present in a filesystem path.
+
+let Affected = dynamic(["keyv","cacheable","cacheable-request","flat-cache",
+                        "file-entry-cache","cache-manager"]);
+DeviceFileEvents
+| where Timestamp > ago(30d)
+| where FolderPath has "node_modules"
+| extend PathLower = tolower(FolderPath)
+| mv-apply Pkg = Affected to typeof(string) on (
+    where PathLower has strcat("node_modules\\", Pkg, "\\")
+       or PathLower has strcat("node_modules/", Pkg, "/")
+  )
+| summarize Events    = count(),
+            FirstSeen = min(Timestamp),
+            LastSeen  = max(Timestamp),
+            Packages  = make_set(Pkg, 10)
+    by DeviceName, DeviceId
+| extend PackageCount = array_length(Packages)
+| order by PackageCount desc, Events desc
+| limit 1000

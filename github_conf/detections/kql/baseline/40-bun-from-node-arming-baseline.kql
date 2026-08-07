@@ -1,0 +1,48 @@
+// 40 — ARMING GATE: 30-day false-positive baseline for npm-shaihulud-bun-from-node
+//
+// Purpose      Rule 12 is the only medium-confidence rule in the set and ships
+//              armed=false, requiresForce=true. This query is the evidence required
+//              before anyone arms it. Selective isolation on a behavioural rule with an
+//              unmeasured false-positive rate is how a detection programme loses its
+//              mandate.
+// Table        DeviceProcessEvents (+ DeviceInfo for the device group)
+// Permission   ThreatHunting.Read.All
+// Expected     Ideally zero. Bun driven by node is unusual.
+//
+// Decision table:
+//   0 rows over 30 days                  -> safe to arm within the piloted scope
+//   hits from CI runners only            -> scope AWAY from the runner group; a build
+//                                           machine isolated mid-pipeline stops builds
+//                                           org-wide (handover §7 DECISION 1)
+//   steady hits from one team            -> that team legitimately uses Bun. Scope the
+//                                           rule to the other groups. Do NOT delete it:
+//                                           this is the rule that catches the next
+//                                           variant, whose hashes and filenames will
+//                                           all be different.
+//   scattered low-volume hits            -> keep detect-only, review at 30 days
+//
+// The DeviceInfo join is what makes the output actionable: the answer to a false positive
+// here is a --scope value, and that requires knowing which group the noisy devices are in.
+
+let Platform =
+    DeviceInfo
+    | where Timestamp > ago(7d)
+    | summarize arg_max(Timestamp, OSPlatform, MachineGroup) by DeviceId
+    | project DeviceId, OSPlatform, MachineGroup;
+DeviceProcessEvents
+| where Timestamp > ago(30d)
+| where FileName in~ ("bun","bun.exe","bunx","bunx.exe")
+| where InitiatingProcessFileName in~ ("node","node.exe","npm","npm.exe","npm-cli.js")
+| join kind=leftouter Platform on DeviceId
+| extend ScopeName = iff(isempty(MachineGroup), "UnassignedGroup", MachineGroup),
+         IsCiRunner = DeviceName startswith "cxdkrprdapp"
+| summarize Events       = count(),
+            Devices      = dcount(DeviceId),
+            SampleDevice = any(DeviceName),
+            Accounts     = make_set(AccountName, 10),
+            SampleCmd    = any(ProcessCommandLine),
+            FirstSeen    = min(Timestamp),
+            LastSeen     = max(Timestamp)
+    by ScopeName, OSPlatform, IsCiRunner
+| order by Events desc
+| limit 200

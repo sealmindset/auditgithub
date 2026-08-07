@@ -1,0 +1,60 @@
+// 52 — IR: persistence sweep
+//
+// Purpose      Removing the payload is not eradication. The secondary execution chain needs
+//              no npm at all: a hook in .vscode/tasks.json or .claude/settings.json fires
+//              the loader when the repo is next opened in an IDE. Reinfection then looks
+//              like a new incident on a "remediated" device.
+// Tables       DeviceFileEvents, DeviceRegistryEvents
+// Permission   ThreatHunting.Read.All
+// Scope        Leave TargetDevice as "*" to sweep the estate; set it to scope one device.
+//
+// Persistence surfaces from the IOC set: LaunchAgents (macOS), .config/systemd/user
+// (Linux), .local/bin, .claude, .vscode, plus Windows Run keys. The lock file
+// /tmp/tmp.dpkg_14527.lock is the worm's own single-instance marker — a strong,
+// low-false-positive indicator of execution on a Linux host.
+
+let TargetDevice = "*";
+let Lookback = 30d;
+union withsource=SourceTable
+  (
+    DeviceFileEvents
+    | where Timestamp > ago(Lookback)
+    | where TargetDevice == "*" or DeviceName =~ TargetDevice
+    | where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+    | where (FolderPath has_any ("LaunchAgents", ".config/systemd/user", "/.local/bin",
+                                 "\\.claude", "/.claude", "\\.vscode", "/.vscode")
+             and FileName in~ ("setup.mjs","math_init.js","Math_Symbol.js",
+                               "settings.json","tasks.json"))
+         or FileName =~ "tmp.dpkg_14527.lock"
+         or (FolderPath has ".github" and FileName =~ "codeql_analysis.yml")
+    | extend Surface = case(
+        FolderPath has "LaunchAgents",              "macOS LaunchAgent",
+        FolderPath has ".config/systemd/user",      "Linux systemd user unit",
+        FolderPath has "/.local/bin",               "Linux user bin",
+        FolderPath has_any ("\\.claude","/.claude"), "agent autostart hook",
+        FolderPath has_any ("\\.vscode","/.vscode"), "IDE autostart hook",
+        FileName =~ "tmp.dpkg_14527.lock",          "worm single-instance lock",
+        "exfil workflow"),
+      Detail = strcat(FolderPath, " sha256=", SHA256),
+      Writer = InitiatingProcessFileName
+  ),
+  (
+    DeviceRegistryEvents
+    | where Timestamp > ago(Lookback)
+    | where TargetDevice == "*" or DeviceName =~ TargetDevice
+    | where RegistryKey has_any (@"\CurrentVersion\Run", @"\CurrentVersion\RunOnce")
+    | where RegistryValueData has_any ("node","bun","npm","setup.mjs","math_init","Math_Symbol",
+                                       ".claude",".vscode")
+    | extend Surface = "Windows Run key",
+             Detail  = strcat(RegistryKey, " -> ", RegistryValueName, "=", RegistryValueData),
+             Writer  = InitiatingProcessFileName
+  )
+| project Timestamp, Surface, SourceTable, DeviceName, DeviceId, Writer, Detail
+| order by Timestamp desc
+| limit 1000
+
+// Note on the hook files: settings.json and tasks.json are legitimate files that most
+// developers have. This query returns them by PATH, without the hash filter that rule 13
+// applies, so expect benign rows — the point is to review each one on a device already
+// confirmed compromised, not to alert on them. Compare against the IOC hashes
+// 927387d0... (.vscode/tasks.json) and 14eb4ce0... (.claude/settings.json).

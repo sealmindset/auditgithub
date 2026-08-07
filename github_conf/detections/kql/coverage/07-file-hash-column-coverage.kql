@@ -1,0 +1,41 @@
+// 07 — Is SHA1 populated? (does stopAndQuarantineFiles have a target?)
+//
+// Purpose      npm-shaihulud-agent-hook-drop arms stopAndQuarantineFiles, which requires
+//              a sha1Column. If SHA1 is empty on the matching rows, the action silently
+//              no-ops: the alert fires, the operator believes the file was quarantined,
+//              and it was not. Same class of failure for DeviceId on any isolate action.
+// Tables       DeviceFileEvents + DeviceInfo (for platform)
+// Permission   ThreatHunting.Read.All
+// Expected     High SHA1 coverage on Windows. Non-Windows coverage is the open question —
+//              this is the check, not an assumption.
+// Read it as   Sha1CoveragePct well below 100 on a platform means: keep the rule
+//              detect-only there, or scope the armed version to platforms where the
+//              action can actually land. MissingDeviceId > 0 is more serious — it breaks
+//              every automated action AND the entity mapping.
+//
+// Filtered to the file shapes the drop rule cares about so the percentage reflects the
+// rows the rule would actually match, not the whole file-event firehose.
+
+let Platform =
+    DeviceInfo
+    | where Timestamp > ago(7d)
+    | summarize arg_max(Timestamp, OSPlatform) by DeviceId
+    | project DeviceId, OSPlatform;
+DeviceFileEvents
+| where Timestamp > ago(7d)
+| where ActionType in~ ("FileCreated", "FileModified", "FileRenamed")
+| where FileName endswith ".js" or FileName endswith ".mjs"
+     or FileName endswith ".cjs" or FileName endswith ".json"
+| join kind=leftouter Platform on DeviceId
+| extend Platform = iff(isempty(OSPlatform), "unknown", OSPlatform)
+| summarize Rows            = count(),
+            MissingSHA1     = countif(isempty(SHA1)),
+            MissingSHA256   = countif(isempty(SHA256)),
+            MissingDeviceId = countif(isempty(DeviceId)),
+            Devices         = dcount(DeviceId)
+    by Platform
+| extend Sha1CoveragePct   = round(100.0 * (Rows - MissingSHA1)   / Rows, 1),
+         Sha256CoveragePct = round(100.0 * (Rows - MissingSHA256) / Rows, 1)
+| project Platform, Devices, Rows, Sha1CoveragePct, Sha256CoveragePct, MissingDeviceId
+| order by Rows desc
+| limit 50

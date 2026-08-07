@@ -76,6 +76,19 @@ PR_HEAD_CHECKOUT_RE = re.compile(
     r"ref\s*:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)\s*\}\}")
 CURL_PIPE_RE = re.compile(r"(?:curl|wget)[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba)?sh")
 SECRET_IN_RUN_RE = re.compile(r"\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}")
+# The exfil primitive itself, not the two filenames it has been seen under. Both
+# documented variants -- `codeql_analysis.yml` on a dependabot branch, and a workflow
+# named `Run Copilot` on push -- do one thing: serialise the whole secrets context and
+# upload it. Keying on either filename misses the other, and misses the next one.
+TOJSON_SECRETS_RE = re.compile(r"toJSON\s*\(\s*secrets\s*\)", re.IGNORECASE)
+# Bun bootstrap in CI, including the Windows binary. `bun.exe` is listed explicitly
+# because the Windows release assets unpack to that name and every earlier pass modelled
+# the bootstrap as POSIX (mkdtemp('/tmp/bun-dl-') + chmod 755), which cannot match on a
+# windows-latest runner. A hit is a provenance question, not a finding: setup-bun and a
+# pinned Bun install are both legitimate and common.
+BUN_FETCH_RE = re.compile(
+    r"oven-sh/bun/releases/download|bun-windows-[a-z0-9-]+\.zip|bun-dl-|bun\.exe",
+    re.IGNORECASE)
 
 # Actions published by GitHub itself. Still mutable, but the tag owner is the platform,
 # so they are separated from arbitrary third parties rather than being excused.
@@ -182,6 +195,9 @@ def analyse_workflow(path: str, text: str) -> dict:
             privileged_trigger and pr_head_checkout),
         "pipes_remote_code_to_shell": len(CURL_PIPE_RE.findall(text)),
         "secrets_interpolated_in_run": len(set(SECRET_IN_RUN_RE.findall(text))),
+        "serialises_whole_secrets_context": bool(TOJSON_SECRETS_RE.search(text)),
+        "bun_fetch_markers": sorted({m.lower() for m in BUN_FETCH_RE.findall(text)}),
+        "references_bun_exe": bool(re.search(r"bun\.exe", text, re.IGNORECASE)),
         "has_on_block": bool(ON_BLOCK_RE.search(text)),
     })
     return out
@@ -302,6 +318,14 @@ def main() -> int:
     secrets_in_run = [{"repo": name, "path": w["path"],
                        "distinct_secrets": w["secrets_interpolated_in_run"]}
                       for name, w in workflows if w.get("secrets_interpolated_in_run")]
+    # §6 check 8 of the hunt TTP, added 2026-08-06 and never executed until now.
+    tojson_secrets = [{"repo": name, "path": w["path"]}
+                      for name, w in workflows
+                      if w.get("serialises_whole_secrets_context")]
+    bun_fetch = [{"repo": name, "path": w["path"],
+                  "markers": w["bun_fetch_markers"],
+                  "references_bun_exe": w.get("references_bun_exe")}
+                 for name, w in workflows if w.get("bun_fetch_markers")]
 
     third_party = Counter()
     for _, workflow in workflows:
@@ -339,9 +363,15 @@ def main() -> int:
             "workflows_with_self_hosted_runners": len(self_hosted),
             "workflows_piping_remote_code_to_shell": len(curl_pipe),
             "workflows_interpolating_secrets_into_run": len(secrets_in_run),
+            "workflows_serialising_whole_secrets_context": len(tojson_secrets),
+            "workflows_fetching_bun": len(bun_fetch),
+            "workflows_referencing_bun_exe": sum(
+                1 for b in bun_fetch if b["references_bun_exe"]),
             "CRITICAL_privileged_trigger_with_pr_head_checkout": len(critical),
         },
         "critical_privileged_trigger_with_pr_head_checkout": critical,
+        "serialises_whole_secrets_context": tojson_secrets,
+        "bun_fetch_workflows": bun_fetch,
         "self_hosted_runner_workflows": self_hosted,
         "remote_code_piped_to_shell": curl_pipe,
         "secrets_interpolated_into_run": secrets_in_run[:200],
@@ -360,6 +390,16 @@ def main() -> int:
             "capability CHAINDROP's exfiltration workflow used.",
             "Counts are only interpretable as prevalence where read_rate meets the "
             "threshold; below it, the numbers are a floor and not a rate.",
+            "toJSON(secrets) is the exfiltration primitive both documented CHAINDROP "
+            "workflow variants use. A legitimate hit is possible — some matrix and "
+            "reusable-workflow patterns pass the whole context deliberately — so each "
+            "one needs an author and a commit date, not a verdict from this count.",
+            "A Bun fetch marker is a provenance question, not a finding. What matters is "
+            "whether the fetch is pinned and mirrored: the release CDN is the dropper's "
+            "first hop and one egress origin, versus 75 RPC endpoints downstream. "
+            "bun.exe is matched explicitly because the Windows bootstrap writes that "
+            "name and never touches /tmp or chmod, so the POSIX-shaped checks in this "
+            "corpus could not have seen it.",
         ],
         "limits": [
             "Default branch only, and only repositories the tree sweep found to have "

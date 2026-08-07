@@ -1,0 +1,26 @@
+// 12 — RULE: Bun runtime spawned by node or npm
+//
+// Deployed as  npm-shaihulud-bun-from-node  (severity medium, PT1H,
+//                                            isolateDevices=selective,
+//                                            armed=false, requiresForce=true)
+// Table        DeviceProcessEvents
+// Confidence   MEDIUM — the only rule in the set that is behavioural rather than
+//              indicator-based. Bun driven by node is unusual but not inherently
+//              malicious. It is deliberately shipped unarmed and needs --force in
+//              addition to --arm.
+//
+// GATE ON ARMING: baseline/40 over 30 days. If it returns steady hits from a team that
+// legitimately drives Bun from node, scope the rule to the groups that do not, rather
+// than deleting it — this is the rule that catches the next variant with different
+// hashes and filenames.
+//
+// Backlog variant: ago(1h) -> ago(30d) (this is what baseline/40 does, with aggregation).
+
+DeviceProcessEvents
+| where Timestamp > ago(1h)
+| where FileName in~ ("bun","bun.exe","bunx","bunx.exe")
+| where InitiatingProcessFileName in~ ("node","node.exe","npm","npm.exe","npm-cli.js")
+| project Timestamp, ReportId, DeviceId, DeviceName, AccountName, AccountDomain, AccountSid,
+          FileName, FolderPath, ProcessCommandLine, SHA256,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath
+| limit 1000

@@ -1,0 +1,28 @@
+// 41 — BASELINE: npm registry tarball fetches matching the affected package names
+//
+// Source       hunting_queries[npm-registry-tarball-fetch] in
+//              github_conf/detections/npm_supply_chain_rules.json, verbatim.
+// Purpose      The closest honest endpoint-telemetry answer to "inspect what npm is
+//              fetching and compare it to a blacklist". The registry URL path carries the
+//              resolved version — <pkg>/-/<pkg>-<version>.tgz — which is the only place a
+//              package version appears in any Device* table.
+//
+// NOT A DETECTION RULE, on purpose. It depends on Network Protection populating
+// RemoteUrl, and node's own TLS stack means coverage is partial even then. A scheduled
+// rule built on this would return zero on most devices and read as "clean".
+// Authoritative version matching is scripts/ioc/match_npm_ioc.py against the scan
+// database (which returned 0 exact matches over 46,231 dependency rows / 467 repos).
+//
+// Only the 8 seed packages are inlined. The full blacklist is 2,235 name@version pairs;
+// dynamic() literals in a hunting query are size-limited.
+
+let bad = dynamic(["keyv-6.0.0.tgz","cacheable-2.5.1.tgz","flat-cache-6.1.24.tgz","file-entry-cache-11.1.6.tgz","cacheable-request-13.0.20.tgz","cache-manager-7.2.10.tgz","utils-2.5.1.tgz","memory-2.2.1.tgz"]);
+DeviceNetworkEvents
+| where Timestamp > ago(7d)
+| where InitiatingProcessFileName in~ ("node","node.exe","npm","npm.exe","npm-cli.js","pnpm","yarn","bun","bun.exe")
+| where RemoteUrl has "/-/" and RemoteUrl endswith ".tgz"
+| extend Tarball = tostring(split(RemoteUrl, "/-/")[1])
+| where Tarball has_any (bad)
+| project Timestamp, DeviceName, AccountName = InitiatingProcessAccountName, Tarball, RemoteUrl,
+          InitiatingProcessFileName, InitiatingProcessCommandLine
+| limit 1000

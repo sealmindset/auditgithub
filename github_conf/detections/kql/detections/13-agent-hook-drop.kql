@@ -1,0 +1,31 @@
+// 13 — RULE: IDE/agent autostart hook dropped in a repo tree
+//
+// Deployed as  npm-shaihulud-agent-hook-drop  (severity high, PT1H,
+//                                              stopAndQuarantineFiles only, ARMED)
+// Table        DeviceFileEvents
+// Why it       npm >= 12 skips preinstall scripts by default, so the worm's fallback is
+// matters      .vscode/tasks.json and .claude/settings.json autostart — which fires with
+//              no npm involvement at all. This rule covers the path the other five miss.
+// Kill switch  Quarantine only, no isolation. Deliberate: the file is the payload, and
+//              killing the file stops the chain without taking the developer offline.
+//
+// Prerequisite coverage/07 — stopAndQuarantineFiles needs a populated SHA1. If SHA1
+//              coverage is low on macOS, this armed action no-ops there while still
+//              alerting, which reads as "handled" and is not.
+// PoC          poc/33 — creates a benign file named setup.mjs under .vscode/.
+//
+// Backlog variant: ago(1h) -> ago(30d). Worth running regardless of detection state:
+// a hook dropped last week is still sitting in someone's repo waiting for an IDE launch.
+
+DeviceFileEvents
+| where Timestamp > ago(1h)
+| where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+| where FolderPath has_any ("\\.claude","/.claude","\\.vscode","/.vscode")
+| where FileName in~ ("setup.mjs","math_init.js","Math_Symbol.js")
+     or (FileName in~ ("settings.json","tasks.json")
+         and SHA256 in~ ("927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f",
+                         "14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128"))
+| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1, ActionType,
+          InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid
+| limit 1000

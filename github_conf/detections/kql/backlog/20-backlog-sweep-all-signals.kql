@@ -1,0 +1,120 @@
+// 20 — BACKLOG SWEEP: all six detection signals, 30 days, one result set
+//
+// Purpose      Custom detections are NOT retroactive. Each rule evaluates from its first
+//              scheduled run forward. Anything the worm already did is invisible to all
+//              six rules, permanently. This query is the only pass that covers the
+//              existing window, and it should be run BEFORE the rules are deployed —
+//              once a rule is armed, a 30-day-old artefact can trigger isolation on a
+//              machine that has been clean for weeks.
+// Tables       DeviceFileEvents, DeviceProcessEvents, DeviceNetworkEvents
+// Permission   ThreatHunting.Read.All
+// Expected     Empty. Layer 1 found 0 exact package matches across 46,231 dependency
+//              rows in 467 repos, so a hit here would be a genuine surprise — and would
+//              mean an infection arrived by a path the dependency scan cannot see
+//              (a developer's personal project, a global install, a pulled Docker image).
+// Read it as   Any row is an incident. Go to ir/50 with the DeviceName.
+//              Zero rows is only meaningful if coverage/01, 06 and 07 passed first.
+//
+// 30 days is the advanced-hunting retention ceiling. Nothing before that is recoverable
+// from this table set; for older evidence use the dependency scan database.
+//
+// Notes on shape:
+//   * union withsource=SourceTable is used to label rows by origin table. The dollar-sign
+//     table macro that would otherwise do this is not available through the Graph
+//     runHuntingQuery endpoint, and lint_kql rejects it — including, correctly, when it
+//     appears in a comment, which is why it is described here rather than written out.
+//   * The DeviceNetworkEvents branch depends entirely on Network Protection populating
+//     RemoteUrl and has no IP fallback (see the comment on that branch). Read its zero
+//     together with coverage/04 and coverage/05, never alone.
+//   * Each branch normalises to the same six columns; Signal names match the rule ids.
+
+let Lookback = 30d;
+let PayloadHashes = dynamic([
+    "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+    "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+    "927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f",
+    "14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128",
+    "3f3f42d072bd36860ab7bd7fb5e10ac0d22c741c13c89505ccd6ec0ea572eea7",
+    "29ac906c8bd801dfe1cb39596197df49f80fff2270b3e7fbab52278c24e4f1a7",
+    "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668"]);
+let HookHashes = dynamic([
+    "927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f",
+    "14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128"]);
+let DevTools = dynamic(["node","node.exe","bun","bun.exe","bunx","bunx.exe",
+                        "npm","npm.exe","npm-cli.js","pnpm","yarn"]);
+let C2Domains = dynamic(["npm-cache.com","js-mirror.com","pypi-get.com",
+                         "eth-mainnet.nodereal.io","go.getblock.io","eth.llamarpc.com"]);
+union withsource=SourceTable
+  (
+    // 10 — known payload hash on disk
+    DeviceFileEvents
+    | where Timestamp > ago(Lookback)
+    | where SHA256 in~ (PayloadHashes)
+    | extend Signal = "payload-hash",
+             Account = InitiatingProcessAccountName,
+             Detail = strcat(FolderPath, " sha256=", SHA256)
+  ),
+  (
+    // 11 — loader executed
+    DeviceProcessEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ (DevTools) or InitiatingProcessFileName in~ (DevTools)
+    | where ProcessCommandLine has_any ("setup.mjs","math_init.js","math_init","Math_Symbol")
+    | extend Signal = "loader-exec",
+             Account = AccountName,
+             Detail = ProcessCommandLine
+  ),
+  (
+    // 12 — Bun spawned by node/npm  (medium confidence: expect benign hits)
+    DeviceProcessEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ ("bun","bun.exe","bunx","bunx.exe")
+    | where InitiatingProcessFileName in~ ("node","node.exe","npm","npm.exe","npm-cli.js")
+    | extend Signal = "bun-from-node",
+             Account = AccountName,
+             Detail = strcat(InitiatingProcessFileName, " -> ", ProcessCommandLine)
+  ),
+  (
+    // 13 — IDE/agent autostart hook dropped
+    DeviceFileEvents
+    | where Timestamp > ago(Lookback)
+    | where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+    | where FolderPath has_any ("\\.claude","/.claude","\\.vscode","/.vscode")
+    | where FileName in~ ("setup.mjs","math_init.js","Math_Symbol.js")
+         or (FileName in~ ("settings.json","tasks.json") and SHA256 in~ (HookHashes))
+    | extend Signal = "agent-hook-drop",
+             Account = InitiatingProcessAccountName,
+             Detail = strcat(FolderPath, " by ", InitiatingProcessFileName)
+  ),
+  (
+    // 14 — C2 / Ethereum-RPC contact.
+    //
+    // RemoteUrl only. The single IP in the IOC set (104.21.35.216) is a Cloudflare shared
+    // address: matching it would produce hits from unrelated traffic and is the reason it
+    // is also excluded from the Layer 3 indicator list. There is no honest IP fallback
+    // here, which means this branch is entirely dependent on Network Protection —
+    // coverage/04 and coverage/05 decide whether a zero from it means anything.
+    DeviceNetworkEvents
+    | where Timestamp > ago(Lookback)
+    | where RemoteUrl has_any (C2Domains)
+    | where InitiatingProcessFileName in~ (DevTools)
+         or InitiatingProcessFileName in~ ("python","python3","python.exe","git","git.exe")
+    | extend Signal = "c2-contact",
+             Account = InitiatingProcessAccountName,
+             Detail = strcat(iff(isempty(RemoteUrl), RemoteIP, RemoteUrl), ":", tostring(RemotePort),
+                             " by ", InitiatingProcessFileName)
+  ),
+  (
+    // 15 — exfil staging artefact written by node/bun
+    DeviceFileEvents
+    | where Timestamp > ago(Lookback)
+    | where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+    | where FileName in~ ("format-results.txt","format-results","codeql_analysis.yml")
+    | where InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","bunx","npm","npm.exe")
+    | extend Signal = "exfil-artifacts",
+             Account = InitiatingProcessAccountName,
+             Detail = strcat(FolderPath, " by ", InitiatingProcessFileName)
+  )
+| project Timestamp, Signal, SourceTable, DeviceName, DeviceId, Account, Detail
+| order by Timestamp desc
+| limit 2000

@@ -1,0 +1,23 @@
+// 15 — RULE: exfil workflow or results artefact written by node/bun
+//
+// Deployed as  npm-shaihulud-exfil-artifacts  (severity high, PT1H,
+//                                              isolateDevices=selective, ARMED)
+// Table        DeviceFileEvents
+// Confidence   High. format-results.txt and codeql_analysis.yml are the worm's own
+//              exfil staging artefacts. The InitiatingProcess filter is what keeps a
+//              developer legitimately editing a workflow file out of the results.
+// Stage        LATE. A hit here means credentials have likely already been harvested.
+//              Rotate before eradicating — see ir/51.
+//
+// Backlog variant: ago(1h) -> ago(30d). High priority for the backlog sweep: this is
+// the artefact most likely to still exist on disk from an infection that already ran.
+
+DeviceFileEvents
+| where Timestamp > ago(1h)
+| where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+| where FileName in~ ("format-results.txt","format-results","codeql_analysis.yml")
+| where InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","bunx","npm","npm.exe")
+| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1, ActionType,
+          InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid
+| limit 1000

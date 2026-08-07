@@ -1,0 +1,23 @@
+// 42 — BASELINE: who ran a package install, and when
+//
+// Source       hunting_queries[npm-install-window-baseline] in
+//              github_conf/detections/npm_supply_chain_rules.json, verbatim.
+// Purpose      The literal "trigger when npm is used" step. Use it to scope WHICH
+//              developers' credentials are in play after a confirmed detection, not to
+//              alert.
+//
+// NOT A DETECTION RULE. npm install is normal. Alerting on it produces one alert per
+// developer per day and trains the team to ignore the rule.
+//
+// Secondary use: sanity-check coverage/06. If this shows 4 developers running installs
+// across a 300-device Linux estate, the telemetry is thin and every zero elsewhere in
+// this library needs that caveat attached.
+
+DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where FileName in~ ("npm","npm.exe","npm-cli.js","node","pnpm","yarn","bun","bun.exe")
+| where ProcessCommandLine has_any ("install"," ci","add ")
+| summarize Installs = count(), FirstSeen = min(Timestamp), LastSeen = max(Timestamp)
+         by DeviceName, AccountName
+| order by Installs desc
+| limit 500

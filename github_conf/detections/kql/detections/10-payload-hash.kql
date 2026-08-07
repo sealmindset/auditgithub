@@ -1,0 +1,29 @@
+// 10 — RULE: Shai-Hulud known payload hash on disk
+//
+// Deployed as  npm-shaihulud-payload-hash   (severity high, PT1H, isolateDevices=full, ARMED)
+// Table        DeviceFileEvents
+// Confidence   Highest in the set. A SHA-256 match is not a heuristic.
+// Kill switch  Armed for full isolation. This is the rule most likely to isolate a
+//              developer mid-build, and the one where that is most clearly correct.
+//
+// Prerequisite Run coverage/07 first: the armed action needs DeviceId, and the
+//              quarantine path on the sibling rule needs SHA1.
+// PoC          poc/30 — substitute a benign file hash to prove the shape.
+//
+// Backlog variant: replace  ago(1h)  with  ago(30d)  and run as a hunt. The scheduled
+// rule is not retroactive, so this is the only way to see what is already on disk.
+
+DeviceFileEvents
+| where Timestamp > ago(1h)
+| where SHA256 in~ (
+    "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+    "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+    "927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f",
+    "14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128",
+    "3f3f42d072bd36860ab7bd7fb5e10ac0d22c741c13c89505ccd6ec0ea572eea7",
+    "29ac906c8bd801dfe1cb39596197df49f80fff2270b3e7fbab52278c24e4f1a7",
+    "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668")
+| project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,
+          ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid
+| limit 1000

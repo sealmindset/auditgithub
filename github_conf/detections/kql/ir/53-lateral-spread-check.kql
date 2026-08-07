@@ -1,0 +1,59 @@
+// 53 — IR: has it spread beyond the first device
+//
+// Purpose      This worm propagates through the registry, not the network: it republishes
+//              packages using credentials stolen from the first victim, and the next victim
+//              is whoever installs those packages. So "spread" means other devices showing
+//              the same artefacts in the same window, not lateral movement.
+// Tables       DeviceFileEvents, DeviceProcessEvents
+// Permission   ThreatHunting.Read.All
+//
+// SET Anchor to the confirmed detection time. The window is deliberately wide (7 days
+// before, 7 days after): republished packages sit in the registry until someone installs
+// them, so a second victim can appear days later with no contact between the machines.
+
+let Anchor = datetime(2026-08-05 00:00:00);
+let PayloadHashes = dynamic([
+    "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+    "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+    "927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f",
+    "14eb4ce01dd4307759887ff819359b70d7d9ff709ecde039a5abc1aac325b128",
+    "3f3f42d072bd36860ab7bd7fb5e10ac0d22c741c13c89505ccd6ec0ea572eea7",
+    "29ac906c8bd801dfe1cb39596197df49f80fff2270b3e7fbab52278c24e4f1a7",
+    "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668"]);
+union withsource=SourceTable
+  (
+    DeviceFileEvents
+    | where Timestamp between ((Anchor - 7d) .. (Anchor + 7d))
+    | where SHA256 in~ (PayloadHashes)
+         or FileName in~ ("math_init.js","Math_Symbol.js","setup.mjs",
+                          "format-results.txt","format-results","tmp.dpkg_14527.lock")
+    | extend Indicator = iff(SHA256 in~ (PayloadHashes),
+                             strcat("hash:", substring(SHA256, 0, 12)),
+                             strcat("filename:", FileName)),
+             Account = InitiatingProcessAccountName
+  ),
+  (
+    DeviceProcessEvents
+    | where Timestamp between ((Anchor - 7d) .. (Anchor + 7d))
+    | where ProcessCommandLine has_any ("setup.mjs","math_init.js","math_init","Math_Symbol")
+    | extend Indicator = "loader-exec", Account = AccountName
+  )
+| summarize Hits      = count(),
+            Indicators = make_set(Indicator, 15),
+            Accounts  = make_set_if(Account, isnotempty(Account), 10),
+            FirstSeen = min(Timestamp),
+            LastSeen  = max(Timestamp)
+    by DeviceName, DeviceId
+| extend IsCiRunner = DeviceName startswith "cxdkrprdapp"
+| order by FirstSeen asc
+| limit 500
+
+// FirstSeen ascending on purpose: the earliest device is the likeliest patient zero, and
+// that is the one whose credentials seeded the republish. IsCiRunner is called out because
+// a runner hit changes the response — a runner's credentials are usually org-wide, so the
+// rotation scope in ir/51 becomes much larger than one developer.
+//
+// Filename matching without the hash filter is intentional here. The worm increments patch
+// versions on republish, and each republished payload can hash differently; by the time
+// spread is being assessed, the hash list is already stale. Expect benign setup.mjs hits
+// and triage them.

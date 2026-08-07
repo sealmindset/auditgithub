@@ -1,16 +1,23 @@
 # npm supply-chain IDS/IPS — Microsoft Graph + Defender XDR
 
 Detection and prevention for npm worm campaigns, built against **Shai-Hulud: Here We Go
-Again** (2026-08-04, [JFrog](https://research.jfrog.com/post/shai-hulud-is-back-august/)).
+Again** (2026-08-04, [JFrog](https://research.jfrog.com/post/shai-hulud-is-back-august/)), also
+tracked as **CHAINDROP** ([Elastic](https://www.elastic.co/security-labs/shai-hulud-chaindrop-npm-supply-chain),
+[StepSecurity](https://www.stepsecurity.io/blog/chaindrop-npm-worm)).
 
 | Artefact | Path |
 |---|---|
 | IOC bundle | `github_conf/ioc/shai_hulud_2026_08.json` |
+| Source file — Elastic Security Labs | `github_conf/ioc/chaindrop_elastic_2026_08.json` |
+| Source file — StepSecurity | `github_conf/ioc/chaindrop_stepsecurity_2026_08.json` |
+| Source arbitration (which claim won, and why) | `docs/playbooks/supply-chain-hunt-ttp.md` §1.1–§1.3 |
 | Malicious package@version list (443 pkgs / 2235 pairs) | `github_conf/ioc/keyv-packages-wiz.csv` |
 | Layer 1 — inventory matcher | `scripts/ioc/match_npm_ioc.py` |
 | Layer 2 — detection rules as code | `github_conf/detections/npm_supply_chain_rules.json` |
 | Layer 2 — deployer | `scripts/ioc/deploy_detection_rules.py` |
 | Layer 2 — deploy workflow (two-person control) | `.github/workflows/deploy-detection-rules.yml` |
+| Layer 2 — proof-of-concept KQL library (30 queries) | `github_conf/detections/kql/` |
+| Layer 2 — PoC lint/run harness | `scripts/ioc/run_kql_poc.py` |
 | Prior hunt (this campaign, clean) | `exports/graph-hunt-mini-shai-hulud-RESULTS.md` |
 | **Tenant rollout / Global Admin approval packet** | `docs/playbooks/npm-supply-chain-rollout-handover.md` |
 
@@ -116,21 +123,53 @@ figure above is the subset that actually declares npm dependencies.
 
 ### 4.1 The rules
 
-Six rules, all version-independent. None of them mentions a package name.
+Nine rules, all version-independent. None of them mentions a package name.
 
-| Rule id | Signal | Severity |
-|---|---|---|
-| `npm-shaihulud-payload-hash` | SHA-256 of any of 7 published payload/loader/hook artefacts on disk | high |
-| `npm-shaihulud-loader-exec` | node/bun executing `setup.mjs`, `math_init.js`, `Math_Symbol.js` | high |
-| `npm-shaihulud-bun-from-node` | Bun spawned **by node or npm** — the loader fetches Bun 1.3.13 to run outside the project's Node runtime | medium |
-| `npm-shaihulud-agent-hook-drop` | loader or known-bad hook config written into `.claude/` or `.vscode/` — **the npm-12 path** | high |
-| `npm-shaihulud-c2-contact` | dev-toolchain process reaching C2 domains or the Ethereum RPC providers | high |
-| `npm-shaihulud-exfil-artifacts` | node/bun writing `format-results.txt` or `codeql_analysis.yml` | high |
+| Rule id | Signal | Severity | Status |
+|---|---|---|---|
+| `npm-shaihulud-payload-hash` | SHA-256 of any of 7 published payload/loader/hook artefacts on disk | high | deployed |
+| `npm-shaihulud-loader-exec` | node/bun executing `setup.mjs`, `math_init.js`, `Math_Symbol.js` | high | deployed |
+| `npm-shaihulud-bun-from-node` | Bun spawned **by node or npm** — the loader fetches Bun 1.3.13 to run outside the project's Node runtime | medium | deployed, **unarmed** |
+| `npm-shaihulud-agent-hook-drop` | loader or known-bad hook config written into `.claude/` or `.vscode/` — **the npm-12 path** | high | deployed |
+| `npm-shaihulud-c2-contact` | dev-toolchain process reaching C2 domains or the Ethereum RPC providers | high | deployed |
+| `npm-shaihulud-exfil-artifacts` | node/bun writing `format-results.txt` or `codeql_analysis.yml` | high | deployed |
+| `npm-shaihulud-token-monitor` | token-revocation watchdog dropped — `gh-token-monitor` script, config dir, systemd unit or launchd label | high | **new 2026-08-06, not deployed** |
+| `npm-shaihulud-bun-fetch` | dev-toolchain process fetching a Bun 1.3.13 release asset from the GitHub release CDN | medium | **new 2026-08-06, not deployed** |
+| `npm-shaihulud-runner-mem-scrape` | `python3` under `sudo` reading `/proc/<pid>/mem` from a runner work directory | high | **new 2026-08-06, not deployed** |
 
 The Ethereum RPC providers matter more than the C2 domains: the payload resolves its live
 C2 address from an on-chain read (contract `0xE1f2395ee43e45A1556EC6438a88c31B83493103`,
 selector `0x53ed5143`), so taking down one domain does not sever control. The RPC providers
-are the chokepoint.
+are the chokepoint — but StepSecurity puts the fallback list at **75 endpoints tried in
+sequence**, so the three domains we hold are a telemetry source, not a chokepoint either.
+That is what `npm-shaihulud-bun-fetch` is for: see below.
+
+**The three new rules, and why each earns its place.** Rule text is in
+`github_conf/detections/npm_supply_chain_rules.json`; all three ship **unarmed** and none has
+been deployed or tenant-verified.
+
+* **`npm-shaihulud-token-monitor`** — the watchdog (`~/.local/bin/gh-token-monitor.sh`,
+  `~/.config/gh-token-monitor/`, `gh-token-monitor.service`, `com.user.gh-token-monitor`)
+  polls `api.github.com/user` every 60 s for 24 h and **fires the payload when the token stops
+  authenticating**. It is the *only* artefact that survives deleting `setup.mjs`,
+  `math_init.js`, `.claude/` and `.vscode/` — so without this rule a host cleaned by §7 step 3
+  reads as eradicated while still armed. `DeviceFileEvents` on those four names is a narrow,
+  low-noise match: nothing legitimate ships a file called `gh-token-monitor.sh`.
+* **`npm-shaihulud-bun-fetch`** — the dropper carries no payload. It fetches Bun from
+  `github.com/oven-sh/bun/releases/download/bun-v1.3.13/` and stage 2 only runs under Bun.
+  One origin, no on-chain indirection, and it happens **before any credential is read** — the
+  earliest network detection in the chain, and earlier than `npm-shaihulud-c2-contact` by the
+  whole collection phase. Caveat, and it is the same one as rule 5: it matches on `RemoteUrl`,
+  so **it is dead without Network Protection**. Shipped `medium` and unarmed because a
+  developer legitimately installing Bun matches it; the discriminator is the *initiating
+  process* being node/npm, not a shell.
+* **`npm-shaihulud-runner-mem-scrape`** — a `sudo python3` helper reads
+  `/proc/<Runner.Worker pid>/mem` and greps `"isSecret":true`, which takes **every secret the
+  runner handled in that job**, not only those the compromised step referenced. No file is
+  written and no network connection is made, so this is invisible to rules 1, 5 and 6.
+  **Scope it to the six self-hosted runners** — GitHub-hosted runners have no agent, and on a
+  developer workstation `python3` reading `/proc` has benign explanations that do not exist on
+  a build agent. Deploy with `--scope` on the CI device group, not tenant-wide.
 
 ### 4.2 API facts, including the ones that cost time
 
@@ -207,7 +246,8 @@ rather than deleting it.
 
 ### 4.6 Kill switch — automated response
 
-Auto-containment is enabled and armed on 5 of the 6 rules. The trade is deliberate: this
+Auto-containment is enabled and armed on 5 of the 9 rules — the original six less
+`bun-from-node`, plus none of the three added on 2026-08-06. The trade is deliberate: this
 campaign exfiltrates credentials **before** it does anything else and republishes from the
 stolen tokens within hours, so the window where human triage helps is shorter than the
 window where it spreads. An isolated developer is a recoverable cost; a leaked npm publish
@@ -303,6 +343,66 @@ clearly enough to assume that clearing works, so it sends `automatedActions: nul
 explicitly and tells you to verify with `--kill-switch-status`. And disarming stops
 *future* actions only — it does not release devices already isolated.
 
+### 4.7 Proof of concept — proving the rules can fire before believing they work
+
+`github_conf/detections/kql/` holds 30 query files and `scripts/ioc/run_kql_poc.py` lints
+and runs them. Everything in it is a read against `ThreatHunting.Read.All`, which is
+already granted, so none of it waits on the permission request in §4.3.
+
+```bash
+python3 scripts/ioc/run_kql_poc.py                  # lint all 30, no tenant contact
+python3 scripts/ioc/run_kql_poc.py --run --group coverage
+```
+
+The problem this solves is that **a rule returning zero is indistinguishable from a clean
+estate**, and four of the nine rules depend on telemetry that may not be populated here
+(`c2-contact` and the new `bun-fetch` need `RemoteUrl`; `token-monitor`'s quarantine needs
+`SHA1`; `runner-mem-scrape` needs the CI device group to exist and be named correctly):
+
+| Group | Purpose |
+|---|---|
+| `coverage/` (7) | onboarding by platform · **device-group names for `--scope`** · CI-runner group · Network Protection configured and firing · is node/npm visible · **is `SHA1` populated** |
+| `backlog/` (2) | the original six signals over the full 30-day window · devices holding the adjacent package trees |
+| `detections/` (6) | six of the nine rule queries, verbatim, each with its backlog variant |
+| `poc/` (7) | one shape proof per *original* rule, returning a computed `PASS`/`WARN`/`FAIL` · alert and entity verification |
+| `baseline/` (3) | **arming gate for `bun-from-node`** · the two hunting queries from the rules file |
+| `ir/` (4) | timeline · credential-rotation scope · persistence sweep · spread check |
+| `prevention/` (1) | are the Layer 3 indicator blocks firing, or merely existing |
+
+A *shape proof* takes one rule and replaces only the malicious-specific predicate with a
+benign marker, keeping the table, joins, `project` list and entity columns identical. If it
+returns a fully populated row, the rule's plumbing works. If it returns nothing, the rule
+would also have returned nothing against real malware — established without an incident.
+Most need no trigger at all; they read existing telemetry.
+
+**The library has not been extended to the three rules added on 2026-08-06.** There is no
+`detections/`, `backlog/` or `poc/` file for `token-monitor`, `bun-fetch` or
+`runner-mem-scrape`, so for those three the 30-day history is unexamined rather than clean,
+and their plumbing is unproven in exactly the way this library exists to prevent. Do not
+report them as coverage until their shape proofs exist and pass.
+
+Two findings the library is built to surface, because both fail silently:
+
+* **`stopAndQuarantineFiles` needs a populated `SHA1`.** If it is empty on the matched rows,
+  `npm-shaihulud-agent-hook-drop` alerts and does *not* quarantine — which reads as handled.
+  `coverage/07` measures it per platform; `poc/33` checks it on the exact rows the rule
+  matches.
+* **`npm-shaihulud-c2-contact` may be dead on arrival.** `poc/34` asks the only question
+  that matters: does a node process's outbound connection arrive with `RemoteUrl` attached?
+  It reports `FAIL - RULE 14 IS DEAD HERE` when it does not.
+
+Runner controls worth knowing: every query is linted with this repo's own `lint_kql()`
+before any credential is touched (all 30 pass clean); `require_role("runHuntingQuery")` runs
+before the first query so a missing role fails loudly instead of returning zero rows; the
+four `ir/` queries are **refused** unless `--params device=<name>` replaces their
+placeholders, because a query for a device named `REPLACE-WITH-DEVICE-NAME` returns zero
+rows and reads as "clean"; exit `3` means at least one shape proof returned `FAIL`.
+
+No query in the library has been executed — there are no hunting credentials in this
+environment. They are linted and schema-reviewed, not tenant-verified. A wrong column name
+errors loudly rather than returning a wrong answer, which is why that is an acceptable
+place to stop.
+
 ### 4.5 Why the deployer is a separate client
 
 `src/api/integrations/msgraph.py` is read-only by construction: its `_POST_ALLOWLIST`
@@ -345,8 +445,15 @@ Recommended actions per indicator class — the distinction is not cosmetic:
 |---|---|---|---|
 | 7 payload SHA-256 hashes | `FileSha256` | `BlockAndRemediate` | Confirmed-malicious files. No false-positive risk. |
 | `npm-cache.com`, `js-mirror.com`, `pypi-get.com` | `DomainName` | `Block` | Attacker-controlled. Requires Network Protection. |
+| **`awqhnjewqjkl.icu`** | `DomainName` | **`Block`** | Attacker-controlled (Elastic). **This was missing.** It sat in `github_conf/ioc/chaindrop_elastic_2026_08.json` from ingest while every rule and this list omitted it — a known C2 domain we were not blocking. Ingesting a source file is not acting on it. |
 | `eth-mainnet.nodereal.io`, `go.getblock.io`, `eth.llamarpc.com` | `DomainName` | **`Audit`** | Legitimate public infrastructure. Blocking breaks real blockchain work. Audit gives the telemetry without the outage. |
 | `104.21.35.216` | — | **do not create** | Cloudflare shared address. Blocking it takes out unrelated sites behind the same edge. Hunting pivot only. |
+| `github.com/oven-sh/bun/releases/…` | — | **do not create** | The Bun fetch is the best *detection* point in the chain (see `npm-shaihulud-bun-fetch`) and the best *prevention* point, but prevention belongs in the CI egress allowlist (§5.2 #5), not in a tenant-wide URL block on a legitimate GitHub origin. |
+
+**Do not read this table as complete because the indicator count matches the hash count.** The
+gap above was found by diffing the source files in `github_conf/ioc/` against this list and
+against the deployed rules — not by reading either one. That diff is now step 2 of adding a
+campaign (§7).
 
 ### 5.2 Controls that actually stop this chain
 
@@ -359,11 +466,53 @@ Recommended actions per indicator class — the distinction is not cosmetic:
    24-hour hold on new releases converts an incident into a non-event. This is also the only
    place the org gets a **complete, version-accurate** record of what was fetched — the thing
    EDR structurally cannot provide.
-3. **Pin and commit lockfiles**, `npm ci` in CI, never `npm install`. The 81 adjacent repos
-   in §3 are exactly the population where this pays.
-4. **Provenance is not a defense in this campaign.** The maintainer's GitHub account was
-   compromised and releases were cut through GitHub Actions, so the poisoned versions carry
-   *valid* npm provenance attestations. Provenance attests the build, not the source.
+3. **Package-manager-native release-age gate — the no-Artifactory path.** Control 2 needs a
+   proxy and a project to stand it up. Every major package manager now ships the quarantine
+   window as a config flag, which gets most of control 2's protective value this week rather
+   than next quarter:
+
+   | Tool | Setting | Minimum version |
+   |---|---|---|
+   | npm | `min-release-age` | 11.10 |
+   | pnpm | `minimumReleaseAge` | 10.16 |
+   | Yarn | `npmMinimalAgeGate` | 4.10 |
+   | Bun | `minimumReleaseAge` | 1.3 |
+   | Dependabot | `cooldown` | n/a (config block) |
+
+   Set it to 24–72 h. **Every malicious version in this campaign was unpublished within hours**,
+   so a gate at 24 h would have made the entire 2 h 40 m publish window unreachable — no rule,
+   no indicator, no hash needed. It does not replace control 2: it gives no fetch record, and it
+   does nothing for a version that stays up. It is a floor, and it is nearly free.
+4. **Pin and commit lockfiles**, `npm ci` in CI, never `npm install`. In CI use
+   `npm ci --ignore-scripts` — it composes control 1 with this one, and CI is where breaking a
+   native build is cheapest to discover. The 81 adjacent repos in §3 are exactly the population
+   where this pays.
+5. **Egress allowlist on build agents — the missing chokepoint.** The dropper carries no
+   payload: it fetches Bun from `github.com/oven-sh/bun/releases/download/bun-v1.3.13/` and
+   stage 2 only executes under Bun. An allowlist that does not include the GitHub release CDN
+   **stops the chain at its first hop** — stage 2 never runs and no credential is ever read.
+   This is strictly better than blocking C2: it is one origin rather than 75 RPC endpoints plus
+   three fallback channels, and it acts before collection rather than after. The ask is not
+   blocking `github.com` wholesale; it is that build agents fetch release binaries through a
+   controlled mirror.
+6. **Provenance is not a defense in this campaign** — and it fails **twice**, which is worth
+   stating separately because the two failures need different answers.
+   * The attacker **self-mints** attestations from the stolen publisher context, via
+     `fulcio.sigstore.dev` and `rekor.sigstore.dev`, after repacking the tarball with
+     recomputed SHA-512/SHA-1.
+   * Worse, `keyv@6.0.0` was published by **the project's own legitimate release workflow** and
+     carries genuine, valid SLSA provenance attesting a real build from a real commit in
+     `jaredwray/keyv`. It does. The commit was malicious. Provenance attests the build, not the
+     source, so a provenance-verifying control **passes** this package.
+
+   The mechanism is the reusable part: commit `ee2681a` edited `scripts/release-publish.ts` to
+   read `latestMajor` from the repository's own `package.json` instead of a protected CI
+   variable — moving the `latest`-channel decision into state the attacker already controlled.
+   Nothing in the pipeline was compromised; it did what its configuration said.
+   **This is the one part of the campaign with a review-time control**: flag any diff to release
+   or publish tooling that relocates a version, channel or `latest`-tag decision from CI
+   configuration into repository-controlled state. It is upstream of every indicator in this
+   playbook, and it applies to us as a publisher, not only as a consumer.
 
 ---
 
@@ -380,15 +529,27 @@ Onboarding measured via `DeviceInfo` (see prior hunt for method):
 | **GitHub-hosted ephemeral runners** | **not covered at all.** No agent, no telemetry. Layer 1 + Actions log scanning only. |
 | Developer machines not Defender-onboarded | not covered — enumerate before trusting a zero |
 
-Two structural gaps to state plainly:
+Three structural gaps to state plainly:
 
 * **`RemoteUrl` depends on Network Protection.** Without it in block or audit mode, Defender
   records only the remote IP, because node performs its own TLS. `npm-shaihulud-c2-contact`
   and the registry-tarball hunt both go quiet — and a quiet rule looks identical to a clean
-  estate. Verify Network Protection coverage before reading a zero from either.
+  estate. Verify Network Protection coverage before reading a zero from either —
+  `kql/coverage/04`, `kql/coverage/05` and `kql/poc/34` are written for exactly this.
 * **Ephemeral CI is where this worm propagates.** The exfil stage runs as a GitHub Actions
   workflow. Layer 2 cannot see GitHub-hosted runners at all; that surface belongs to Layer 1
   and to Actions log review.
+* **The malware declines to run on some hosts, and those hosts look clean.** CHAINDROP reads
+  `LANG` and exits without executing if it indicates a Russian locale (StepSecurity). On such a
+  host the dropper is on disk and would have executed, but every *behavioural* rule returns
+  nothing — no Bun spawn (rule 3), no loader exec (rule 2), no C2 (rule 5), no exfil artefact
+  (rule 6). Only the file-hash rules (1, 4, and the new 7) fire.
+
+  This is not exotic; it is the general shape of the problem. A rule set weighted towards
+  behaviour has a false-negative surface equal to the malware's own evasion logic. Two
+  consequences: **enumerate estate locales before reading a behavioural zero as clean**, and
+  keep file-hash and file-write telemetry as the primary surface wherever the payload has a
+  known hash — that surface is indifferent to whether the code ran.
 
 ---
 
@@ -407,17 +568,99 @@ until step 2 is done.
 
 1. Capture the file and its parent directory. A forensic package was collected
    automatically; pull it from the device page rather than re-collecting.
-2. Revoke everything reachable from that user context: npm publish tokens, GitHub PATs and
-   Actions tokens, cloud credentials, anything exported in the shell.
+
+1.5. **Remove the token-revocation monitor before you revoke anything.** Read this step in full;
+   getting the order wrong makes the incident worse.
+
+   The payload installs a watchdog that polls `https://api.github.com/user` every 60 seconds for
+   24 hours and **fires the payload when the token stops authenticating**. Revocation is its
+   trigger condition, not its remedy: it responds by re-collecting and re-exfiltrating from
+   whatever credentials are still live on the host.
+
+   On the isolated device, remove all four artefacts and confirm the service is gone:
+
+   ```bash
+   # Linux
+   systemctl --user disable --now gh-token-monitor.service 2>/dev/null
+   rm -f  ~/.local/bin/gh-token-monitor.sh
+   rm -rf ~/.config/gh-token-monitor/
+   rm -f  ~/.config/systemd/user/gh-token-monitor.service
+   systemctl --user daemon-reload
+   systemctl --user list-units --all | grep -i gh-token-monitor   # expect no output
+
+   # macOS
+   launchctl bootout gui/$(id -u)/com.user.gh-token-monitor 2>/dev/null
+   rm -f  ~/Library/LaunchAgents/com.user.gh-token-monitor.plist
+   rm -f  ~/.local/bin/gh-token-monitor.sh
+   rm -rf ~/.config/gh-token-monitor/
+   launchctl list | grep -i gh-token-monitor                     # expect no output
+   ```
+
+   Then confirm no watchdog process survives: `pgrep -af gh-token-monitor` — expect no output.
+
+   **This does not reverse "rotate before you eradicate."** The payload still exfiltrates first,
+   so a full clean-up before rotation still destroys evidence while credentials stay live. The
+   order is: *sweep and remove the monitor* → *rotate* → *eradicate the rest*. Step 1.5 is a
+   narrow carve-out for the one artefact whose removal must precede rotation, and it is also the
+   only artefact that survives step 3 — a host cleaned by step 3 alone is still armed. If the
+   device is fully isolated and the monitor cannot reach `api.github.com`, it cannot observe the
+   revocation; do not rely on that, because `selective` isolation and any pre-isolation window
+   both leave it live.
+
+2. Revoke everything reachable from that user context — and scope it wider than GitHub and npm.
+   The collector matches 300+ patterns across ~140 hotspot paths:
+   * npm publish tokens (**especially any with `bypass_2fa: true`** — the collector prefers
+     these), GitHub PATs, Actions tokens, JWT/session tokens
+   * **AI tooling credentials**, new in this campaign and present on this estate's workstations:
+     `.claude/credentials.json`, `.codex/auth.json`, `.cursor/credentials.json`,
+     `.openai/auth.json`, `.anthropic/auth.json`, `.gemini/.env`
+   * cloud: AWS/GCP/Azure/Alibaba keys, plus anything reachable from **IMDSv2 or ECS task
+     metadata** on that host. Check CloudTrail for `sts:GetCallerIdentity`,
+     `secretsmanager:ListSecrets`, `secretsmanager:GetSecretValue` and `ssm:GetParameters` from
+     the harvested principal **across all 16 regions** — the collector sweeps regions, so a
+     single-region check under-scopes.
+   * HashiCorp Vault tokens (k8s and IAM auth), SSH private keys, Kubernetes service-account
+     tokens and any kubeconfig on the host
+   * anything exported in the shell
+
+   **If the host reached `npm-cache.com`, scope it as code execution, not credential theft.**
+   The exfil envelope is bidirectional: a response containing a `code` field is passed to
+   `eval()`. Rotation scope is everything reachable from that host, not a list of file paths.
+
+   **If the host is a self-hosted runner** (`cxdkrprdapp12–17.comfort.com`), rotate **every
+   secret any workflow on that runner consumed in the window**, not just the triggering repo's.
+   The memory scrape reads `/proc/<Runner.Worker pid>/mem` for `"isSecret":true`, which takes
+   masked secrets the compromised step never referenced.
 3. Grep the whole working tree for `setup.mjs`, `math_init.js`, `Math_Symbol.js`,
-   `.claude/`, `.vscode/`, `.github/workflows/codeql_analysis.yml`.
+   `.claude/`, `.vscode/`, `.github/workflows/codeql_analysis.yml`. Match `setup.mjs` **by
+   hash** where possible — there are two malicious variants (29,918 B and 11,017 B) and
+   legitimate `setup.mjs` files exist. Also check `$TMPDIR` for `bun-dl-*` staging directories
+   and `tmp.dpkg_<pid>.lock` beacons.
 4. Check GitHub: branch `dependabot/github_actions/format/setup-formatter`, commits titled
    `chore: update config`, forged trailer `Co-authored-by: claude
    <claude@users.noreply.github.com>`, workflow author `github-advanced-security[bot]`, repos
-   described `Shai-Hulud: Here We Go Again` or named from Dune vocabulary.
-5. Delete any `format-results` artefact from Actions — it contains the stolen credentials.
+   described `Shai-Hulud: Here We Go Again` or named from Dune vocabulary. Two extensions:
+   * **Enumerate all branches, not just the default.** Where a GitHub App token is stolen the
+     worm commits to up to 50 branches per accessible repository, so a default-branch check
+     reads a compromised repo as clean.
+   * **Search the exfil-workflow primitive, not its filename.** Two variants are documented —
+     `codeql_analysis.yml` and a workflow named `Run Copilot` on `push`. Both write
+     `${{ toJSON(secrets) }}` to a file and upload it. Grep every workflow added or modified by
+     a non-human identity for `toJSON(secrets)`; keying on either filename misses the other.
+5. Delete any `format-results` artefact from Actions — it contains the stolen credentials. Also
+   look for staging repositories under the victim account holding `results-*.json`.
 6. Run Layer 1 against the affected repo to identify the delivering `name@version`.
 
-**On adding a new campaign:** add hashes and domains to the IOC bundle, add the package CSV,
-then add or edit rules in `npm_supply_chain_rules.json` and re-run the deployer. The rules
-key on behaviour, so a new variant of the same family usually needs only new hashes.
+**On adding a new campaign — three steps, not one:**
+
+1. Add each source as **its own file** in `github_conf/ioc/` (see
+   `chaindrop_elastic_2026_08.json`, `chaindrop_stepsecurity_2026_08.json`), with a
+   `_relationship_to_*` block recording confirms / does_not_mention / contradicts. Never merge a
+   source into the shared bundle — that destroys the provenance §1.2 arbitration needs.
+2. **Diff the new source file against §5.1's indicator list and the deployed rules, and record
+   the diff.** This step exists because it was skipped: `awqhnjewqjkl.icu` sat in an ingested
+   source file while every rule and the indicator list omitted it. Ingesting a source file
+   creates the *appearance* of coverage.
+3. Add hashes and domains to the IOC bundle and the package CSV, add or edit rules in
+   `npm_supply_chain_rules.json`, re-run the deployer. The rules key on behaviour, so a new
+   variant of the same family usually needs only new hashes.

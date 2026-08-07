@@ -1,0 +1,72 @@
+// 60 — Are the Layer 3 indicator blocks actually firing?
+//
+// Purpose      Layer 3 publishes indicators through the MDE Indicators API
+//              (api.securitycenter.microsoft.com/api/indicators — the Graph tiIndicators
+//              API is dead, removal April 2026). Creating an indicator and having it
+//              enforced are different things. This query looks for evidence of enforcement.
+// Tables       DeviceEvents, DeviceNetworkEvents, DeviceFileEvents
+// Permission   ThreatHunting.Read.All
+// Run          After indicators are published, and monthly thereafter.
+//
+// Indicator policy, for reference when reading the results:
+//   * Malware domains (npm-cache.com, js-mirror.com, pypi-get.com) -> Block
+//   * Ethereum RPC providers (eth-mainnet.nodereal.io, go.getblock.io, eth.llamarpc.com)
+//     -> AUDIT, not Block. Legitimate use exists and blocking them is not proportionate.
+//     Expect Audited events for these, never Blocked.
+//   * 104.21.35.216 -> NOT indicator-blocked at all. Cloudflare shared address; blocking
+//     it would take out unrelated services. Its absence here is correct, not a gap.
+//   * The 7 payload SHA-256 hashes -> Block/quarantine as file indicators.
+//
+// ---------------------------------------------------------------------------------------
+// PART 1 — network indicator enforcement
+// ---------------------------------------------------------------------------------------
+
+let Blocked = dynamic(["npm-cache.com","js-mirror.com","pypi-get.com"]);
+let Audited = dynamic(["eth-mainnet.nodereal.io","go.getblock.io","eth.llamarpc.com"]);
+DeviceNetworkEvents
+| where Timestamp > ago(30d)
+| where RemoteUrl has_any (Blocked) or RemoteUrl has_any (Audited)
+| extend Policy = case(RemoteUrl has_any (Blocked), "should-block",
+                       RemoteUrl has_any (Audited), "should-audit",
+                       "unexpected")
+| summarize Events     = count(),
+            Devices    = dcount(DeviceId),
+            ActionTypes = make_set(ActionType, 10),
+            Processes  = make_set(InitiatingProcessFileName, 10),
+            SampleUrl  = any(RemoteUrl),
+            LastSeen   = max(Timestamp)
+    by Policy, RemoteUrl
+| order by Events desc
+| limit 200
+
+// Reading part 1:
+//   should-block rows with a connection-success ActionType  -> indicator NOT enforced;
+//       check that the indicator exists, is Block (not Audit), and that Network Protection
+//       is in block mode rather than audit mode (coverage/04, coverage/05)
+//   should-audit rows                                        -> working as designed
+//   no rows at all                                           -> no contact attempts, which
+//       is the expected steady state; it is not evidence of enforcement either way
+
+// ---------------------------------------------------------------------------------------
+// PART 2 — file indicator enforcement, and AV/EDR detections naming this campaign
+//
+//   DeviceEvents
+//   | where Timestamp > ago(30d)
+//   | where ActionType has_any ("AntivirusDetection","AntivirusReport","SmartScreen",
+//                               "ExploitGuardNetworkProtection")
+//   | where AdditionalFields has_any ("Shai","Hulud","math_init","setup.mjs")
+//        or FileName in~ ("math_init.js","Math_Symbol.js","setup.mjs")
+//   | project Timestamp, DeviceName, ActionType, FileName, FolderPath, SHA256,
+//             InitiatingProcessFileName, AdditionalFields
+//   | order by Timestamp desc
+//   | limit 200
+//
+// PART 3 — indicator inventory is NOT queryable here. To confirm which indicators exist,
+// with what action and expiry:
+//
+//     GET https://api.securitycenter.microsoft.com/api/indicators
+//
+// Advanced hunting shows enforcement events, never the indicator list. An empty result in
+// parts 1 and 2 is consistent with both "indicators published, nothing tried to reach the
+// C2" and "indicators never published". Check the API before recording this as coverage.
+// ---------------------------------------------------------------------------------------

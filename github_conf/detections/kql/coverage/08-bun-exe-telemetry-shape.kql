@@ -1,0 +1,74 @@
+// 08 — COVERAGE: can this tenant see bun.exe at all, and on which tables
+//
+// Purpose      Make a zero from backlog/22 readable. coverage/06 already asks whether the
+//              developer toolchain is visible, but it asks only of DeviceProcessEvents
+//              and it reports Bun and node together. backlog/22 spans three tables and
+//              its whole point is the FILE write, which coverage/06 never touches. A zero
+//              from backlog/22 with no DeviceFileEvents coverage means blind, not clean —
+//              and those two look identical in a report (doctrine §0.1).
+// Tables       DeviceFileEvents, DeviceProcessEvents, DeviceImageLoadEvents, DeviceInfo
+// Permission   ThreatHunting.Read.All
+//
+// Expected     DeviceProcessEvents populated on Windows and macOS. DeviceFileEvents
+//              populated on Windows; sparser on macOS and Linux, which is itself the
+//              answer — record it rather than assuming it. DeviceImageLoadEvents is
+//              Windows-heavy by design and a low count there is normal.
+// Read it as   This query deliberately reports on the whole toolchain, not just Bun, so
+//              that a Bun zero can be compared against a node non-zero on the SAME table
+//              and the SAME platform. Bun genuinely absent from this estate is a
+//              plausible and useful finding — the worm ships its own Bun 1.3.13, so
+//              "nobody here runs Bun" makes any bun.exe row high-signal. But that
+//              conclusion is only available if node and npm are non-zero beside it. If
+//              every tool is zero on a platform, the platform is not reporting and no
+//              Bun conclusion can be drawn at all.
+//
+// The join to DeviceInfo is how platform is obtained: none of the three event tables
+// carries OSPlatform.
+
+let Lookback = 30d;
+let Platform =
+    DeviceInfo
+    | where Timestamp > ago(7d)
+    | summarize arg_max(Timestamp, OSPlatform) by DeviceId
+    | project DeviceId, OSPlatform;
+let Toolchain = dynamic(["bun.exe", "bunx.exe", "bun", "bunx",
+                         "node.exe", "node", "npm.exe", "npm", "npm-cli.js"]);
+union
+    (
+    DeviceFileEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ (Toolchain)
+    | project Timestamp, DeviceId, FileName, SourceTable = "DeviceFileEvents",
+              HashPresent = isnotempty(SHA256)
+    ),
+    (
+    DeviceProcessEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ (Toolchain)
+    | project Timestamp, DeviceId, FileName, SourceTable = "DeviceProcessEvents",
+              HashPresent = isnotempty(SHA256)
+    ),
+    (
+    DeviceImageLoadEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ (Toolchain)
+    | project Timestamp, DeviceId, FileName, SourceTable = "DeviceImageLoadEvents",
+              HashPresent = isnotempty(SHA256)
+    )
+| join kind=leftouter Platform on DeviceId
+| extend OSPlatform = iff(isempty(OSPlatform), "unknown", OSPlatform)
+// IsBun is carried as its own column so the Bun rows can be read against the node/npm
+// rows on the same platform and table without running a second query.
+| extend IsBun = FileName in~ ("bun.exe", "bunx.exe", "bun", "bunx")
+| summarize Events       = count(),
+            Devices      = dcount(DeviceId),
+            Tools        = make_set(FileName, 20),
+            WithHash     = countif(HashPresent),
+            LastSeen     = max(Timestamp)
+    by SourceTable, OSPlatform, IsBun
+// WithHash matters specifically for bun.exe: provenance triage in backlog/22 is a hash
+// comparison against the published Bun release, and a row with an empty SHA256 cannot be
+// triaged that way no matter how suspicious its path looks.
+| extend HashCoverage = iff(Events == 0, "n/a", strcat(WithHash, "/", Events))
+| order by SourceTable asc, Devices desc
+| limit 100

@@ -1,0 +1,25 @@
+// 01 — Defender onboarding coverage by platform
+//
+// Purpose      Establish the denominator. Every "0 results" in this library is only
+//              meaningful against a known device count.
+// Table        DeviceInfo
+// Permission   ThreatHunting.Read.All  (already granted)
+// Expected     Roughly the estate documented in the handover:
+//                Windows  ~2,974 clients + ~192 servers
+//                macOS    ~106
+//                Linux    ~312
+// Read it as   A platform whose count is far below expectation is a blind spot, not a
+//              clean population. GitHub-hosted ephemeral runners will NOT appear here
+//              at all — they are not onboardable, which is the documented GAP.
+//
+// arg_max collapses the per-device event stream to current state; DeviceInfo emits many
+// rows per device per day and a raw count() would inflate by an order of magnitude.
+
+DeviceInfo
+| where Timestamp > ago(7d)
+| summarize arg_max(Timestamp, *) by DeviceId
+| summarize Devices = count(),
+            LastSeen = max(Timestamp)
+    by OSPlatform, DeviceType, OnboardingStatus
+| order by Devices desc
+| limit 200

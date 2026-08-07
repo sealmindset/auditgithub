@@ -1,0 +1,56 @@
+// 35 — PoC: prove the exfil-artifact rule's shape  (rule 15, npm-shaihulud-exfil-artifacts)
+//
+// What this proves
+//   Rule 15 pairs a filename with the process that wrote it. The InitiatingProcess filter
+//   is what keeps a developer legitimately editing .github/workflows/codeql_analysis.yml
+//   out of the results — so the mechanism being tested is "was the writing process
+//   correctly attributed on a file write", which is a different guarantee from the
+//   parent/child attribution tested in poc/32.
+//
+// Risk: NONE for Form A. Form B writes a file whose name is not an IOC.
+//
+// ---------------------------------------------------------------------------------------
+// FORM A — no trigger. Are file writes by node/bun attributed to the writing process?
+// ---------------------------------------------------------------------------------------
+
+DeviceFileEvents
+| where Timestamp > ago(7d)
+| where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+| where InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","bunx","npm","npm.exe")
+| summarize Rows          = count(),
+            Devices       = dcount(DeviceId),
+            NoDeviceId    = countif(isempty(DeviceId)),
+            NoSHA1        = countif(isempty(SHA1)),
+            NoAccountSid  = countif(isempty(InitiatingProcessAccountSid)),
+            NoInitCmdLine = countif(isempty(InitiatingProcessCommandLine)),
+            YamlWrites    = countif(FileName endswith ".yml" or FileName endswith ".yaml"),
+            TxtWrites     = countif(FileName endswith ".txt")
+| extend Verdict = case(
+    Rows == 0,       "FAIL - no file writes attributed to node/bun; rule 15 cannot fire",
+    NoDeviceId > 0,  "FAIL - rule cannot map entities or isolate",
+    YamlWrites == 0, "WARN - no .yml writes by node observed; the codeql_analysis.yml branch is untested",
+    "PASS - rule 15 shape is sound")
+| limit 1
+
+// ---------------------------------------------------------------------------------------
+// FORM B — benign trigger, no rule match.
+//
+// Writes a file named poc-format-results.txt. NOT "format-results.txt", so rule 15 does
+// not match; only the mechanism is exercised. Change the name to the real IOC only if you
+// deliberately want an end-to-end alert test, on an expendable device, rule unarmed.
+//
+//   node -e "require('fs').writeFileSync('/tmp/poc-format-results.txt','shai-hulud poc\n')"
+//
+//   DeviceFileEvents
+//   | where Timestamp > ago(1h)
+//   | where ActionType in~ ("FileCreated","FileModified","FileRenamed")
+//   | where FileName == "poc-format-results.txt"
+//   | where InitiatingProcessFileName in~ ("node","node.exe")
+//   | project Timestamp, ReportId, DeviceId, DeviceName, FileName, FolderPath, SHA256, SHA1,
+//             ActionType, InitiatingProcessFileName, InitiatingProcessCommandLine,
+//             InitiatingProcessAccountName, InitiatingProcessAccountDomain,
+//             InitiatingProcessAccountSid
+//   | limit 100
+//
+// Cleanup:  rm -f /tmp/poc-format-results.txt
+// ---------------------------------------------------------------------------------------

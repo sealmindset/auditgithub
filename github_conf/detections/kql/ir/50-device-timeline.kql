@@ -1,0 +1,73 @@
+// 50 — IR: full timeline for one device around a detection
+//
+// Purpose      First query to run when any rule fires. Establishes what happened before
+//              and after, which is what decides whether this is an infection or a
+//              synthetic PoC someone forgot to log.
+// Tables       DeviceProcessEvents, DeviceFileEvents, DeviceNetworkEvents, DeviceRegistryEvents
+// Permission   ThreatHunting.Read.All
+//
+// SET THESE TWO before running.
+//   TargetDevice — from the alert
+//   Anchor       — the detection timestamp; the window is +/- 4h around it
+//
+// Read it as   The worm's chain is ordered: package install -> setup.mjs -> Bun download
+//              -> math_init.js -> on-chain C2 read -> credential harvest -> exfil
+//              artefacts -> republish. Finding the chain in that order confirms the
+//              infection. Finding only the middle of it means look earlier for the entry
+//              vector than this 8h window allows.
+
+let TargetDevice = "REPLACE-WITH-DEVICE-NAME";
+let Anchor = datetime(2026-08-05 00:00:00);
+let Window = 4h;
+union withsource=SourceTable
+  (
+    DeviceProcessEvents
+    | where Timestamp between ((Anchor - Window) .. (Anchor + Window))
+    | where DeviceName =~ TargetDevice
+    | extend Kind = "process",
+             Detail = strcat(FileName, " | ", ProcessCommandLine),
+             Parent = strcat(InitiatingProcessFileName, " | ", InitiatingProcessCommandLine),
+             Account = AccountName
+  ),
+  (
+    DeviceFileEvents
+    | where Timestamp between ((Anchor - Window) .. (Anchor + Window))
+    | where DeviceName =~ TargetDevice
+    | extend Kind = strcat("file:", ActionType),
+             Detail = strcat(FolderPath, " sha256=", SHA256),
+             Parent = strcat(InitiatingProcessFileName, " | ", InitiatingProcessCommandLine),
+             Account = InitiatingProcessAccountName
+  ),
+  (
+    DeviceNetworkEvents
+    | where Timestamp between ((Anchor - Window) .. (Anchor + Window))
+    | where DeviceName =~ TargetDevice
+    | extend Kind = strcat("net:", ActionType),
+             Detail = strcat(iff(isempty(RemoteUrl), RemoteIP, RemoteUrl), ":", tostring(RemotePort)),
+             Parent = strcat(InitiatingProcessFileName, " | ", InitiatingProcessCommandLine),
+             Account = InitiatingProcessAccountName
+  ),
+  (
+    DeviceRegistryEvents
+    | where Timestamp between ((Anchor - Window) .. (Anchor + Window))
+    | where DeviceName =~ TargetDevice
+    | extend Kind = strcat("registry:", ActionType),
+             Detail = strcat(RegistryKey, " -> ", RegistryValueName, "=", RegistryValueData),
+             Parent = strcat(InitiatingProcessFileName, " | ", InitiatingProcessCommandLine),
+             Account = InitiatingProcessAccountName
+  )
+// Narrow to the toolchain and the IOC surface: an unfiltered 8h device timeline is tens of
+// thousands of rows and the relevant ones are not at the top.
+| where Parent has_any ("node","bun","npm","pnpm","yarn","python","git","code")
+     or Detail has_any ("setup.mjs","math_init","Math_Symbol","format-results",
+                        "codeql_analysis","node_modules",".claude",".vscode",
+                        "npm-cache.com","js-mirror.com","pypi-get.com",
+                        "eth-mainnet.nodereal.io","go.getblock.io","eth.llamarpc.com",
+                        "tmp.dpkg_14527.lock")
+| project Timestamp, Kind, SourceTable, Account, Detail, Parent
+| order by Timestamp asc
+// Ascending with a limit truncates the RECENT tail, which is normally the wrong way round
+// for a hunt. It is deliberate here: this query reconstructs a chain whose order matters,
+// and the entry vector is at the start. If the limit is hit, narrow Window rather than
+// switching to desc.
+| limit 5000

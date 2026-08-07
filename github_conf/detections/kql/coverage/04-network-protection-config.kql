@@ -1,0 +1,32 @@
+// 04 — Is Network Protection configured (prerequisite for the C2-contact rule)
+//
+// Purpose      npm-shaihulud-c2-contact matches on RemoteUrl in DeviceNetworkEvents.
+//              RemoteUrl is populated by Network Protection. Without it the rule is
+//              syntactically fine, deploys cleanly, and can never fire.
+// Tables       DeviceTvmSecureConfigurationAssessment + ...AssessmentKB
+// Permission   ThreatHunting.Read.All
+// Expected     Rows for the Windows estate with IsApplicable/IsCompliant split.
+// Read it as   IsCompliant == 0 on most devices means the C2 rule is decoration until
+//              Network Protection is enabled (at minimum in audit mode).
+//              A device with NO row is "not assessed", not "not compliant" — secure
+//              configuration assessment coverage is strongest on Windows and thin on
+//              macOS/Linux. Use 05 for empirical confirmation.
+//
+// The scid-* configuration id is deliberately NOT hardcoded. Those ids change, and a
+// stale one returns an empty result that reads exactly like "no devices assessed".
+// Matching the configuration NAME through the KB is stable.
+
+DeviceTvmSecureConfigurationAssessmentKB
+| extend Descr = tostring(column_ifexists("ConfigurationDescription", ""))
+| where ConfigurationName has "network protection" or Descr has "network protection"
+| project ConfigurationId, ConfigurationName
+| join kind=inner (
+    DeviceTvmSecureConfigurationAssessment
+    | where Timestamp > ago(7d)
+    | summarize arg_max(Timestamp, *) by DeviceId, ConfigurationId
+  ) on ConfigurationId
+| summarize Devices     = count(),
+            SampleNames = make_set(DeviceName, 5)
+    by ConfigurationName, OSPlatform, IsApplicable, IsCompliant
+| order by Devices desc
+| limit 200

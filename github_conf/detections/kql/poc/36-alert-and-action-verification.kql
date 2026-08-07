@@ -1,0 +1,79 @@
+// 36 — PoC: did the rules actually produce alerts, and what did the response do?
+//
+// Purpose      Close the loop. A PoC that proves the query returns rows has proved half
+//              the chain. The other half is that the scheduled rule ran, raised an alert
+//              with the right title and severity, and attached the entities the
+//              entityMappings promised.
+// Tables       AlertInfo, AlertEvidence, DeviceEvents
+// Permission   ThreatHunting.Read.All
+//
+// Run this 1-2 hours after a PoC trigger. All six rules are on PT1H, so an alert cannot
+// appear sooner than the next scheduled run — an empty result 5 minutes after a trigger
+// means "too early", not "broken".
+//
+// ---------------------------------------------------------------------------------------
+// PART 1 — did the custom detections alert at all
+// ---------------------------------------------------------------------------------------
+
+AlertInfo
+| where Timestamp > ago(7d)
+| where DetectionSource == "Custom detection"
+| where Title has_any ("Shai-Hulud","npm worm","shaihulud")
+| join kind=leftouter (
+    AlertEvidence
+    | where Timestamp > ago(7d)
+    | summarize EntityTypes  = make_set(EntityType, 15),
+                Devices      = make_set(DeviceName, 10),
+                DeviceIds    = dcountif(DeviceId, isnotempty(DeviceId)),
+                Files        = make_set_if(FileName, isnotempty(FileName), 10),
+                Sha1Present  = countif(isnotempty(SHA1)),
+                Accounts     = make_set_if(AccountName, isnotempty(AccountName), 10)
+        by AlertId
+  ) on AlertId
+| project Timestamp, AlertId, Title, Severity, Category, ServiceSource,
+          EntityTypes, Devices, DeviceIds, Files, Sha1Present, Accounts
+| order by Timestamp desc
+| limit 200
+
+// ---------------------------------------------------------------------------------------
+// PART 2 — entity-mapping completeness on the alerts that fired
+//
+// The rules project DeviceId, ReportId, file hashes and account SIDs specifically so the
+// alert carries usable entities. If EntityTypes comes back without "Machine", isolation
+// had nothing to act on. If a rule-13 alert shows Sha1Present == 0, quarantine no-opped.
+//
+//   AlertInfo
+//   | where Timestamp > ago(7d)
+//   | where DetectionSource == "Custom detection"
+//   | join kind=inner (AlertEvidence | where Timestamp > ago(7d)) on AlertId
+//   | summarize Evidence = count(),
+//               NoDeviceId = countif(isempty(DeviceId)),
+//               NoEntityType = countif(isempty(EntityType))
+//            by Title, EntityType
+//   | order by Title asc, Evidence desc
+//   | limit 200
+//
+// ---------------------------------------------------------------------------------------
+// PART 3 — what response actions are visible in this tenant
+//
+// HONEST LIMIT: automated action OUTCOMES are not reliably queryable in advanced hunting.
+// Isolation and quarantine results live in the Action center (security.microsoft.com ->
+// Actions & submissions -> Action center) and in the MDE API:
+//
+//     GET https://api.securitycenter.microsoft.com/api/machineactions
+//
+// That API is the authoritative record of whether a device was isolated and by what.
+//
+// Rather than asserting DeviceEvents ActionType names that may not exist here, this
+// DISCOVERS the vocabulary. Run it and see what the tenant actually emits; if isolation
+// or quarantine action types appear, they become a usable verification query, and if they
+// do not, use the Action center instead of assuming a zero means nothing happened.
+//
+//   DeviceEvents
+//   | where Timestamp > ago(30d)
+//   | where ActionType has_any ("Isolat","Quarantin","Restrict","Remediat","Antivirus")
+//   | summarize Events = count(), Devices = dcount(DeviceId), LastSeen = max(Timestamp)
+//            by ActionType
+//   | order by Events desc
+//   | limit 100
+// ---------------------------------------------------------------------------------------

@@ -1,0 +1,117 @@
+// 22 — BACKLOG SWEEP: the Bun runtime as an artefact, with the Windows binary
+//
+// Purpose      Identify bun.exe (and its POSIX sibling) as an ARTEFACT ON DISK and as a
+//              process, retroactively across the retention window. Every existing Bun
+//              query in this library asks a narrower question:
+//                * detections/12 and baseline/40 require InitiatingProcessFileName to be
+//                  node or npm. That is a discriminator, and it is the right one for a
+//                  low-noise rule — but it means a Bun binary dropped by cmd.exe,
+//                  powershell.exe, a zip-extraction helper, or an installer is invisible.
+//                * npm-shaihulud-bun-fetch keys on RemoteUrl, which needs Network
+//                  Protection populated (coverage/04, coverage/05). Where it is not, that
+//                  rule is structurally blind and its zero means nothing.
+//                * Nothing in the library looks at DeviceFileEvents for the Bun binary at
+//                  all, so the write itself has never been examined.
+// Tables       DeviceFileEvents, DeviceProcessEvents, DeviceImageLoadEvents
+// Permission   ThreatHunting.Read.All
+//
+// WHY THE WINDOWS CASE IS ITS OWN PROBLEM
+//
+// The documented bootstrap is POSIX-shaped: mkdtemp('/tmp/bun-dl-'), chmod 755, execute
+// stage 2, delete the staging directory. Two of those three steps do not exist on
+// Windows. The same source (chaindrop_stepsecurity_2026_08.json, bun_bootstrap.assets)
+// lists bun-windows-x64-baseline.zip and bun-windows-aarch64.zip among the fetched
+// release assets. Those unpack to **bun.exe**, under %TEMP% or %LOCALAPPDATA%\Temp, with
+// no chmod anywhere on the path. On an estate whose endpoint population is
+// overwhelmingly Windows, a hunt that models only the POSIX shape reads a bootstrapped
+// host as clean.
+//
+// Expected     Some rows. Bun is a legitimate runtime and setup-bun is a normal CI step.
+//              This is a PROVENANCE query, not a detection: the finding is a Bun binary
+//              in a temp or staging path, written by something that is not a package
+//              manager or an installer the estate recognises.
+// Read it as   Triage on FolderPath first, then SHA256. A bun.exe under a versioned
+//              install root (…\bun\bin\bun.exe, ~/.bun/bin/bun) written by a developer's
+//              own shell is the benign population. A bun.exe under a temp path, or one
+//              whose SHA256 does not match the published Bun release hash for its
+//              version, is the finding. Any hit goes to ir/50 with the DeviceName.
+//              A zero here is only meaningful if coverage/06 shows Bun visible at all on
+//              the platform in question — see doctrine §0.1.
+//
+// Shape note: DeviceImageLoadEvents is included because a bun.exe that is loaded rather
+// than spawned (side-loaded into a host process) produces no DeviceProcessEvents row.
+// It is the cheapest way to avoid that blind spot and it costs one union branch.
+
+let Lookback = 30d;
+let BunBinaries = dynamic(["bun.exe", "bunx.exe", "bun", "bunx"]);
+// Release archive names, verbatim from the campaign's fetch list. Present here because
+// the archive lands on disk before the binary does, and on Windows the extraction step
+// is where a staging directory becomes visible.
+let BunArchives = dynamic([
+    "bun-windows-x64-baseline.zip", "bun-windows-aarch64.zip",
+    "bun-linux-x64-baseline.zip", "bun-linux-x64-musl-baseline.zip",
+    "bun-linux-aarch64.zip", "bun-darwin-aarch64.zip", "bun-darwin-x64.zip"]);
+// Temp and staging roots, both platforms. "bun-dl-" is the mkdtemp stem and is
+// platform-independent even though the documented path (/tmp/bun-dl-) is not.
+let StagingMarkers = dynamic(["bun-dl-", "\\temp\\", "/tmp/", "\\appdata\\local\\temp",
+                              "/var/folders/"]);
+union
+    (
+    DeviceFileEvents
+    | where Timestamp > ago(Lookback)
+    | where ActionType in~ ("FileCreated", "FileModified", "FileRenamed")
+    | where FileName in~ (BunBinaries) or FileName in~ (BunArchives)
+    | extend Signal = iff(FileName in~ (BunArchives), "bun-archive-written",
+                                                      "bun-binary-written")
+    | project Timestamp, Signal, DeviceId, DeviceName,
+              Account = strcat(InitiatingProcessAccountDomain, "\\",
+                               InitiatingProcessAccountName),
+              FileName, FolderPath, SHA256,
+              ByProcess = InitiatingProcessFileName,
+              CommandLine = InitiatingProcessCommandLine
+    ),
+    (
+    DeviceProcessEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ (BunBinaries)
+    | project Timestamp, Signal = "bun-executed", DeviceId, DeviceName,
+              Account = strcat(AccountDomain, "\\", AccountName),
+              FileName, FolderPath, SHA256,
+              ByProcess = InitiatingProcessFileName,
+              CommandLine = ProcessCommandLine
+    ),
+    (
+    DeviceImageLoadEvents
+    | where Timestamp > ago(Lookback)
+    | where FileName in~ (BunBinaries)
+    | project Timestamp, Signal = "bun-image-loaded", DeviceId, DeviceName,
+              Account = strcat(InitiatingProcessAccountDomain, "\\",
+                               InitiatingProcessAccountName),
+              FileName, FolderPath, SHA256,
+              ByProcess = InitiatingProcessFileName,
+              CommandLine = InitiatingProcessCommandLine
+    )
+// The triage columns. FromTempOrStaging is the one that separates the benign population
+// from the finding, and it is computed rather than filtered on so that the benign rows
+// stay visible — a query that returns only the suspicious rows cannot show that the
+// telemetry was working.
+| extend LowerPath = tolower(FolderPath)
+| extend FromTempOrStaging = LowerPath has_any (StagingMarkers)
+| extend FromBunStagingDir = LowerPath has "bun-dl-"
+// A package manager or a node process fetching Bun is the campaign's documented shape.
+// A shell or an unknown parent doing it is the shape nothing in this library covers.
+| extend ByPackageManager = tolower(ByProcess) in~ ("node", "node.exe", "npm", "npm.exe",
+                                                    "npm-cli.js", "pnpm", "yarn", "bunx")
+| summarize Events      = count(),
+            FirstSeen   = min(Timestamp),
+            LastSeen    = max(Timestamp),
+            Hashes      = make_set(SHA256, 10),
+            Paths       = make_set(FolderPath, 10),
+            Parents     = make_set(ByProcess, 10),
+            CommandLines = make_set(CommandLine, 5)
+    by DeviceName, DeviceId, Account, Signal, FileName,
+       FromTempOrStaging, FromBunStagingDir, ByPackageManager
+// Descending, deliberately: ordering ascending and truncating keeps the oldest rows and
+// discards the recent tail, which is the opposite of what a hunt needs (doctrine §0.4).
+| order by FromBunStagingDir desc, FromTempOrStaging desc, LastSeen desc
+| limit 1000

@@ -74,7 +74,23 @@ CAMPAIGN_COMMIT_MESSAGES = ("chore: update config", "add codeql analysis")
 CAMPAIGN_FILE_BASENAMES = {"setup.mjs", "math_init.js", "math_symbol.js",
                            "codeql_analysis.yml", "format-results.txt"}
 CAMPAIGN_FILE_PATHS = {".claude/settings.json", ".claude/settings.local.json",
-                       ".vscode/tasks.json", ".github/workflows/codeql_analysis.yml"}
+                       ".vscode/tasks.json", ".github/workflows/codeql_analysis.yml",
+                       ".claude/setup.mjs", ".claude/math_init.js", ".vscode/setup.mjs"}
+
+# Deliberately a SECOND tier, not folded into the set above. A commit that adds a Bun
+# runtime binary is a provenance question; a commit that adds math_init.js is a finding.
+# Merging them would make "campaign_file_written" fire on any repository that vendors a
+# toolchain, and that flag is the one a responder acts on.
+#
+# bun.exe is here because the Windows half of the bootstrap was never modelled: the
+# documented staging path is mkdtemp('/tmp/bun-dl-') with a chmod 755, but the same
+# source lists bun-windows-x64-baseline.zip and bun-windows-aarch64.zip among the fetched
+# assets, and neither /tmp nor chmod appears anywhere on that path.
+BUN_ARTIFACT_BASENAMES = {"bun.exe", "bunx.exe",
+                          "bun-windows-x64-baseline.zip", "bun-windows-aarch64.zip",
+                          "bun-linux-x64-baseline.zip", "bun-linux-x64-musl-baseline.zip",
+                          "bun-linux-aarch64.zip", "bun-darwin-aarch64.zip",
+                          "bun-darwin-x64.zip"}
 
 # "Co-authored-by: Claude" is NOT an indicator on this estate and is deliberately not
 # treated as one. Claude Code is in normal use here, so every legitimate agent-assisted
@@ -182,6 +198,16 @@ def inspect_commit(org: str, repo: str, sha: str, token: str,
     if campaign_files:
         flags.append("campaign_file_written")
 
+    bun_files = sorted({
+        path for path in changed
+        if path.rsplit("/", 1)[-1].lower() in BUN_ARTIFACT_BASENAMES
+        or "bun-dl-" in path.lower()
+    })
+    if bun_files:
+        # Separate flag name so a triager can filter it out in one pass, and so it never
+        # silently promotes a Bun-vendoring commit into the campaign_file set.
+        flags.append("bun_artifact_written")
+
     # Context, not a flag on its own. See CAMPAIGN_FILE_BASENAMES above for why.
     has_trailer = "co-authored-by: claude" in lowered
     if has_trailer and flags:
@@ -190,6 +216,7 @@ def inspect_commit(org: str, repo: str, sha: str, token: str,
     return {
         "agent_coauthor_trailer": has_trailer,
         "campaign_files_changed": campaign_files,
+        "bun_artifacts_changed": bun_files,
         "sha": sha[:12],
         "author_name": author.get("name"), "author_email": author.get("email"),
         "committer_name": committer.get("name"), "committer_email": committer.get("email"),

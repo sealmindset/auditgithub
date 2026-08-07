@@ -1,0 +1,31 @@
+// 14 — RULE: C2 or Ethereum-RPC contact from a dev toolchain process
+//
+// Deployed as  npm-shaihulud-c2-contact  (severity high, PT1H, isolateDevices=full, ARMED)
+// Table        DeviceNetworkEvents
+// Confidence   High when it fires. The worm resolves its C2 from an on-chain Ethereum
+//              contract (0xE1f2395ee43e45A1556EC6438a88c31B83493103, selector 0x53ed5143),
+//              so node reaching a public Ethereum RPC endpoint is a strong signal.
+//
+// !! COVERAGE PREREQUISITE — read coverage/04 AND coverage/05 first.
+//    RemoteUrl is populated by Network Protection. Without it this rule deploys cleanly,
+//    validates cleanly, and can never fire. It is the rule most likely to be silently
+//    dead in this tenant.
+//
+// Note         The Ethereum RPC domains are set to Audit, not Block, in the Layer 3
+//              indicators — legitimate use exists and blocking them is not proportionate.
+//              Detection here, blocking only for the dedicated malware domains.
+//              104.21.35.216 is a Cloudflare shared address: never indicator-blocked.
+//
+// Backlog variant: ago(1h) -> ago(30d).
+
+DeviceNetworkEvents
+| where Timestamp > ago(1h)
+| where RemoteUrl has_any ("npm-cache.com","js-mirror.com","pypi-get.com",
+                          "eth-mainnet.nodereal.io","go.getblock.io","eth.llamarpc.com")
+| where InitiatingProcessFileName in~ ("node","node.exe","bun","bun.exe","bunx",
+                                      "npm","npm.exe","npm-cli.js","pnpm","yarn",
+                                      "python","python3","python.exe","git","git.exe")
+| project Timestamp, ReportId, DeviceId, DeviceName, RemoteUrl, RemoteIP, RemotePort, ActionType,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, InitiatingProcessFolderPath,
+          InitiatingProcessAccountName, InitiatingProcessAccountDomain, InitiatingProcessAccountSid
+| limit 1000
