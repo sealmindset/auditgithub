@@ -484,24 +484,44 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
     Rendered as its own vector even when it cannot run, because this is the only vector
     that can see a developer workstation. Omitting it would let a report full of clean
     GitHub results read as a clean estate.
+
+    The fallback below says NOT RUN, not BLOCKED, and the distinction is the whole point
+    of this docstring. It used to say BLOCKED, with the reason "GRAPH_TENANT_ID,
+    GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET are absent from the environment". That
+    sentence was literally true and completely wrong: `GraphClient.from_db` reads the
+    encrypted credential store, never the process environment, and the store holds an
+    active app registration carrying ThreatHunting.Read.All. Access existed the entire
+    time the report told its reader it did not.
+
+    The cost of that error was not cosmetic. BLOCKED drives the verdict to AMBER, emits a
+    priority-1 action to go and request access that already exists, and puts "approve the
+    access request, or accept in writing that laptops stay outside this hunt" in front of
+    an executive as a decision. A reader acting on the report would have spent weeks in a
+    permissions queue for a permission already granted, while the query that would have
+    answered the question took under a minute to run.
+
+    So this fallback no longer infers anything about access. Absence of the artefact means
+    the collector did not run; whether it *could* have run is a question only
+    `scripts/hunt/hunt_endpoint_defender.py` is entitled to answer, because it is the only
+    thing here that actually asks the tenant.
     """
     if endpoint:
         return endpoint
     return {
         "name": "Endpoint / identity (Microsoft Defender)",
-        "status": BLOCKED,
+        "status": NOT_RUN,
         "scope": "0 devices queried",
         "counts": {"Hunting queries executed": 0},
         "coverage": [
-            "GRAPH_TENANT_ID, GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET are absent from the "
-            "environment, so no advanced hunting query can be submitted.",
-            "Two queries are written and lint-clean but unexecuted: "
-            "kql/backlog/22-bun-windows-artifact-sweep.kql (the bun.exe artefact question) "
-            "and kql/coverage/08-bun-exe-telemetry-shape.kql (the control that makes a zero "
-            "from 22 readable).",
+            "No endpoint_hunt.json artefact was supplied, so the Defender advanced-hunting "
+            "collector did not run this cycle. This is a gap in the hunt, not a statement "
+            "about access - run scripts/hunt/hunt_endpoint_defender.py, which resolves "
+            "credentials from the encrypted store and reports the real permission state.",
+            "The queries exist and are lint-clean: "
+            "kql/coverage/08-bun-exe-telemetry-shape.kql (the control that makes a zero "
+            "readable) and kql/backlog/22-bun-windows-artifact-sweep.kql (the bun.exe "
+            "artefact question).",
         ],
-        "blocked_by": "Microsoft Graph permission ThreatHunting.Read.All on "
-                      "/security/runHuntingQuery, plus an app registration and secret.",
         "findings": [],
     }
 
@@ -788,8 +808,14 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
                 "blocked_by": None,
             })
 
-    # 2. The blocked vector. Ranked high not because something was found but because
+    # 2. The unanswered vector. Ranked high not because something was found but because
     #    nothing could be - an unanswerable question outranks a known, bounded weakness.
+    #
+    #    Two different causes, two different asks, and conflating them is what produced a
+    #    priority-1 request for a permission the tenant had already granted. BLOCKED is a
+    #    permissions problem and the fix is an access request. NOT RUN is an operations
+    #    problem and the fix is running the collector, which costs a minute. Only the
+    #    artefact can say which one is true, so neither branch guesses.
     if endpoint.get("status") == BLOCKED:
         actions.append({
             "priority": 1,
@@ -802,9 +828,49 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
             "scope": "1 access request",
             "targets": ["Microsoft Graph: ThreatHunting.Read.All on /security/runHuntingQuery"],
             "owners": ["Security operations / Microsoft 365 tenant admin"],
-            "effort": "Hours, once approved. Two queries are already written and tested "
+            "effort": "Hours, once approved. The queries are already written and tested "
                       "for syntax; they have never been run.",
             "blocked_by": endpoint.get("blocked_by"),
+        })
+    elif endpoint.get("status") == NOT_RUN:
+        actions.append({
+            "priority": 1,
+            "title": "Run the endpoint hunt - it is the only vector that sees a laptop",
+            "why_now": "Every other check in this report reads GitHub, and GitHub cannot "
+                       "show a workstation. The Windows form of this attack lands on one. "
+                       "Nothing here says we lack access; it says nobody ran it.",
+            "scope": "1 command",
+            "targets": ["python3 scripts/hunt/hunt_endpoint_defender.py"],
+            "owners": ["Security operations"],
+            "effort": "Minutes. Read-only advanced-hunting queries against the existing "
+                      "app registration; no GitHub budget consumed.",
+            "blocked_by": None,
+        })
+    elif endpoint.get("status") == INCOMPLETE and endpoint.get("unresolved_items"):
+        # The hunt ran and found nothing, over a population that is smaller than the
+        # estate. That residue is the only thing standing between this vector and CLEAR,
+        # and this report's own rule is that doubt is expressed as a work item or not at
+        # all - so it becomes one rather than sitting in Section 3 as a caveat.
+        gaps = endpoint["unresolved_items"]
+        counts = endpoint.get("counts", {})
+        actions.append({
+            "priority": 2,
+            "title": "Close the endpoint telemetry gaps - they are what keeps this hunt "
+                     "from reading clean",
+            "why_now": f"The laptop and server hunt ran and found no trace of the campaign "
+                       f"on the {counts.get('Devices reporting to Defender', 0)} devices "
+                       f"that report. "
+                       f"{counts.get('Devices seen but NOT reporting', 0)} devices are "
+                       f"visible to Defender but not sending telemetry, so they could not "
+                       f"have produced a hit whether or not they have one. That is the "
+                       f"difference between a clean answer and a partial one.",
+            "scope": f"{len(gaps)} named gap(s)",
+            "targets": gaps,
+            "owners": ["Security operations / Microsoft 365 tenant admin"],
+            "effort": "Mixed. Onboarding the reporting gap is endpoint-management work "
+                      "sized by device count; the missing hash column and the sign-in "
+                      "permission are configuration changes measured in hours.",
+            "blocked_by": None,
         })
 
     # 3. Mutable refs. Split branch refs out from tag refs: a branch ref can be moved by
@@ -1057,11 +1123,31 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w("")
     w("**Decisions needed from you.**")
     w("")
-    w("1. Approve the access request for endpoint telemetry, or accept in writing that "
-      "laptops stay outside this hunt.")
-    w("2. Confirm whether build-step pinning becomes a policy with an enforcement date, "
-      "or stays a recommendation.")
-    w("3. Name owners for any repository listed as having none.")
+    # The first decision is derived, not fixed. It used to read "approve the access request
+    # for endpoint telemetry" unconditionally, which asked an executive to authorise a
+    # permission the tenant already held - and, worse, told them the laptops were unseen on
+    # a cycle where they had been searched. What a reader is asked to decide has to follow
+    # from what was actually found.
+    endpoint_vector = next((v for v in vectors if v["name"].startswith("Endpoint /")), None)
+    endpoint_status = endpoint_vector["status"] if endpoint_vector else NOT_RUN
+    if endpoint_status == BLOCKED:
+        decisions = ["Approve the access request for endpoint telemetry, or accept in "
+                     "writing that laptops stay outside this hunt."]
+    elif endpoint_status == NOT_RUN:
+        decisions = ["Endpoint telemetry was not queried this cycle. Access is not the "
+                     "blocker - decide who owns running it before the next report."]
+    else:
+        residue = len((endpoint_vector or {}).get("unresolved_items") or [])
+        decisions = [f"Endpoint telemetry was queried. {residue} named coverage gap(s) "
+                     f"remain, listed in Section 3 - decide which are funded and which "
+                     f"are accepted."] if residue else []
+    decisions += [
+        "Confirm whether build-step pinning becomes a policy with an enforcement date, "
+        "or stays a recommendation.",
+        "Name owners for any repository listed as having none.",
+    ]
+    for index, decision in enumerate(decisions, start=1):
+        w(f"{index}. {decision}")
     w("")
     w("---")
     w("")
@@ -1087,8 +1173,21 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
       "evidence is not reported as clean.")
     w("")
 
-    for index, vector in enumerate(vectors, 1):
-        w(f"### 3.{index + 1} {vector['name']} - {vector['status']}")
+    # Section numbers are counted, not written. They used to be: the per-vector loop
+    # emitted 3.2 upward and the detail sections below hardcoded 3.9 through 3.14, which
+    # agreed exactly as long as there were seven vectors. The endpoint vector becoming a
+    # real vector made it eight, and the document then had two different sections both
+    # called 3.9 - including one cross-reference pointing at the wrong one. A numbering
+    # scheme that depends on a count elsewhere in the file will drift again, so it now
+    # derives from the same counter that emits the headings.
+    section = [1]
+
+    def heading(title: str) -> str:
+        section[0] += 1
+        return f"### 3.{section[0]} {title}"
+
+    for vector in vectors:
+        w(heading(f"{vector['name']} - {vector['status']}"))
         w("")
         if vector.get("counts"):
             w("| Metric | Value |")
@@ -1108,13 +1207,23 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             for line in vector["limits"]:
                 w(f"- {line}")
             w("")
+        # Section 1 puts a count of unread items on the face of the report; without this
+        # block Section 3 never says what they are, so the one number a reader is asked to
+        # act on is the one number they cannot look up.
+        if vector.get("unresolved_items"):
+            w(f"**Not read - {len(vector['unresolved_items'])} item(s). Closing these "
+              f"closes this vector.**")
+            w("")
+            for line in vector["unresolved_items"]:
+                w(f"- {line}")
+            w("")
         if vector.get("blocked_by"):
             w(f"**Blocked by.** {vector['blocked_by']}")
             w("")
 
     # Vector-specific detail that does not fit the generic shape.
     if reusable.get("ranked_sinks"):
-        w("### 3.9 Target list - shared build steps receiving the whole secrets context")
+        w(heading("Target list - shared build steps receiving the whole secrets context"))
         w("")
         w("Ranked by pipeline references, which is consumer repositories summed across "
           "every shared workflow that reaches the sink. This is the leverage list: the "
@@ -1151,7 +1260,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("")
 
     if ci.get("tojson"):
-        w("### 3.10 Target list - per-repository workflows handing over the whole secrets context")
+        w(heading("Target list - per-repository workflows handing over the whole secrets context"))
         w("")
         w(f"Pin rate across the estate: **{ci.get('pin_rate')}** of action references are "
           f"pinned to a commit SHA.")
@@ -1190,7 +1299,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("")
 
     if ioc.get("adjacent"):
-        w("### 3.11 Adjacent packages - right name, safe version")
+        w(heading("Adjacent packages - right name, safe version"))
         w("")
         w("These packages were targeted by the campaign. We use them, but not at a "
           "malicious version. They are listed because they are where an accidental upgrade "
@@ -1208,7 +1317,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("")
 
     if registry.get("window_first"):
-        w("### 3.12 Attack window, derived from the registry")
+        w(heading("Attack window, derived from the registry"))
         w("")
         w(f"- First malicious publish: `{registry['window_first']}`")
         w(f"- Last malicious publish: `{registry['window_last']}`")
@@ -1222,7 +1331,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("")
 
     if owners:
-        w("### 3.13 Ownership resolution")
+        w(heading("Ownership resolution"))
         w("")
         w(f"Resolved for {owners.get('repos_resolved', 0)} repositories that appear in at "
           f"least one finding list.")
@@ -1280,7 +1389,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w(f"- {line}")
         w("")
 
-    w("### 3.14 Reproducing this report")
+    w(heading("Reproducing this report"))
     w("")
     w("```bash")
     w("python3 scripts/hunt/collect_repo_trees.py        # files on disk, incl. Bun artefacts")
@@ -1290,10 +1399,14 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w("python3 scripts/hunt/sweep_actions_posture.py     # CI posture")
     w("python3 scripts/hunt/collect_repo_owners.py       # CODEOWNERS + blast radius")
     w("#   shared-workflow fan-out is read from the deployment topology tables")
+    w("python3 scripts/hunt/hunt_endpoint_defender.py    # laptops and servers, via Defender")
     w("python3 scripts/hunt/render_hunt_report.py        # this document")
     w("```")
     w("")
-    w("Endpoint queries, once credentials exist:")
+    w("`hunt_endpoint_defender.py` resolves its credentials from the encrypted store, not "
+      "from the environment. It runs the telemetry control first and every later count is "
+      "only readable because that control passed. The two queries below are the same ones "
+      "it runs, if you want them individually:")
     w("")
     w("```bash")
     w("python3 scripts/ioc/run_kql_poc.py --run \\")
@@ -1315,7 +1428,10 @@ def main() -> int:
     parser.add_argument("--posture", type=Path, default=HUNT / "actions_posture_r3_coverage.json")
     parser.add_argument("--registry", type=Path, default=HUNT / "rederive_window_14z.json")
     parser.add_argument("--endpoint", type=Path, default=HUNT / "endpoint_hunt.json",
-                        help="Defender advanced-hunting results. Absent renders BLOCKED.")
+                        help="Defender advanced-hunting results, from "
+                             "scripts/hunt/hunt_endpoint_defender.py. Absent renders NOT "
+                             "RUN - absence of the file says the collector did not run, "
+                             "never that access was refused.")
     parser.add_argument("--owners", type=Path, default=HUNT / "repo_owners.json")
     parser.add_argument("--reusable", type=Path,
                         default=HUNT / "reusable_workflow_targets.json",
