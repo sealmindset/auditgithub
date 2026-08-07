@@ -25,9 +25,26 @@ always "what did you actually look at, and did you look properly?".
 DOCTRINE THIS ENCODES
 
   §0.1  A zero is only meaningful if the query could have found the thing. Every CLEAR
-        status here carries the coverage evidence that earned it, and a negative with weak
-        coverage is rendered CLEAR (WEAK COVERAGE), never CLEAR.
+        status here carries the coverage evidence that earned it.
   §0.4  Findings are never truncated ascending. Where a list is capped the cap is printed.
+
+NO STATUS MEANS "PROBABLY"
+
+An earlier version of this report graded incomplete coverage as CLEAR (WEAK COVERAGE).
+That was a mistake, and the reason is worth keeping written down. It put two unrelated
+situations under one hedge:
+
+  - a sweep that missed two named repositories, which an hour of work could close;
+  - a search method whose index holds a third of the estate and never will hold more.
+
+A reader could act on the first and could do nothing at all about the second, but both
+printed the same words - so the honest caveat and the permanent one were indistinguishable,
+and the rational response to both was to discount the table. A caveat a reader cannot
+discharge does not make a report more truthful; it makes it easier to ignore.
+
+So incomplete coverage is now a COUNT OF NAMED ITEMS (INCOMPLETE) - finite, listed, and
+closable - and a method that cannot ever be complete is removed from the coverage verdict
+altogether (CORROBORATING). Doubt is only ever expressed as a work item.
 
 Absence of an artefact is never absence of a problem. That distinction is the whole point
 of the status column.
@@ -46,16 +63,30 @@ HUNT = REPO_ROOT / "exports/hunt"
 
 # Status vocabulary, fixed so a reader can learn it once and so the delta can compare
 # yesterday's status to today's without string guessing.
+#
+# Every status is a statement of fact with a number behind it. There is deliberately no
+# status meaning "probably fine" or "weak", because such a status asks the reader to hold
+# a doubt they cannot act on or discharge - and a report that produces unresolvable doubt
+# is worse than one that produces a work item. Where a check did not cover everything, the
+# gap is stated as a count of NAMED items (INCOMPLETE), which someone can close. Where a
+# method can never cover everything, it does not get a coverage status at all
+# (CORROBORATING), because grading it on that scale implies a completeness it will never
+# reach no matter how much work is done.
 CLEAR = "CLEAR"
-CLEAR_WEAK = "CLEAR (WEAK COVERAGE)"
+INCOMPLETE = "INCOMPLETE"
+CORROBORATING = "CORROBORATING"
 FINDINGS = "FINDINGS"
 BLOCKED = "BLOCKED"
 NOT_RUN = "NOT RUN"
 
 STATUS_NOTE = {
-    CLEAR: "Looked, could have found it, did not find it.",
-    CLEAR_WEAK: "Looked, found nothing, but the search could not prove it would have "
-                "found the thing. Not the same as clean.",
+    CLEAR: "Looked everywhere in scope, could have found it, did not find it. "
+           "Nothing outstanding.",
+    INCOMPLETE: "Found nothing in what was read. A named, counted set of items was not "
+                "read. Those items are listed; reading them closes this.",
+    CORROBORATING: "Supporting evidence only. This method cannot cover the whole estate "
+                   "by design, so it can confirm a finding but never produce a clean "
+                   "result. Its zero carries no weight and is not counted as one.",
     FINDINGS: "Something to act on.",
     BLOCKED: "Could not look. No result, in either direction.",
     NOT_RUN: "Did not run this cycle.",
@@ -93,36 +124,63 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
                 "scope": "-", "counts": {}, "coverage": [], "findings": []}
     totals = trees.get("totals", {})
     bun = trees.get("bun_artifacts", {}) or {}
+    accounting = trees.get("resolution_accounting", {}) or {}
     hits = totals.get("repos_with_indicator_hits", 0)
-    truncated = totals.get("truncated", 0)
-    # A truncated tree is a repository this sweep did NOT fully read. It cannot contribute
-    # to a clean finding, so it degrades the status rather than being a footnote.
+    unresolved = trees.get("unresolved_repos", []) or []
+
+    # The status is decided by one number: how many repositories this sweep could not
+    # read. Not by an adjective, and not by the raw truncation count - a tree that
+    # truncated and was then re-read per-subtree was read, and a repository with no
+    # commits has no files to read. Both are resolved, and the accounting below is what
+    # entitles this vector to say CLEAR with nothing attached to it.
     status = FINDINGS if hits and trees.get("indicator_hit_is_campaign_confirmed") \
-        else (CLEAR_WEAK if truncated else CLEAR)
+        else (INCOMPLETE if unresolved else CLEAR)
+    read = accounting.get("read", totals.get("tree_ok", 0))
+    no_files = accounting.get("no_files", 0)
+    total_repos = totals.get("repos", 0)
+    walked = totals.get("truncation_resolved_by_walk", 0)
+
+    coverage = [
+        f"Enumeration completed for every org: "
+        + ", ".join(f"{o} {d.get('repos_enumerated', 0)}"
+                    for o, d in (trees.get("orgs") or {}).items()),
+        f"Bun indicator source file loaded: {bun.get('source_file_present')}. "
+        f"Binaries {bun.get('binaries')}, release assets {len(bun.get('release_assets') or [])}, "
+        f"staging prefixes {bun.get('staging_prefixes')}.",
+        # The buckets are asserted to sum. If they ever do not, the coverage claim is
+        # arithmetic that does not add up and the reader is told so rather than reassured.
+        f"Every repository is accounted for exactly once: {read} read in full, "
+        f"{no_files} with no files at all (no commits, or an empty tree - these cannot "
+        f"contain a file and are resolved, not skipped), {len(unresolved)} unresolved. "
+        f"Buckets sum to the enumerated total: {accounting.get('sums_to_repos')}.",
+    ]
+    if walked:
+        coverage.append(
+            f"{walked} repository tree(s) exceeded the API's single-response size cap and "
+            f"were re-read one subtree at a time until complete. Without that walk their "
+            f"file lists would have been partial and any zero from them meaningless.")
+    if unresolved:
+        coverage.append("Unresolved repositories, named so this can be closed: "
+                        + "; ".join(f"{u.get('repo')} ({u.get('why')})" for u in unresolved[:25]))
+
     return {
         "name": "GitHub repositories - files on disk",
         "status": status,
-        "scope": f"{totals.get('tree_ok', 0)} of {totals.get('repos', 0)} repos read",
+        "scope": f"{read + no_files} of {total_repos} repos resolved",
         "counts": {
-            "Repositories enumerated": totals.get("repos", 0),
-            "File trees fully read": totals.get("tree_ok", 0),
-            "Trees unreadable (empty/permission)": totals.get("tree_failed", 0),
-            "Trees truncated (too large)": truncated,
+            "Repositories enumerated": total_repos,
+            "Resolved - file tree read in full": read,
+            "Resolved - repository holds no files at all": no_files,
+            "UNRESOLVED - not read, listed by name below": len(unresolved),
+            "Oversized trees re-read per-subtree to completion": walked,
             "npm-relevant repositories": totals.get("npm_relevant", 0),
             "Repos matching a campaign filename": hits,
             "Bun artefacts found (bun.exe, bunx.exe, release zips, bun-dl- staging)": 0,
         },
-        "coverage": [
-            f"Enumeration completed for every org: "
-            + ", ".join(f"{o} {d.get('repos_enumerated', 0)}"
-                        for o, d in (trees.get("orgs") or {}).items()),
-            f"Bun indicator source file loaded: {bun.get('source_file_present')}. "
-            f"Binaries {bun.get('binaries')}, release assets {len(bun.get('release_assets') or [])}, "
-            f"staging prefixes {bun.get('staging_prefixes')}.",
-            f"{truncated} truncated tree(s) are recorded as unread, not as clean.",
-        ],
+        "coverage": coverage,
         "limits": trees.get("limits", []),
         "findings": [],
+        "unresolved_items": [u.get("repo") for u in unresolved],
     }
 
 
@@ -135,7 +193,10 @@ def vector_branches(branches: Optional[dict]) -> dict:
     proven = (branches.get("branch_enumeration_query_proven")
               and branches.get("commit_inspection_query_proven")
               and branches.get("coverage_supports_negative_finding"))
-    status = FINDINGS if (campaign or flagged) else (CLEAR if proven else CLEAR_WEAK)
+    # `proven` means each query was demonstrated to return a hit on a known-positive
+    # control. Unproven is not a shade of clean - it means this vector never established
+    # it could see, so its zero is withheld rather than discounted.
+    status = FINDINGS if (campaign or flagged) else (CLEAR if proven else INCOMPLETE)
     trailers = branches.get("agent_trailer_only_commits_not_flagged", {}) or {}
     return {
         "name": "GitHub repositories - branches and commits",
@@ -166,29 +227,44 @@ def vector_branches(branches: Optional[dict]) -> dict:
 
 def vector_code_search(search: Optional[dict]) -> dict:
     if not search:
-        return {"name": "GitHub code search (corroborating)", "status": NOT_RUN,
+        return {"name": "GitHub code search (corroborating only)", "status": NOT_RUN,
                 "scope": "-", "counts": {}, "coverage": [], "findings": []}
     hits = search.get("hits", []) or []
-    weak = search.get("zeros_not_supporting_a_clean_finding", []) or []
-    # Code search is a corroborating vector, never a primary one, because its index is
-    # partial and excludes binaries entirely. Weak zeros are the normal case here, so the
-    # status reflects the index quality rather than pretending to a clean result.
-    status = FINDINGS if hits else (CLEAR_WEAK if weak else CLEAR)
     controls = {o: d.get("control", {}) for o, d in (search.get("orgs") or {}).items()}
+
+    # Code search can find something, and when it does that is a real finding. It can
+    # never establish that something is absent: GitHub's index holds a fraction of the
+    # estate and excludes binaries outright, and no amount of work on our side changes
+    # that. So this vector is scored on one axis only - did it find anything - and is
+    # excluded from the coverage verdict entirely. Grading a method against a bar it
+    # cannot reach produced a permanent "weak" row that no action could ever clear, which
+    # taught readers to discount the whole table.
+    status = FINDINGS if hits else CORROBORATING
+    worst = min([c.get("index_files_per_known_repo") or 0 for c in controls.values()],
+                default=0)
     return {
-        "name": "GitHub code search (corroborating)",
+        "name": "GitHub code search (corroborating only)",
         "status": status,
-        "scope": f"{len(search.get('orgs') or {})} orgs",
+        # Excluded from the clean/unclean verdict by construction, not by judgement.
+        "counts_toward_coverage": False,
+        "scope": f"{len(search.get('orgs') or {})} orgs, index holds ~{worst:.0%} of the "
+                 f"worst-covered one",
         "counts": {
             "Real hits (after excluding our own tooling)": len(hits),
             "Repositories self-excluded as our own corpus": len(search.get("excluded_repos", []) or []),
-            "Zeros that do NOT support a clean finding": len(weak),
         },
         "coverage": [
             f"{org}: index returns {c.get('index_files_per_known_repo')} files per repo "
             f"known to hold one (usable: {c.get('index_usable')})"
             for org, c in controls.items()
         ] + [
+            "Measured against a control that must exist: every repository holding a "
+            "package-lock.json holds at least one, so an index returning fewer files than "
+            "there are such repositories is provably incomplete. That is why no zero from "
+            "this vector is treated as a clean result - here or in the verdict.",
+            "The authoritative answer to the same question is the file-tree sweep, which "
+            "reads every repository directly and is graded on coverage. This vector exists "
+            "to catch what trees might miss, not to confirm what trees found.",
             "filename:bun.exe is deliberately NOT queried. GitHub's code index excludes "
             "binaries, so it would return zero whether or not a bun.exe is committed. "
             "File trees are authoritative for binary presence; code search is not.",
@@ -442,7 +518,15 @@ def compute_verdict(vectors: List[dict]) -> dict:
     not_run = [v for v in vectors if v["status"] == NOT_RUN]
     exposure = [v for v in vectors if v["status"] == FINDINGS
                 and not v.get("is_compromise_evidence")]
-    weak = [v for v in vectors if v["status"] == CLEAR_WEAK]
+    # Corroborating vectors are absent from every branch below. They cannot clear and are
+    # not asked to, so they must not drag the verdict either.
+    incomplete = [v for v in vectors if v["status"] == INCOMPLETE]
+
+    def residue(vector: dict) -> str:
+        items = vector.get("unresolved_items") or []
+        named = ", ".join(items[:3]) + (f" and {len(items) - 3} more" if len(items) > 3 else "")
+        return (f"{vector['name']}: {len(items)} item(s) not read"
+                + (f" - {named}" if named else ""))
 
     if compromise_vectors:
         return {"rag": "RED", "breached": "YES - evidence of compromise found. Treat as "
@@ -453,16 +537,24 @@ def compute_verdict(vectors: List[dict]) -> dict:
                 "breached": "No evidence of compromise in what we could check - but we "
                             "could not check everything.",
                 "why": [f"{v['name']} could not be checked" for v in blocked + not_run]
+                       + [residue(v) for v in incomplete]
                        + [f"{v['name']} has exposures to fix" for v in exposure]}
-    if exposure or weak:
+    if incomplete:
         return {"rag": "AMBER",
-                "breached": "No. Nothing in the estate matches this campaign. There are "
-                            "weaknesses that would make the next one worse.",
-                "why": [f"{v['name']} has exposures to fix" for v in exposure]
-                       + [f"{v['name']} coverage is too weak to call clean" for v in weak]}
+                "breached": "No evidence of compromise anywhere we read - and a specific, "
+                            "named, finite list of things we did not read. Read them and "
+                            "this becomes a yes or a no.",
+                "why": [residue(v) for v in incomplete]
+                       + [f"{v['name']} has exposures to fix" for v in exposure]}
+    if exposure:
+        return {"rag": "AMBER",
+                "breached": "No. Nothing in the estate matches this campaign, and every "
+                            "check that says so covered everything it claims to cover. "
+                            "There are weaknesses that would make the next one worse.",
+                "why": [f"{v['name']} has exposures to fix" for v in exposure]}
     return {"rag": "GREEN",
-            "breached": "No. Every vector was checked, and each check proved it could "
-                        "have found the thing it was looking for.",
+            "breached": "No. Every vector was checked, each check proved it could have "
+                        "found the thing it was looking for, and nothing was left unread.",
             "why": []}
 
 
@@ -511,6 +603,18 @@ def render_delta(previous: Optional[dict], current: dict,
             if was is not None and was != value:
                 direction = "up" if value > was else "down"
                 lines.append(f"{name} - {metric}: {was} -> {value} ({direction}).")
+
+    # A vector that was reported yesterday and is absent today is the most dangerous
+    # possible delta and the easiest to miss: the reader sees a shorter table and no
+    # warning. Iterating only today's vectors would let a broken collector silently
+    # remove a whole line of defence and still print "no change since the previous run".
+    for name, before in (previous.get("vectors") or {}).items():
+        if name in current["vectors"]:
+            continue
+        lines.append(
+            f"**WARNING - vector no longer reported: {name}** (was {before.get('status')}). "
+            f"Either its collector failed, or it was renamed. Until that is confirmed, "
+            f"treat this attack vector as unchecked this cycle, not as clean.")
     if not lines:
         lines.append("No change since the previous run. Same vectors, same statuses, "
                      "same counts.")
@@ -869,7 +973,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     PLAIN = {
         "GitHub repositories - files on disk": "Every file in every repository we own",
         "GitHub repositories - branches and commits": "Every code change made during the attack",
-        "GitHub code search (corroborating)": "A second, independent search of our code",
+        "GitHub code search (corroborating only)": "A second, independent search of our code",
         "Dependency inventory vs campaign IOCs": "Every third-party building block we use",
         "CI / GitHub Actions posture": "Every automated build pipeline",
         "CI - shared reusable workflows (fan-out)": "The shared build steps that most "
@@ -879,15 +983,24 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         "Endpoint / identity (Microsoft Defender)": "Staff laptops and servers",
     }
     PLAIN_STATUS = {
-        CLEAR: "Clean - and we can prove the check works",
-        CLEAR_WEAK: "Nothing found, but the check is not strong enough to call it clean",
+        CLEAR: "Clean - checked all of it, and we can prove the check works",
         FINDINGS: "Things to fix",
         BLOCKED: "**Could not check - no access**",
         NOT_RUN: "Not checked this cycle",
     }
     for vector in vectors:
-        w(f"| {PLAIN.get(vector['name'], vector['name'])} | "
-          f"{PLAIN_STATUS.get(vector['status'], vector['status'])} |")
+        if vector["status"] == INCOMPLETE:
+            # State the residue as a number on the face of the summary table. A reader who
+            # gets no further than this page should still leave knowing exactly how much
+            # is outstanding, rather than carrying away a vague unease.
+            outstanding = len(vector.get("unresolved_items") or [])
+            plain = (f"Clean so far - **{outstanding} item(s) still to check**, listed in "
+                     f"Section 3")
+        elif vector["status"] == CORROBORATING:
+            plain = "Supporting check only - can spot a problem, cannot declare us clean"
+        else:
+            plain = PLAIN_STATUS.get(vector["status"], vector["status"])
+        w(f"| {PLAIN.get(vector['name'], vector['name'])} | {plain} |")
     w("")
     w("**The one thing to remember.** Nothing in our estate matches this campaign. The "
       "risk on this page is not that we were hit - it is that our build pipelines are "

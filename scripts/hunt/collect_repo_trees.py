@@ -589,6 +589,65 @@ def inspect_hook_file(org: str, repo_name: str, ref: str, path: str, token: str)
     return result
 
 
+def walk_tree_completely(org: str, name: str, ref: str, token: str,
+                         max_requests: int = 400):
+    """Read a truncated tree in full by descending into it one subtree at a time.
+
+    GitHub truncates a `?recursive=1` response against a size cap on that single
+    response, not against a limit on what it will serve. Asking for a subtree asks for a
+    smaller response, so the same content comes back complete. Descend only into subtrees
+    that themselves truncate; everything else is captured by its parent's recursive read.
+
+    Returns (blob_paths, unresolved_subtree_paths, requests_used). A non-empty second
+    element is the honest residue: those directories were not read, and any statement
+    about their contents would be a guess. `max_requests` bounds a pathological repository
+    so one outlier cannot drain the shared budget - hitting it is reported as residue,
+    never as completion.
+    """
+    paths: list = []
+    unresolved: list = []
+    # (tree_ref, path_prefix). The root is re-read here rather than reusing the caller's
+    # truncated body: mixing a partial root with complete subtrees would produce a file
+    # list that is neither, and no counter would show it.
+    queue = [(ref, "")]
+    requests = 0
+    while queue:
+        tree_ref, prefix = queue.pop()
+        if requests >= max_requests:
+            unresolved.append(prefix or "/")
+            continue
+        status, body, _ = api_get(
+            f"{GITHUB_API}/repos/{org}/{name}/git/trees/{tree_ref}?recursive=1", token
+        )
+        requests += 1
+        if status != 200 or not isinstance(body, dict):
+            unresolved.append(prefix or "/")
+            continue
+        entries = body.get("tree") or []
+        if body.get("truncated"):
+            # This response is partial, so nothing in it can be trusted as a complete
+            # listing. Discard it and queue its immediate children instead; a
+            # non-recursive read of the same ref reliably fits.
+            nr_status, nr_body, _ = api_get(
+                f"{GITHUB_API}/repos/{org}/{name}/git/trees/{tree_ref}", token
+            )
+            requests += 1
+            if nr_status != 200 or not isinstance(nr_body, dict) or nr_body.get("truncated"):
+                unresolved.append(prefix or "/")
+                continue
+            for entry in nr_body.get("tree") or []:
+                child = f"{prefix}{entry.get('path', '')}"
+                if entry.get("type") == "blob":
+                    paths.append(child)
+                elif entry.get("type") == "tree" and entry.get("sha"):
+                    queue.append((entry["sha"], child + "/"))
+            continue
+        for entry in entries:
+            if entry.get("type") == "blob":
+                paths.append(f"{prefix}{entry.get('path', '')}")
+    return paths, unresolved, requests
+
+
 def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[str]],
                  bun: Optional[Dict[str, List[str]]] = None) -> dict:
     name = repo["name"]
@@ -611,6 +670,8 @@ def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[st
     }
     if not branch:
         record["error"] = "no default branch (empty repository)"
+        record["resolution"] = "no_files"
+        record["file_count"] = 0
         return record
 
     status, body, _ = api_get(
@@ -657,11 +718,18 @@ def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[st
             record["error"] = "empty tree (single commit with no files)"
             record["empty_tree"] = True
             record["file_count"] = 0
+            record["resolution"] = "no_files"
             return record
 
     if status != 200 or not isinstance(body, dict):
         message = (body or {}).get("message") if isinstance(body, dict) else None
         record["error"] = f"HTTP {status}: {message or 'unexpected body'}"
+        # A repository with no commits has no files, so no file-based indicator can be
+        # hiding in it. That is a determination, not a failure to look, and counting it
+        # as a failure understates coverage - which is how a sweep ends up describing
+        # itself as weak when it is complete.
+        record["resolution"] = ("no_files" if status == 409 and "empty" in (message or "").lower()
+                                else "unresolved")
         return record
     branch = record["branch_inspected"] or branch
 
@@ -670,6 +738,26 @@ def collect_repo(org: str, repo: dict, token: str, indicators: Dict[str, List[st
     record["tree_ok"] = True
     record["truncated"] = bool(body.get("truncated"))
     record["file_count"] = len(paths)
+
+    # A truncated tree is the one case where this sweep holds a partial file list and
+    # could report "no bun.exe" about a repository it never finished reading. Rather than
+    # carry that forward as a caveat, walk the tree per-subtree until it is complete: the
+    # byte cap that truncated the root applies per response, so smaller subtree requests
+    # return in full. Cost is bounded and paid only by the handful of repositories that
+    # actually truncate.
+    if record["truncated"]:
+        walked, unresolved, requests_used = walk_tree_completely(org, name, branch, token)
+        record["truncation_walk_requests"] = requests_used
+        if not unresolved:
+            paths = walked
+            record["file_count"] = len(paths)
+            record["truncated"] = False
+            record["truncation_resolved_by"] = "per-subtree walk"
+        else:
+            # Still incomplete. Name the subtrees that were not read, so the residue is a
+            # finite work item rather than a repository-level shrug.
+            record["truncation_unresolved_subtrees"] = unresolved
+    record["resolution"] = "unresolved" if record["truncated"] else "read"
     record.update(classify_tree(paths, indicators, bun))
 
     # Resolve every hook-file lead into a determination while the token and ref are in
@@ -724,6 +812,10 @@ def main() -> int:
           f"staging prefixes {bun['staging_prefixes']}", file=sys.stderr)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    # Named, not just counted. "2 repositories unresolved" is a caveat a reader must take
+    # on trust; naming them turns it into a work item someone can close, and closing it is
+    # what makes the next run's zero unqualified.
+    unresolved_repos: List[dict] = []
     coverage = {
         "orgs": {},
         "totals": Counter(),
@@ -732,8 +824,8 @@ def main() -> int:
         "limits": [
             "default branch only; the worm is reported to write hooks to up to 50 "
             "branches per repository, so a clean result here does not clear other branches",
-            "trees API truncates very large trees; truncated repositories are counted "
-            "separately and a negative result on them is not evidence of absence",
+            "trees API truncates very large trees; a truncated tree is re-read per-subtree "
+            "and only counted unresolved if that walk also fails to complete",
             "filename matches are leads requiring a hash or a second indicator",
             "bun.exe / bunx.exe / bun-*.zip hits are provenance questions, not "
             "indicators: Bun is a legitimate runtime and this counts them separately",
@@ -778,8 +870,22 @@ def main() -> int:
                     handle.flush()
                     counts["repos"] += 1
                     counts["tree_ok" if record.get("tree_ok") else "tree_failed"] += 1
+                    # Resolution is the accounting that decides whether a zero from this
+                    # sweep is a clean finding. Every repository lands in exactly one
+                    # bucket, and the buckets sum to `repos`, so the report can state
+                    # coverage as a number instead of as an adjective.
+                    resolution = record.get("resolution") or "unresolved"
+                    counts[f"resolution_{resolution}"] += 1
+                    if resolution == "unresolved":
+                        unresolved_repos.append({
+                            "repo": record.get("full_name") or f"{org}/{record.get('repo')}",
+                            "why": record.get("error") or ("truncated tree: "
+                                   + ", ".join(record.get("truncation_unresolved_subtrees") or [])),
+                        })
                     if record.get("truncated"):
                         counts["truncated"] += 1
+                    if record.get("truncation_resolved_by"):
+                        counts["truncation_resolved_by_walk"] += 1
                     if record.get("npm_relevant"):
                         counts["npm_relevant"] += 1
                     if record.get("indicator_hits"):
@@ -810,6 +916,22 @@ def main() -> int:
             print(f"{org}: done — {dict(counts)}", file=sys.stderr)
 
     coverage["totals"] = dict(coverage["totals"])
+    totals = coverage["totals"]
+    # The one number that decides whether this sweep's zero is a clean finding. Asserted
+    # here rather than inferred in the report, so the two can never disagree.
+    totals["repos_unresolved"] = len(unresolved_repos)
+    totals["coverage_complete"] = not unresolved_repos
+    coverage["unresolved_repos"] = unresolved_repos
+    coverage["resolution_accounting"] = {
+        "read": totals.get("resolution_read", 0),
+        "no_files": totals.get("resolution_no_files", 0),
+        "unresolved": totals.get("resolution_unresolved", 0),
+        "sums_to_repos": (totals.get("resolution_read", 0)
+                          + totals.get("resolution_no_files", 0)
+                          + totals.get("resolution_unresolved", 0)) == totals.get("repos", 0),
+        "note": "no_files repositories have no commits or an empty tree. They cannot "
+                "contain a file-based indicator, so they are resolved, not failed.",
+    }
     coverage_path = args.out.with_name(args.out.stem + "_coverage.json")
     coverage_path.write_text(json.dumps(coverage, indent=2))
     print(f"\nrecords: {args.out}\ncoverage: {coverage_path}", file=sys.stderr)
