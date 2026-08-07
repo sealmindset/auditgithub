@@ -160,6 +160,57 @@ COVERAGE_GAP_FIELDS = ("gap", "population", "cannot_confirm_or_deny", "closed_by
 # is read with the same trust as one that can.
 ACCESS_GAP_FIELDS = ("api", "endpoint", "permission", "grant_type", "granted_by", "proves")
 
+# A COVERAGE GAP HAS TO NAME ITS RESOURCES OR IT IS NOT A GAP
+#
+# The obvious version of this feature - "1,379 devices are dark, that's a gap" - fails the
+# same test §0.6(b) already applies to access: you cannot fix what you cannot point at. A
+# reader handed that sentence has no next action. Which 1,379? Somebody has to produce the
+# list before a single device gets onboarded, and if that list cannot be produced then the
+# sentence is a statement of unease, not a work item.
+#
+# So `named_by` is required and it means something narrow: the artefact or query that
+# returns the individual members of the population, by an identifier the owner can act on.
+# Not "Defender knows" - the actual query, with the actual identifier column. If a hunt
+# cannot say how to enumerate the set, it does not get to call the set a gap.
+#
+# The rule has a real edge, and it is worth being clear about which side of it we are on:
+#
+#   Enumerable   - 1,379 devices in DeviceInfo with OnboardingStatus != "Onboarded". Every
+#                  one has a DeviceId and a DeviceName. Nameable, therefore fixable,
+#                  therefore a gap, therefore reported with an owner.
+#   Unenumerable - machines that have never contacted Defender at all. They are not in
+#                  DeviceInfo, so there is no list, so there is no number, so there is
+#                  nothing here to report. Reporting it anyway would be inventing a
+#                  population to be worried about, which is §0.6(c) in its purest form.
+#
+# The second case is not made reportable by suspecting it exists. It becomes reportable
+# when some OTHER source can enumerate it - Intune, AD, the CMDB, a DHCP lease table - at
+# which point the gap is "reconcile Defender against <that source>" and `named_by` points
+# at the source. That is a real, closable work item. "There might be unknown machines" is
+# not, and this validator will refuse to publish it.
+COVERAGE_GAP_FIELDS = ("gap", "population", "named_by", "cannot_confirm_or_deny",
+                       "closed_by", "owner")
+
+
+def md_cell(text: str) -> str:
+    """Make a string safe to put in a Markdown table cell.
+
+    A pipe inside a cell silently splits the row, and the reader sees a table with the wrong
+    number of columns and content in the wrong place - not an error, just a mangled fact.
+    This bit first: the coverage register carries KQL, and KQL is made of pipes.
+    """
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+def coverage_gap_sentence(gap: dict) -> str:
+    """One sentence naming the unobservable set, and exactly what would make it visible."""
+    # "What closes it:" rather than "Closed by", because a gap that nothing can close is a
+    # legitimate entry here, and "Closed by no Defender onboarding can close this" is not a
+    # sentence. The colon form reads correctly whether the remedy exists or not.
+    return (f"{gap['gap']}: {gap['population']}. Enumerable by {gap['named_by']}. "
+            f"Within it we can neither confirm nor deny {gap['cannot_confirm_or_deny']}. "
+            f"What closes it: {gap['closed_by']}. Owner: {gap['owner']}.")
+
 
 def access_gap_sentence(gap: dict) -> str:
     """One sentence a reader can hand to a tenant admin without asking a follow-up."""
@@ -200,6 +251,17 @@ def validate_vectors(vectors: List[dict]) -> List[str]:
                 problems.append(f"{name}: access_required[{index}] is missing "
                                 f"{', '.join(missing)}. §0.6(b) requires all of "
                                 f"{', '.join(ACCESS_GAP_FIELDS)}.")
+
+        # (b) again, on the coverage axis. A population we cannot observe is reportable only
+        #     if we can hand somebody the list. `named_by` is the field that cannot be
+        #     bluffed - it has to be a query or an artefact that returns the members.
+        for index, gap in enumerate(vector.get("coverage_gaps") or []):
+            missing = [f for f in COVERAGE_GAP_FIELDS if not (gap.get(f) or "").strip()]
+            if missing:
+                problems.append(f"{name}: coverage_gaps[{index}] is missing "
+                                f"{', '.join(missing)}. §0.6(b) requires all of "
+                                f"{', '.join(COVERAGE_GAP_FIELDS)} - a population nobody "
+                                f"can enumerate is not a gap, it is unease.")
 
         # (c) No false positives for the sake of false positives. A FINDINGS status has to
         #     say what was found. `findings` is the compromise-evidence channel;
@@ -723,7 +785,44 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
 # ----------------------------------------------------------------------------------
 # Verdict. Deterministic, so the same artefacts always produce the same colour and nobody
 # has to argue about whether today felt amber.
+#
+# The colour answers ONE question: in the population we can observe, is there evidence of
+# compromise? Coverage is computed alongside it and reported next to it, but it does not
+# move it. See the two-axes note at the top of this file for why - in short, folding the
+# dark third of the estate into the colour made the colour say AMBER every day for a reason
+# no hunt result can change, which is how a RAG letter stops being read.
 # ----------------------------------------------------------------------------------
+
+def collect_coverage_gaps(vectors: List[dict]) -> List[dict]:
+    """Every named unobservable population, with the vector it came from attached."""
+    gaps: List[dict] = []
+    for vector in vectors:
+        for gap in vector.get("coverage_gaps") or []:
+            gaps.append({**gap, "vector": vector["name"]})
+    return gaps
+
+
+def compute_coverage(vectors: List[dict]) -> dict:
+    """The coverage axis. Reported beside the verdict, never inside it."""
+    gaps = collect_coverage_gaps(vectors)
+    if not gaps:
+        return {"state": "COMPLETE", "gaps": [],
+                "scope": "Every check reached the whole population it claims to cover. "
+                         "The verdict below applies to the estate."}
+    owners = sorted({gap["owner"] for gap in gaps})
+    return {
+        "state": "PARTIAL",
+        "gaps": gaps,
+        # This sentence is the whole point of the split. The verdict is true, and it is true
+        # about something smaller than the estate, and both halves are said out loud.
+        "scope": f"{plural(len(gaps), 'population')} sit outside what this hunt can "
+                 f"observe. Inside them we can neither confirm nor deny anything - not "
+                 f"because a check failed, but because there is no telemetry to check. "
+                 f"Each is named, counted and enumerable below, with what closes it. "
+                 f"None of them moves the verdict, and the verdict does not speak for "
+                 f"them. Closing them needs: {', '.join(owners)}.",
+    }
+
 
 def compute_verdict(vectors: List[dict]) -> dict:
     compromise_vectors = [v for v in vectors if v["status"] == FINDINGS
@@ -761,14 +860,22 @@ def compute_verdict(vectors: List[dict]) -> dict:
                 "why": [residue(v) for v in incomplete]
                        + [f"{v['name']} has exposures to fix" for v in exposure]}
     if exposure:
+        # "Nothing in the estate" was the wording here, and it does not survive the coverage
+        # split - nor did it survive scrutiny before it. This hunt reads the sources it can
+        # reach. Saying "nothing we can observe" costs one clause and is the difference
+        # between a claim the artefacts support and one they do not.
         return {"rag": "AMBER",
-                "breached": "No. Nothing in the estate matches this campaign, and every "
-                            "check that says so covered everything it claims to cover. "
-                            "There are weaknesses that would make the next one worse.",
+                "breached": "No - nothing we can observe matches this campaign, and every "
+                            "check that says so proved it could have found it. The coverage "
+                            "state above says how much of the estate that is. There are "
+                            "weaknesses that would make the next one worse.",
                 "why": [f"{v['name']} has exposures to fix" for v in exposure]}
     return {"rag": "GREEN",
-            "breached": "No. Every vector was checked, each check proved it could have "
-                        "found the thing it was looking for, and nothing was left unread.",
+            "breached": "No, across everything this hunt can observe. Every vector ran, "
+                        "each proved it could have found the thing it was looking for, and "
+                        "nothing we have access to was left unread. Read with the coverage "
+                        "state above: GREEN means the checks are clean and complete over "
+                        "their population, not that the population is the whole estate.",
             "why": []}
 
 
@@ -776,9 +883,17 @@ def compute_verdict(vectors: List[dict]) -> dict:
 # Delta. A daily report without one is forty identical PDFs nobody opens by week two.
 # ----------------------------------------------------------------------------------
 
-def build_state(vectors: List[dict], verdict: dict) -> dict:
+def build_state(vectors: List[dict], verdict: dict,
+                coverage: Optional[dict] = None) -> dict:
+    # Coverage is carried in the state file so the delta can report a blind spot opening or
+    # closing. A vector whose status never moves because it is already CLEAR would otherwise
+    # produce no delta line on the day 400 devices got onboarded - the most useful change
+    # this hunt can report, and invisible on the result axis by construction.
+    coverage = coverage or compute_coverage(vectors)
     return {
         "rag": verdict["rag"],
+        "coverage": {"state": coverage["state"],
+                     "gaps": sorted(g["gap"] for g in coverage["gaps"])},
         "vectors": {v["name"]: {"status": v["status"], "counts": v.get("counts", {})}
                     for v in vectors},
     }
@@ -803,6 +918,33 @@ def render_delta(previous: Optional[dict], current: dict,
         return lines
     if previous.get("rag") != current["rag"]:
         lines.append(f"**Overall status changed: {previous.get('rag')} -> {current['rag']}.**")
+    # Coverage movement, reported separately from result movement and in both directions. A
+    # gap that disappears is the estate getting more observable; a gap that appears is the
+    # estate getting less observable without anybody deciding to.
+    #
+    # A previous run with no `coverage` key predates the register, and its gaps were recorded
+    # on the result axis instead. Diffing against it would announce four brand-new blind
+    # spots that are in fact the same four as yesterday, reclassified - which is a false
+    # finding manufactured by a schema change. So the first run states itself as a baseline.
+    now_coverage = current.get("coverage") or {}
+    now_gaps = set(now_coverage.get("gaps") or [])
+    if "coverage" not in previous:
+        if now_gaps:
+            lines.append(f"**Coverage is now reported on its own axis.** "
+                         f"{plural(len(now_gaps), 'population')} this hunt cannot observe "
+                         f"are registered below and no longer counted against any vector's "
+                         f"status. They are not new - they were previously folded into the "
+                         f"endpoint vector's unread-item list, which made an instrumentation "
+                         f"gap read as an unfinished hunt. This run is the baseline; from "
+                         f"tomorrow, one appearing or closing shows here.")
+    else:
+        before_gaps = set((previous.get("coverage") or {}).get("gaps") or [])
+        for gap in sorted(now_gaps - before_gaps):
+            lines.append(f"**New blind spot:** {gap}. This population was answerable in the "
+                         f"previous run and is not in this one.")
+        for gap in sorted(before_gaps - now_gaps):
+            lines.append(f"**Blind spot closed:** {gap}. This hunt can now answer for that "
+                         f"population.")
     for name, now in current["vectors"].items():
         before = (previous.get("vectors") or {}).get(name)
         if before is None:
@@ -1069,30 +1211,60 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
                       "app registration; no GitHub budget consumed.",
             "blocked_by": None,
         })
-    elif endpoint.get("status") == INCOMPLETE and endpoint.get("unresolved_items"):
-        # The hunt ran and found nothing, over a population that is smaller than the
-        # estate. That residue is the only thing standing between this vector and CLEAR,
-        # and this report's own rule is that doubt is expressed as a work item or not at
-        # all - so it becomes one rather than sitting in Section 3 as a caveat.
-        gaps = endpoint["unresolved_items"]
+    # Below here the hunt ran, so two independent things can be outstanding and they get two
+    # actions rather than one. `if`, not `elif`: the residue and the blind spot have different
+    # owners, different efforts and different priorities, and a run can have both.
+    if endpoint.get("status") not in (BLOCKED, NOT_RUN) and endpoint.get("unresolved_items"):
+        # Our own unfinished work on this vector - a Bun question whose control failed, a
+        # query that needs a wider window. Priority 2 and owned by us, because nobody outside
+        # the team has to approve or fund any of it.
+        residue = endpoint["unresolved_items"]
+        actions.append({
+            "priority": 2,
+            "title": "Finish the endpoint questions this run could not answer",
+            "why_now": f"{plural(len(residue), 'question')} on this vector returned a zero "
+                       f"its control could not support, so the zero is withdrawn rather than "
+                       f"reported as clean. Nothing outside the team blocks these - the "
+                       f"access and the data are already in hand.",
+            "scope": f"{plural(len(residue), 'unanswered question')}",
+            "targets": residue,
+            "owners": ["Security operations"],
+            "effort": "Hours. Each is a query or a window to correct, then a re-run.",
+            "blocked_by": None,
+        })
+    if endpoint.get("coverage_gaps"):
+        # The hunt ran, found nothing, and did so over a population smaller than the estate.
+        #
+        # The action is real but its framing had to change. It used to be titled "the gaps
+        # keeping this hunt from reading clean" and sat behind an INCOMPLETE status, which
+        # made an instrumentation problem look like a hunting problem and put the endpoint
+        # vector - the only one that can see a laptop - permanently at AMBER for a reason no
+        # query will ever resolve. The hunt is clean over what it observes. What is
+        # outstanding is that the observable set is smaller than the estate, which is
+        # somebody's budget and somebody's onboarding queue, not an unread artefact.
+        #
+        # Priority 2, not 1: nothing here is evidence of anything. It is the reason a future
+        # answer might not exist.
+        gap_list = endpoint["coverage_gaps"]
         counts = endpoint.get("counts", {})
         actions.append({
             "priority": 2,
-            "title": "Close the endpoint telemetry gaps - they are what keeps this hunt "
-                     "from reading clean",
+            "title": "Shrink the blind spot - populations this hunt can never answer for",
             "why_now": f"The laptop and server hunt ran and found no trace of the campaign "
                        f"on the {counts.get('Devices reporting to Defender', 0)} devices "
-                       f"that report. "
-                       f"{counts.get('Devices seen but NOT reporting', 0)} devices are "
-                       f"visible to Defender but not sending telemetry, so they could not "
-                       f"have produced a hit whether or not they have one. That is the "
-                       f"difference between a clean answer and a partial one.",
-            "scope": f"{len(gaps)} named gap(s)",
-            "targets": gaps,
-            "owners": ["Security operations / Microsoft 365 tenant admin"],
-            "effort": "Mixed. Onboarding the reporting gap is endpoint-management work "
-                      "sized by device count; the missing hash column and the sign-in "
-                      "permission are configuration changes measured in hours.",
+                       f"that report, and the controls prove those queries could have found "
+                       f"it. "
+                       f"{counts.get('Devices seen but NOT reporting', 0)} devices send no "
+                       f"telemetry at all, so no query can return a hit or a clean result "
+                       f"for them - today, tomorrow, or during an incident. This is not a "
+                       f"finding and nothing below is evidence of compromise. It is the "
+                       f"size of the area where this report has to say we do not know.",
+            "scope": f"{plural(len(gap_list), 'unobservable population')}",
+            "targets": [coverage_gap_sentence(g) for g in gap_list],
+            "owners": sorted({g["owner"] for g in gap_list}),
+            "effort": "Mixed, and each row says which. Onboarding is endpoint-management "
+                      "work sized by device count; enabling a telemetry column or granting "
+                      "a permission is configuration measured in hours.",
             "blocked_by": None,
         })
 
@@ -1195,9 +1367,11 @@ def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
 def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[dict],
            ioc: dict, ci: dict, registry: dict, owners: Optional[dict],
            reusable: dict, as_of: str, campaign: str,
-           sources: Optional[List[dict]] = None) -> str:
+           sources: Optional[List[dict]] = None,
+           coverage: Optional[dict] = None) -> str:
     out: List[str] = []
     w = out.append
+    coverage = coverage or compute_coverage(vectors)
 
     # YAML front matter drives the cover page, the table of contents and the per-page
     # classification marking in src/reporting/md_to_pdf.py. Emitted here rather than added
@@ -1211,6 +1385,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w(f'  Campaign: "{campaign}"')
     w(f'  Report date: "{as_of}"')
     w(f'  Overall status: "{verdict["rag"]}"')
+    w(f'  Coverage: "{coverage["state"]}"')
     w('  Produced by: "scripts/hunt/render_hunt_report.py"')
     w('  Evidence: "Every number is read from a hunt coverage artefact at render time."')
     w("toc: true")
@@ -1234,10 +1409,28 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     # ---------------- SECTION 1 ----------------
     w("## Section 1 - The situation")
     w("")
-    w(f"### {verdict['rag']}")
+    w(f"### {verdict['rag']}  -  coverage {coverage['state']}")
     w("")
     w(f"**Are we breached? {verdict['breached']}**")
     w("")
+    # Two lines, not one, and the second one is not a footnote. The colour is a statement
+    # about what we can see; the coverage state is a statement about how much that is. A
+    # reader given only the first will over-read it, and a reader given them fused into one
+    # letter gets a letter that means neither thing.
+    w(f"**How much can we see? {coverage['state']}.** {coverage['scope']}")
+    w("")
+    if coverage["gaps"]:
+        w("| Cannot observe | How many | What we cannot say | What closes it |")
+        w("|---|---|---|---|")
+        for gap in coverage["gaps"]:
+            w(f"| {md_cell(gap['gap'])} | {md_cell(gap['population'])} | "
+              f"{md_cell(gap['cannot_confirm_or_deny'])} | {md_cell(gap['closed_by'])} |")
+        w("")
+        w("These are not findings and they are not counted as any. Nothing in them is known "
+          "to be wrong; nothing in them is known to be right. Every one of them can be "
+          "listed device by device - Section 3 carries the query that produces each list, so "
+          "the owner above can be handed the actual members rather than a number.")
+        w("")
     w("**In one paragraph.** A worm has been spreading through the public library of "
       "open-source building blocks that most modern software is assembled from. It steals "
       "credentials from whoever installs an infected block and uses them to infect more. "
@@ -1292,7 +1485,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                                                     "Microsoft Defender",
     }
     PLAIN_STATUS = {
-        CLEAR: "Clean - checked everything in scope, and we can prove the check works",
+        CLEAR: "Clean - looked everywhere we can look, and we can prove the check works",
         FINDINGS: "Things to fix",
         BLOCKED: "**Could not check - access needed, named in Section 3**",
         NOT_RUN: "Not checked this cycle",
@@ -1309,6 +1502,13 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             plain = "Supporting check only - can spot a problem, cannot declare us clean"
         else:
             plain = PLAIN_STATUS.get(vector["status"], vector["status"])
+        # A vector can be clean and still not speak for the whole estate. Saying so here,
+        # in the row itself, is what stops "Clean" from being read as "Clean everywhere" -
+        # without demoting a check that did its job over the population it can reach.
+        if vector.get("coverage_gaps"):
+            plain += (f" (over the population we can observe - "
+                      f"{len(vector['coverage_gaps'])} unobservable population(s) listed "
+                      f"in the coverage table above)")
         w(f"| {PLAIN.get(vector['name'], vector['name'])} | {vector.get('scope', '-')} "
           f"| {plain} |")
     w("")
@@ -1335,7 +1535,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                     + " carries the evidence, and Section 3 names it. Everything below "
                       "that is secondary until it is contained.")
     else:
-        remember = "Nothing we checked matches this campaign."
+        remember = "Nothing we can observe matches this campaign."
         if residue or unchecked:
             parts = []
             if residue:
@@ -1345,6 +1545,18 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                              f"({', '.join(unchecked)})")
             remember += (" That is a statement about what we read, not about the estate: "
                          + " and ".join(parts) + ", each listed in Section 3.")
+        if coverage["gaps"]:
+            # The distinction this sentence carries is the one Rob's principle turns on. The
+            # residue above is work we have not done. This is work we cannot do at all
+            # without somebody granting, onboarding or enabling something. Collapsing the
+            # two would either make our own backlog look unfixable or make a genuine blind
+            # spot look like laziness.
+            remember += (f" Separately - and not a finding - "
+                         f"{plural(len(coverage['gaps']), 'population')} send no telemetry "
+                         f"at all, so no query can produce a hit or a clean result inside "
+                         f"them. We can neither confirm nor deny there. Each is named and "
+                         f"counted in the coverage table, with the exact thing that would "
+                         f"make it visible.")
     if exposure:
         remember += (" The risk on this page is not that we were hit - it is that "
                      + " and ".join(v["name"] for v in exposure)
@@ -1416,10 +1628,17 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         decisions = ["Endpoint telemetry was not queried this cycle. Access is not the "
                      "blocker - decide who owns running it before the next report."]
     else:
-        residue = len((endpoint_vector or {}).get("unresolved_items") or [])
-        decisions = [f"Endpoint telemetry was queried. {residue} named coverage gap(s) "
-                     f"remain, listed in Section 3 - decide which are funded and which "
-                     f"are accepted."] if residue else []
+        # What an executive is asked to decide has to be a thing they can decide. Unread
+        # items are our backlog and need no approval; unobservable populations need somebody
+        # to fund onboarding or sign that the estate stays partly dark. Only the second is a
+        # decision, so only the second is put here.
+        gaps = (endpoint_vector or {}).get("coverage_gaps") or []
+        decisions = [f"Endpoint telemetry was queried and found nothing across the "
+                     f"population it can observe. {plural(len(gaps), 'population')} sit "
+                     f"outside that - named and enumerable in Section 3. Decide for each: "
+                     f"fund the change that makes it visible, or accept in writing that "
+                     f"this hunt can neither confirm nor deny anything inside it."
+                     ] if gaps else []
     decisions += [
         "Confirm whether build-step pinning becomes a policy with an enforcement date, "
         "or stays a recommendation.",
@@ -1464,6 +1683,61 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     def heading(title: str) -> str:
         section[0] += 1
         return f"### 3.{section[0]} {title}"
+
+    # The coverage register. Everything this hunt cannot see, on its own axis, before any
+    # result is discussed.
+    #
+    # It comes first in the evidence section on purpose. A reader who works down through
+    # eight clean vectors and only then meets the dark third of the estate has already
+    # formed the belief; putting the limit ahead of the results makes every status below it
+    # read correctly the first time.
+    #
+    # Nothing here is a finding, nothing here is counted as one, and nothing here moves the
+    # verdict. Every row is enumerable - `named_by` is the query that returns the members -
+    # because a population nobody can list is not something anybody can fix, and this
+    # renderer refuses to publish one.
+    if coverage["gaps"]:
+        w(heading("What this hunt cannot see - the coverage register"))
+        w("")
+        w(f"{plural(len(coverage['gaps']), 'population')} produce no telemetry this hunt "
+          f"can query. Inside them a query returns nothing whether or not the campaign is "
+          f"present, so no result from this report - clean or otherwise - describes them. "
+          f"They are listed separately from the findings, they are not counted as findings, "
+          f"and they do not colour the verdict. That is not leniency: a colour driven by an "
+          f"unobservable population would say the same thing every day forever, and would "
+          f"say it on the day something real happened.")
+        w("")
+        w("| # | Gap | Population | We can neither confirm nor deny | What closes it | Owner |")
+        w("|---|---|---|---|---|---|")
+        for index, gap in enumerate(coverage["gaps"], 1):
+            w(f"| {index} | {md_cell(gap['gap'])} | {md_cell(gap['population'])} | "
+              f"{md_cell(gap['cannot_confirm_or_deny'])} | {md_cell(gap['closed_by'])} | "
+              f"{md_cell(gap['owner'])} |")
+        w("")
+        w("**How to produce the list for each one.** A gap is only actionable if somebody "
+          "can be handed the actual members, by an identifier they can act on. These are "
+          "those queries. They are in the report rather than in a runbook because a gap "
+          "whose membership nobody can produce is not a gap anybody can close.")
+        w("")
+        w("Each returns the population as it stands when it runs, and each is grouped the "
+          "same way as the count beside it in the table - so the list length matches the "
+          "number, give or take the handful of devices and events that move as the 7-day "
+          "and 30-day windows slide between two executions. Expect a difference of that "
+          "size and no more; a larger one means the query and the count have diverged and "
+          "the row should not be trusted until they agree.")
+        w("")
+        for index, gap in enumerate(coverage["gaps"], 1):
+            w(f"{index}. **{gap['gap']}** - {gap['vector']}")
+            w("")
+            w(f"    {gap['named_by']}")
+            w("")
+        w("> A population that cannot be enumerated does not appear in this table. If we "
+          "cannot produce the list, nobody can act on it, and printing it would add a worry "
+          "with no work item attached - which is the definition of a false positive on the "
+          "coverage axis. Where such a population is suspected, the reportable item is the "
+          "reconciliation against a source that *can* enumerate it, and it appears above in "
+          "that form or not at all.")
+        w("")
 
     # Access gaps, priced. §0.6(b): "we need more access" is not a work item until someone
     # can act on it without a discovery phase of their own. Six columns, every one of them
@@ -1540,6 +1814,17 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             w("")
             for line in vector["unresolved_items"]:
                 w(f"- {line}")
+            w("")
+        # The coverage axis, restated per vector. The register above collects these across
+        # the report; a reader who came straight to this vector needs to know here, next to
+        # its status, that the status does not speak for these populations.
+        if vector.get("coverage_gaps"):
+            w(f"**Outside what this check can observe - "
+              f"{plural(len(vector['coverage_gaps']), 'population')}. This does NOT change "
+              f"the status above; the status describes the population we can observe.**")
+            w("")
+            for gap in vector["coverage_gaps"]:
+                w(f"- {coverage_gap_sentence(gap)}")
             w("")
         # §0.6(b) in the evidence section. `validate_vectors` guarantees all six fields are
         # present, so this renders a request a reader can forward to a tenant admin without
@@ -1895,7 +2180,8 @@ def main() -> int:
         return 2
 
     verdict = compute_verdict(vectors)
-    current_state = build_state(vectors, verdict)
+    coverage = compute_coverage(vectors)
+    current_state = build_state(vectors, verdict, coverage)
     delta = render_delta(read_json(args.state), current_state, args.added_checks)
     actions = build_actions(ci, endpoint, ioc, owners, registry, reusable)
 
@@ -1934,7 +2220,7 @@ def main() -> int:
         })
 
     document = render(vectors, verdict, delta, actions, ioc, ci, registry, owners,
-                      reusable, as_of, campaign, sources=sources)
+                      reusable, as_of, campaign, sources=sources, coverage=coverage)
 
     out_path = args.out or (HUNT / "reports" / f"hunt-report-{as_of}.md")
     out_path.parent.mkdir(parents=True, exist_ok=True)

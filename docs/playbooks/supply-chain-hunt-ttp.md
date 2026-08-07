@@ -14,7 +14,7 @@ endpoints & identity via Microsoft Graph / Defender XDR · attacker infrastructu
 
 ## 0. Doctrine — read this before running anything
 
-Six rules that determine whether the output is evidence or theatre.
+Seven rules that determine whether the output is evidence or theatre.
 
 ### 0.1 A zero is only meaningful if the query could have found the thing
 
@@ -119,6 +119,60 @@ a queue the reader has already learned to discount. Two specific prohibitions:
 The rule cuts symmetrically. Suppressing a real finding because it is inconvenient is the same
 defect as inflating a weak one, and both are caught the same way: by requiring the evidence next
 to the claim.
+
+### 0.7 Result and coverage are two axes. Never report them as one
+
+A hunt answers two questions and they are independent:
+
+- **Result** — in the population we can observe, did we find the thing?
+- **Coverage** — how much of the estate is that population, and what is the rest?
+
+Fusing them destroys both. The reference run's endpoint vector found no trace of the campaign
+across 3,424 devices, with controls proving every query could have found it — and reported
+`INCOMPLETE`, driving the whole report to AMBER, because 1,379 other devices send no telemetry at
+all. That reads as though the hunt found something worrying. The worrying thing was our own
+instrumentation, no amount of hunting will change it, and a colour that says AMBER every day for a
+structural reason is a colour nobody reads on the day it means something.
+
+So the status is judged **only** against the population the check could observe, and the
+unobservable remainder is reported on its own axis, in its own register, priced and never folded
+into the verdict. The report states both: "no evidence of compromise across everything we can
+observe" **and** "here is what we cannot observe, and what would change that". Inside a coverage
+gap, the honest answer is *we can neither confirm nor deny* — and saying that plainly is worth more
+than a colour.
+
+The test for which axis a shortfall belongs on is one question — **can we close it with the access
+we already hold?**
+
+| | Belongs to | Why |
+|---|---|---|
+| Repository trees not yet read | `INCOMPLETE`, result axis | Our unfinished work. An unfinished hunt is not a clean hunt. |
+| Devices that emit no telemetry | Coverage register | Needs somebody to onboard them. No query will ever resolve it. |
+| A telemetry column never populated | Coverage register | Needs a configuration change or a vendor answer. |
+| A privilege we do not hold, that closes a blind spot | Coverage register, priced per §0.6(b) | Needs a grant. |
+| A privilege we do not hold, that closes nothing | Neither — `access_required` only | Nothing is unobservable because of it. Filing it as a gap is a false positive on the coverage axis. |
+
+**A coverage gap must name its resources, or it is not a gap.** "A third of the estate is dark" is
+not a work item; nobody can act on it. Every gap carries the query or artefact that returns the
+individual members, by an identifier the owner acts on — and that query must be **grouped the same
+way as the count beside it**, or the list and the number disagree. An early draft grouped the
+enumeration by `DeviceId, DeviceName` against a count grouped by `DeviceId`, and returned 590 rows
+for a population of 570, because a renamed device appears twice.
+
+The edge is worth stating precisely:
+
+- **Enumerable** — 569 devices in `DeviceInfo` with `OnboardingStatus != "Onboarded"`. Each has a
+  `DeviceId`. Nameable, therefore fixable, therefore a gap, therefore reported with an owner.
+- **Unenumerable** — machines that have never contacted Defender at all. They are not in
+  `DeviceInfo`, so there is no list and no number. Reporting it anyway invents a population to
+  worry about, which is §0.6(c) in its purest form. It becomes reportable when some other source
+  can enumerate it — Intune, AD, the CMDB — at which point the gap is "reconcile Defender against
+  that source" and the enumeration query points there.
+
+Enforced in code: `COVERAGE_GAP_FIELDS` in `scripts/hunt/render_hunt_report.py` requires `gap`,
+`population`, `named_by`, `cannot_confirm_or_deny`, `closed_by` and `owner`, and the render aborts
+if any is blank. `compute_coverage()` is separate from `compute_verdict()`, and no coverage gap can
+reach the RAG letter.
 
 ---
 

@@ -463,22 +463,139 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
             "evidence": row,
         })
 
-    # Status. FINDINGS if the campaign shape is present. Otherwise INCOMPLETE, never
-    # CLEAR: 'CLEAR' in this report means "looked everywhere in scope", and several
-    # hundred devices in this estate are not reporting at all. That is a named, counted
-    # residue, which is exactly what INCOMPLETE is for.
+    # TWO AXES. Result on one, coverage on the other, and the split is the whole point.
+    #
+    # This block used to put everything in `unresolved_items`, which made the status
+    # INCOMPLETE and the report AMBER, every single day, because 1,379 devices in this
+    # estate do not send telemetry. That was wrong twice over. It read as though the hunt
+    # had found something unresolved when what it had found was nothing at all across
+    # 3,424 devices with controls proving the queries worked - and it made the endpoint
+    # vector, the only one that can see a laptop, permanently amber for a reason no query
+    # will ever resolve. A colour that never changes is a colour nobody reads.
+    #
+    # The test for which list an item belongs in is: can WE close it with the access we
+    # already hold?
+    #
+    #   unresolved_items - yes. Our unfinished work. Stays on the result axis, because an
+    #                      unfinished hunt is not a clean hunt.
+    #   coverage_gaps    - no. Needs a device onboarded, a feature enabled, a permission
+    #                      granted. Comes off the result axis entirely, is reported in its
+    #                      own register, and inside it the honest answer is that we can
+    #                      neither confirm nor deny.
+    #
+    # And a coverage gap has to be ENUMERABLE - `named_by` is the query that returns the
+    # individual members, by an identifier somebody can act on. A population nobody can
+    # list is a population nobody can fix, so it is not a gap and does not get reported;
+    # the renderer refuses to publish one without that field.
     unresolved_items: List[str] = []
-    for status, count in sorted(by_status.items(), key=lambda kv: -kv[1]):
-        if status != "Onboarded" and count:
-            unresolved_items.append(f"{count} device(s) in Defender onboarding state "
-                                    f"'{status}' - not reporting, cannot produce a hit")
+    coverage_gaps: List[dict] = []
+
+    # Devices Defender knows about and is not hearing from. Enumerable one by one out of
+    # DeviceInfo, which is what makes this a work item rather than a worry: the endpoint
+    # team can be handed 571 DeviceIds this afternoon.
+    for state, count in sorted(by_status.items(), key=lambda kv: -kv[1]):
+        if state == "Onboarded" or not count:
+            continue
+        # Each onboarding state closes differently, and saying so is the difference between
+        # a gap and a complaint. "Unsupported" is the honest hard case: an OS Defender does
+        # not run on is not onboarding work, it is a decision about a different control.
+        if state == "Can be onboarded":
+            closed_by = ("running the Defender onboarding package on each device - the "
+                         "platform is supported and nothing blocks it but scheduling")
+        elif state == "Unsupported":
+            closed_by = ("no Defender onboarding can close this - the OS is not supported. "
+                         "Closing it means either replacing/upgrading those platforms or "
+                         "covering them with a different control and recording that "
+                         "decision. Until then this hunt permanently cannot answer for them")
+        elif state == "Insufficient info":
+            closed_by = ("Defender cannot determine the platform, so triage the list first "
+                         "against Intune/AD to establish what each device is, then onboard "
+                         "or classify as unsupported")
+        else:
+            closed_by = (f"establishing why {count} device(s) sit in state '{state}' and "
+                         f"onboarding or retiring each one")
+        coverage_gaps.append({
+            "gap": f"Devices in Defender onboarding state '{state}'",
+            "population": f"{count:,} of {devices_seen:,} devices Defender has seen in the "
+                          f"last 7 days",
+            # Grouped by DeviceId alone, matching the aggregate that produced the count
+            # above. Grouping by DeviceId AND DeviceName instead returned 590 rows against a
+            # count of 570, because a device that has been renamed appears twice - the list
+            # and the number have to come from the same grouping or one of them is wrong.
+            # Verified 2026-08-07: this form returns 569 rows against a count of 570, the
+            # difference being the 7-day window sliding between the two executions.
+            "named_by": ("`DeviceInfo | where Timestamp > ago(7d) | summarize "
+                         "arg_max(Timestamp, DeviceName, OSPlatform, OnboardingStatus) by "
+                         f"DeviceId | where OnboardingStatus == \"{state}\" | project "
+                         "DeviceId, DeviceName, OSPlatform` - one row per device, carrying "
+                         "the identifier the endpoint team acts on"),
+            "cannot_confirm_or_deny": "whether any Bun execution, credential access or "
+                                      "campaign artefact occurred on them - they emit no "
+                                      "events, so every query returns nothing whether or "
+                                      "not it happened",
+            "closed_by": closed_by,
+            "owner": "Endpoint management / Security operations",
+        })
+
+    # A platform whose process rows carry no SHA256. Not our unfinished work: we cannot make
+    # the column populate, and until it does, provenance triage there cannot be a hash
+    # comparison no matter how suspicious a path looks.
+    # Both numbers, from the row itself. "6 devices" alone invites the reading that the other
+    # Linux devices are fine; "0 of 111,908 rows" is what actually establishes that the column
+    # is never written for the population we measured.
+    hash_blind: Dict[str, Dict[str, int]] = {}
+    for r in tool_rows:
+        if (r.get("SourceTable") == "DeviceProcessEvents" and r.get("Events")
+                and not r.get("WithHash")):
+            entry = hash_blind.setdefault(r.get("OSPlatform"), {"devices": 0, "events": 0})
+            entry["devices"] = max(entry["devices"], r.get("Devices") or 0)
+            entry["events"] += r.get("Events") or 0
     for platform in no_hash_platforms:
-        unresolved_items.append(
-            f"SHA256 is empty on every DeviceProcessEvents row for {platform} - hash-based "
-            f"provenance triage is blind on that platform")
-    # A Bun question whose control failed is a hole in the Bun answer, and it has to be
-    # counted as one. Left out of the residue it would be a zero on the page with a caveat
-    # further down, which is the shape §0.6 exists to stop.
+        measured = hash_blind.get(platform, {"devices": 0, "events": 0})
+        coverage_gaps.append({
+            "gap": f"SHA256 absent from every DeviceProcessEvents row on {platform}",
+            "population": f"the {measured['devices']:,} reporting {platform} device(s) that "
+                          f"ran a JavaScript toolchain in the window - {measured['events']:,} "
+                          f"process events between them, 0 carrying a SHA256",
+            # The same toolchain filter and platform join as coverage/08, which is what
+            # measured the shortfall - grouped per device instead of per platform. Dropping
+            # the toolchain filter would list every device on the platform, which is a
+            # different and much larger population than the number above describes.
+            # Verified 2026-08-07: 6 devices, 111,912 rows, 0 with a hash, against 111,908
+            # rows at collection - the 30-day window slid between the two executions.
+            "named_by": ("`let Platform = DeviceInfo | where Timestamp > ago(7d) | summarize "
+                         "arg_max(Timestamp, OSPlatform) by DeviceId | project DeviceId, "
+                         "OSPlatform; let Toolchain = dynamic([\"bun.exe\",\"bunx.exe\","
+                         "\"bun\",\"bunx\",\"node.exe\",\"node\",\"npm.exe\",\"npm\","
+                         f"\"npm-cli.js\"]); DeviceProcessEvents | where Timestamp > "
+                         f"ago({lookback}d) | where FileName in~ (Toolchain) | join "
+                         "kind=leftouter Platform on DeviceId | extend OSPlatform = "
+                         "iff(isempty(OSPlatform), \"unknown\", OSPlatform) | where "
+                         f"OSPlatform == \"{platform}\" | summarize Rows = count(), WithHash "
+                         "= countif(isnotempty(SHA256)) by DeviceId, DeviceName` - the same "
+                         "filter that measured the shortfall, so the list is exactly the "
+                         "population counted above, and WithHash proves it per device"),
+            "cannot_confirm_or_deny": f"whether a Bun binary found on a {platform} device is "
+                                      f"the published Bun release or the campaign's "
+                                      f"repackaged one. Execution is still visible; its "
+                                      f"provenance is not",
+            "closed_by": (f"a Microsoft support case establishing whether SHA256 can be "
+                          f"populated for DeviceProcessEvents on {platform} at all - nothing "
+                          f"in {measured['events']:,} rows says it ever is here, and whether "
+                          f"that is configurable or a product limit is not something this "
+                          f"hunt can determine. If it cannot be populated, the gap is "
+                          f"permanent and triage on that platform must rest on path and "
+                          f"parent process instead, which is a documented limitation rather "
+                          f"than a fix"),
+            "owner": "Security operations, with Microsoft support",
+        })
+
+    # A Bun question whose control failed stays on the RESULT axis, deliberately. A failed
+    # control usually means our query or our window was wrong - which is ours to fix with
+    # the access we already have, and therefore unfinished work rather than a blind spot.
+    # The exception is a control that fails because a column is never written on this tenant
+    # (rule 17's ThreatFamily branch); if that becomes the standing reason, it is a coverage
+    # gap and belongs above, with the configuration change that populates the column.
     for entry in bun_questions:
         if not entry["readable"]:
             unresolved_items.append(
@@ -504,10 +621,19 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
                       "AADSpnSignInEventsBeta and IdentityLogonEvents hunting tables carry "
                       "the same ground and ThreatHunting.Read.All already covers them.",
         })
-        unresolved_items.append(
-            "Sign-in history is read from hunting tables rather than the audit log - see "
-            "the access request below for what direct access would add")
+        # Deliberately NOT added to either list. It was in `unresolved_items`, which claimed
+        # something was unchecked when nothing is: AADSpnSignInEventsBeta and
+        # IdentityLogonEvents cover the same ground and ThreatHunting.Read.All already
+        # reaches them. And it is not a coverage gap, because no population is unobservable
+        # because of it. It is an access improvement, priced in `access_required` and
+        # described there as the non-blocker it is. Filing it as a gap would be a false
+        # positive on the coverage axis - a request for a permission that closes nothing.
+        pass
 
+    # Status is now the RESULT axis only. CLEAR means: over the population these queries can
+    # observe, they could have found the campaign and did not. It does not mean the
+    # population is the estate - `coverage_gaps` carries that, the renderer prints it beside
+    # the status, and the report says so in the row itself.
     status = FINDINGS if findings else (INCOMPLETE if unresolved_items else CLEAR)
 
     coverage: List[str] = []
@@ -524,8 +650,9 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         f"onboarded and reporting: "
         + ", ".join(f"{p} {c:,}" for p, c in
                     sorted(onboarded_by_platform.items(), key=lambda kv: -kv[1])[:6])
-        + f". The remaining {not_reporting:,} are outside this hunt and are listed as "
-          f"unresolved rather than counted as clean.")
+        + f". The remaining {not_reporting:,} are outside what this hunt can observe. They "
+          f"are not counted as clean and they are not counted as a finding either - they are "
+          f"registered as coverage gaps, enumerable by DeviceId, with what closes each one.")
     coverage.append(
         f"The discriminator is readable because its other half is loud: node is present on "
         f"{', '.join(node_platforms) or 'no platform'} in DeviceProcessEvents over the same "
@@ -604,6 +731,10 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         "coverage": coverage,
         "bun_questions": bun_questions,
         "unresolved_items": unresolved_items,
+        # The coverage axis. Populations no query here can answer for, each enumerable by the
+        # query in its own `named_by`. These do not move `status` and must not move the
+        # report's verdict.
+        "coverage_gaps": coverage_gaps,
         "access_required": access_required,
         # §0.6(c). The suspicious rows, named. A FINDINGS status that a reader cannot
         # trace to a specific device and path is the shape a false positive takes, and the
@@ -634,6 +765,8 @@ def main() -> int:
         print(f"  . {line}", file=sys.stderr)
     for item in vector["unresolved_items"]:
         print(f"  ! {item}", file=sys.stderr)
+    for gap in vector["coverage_gaps"]:
+        print(f"  ? BLIND: {gap['gap']} - {gap['population']}", file=sys.stderr)
     return 0
 
 

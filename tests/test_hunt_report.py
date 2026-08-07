@@ -193,24 +193,156 @@ def test_validate_reports_every_violation_not_just_the_first():
 def test_an_incomplete_endpoint_turns_its_residue_into_a_work_item():
     """This report's stated rule: doubt is expressed as a work item or not at all.
 
-    An endpoint hunt that ran over part of the estate is exactly that case, and before
-    this the gaps sat in Section 3 as a caveat nobody was asked to close.
+    An endpoint hunt whose own queries could not answer everything is exactly that case,
+    and before this the residue sat in Section 3 as a caveat nobody was asked to close.
     """
     incomplete = _vector(
         "Endpoint / identity (Microsoft Defender)", R.INCOMPLETE,
-        counts={"Devices reporting to Defender": 3424,
-                "Devices seen but NOT reporting": 1380},
-        unresolved_items=["571 device(s) not reporting", "SHA256 empty on Linux"])
+        unresolved_items=["Bun question unanswered - control returned no rows",
+                          "Bun network fetch window too narrow"])
     actions = _endpoint_actions(incomplete)
-    gap_action = next(a for a in actions if "telemetry gaps" in a["title"].lower())
-    assert gap_action["targets"] == incomplete["unresolved_items"]
-    assert "3424" in gap_action["why_now"] and "1380" in gap_action["why_now"]
+    residue_action = next(a for a in actions if "could not answer" in a["title"].lower())
+    assert residue_action["targets"] == incomplete["unresolved_items"]
+    # Ours to close, so nobody outside the team is named and nothing is blocked.
+    assert residue_action["owners"] == ["Security operations"]
+    assert residue_action["blocked_by"] is None
 
 
 def test_a_clean_endpoint_generates_no_endpoint_action():
     clean = _vector("Endpoint / identity (Microsoft Defender)", R.CLEAR)
     titles = " ".join(a["title"] for a in _endpoint_actions(clean)).lower()
     assert "endpoint" not in titles
+
+
+# ----------------------------------------------------------------------------------
+# Two axes: result and coverage.
+#
+# The endpoint vector found no trace of the campaign on 3,424 devices, with controls
+# proving the queries could have found it - and reported INCOMPLETE, and drove the whole
+# report to AMBER, because 1,379 other devices send no telemetry at all. That reads as
+# though the hunt found something worrying. The worrying thing was our instrumentation, it
+# will not change no matter how much hunting is done, and folding it into the colour meant
+# the colour said AMBER every day - including the day it would have meant something.
+#
+# So a population we cannot observe is reported on its own axis, priced, enumerable, and
+# kept out of the verdict entirely.
+# ----------------------------------------------------------------------------------
+
+COVERAGE_GAP = {
+    "gap": "Devices in Defender onboarding state 'Can be onboarded'",
+    "population": "570 of 4,801 devices Defender has seen in the last 7 days",
+    "named_by": "`DeviceInfo | where OnboardingStatus == \"Can be onboarded\" | project "
+                "DeviceId, DeviceName`",
+    "cannot_confirm_or_deny": "whether any Bun execution occurred on them",
+    "closed_by": "running the Defender onboarding package on each device",
+    "owner": "Endpoint management",
+}
+
+
+def _clean_with_gap():
+    return _vector("Endpoint / identity (Microsoft Defender)", R.CLEAR, coverage=["control"],
+                   coverage_gaps=[COVERAGE_GAP])
+
+
+def test_an_unobservable_population_does_not_stop_a_vector_being_clear():
+    """The result axis is judged on the population the check could observe."""
+    assert R.validate_vectors([_clean_with_gap()]) == []
+    assert R.compute_verdict([_clean_with_gap()])["rag"] == "GREEN"
+
+
+def test_an_unobservable_population_never_colours_the_verdict():
+    """Two vectors, identical results; one has a blind spot. Same colour, different coverage."""
+    without = [_vector("V", R.CLEAR, coverage=["control"])]
+    with_gap = [_clean_with_gap()]
+    assert R.compute_verdict(without)["rag"] == R.compute_verdict(with_gap)["rag"]
+    assert R.compute_coverage(without)["state"] == "COMPLETE"
+    assert R.compute_coverage(with_gap)["state"] == "PARTIAL"
+
+
+def test_a_gap_nobody_can_enumerate_is_refused():
+    """Rob's rule: if we cannot name the resource, nobody can fix it, so it is not a gap.
+
+    Reporting an unenumerable population adds a worry with no work item attached, which is
+    a false positive on the coverage axis.
+    """
+    unnameable = {k: v for k, v in COVERAGE_GAP.items() if k != "named_by"}
+    problems = R.validate_vectors(
+        [_vector("V", R.CLEAR, coverage=["c"], coverage_gaps=[unnameable])])
+    assert any("named_by" in p for p in problems)
+
+
+def test_a_gap_with_no_owner_or_no_remedy_is_refused():
+    partial = {k: v for k, v in COVERAGE_GAP.items() if k not in ("closed_by", "owner")}
+    problems = R.validate_vectors(
+        [_vector("V", R.CLEAR, coverage=["c"], coverage_gaps=[partial])])
+    assert any("closed_by" in p and "owner" in p for p in problems)
+
+
+def test_the_report_says_what_it_cannot_say():
+    """"We can neither confirm nor deny" has to appear as text, not be left as an inference."""
+    document = _render([_clean_with_gap()])
+    assert "neither confirm nor deny" in document
+    assert COVERAGE_GAP["population"] in document
+    assert COVERAGE_GAP["closed_by"] in document
+
+
+def test_the_enumeration_query_reaches_the_reader_unmangled():
+    """KQL is made of pipes, and an unescaped pipe silently splits a Markdown row.
+
+    The query is the field that makes a gap actionable, so it is the one field that must
+    survive rendering intact.
+    """
+    document = _render([_clean_with_gap()])
+    assert COVERAGE_GAP["named_by"] in document
+    # No table row anywhere may carry a raw pipe from a cell value.
+    for line in document.splitlines():
+        if line.startswith("|") and "OnboardingStatus" in line:
+            assert "\\|" in line, line
+
+
+def test_a_blind_spot_becomes_a_priced_work_item_not_a_caveat():
+    action = next(a for a in _endpoint_actions(_clean_with_gap())
+                  if "blind spot" in a["title"].lower())
+    assert action["owners"] == ["Endpoint management"]
+    assert COVERAGE_GAP["closed_by"] in " ".join(action["targets"])
+    # Explicitly not evidence of anything. The action exists so nobody reads it as one.
+    assert "not a finding" in action["why_now"]
+
+
+def test_a_clean_result_over_a_partial_estate_is_not_stated_as_estate_wide():
+    document = _render([_clean_with_gap()])
+    assert "Nothing we can observe matches this campaign" in document
+    assert "Nothing in the estate matches" not in document
+
+
+def test_the_first_run_of_the_register_does_not_invent_new_blind_spots():
+    """A schema change must not manufacture findings.
+
+    The previous state file predates the coverage register, so diffing against it would
+    announce every existing gap as brand new - four false findings caused by our own
+    refactor, on the axis whose entire purpose is not doing that.
+    """
+    current = {"rag": "AMBER", "coverage": {"state": "PARTIAL", "gaps": ["g1", "g2"]},
+               "vectors": {}}
+    lines = " ".join(R.render_delta({"rag": "AMBER", "vectors": {}}, current, []))
+    assert "New blind spot" not in lines
+    assert "own axis" in lines
+
+
+def test_a_blind_spot_that_genuinely_opens_is_reported():
+    previous = {"rag": "GREEN", "coverage": {"state": "COMPLETE", "gaps": []}, "vectors": {}}
+    current = {"rag": "GREEN", "coverage": {"state": "PARTIAL", "gaps": ["g1"]},
+               "vectors": {}}
+    lines = " ".join(R.render_delta(previous, current, []))
+    assert "**New blind spot:** g1" in lines
+
+
+def test_a_blind_spot_that_closes_is_reported():
+    previous = {"rag": "GREEN", "coverage": {"state": "PARTIAL", "gaps": ["g1"]},
+                "vectors": {}}
+    current = {"rag": "GREEN", "coverage": {"state": "COMPLETE", "gaps": []}, "vectors": {}}
+    lines = " ".join(R.render_delta(previous, current, []))
+    assert "**Blind spot closed:** g1" in lines
 
 
 # ----------------------------------------------------------------------------------
@@ -266,7 +398,13 @@ def test_the_decisions_block_follows_the_endpoint_status():
     assert "approve the access request" not in decisions(R.NOT_RUN)
     assert "was not queried this cycle" in decisions(R.NOT_RUN)
     assert "approve the access request" not in decisions(R.CLEAR)
-    assert "was queried" in decisions(R.INCOMPLETE, unresolved_items=["one gap"])
+    # A decision is something the reader can decide. Unread items are our backlog and need
+    # nobody's approval, so they raise no decision; an unobservable population needs somebody
+    # to fund the change or sign that the estate stays partly dark, so it raises one.
+    assert "decide" not in decisions(R.INCOMPLETE, unresolved_items=["one gap"])
+    with_gap = decisions(R.CLEAR, coverage=["control"], coverage_gaps=[COVERAGE_GAP])
+    assert "neither confirm nor deny" in with_gap
+    assert "accept in writing" in with_gap
 
 
 # ----------------------------------------------------------------------------------
