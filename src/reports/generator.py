@@ -4,6 +4,7 @@ Report generation for security scan results.
 import json
 import logging
 import os
+import re
 from dataclasses import asdict
 from datetime import datetime
 from enum import Enum
@@ -15,11 +16,23 @@ from jinja2 import Environment, FileSystemLoader
 from ..scanners.base import ScanResult, Vulnerability, Severity
 
 
+def _safe_name(repo_name: str) -> str:
+    """Make a repository name safe to embed in a filename.
+
+    Repository names arrive as `owner/repo`, and the slash made `open()` target a
+    directory that does not exist — every report for a fully-qualified repository failed
+    with FileNotFoundError rather than writing anywhere.
+    """
+    cleaned = re.sub(r'[^A-Za-z0-9._-]+', '_', str(repo_name or 'report')).strip('._-')
+    return cleaned or 'report'
+
+
 class ReportFormat(str, Enum):
     """Supported report formats."""
     MARKDOWN = "markdown"
     JSON = "json"
     HTML = "html"
+    PDF = "pdf"
     CONSOLE = "console"
 
 
@@ -75,6 +88,8 @@ class ReportGenerator:
             return self._generate_json_report(report_data)
         elif self.format == ReportFormat.HTML:
             return self._generate_html_report(report_data)
+        elif self.format == ReportFormat.PDF:
+            return self._generate_pdf_report(report_data)
         elif self.format == ReportFormat.CONSOLE:
             return self._generate_console_report(report_data)
         else:  # Default to Markdown
@@ -145,7 +160,7 @@ class ReportGenerator:
         report_content = template.render(**data)
         
         # Save to file
-        filename = f"security_report_{data['repo_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        filename = f"security_report_{_safe_name(data['repo_name'])}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         output_path = os.path.join(self.output_dir, filename)
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -153,13 +168,90 @@ class ReportGenerator:
         
         return output_path
     
+    def _scan_findings(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Flatten every scanner's vulnerabilities into the shape the briefing reads.
+
+        `remediation` is synthesised from `fixed_versions` where the scanner supplied
+        one, because that string is what the effort estimator reads: a finding with a
+        published fixed version is a version bump, and one without is an open question.
+        """
+        flat: List[Dict[str, Any]] = []
+        for result in data.get('scan_results', []):
+            for vuln in result.get('vulnerabilities', []):
+                fixed = [v for v in (vuln.get('fixed_versions') or []) if v]
+                package = vuln.get('package_name')
+                if fixed and package:
+                    remediation = f"Upgrade {package} to {', '.join(fixed)} and rebuild."
+                elif fixed:
+                    remediation = f"Upgrade to {', '.join(fixed)} and rebuild."
+                else:
+                    remediation = ""
+                flat.append({
+                    'title': vuln.get('title'),
+                    'severity': vuln.get('severity'),
+                    'file_path': vuln.get('file_path'),
+                    'line_number': vuln.get('line_number'),
+                    'description': vuln.get('description'),
+                    'remediation': remediation,
+                    'evidence': f"Reported by {result.get('scanner_name') or 'a scanner'}.",
+                })
+        return flat
+
+    def _generate_pdf_report(self, data: Dict[str, Any]) -> str:
+        """Generate a PDF report.
+
+        Goes through the Markdown template rather than the HTML one: `report.md.j2` is
+        the authored source of what a scan report says, and the shared renderer supplies
+        the page furniture (cover, running header, folio, repeating table headers) that
+        a screen-oriented HTML template does not carry.
+
+        The template output becomes Part 3 of a three-part document rather than the whole
+        of it — the reader who has to answer for this scan needs the summary and the
+        ordered plan before they need the scanner transcript.
+        """
+        from ..reporting import DocumentMeta, markdown_to_pdf
+        from ..reporting.briefing import (
+            briefing_from_dict,
+            compose_document,
+            deterministic_briefing,
+            findings_from_scan,
+        )
+
+        template = self.env.get_template('report.md.j2')
+        evidence = template.render(**data)
+
+        findings = findings_from_scan(self._scan_findings(data))
+        stored = data.get('briefing')
+        briefing = briefing_from_dict(stored, findings) if isinstance(stored, dict) else None
+        if briefing is None:
+            briefing = deterministic_briefing(findings, data)
+        markdown = compose_document(briefing, findings, evidence_body=evidence)
+
+        meta = DocumentMeta(
+            title=data['title'],
+            fields=[
+                ('Repository', data['repo_name']),
+                ('Findings', str(data['total_vulnerabilities'])),
+                ('Critical / High', f"{data['critical_vulns']} / {data['high_vulns']}"),
+            ],
+            generated=data['timestamp'],
+        )
+
+        filename = f"security_report_{_safe_name(data['repo_name'])}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        output_path = os.path.join(self.output_dir, filename)
+
+        with open(output_path, 'wb') as f:
+            f.write(markdown_to_pdf(markdown, meta))
+
+        return output_path
+
     def _generate_html_report(self, data: Dict[str, Any]) -> str:
         """Generate an HTML report."""
         template = self.env.get_template('report.html.j2')
         report_content = template.render(**data)
         
         # Save to file
-        filename = f"security_report_{data['repo_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filename = f"security_report_{_safe_name(data['repo_name'])}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         output_path = os.path.join(self.output_dir, filename)
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -185,7 +277,7 @@ class ReportGenerator:
         json_data = convert(data)
         
         # Save to file
-        filename = f"security_report_{data['repo_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filename = f"security_report_{_safe_name(data['repo_name'])}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         output_path = os.path.join(self.output_dir, filename)
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -235,7 +327,7 @@ class ReportGenerator:
             lines.append("\nNo vulnerabilities found!")
         
         # Save to file
-        filename = f"security_report_{data['repo_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        filename = f"security_report_{_safe_name(data['repo_name'])}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         output_path = os.path.join(self.output_dir, filename)
         
         with open(output_path, 'w', encoding='utf-8') as f:

@@ -3,6 +3,15 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
+#
+# The pango/cairo/harfbuzz/gdk-pixbuf group is WeasyPrint's text-shaping and rasterising
+# backend, loaded through ctypes at import time — without them `import weasyprint` raises
+# OSError and every PDF export returns 500.
+#
+# The font packages are equally load-bearing and less obvious: python:3.11-slim ships no
+# fonts whatsoever, so a container that renders "successfully" produces a PDF of empty
+# boxes. DejaVu covers text; Symbola and Noto Sans Symbols2 cover the ✅/⚠️/🔴 status
+# markers used throughout the hunt corpus, which rendered as tofu in earlier exports.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
@@ -11,7 +20,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     curl \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
+    # Monochrome outlines for the ✅/⚠️/🔴 marks the report templates use. Noto Color
+    # Emoji stores those as CBDT bitmaps, which WeasyPrint embeds and then draws as
+    # nothing: the mark occupies its width and shows blank, on a page that reports no
+    # error. These two supply the same codepoints as ordinary outline glyphs and the
+    # stylesheet fences them by unicode-range — Symbola for most of the set, Noto Sans
+    # Symbols2 (from fonts-noto-core) for 🟠🟡🟢🟣 and the rest of Unicode 12+, which
+    # Symbola predates. Neither alone covers the corpus; the render tests enumerate it.
+    # fonts-noto-color-emoji stays as the last resort for anything outside both fences.
+    fonts-symbola \
+    fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/* \
+    # Bake the font cache into the layer. Without it the first process to render builds
+    # the cache as it goes, and the set of fonts fontconfig can see changes *during* that
+    # process — so a worker's first exported PDF differs by a byte from every later
+    # export of the same report. The output is correct either way, which is what makes it
+    # hard to notice, but "the same input renders to the same bytes" is the property that
+    # lets a reader tell a re-export from an edited document.
+    && fc-cache --force --system-only
 
 # Trust corporate TLS-inspection root CAs (e.g. Zscaler) so pip, curl and git can
 # reach upstream registries from behind the proxy. Without this the build fails at

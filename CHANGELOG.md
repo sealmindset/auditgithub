@@ -4,6 +4,198 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — the hunt report now refuses to publish a claim it cannot substantiate (2026-08-07)
+
+**Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.
+
+Doctrine §0.6, added after the `BLOCKED` incident below: nothing goes in a report that
+cannot be proved from an artefact. The one permitted exception is a gap that more access
+would close, and it is only valid if the report prices that access in exact privileges. No
+false positives manufactured to look thorough — a padded report spends the reader's
+credibility on caveats and buries the findings that are real.
+
+Encoded as a check rather than a style note, because prose asking future authors to be
+careful would not have caught the original defect. The author *was* careful; the
+observation was accurate and the inference was not.
+
+- **`validate_vectors` runs before the document is written and a violation aborts the
+  render** with exit 2. A status other than `NOT RUN` must carry coverage evidence;
+  `INCOMPLETE` must name its residue; `BLOCKED` must supply a structured `access_required`
+  entry with all six of `api`, `endpoint`, `permission`, `grant_type`, `granted_by` and
+  `proves`; `FINDINGS` must name what was found. It returns every violation rather than
+  raising on the first, so an author fixes the report instead of the checker's opinion.
+- **The six-field contract cannot be satisfied from an empty `.env`.** Filling in
+  `permission` and `granted_by` requires asking the tenant, which is the behaviour the rule
+  exists to force. The endpoint collector now emits the `AuditLog.Read.All` gap as a
+  structured entry, and it renders as a sentence a reader can forward to a tenant admin
+  without a follow-up conversation.
+- **The repository sweep's buckets are now asserted to sum in the renderer.** `CLEAR` was
+  decided by `unresolved_repos` alone, so an artefact reporting `tree_failed: 50` with an
+  empty `resolution_accounting` and an empty `unresolved_repos` printed `CLEAR` over 2,760
+  of 2,810 with no trace of the other 50. The one coverage line that should have caught it
+  printed "Buckets sum to the enumerated total: None", which reads as a missing field
+  rather than a failed assertion. Whether a repository is resolved is now arithmetic the
+  renderer does, not a field it trusts.
+- **…and the first thing that arithmetic reported was itself a false positive, which is
+  the more useful half of this entry.** It said 50 repositories were enumerated and never
+  read. They had been read. `repo_trees_r4_coverage.json` sat beside the r3 artefact,
+  three hours newer, with `resolution_accounting: {read: 2760, no_files: 50, unresolved: 0,
+  sums_to_repos: true}` — the 50 are empty repositories, 49 answering GitHub's own
+  `HTTP 409: Git Repository is empty` and one with a single commit and `file_count: 0`. A
+  repository with no files cannot hold a file-based indicator, so re-running the collector
+  could never have closed the gap the report invented. The renderer's `--trees` default was
+  pinned to `repo_trees_r3_coverage.json`; a round number in a filename is a version, and a
+  default pinned to one version is a default that goes stale in silence. `latest_round()`
+  now resolves the highest round present (numerically — lexically, r4 beats r10), and the
+  run prints which artefact each number came from. The vector is `CLEAR`, on buckets that
+  sum. Checked for the same class of error: the 50 carry **0** indicator and Bun-artefact
+  hits, and the newest `pushed_at` among them is 2026-06-10, outside the attack window.
+- **The delta section emitted a false positive and admitted it in the same sentence.**
+  "GitHub code search (corroborating)" gained the word "only" and was reported as a
+  vector whose coverage had vanished, hedged with "either its collector failed, or it was
+  renamed". A warning that pre-discredits itself trains the reader to skip the line that
+  will one day be real. A disappearance is now only a rename if a new name appeared in the
+  same run; where none did, coverage has measurably dropped and the warning is earned.
+- **Section 1 stopped overclaiming.** "Every file in every repository we own", "Every
+  third-party building block we use" and "Every automated build pipeline" were three
+  statements the hunt cannot support. They are now scoped to what was read, and the
+  summary table gained a "How much of it" column so the scope sits next to the result
+  rather than in Section 3.
+- **`CLEAR` reads "checked everything in scope, and we can prove the check works"** rather
+  than a bare "Clean", because the proof is the part that makes the word mean anything.
+
+**Verification.** `tests/test_hunt_report.py`, 34 tests. Eighteen are new: the six §0.6
+refusals (missing coverage, `NOT RUN` exemption, unpriced `BLOCKED`, half-filled access
+gap, unnamed `INCOMPLETE` residue, unnamed `FINDINGS`), that the validator reports every
+violation rather than the first, that the collector's privilege reaches the page, the four
+bucket-arithmetic cases including a named repository not being double-counted, the two
+delta cases that separate a rename from lost coverage, and three on artefact selection —
+numeric round ordering, the fallback when no round exists, and that a repository with no
+commits is resolved rather than unread. Render re-run end to end: AMBER, 8 vectors, 12
+actions, files-on-disk `CLEAR` on buckets that sum.
+
+### Fixed — the hunt report told its reader the laptops could not be checked (2026-08-07)
+
+**Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.
+
+The endpoint vector — the only one in the whole hunt that can see a workstation — rendered
+as `BLOCKED`, "Could not check - no access", with the reason "GRAPH_TENANT_ID,
+GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET are absent from the environment". That sentence was
+literally true and completely wrong. `GraphClient.from_db` resolves credentials from the
+encrypted store and never reads the process environment, and the store held an active app
+registration carrying `ThreatHunting.Read.All`, last verified `ok` on 2026-08-05. The
+vector had never been blocked. It had simply never been run, and to a reader those are not
+the same thing.
+
+The cost was not cosmetic. `BLOCKED` drove the verdict to AMBER, emitted a **priority-1**
+action to request a permission the tenant already had, and put "approve the access request
+for endpoint telemetry, or accept in writing that laptops stay outside this hunt" in front
+of an executive as a decision. Acting on the report meant weeks in a permissions queue for
+access that was already granted, while the query that answered the question took under a
+minute.
+
+- **New `scripts/hunt/hunt_endpoint_defender.py`.** Six read-only advanced-hunting queries,
+  telemetry control first (§0.1) because its result is what makes every later zero
+  readable. Collection and interpretation are separate functions so the raw rows can be
+  re-read against a different rule without re-querying the tenant. No GitHub budget is
+  touched.
+- **`vector_endpoint` now falls back to `NOT RUN`, not `BLOCKED`,** and makes no claim
+  about credentials it cannot see. Absence of the artefact means the collector did not run;
+  whether it *could* have is a question only the collector may answer.
+- **The derived action follows the status.** `BLOCKED` still asks for access — that ask is
+  correct when access is genuinely the blocker. `NOT RUN` asks someone to run it.
+  `INCOMPLETE` turns the named coverage residue into a work item, which is this report's
+  own stated rule and was the one place it was not being followed.
+- **"Decisions needed from you" is derived** rather than a fixed list whose first entry
+  requested endpoint access unconditionally.
+- **Two sections were both numbered 3.9.** The per-vector loop counted up from 3.2; the
+  detail sections were literals starting at 3.9. They agreed exactly as long as there were
+  seven vectors, and the endpoint vector becoming real made it eight — so the document had
+  a duplicate heading and a cross-reference pointing at the wrong one. Numbering now
+  derives from the counter that emits the headings.
+- **Section 3 never listed the unresolved items Section 1 counted.** The one number a
+  reader was asked to act on was the one number they could not look up.
+
+**First run, 30-day lookback.** Telemetry control passed — 11,536,100 `DeviceProcessEvents`
+rows from up to 3,229 devices in a single hour — so the zeros below are measured absences
+rather than an empty table. No trace of the campaign's execution shape: node/npm spawning
+Bun returns **0 rows**; `bun.exe`/`bunx.exe` return **0 rows** across `DeviceProcessEvents`,
+`DeviceFileEvents` and `DeviceImageLoadEvents`; **0** Bun release archives or `bun-dl-`
+staging directories written anywhere. The zero is readable because node is loud on the same
+tables and platforms over the same window. One Bun execution exists estate-wide and is
+triaged and explained: Homebrew `/opt/homebrew/Cellar/bun/1.3.14/bin/bun` on one macOS
+device, started by `zsh`, children `granted credential-process` and `aws ssm start-session`
+— sanctioned tooling, not a temp path, not spawned by a package manager.
+
+Status is `INCOMPLETE`, not `CLEAR`, and the five named gaps are why: 571 devices in
+onboarding state "Can be onboarded", 555 "Unsupported", 254 "Insufficient info" — 1,380 of
+4,804 not reporting and therefore unable to produce a hit either way — plus `SHA256` empty
+on every Linux `DeviceProcessEvents` row (hash provenance triage is blind there) and no
+`AuditLog.Read.All`, so sign-in analysis must come from hunting tables.
+
+**Verification.** `tests/test_hunt_report.py`, 16 tests: the fallback status, that it names
+no environment variable, which action each status generates, section-number uniqueness at
+1/5/7/8/9/15 vectors, and that unresolved items reach the evidence section. Full container
+suite 260 passed (the 82 errors in `test_tenant_isolation`, `test_rbac_enforcement`,
+`test_auth_e2e`, `test_data_integrity` and `test_ingestion_pipeline` are pre-existing —
+SQLite cannot compile the Postgres `ARRAY`/`JSONB` columns those fixtures build).
+
+### Fixed — six render defects that every check reported as success (2026-08-07)
+
+**Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.
+
+The common thread: none of these raised, logged an error, or changed a byte count, a page
+count or `pdftotext` output. Two were found only by rasterising a page and looking at it.
+Each fix therefore ships with the probe that would have caught it — `tests/pdf_probes.py`
+reads facts back out of a PDF (WeasyPrint packs its objects into deflated `/ObjStm`
+streams, so grepping one as plaintext finds neither a font nor a page).
+
+- **Every digit in every report was invisible.** A colour emoji font carries the ASCII
+  digits — they are the bases of the keycap sequences — and Pango hands it every digit in
+  the document the moment the family appears anywhere in the stack, ahead of DejaVu rather
+  than after it. Its CBDT bitmaps embed and then draw as nothing, so the digits kept their
+  place in the text layer and their advance width while the reader saw "Part " for "Part 1"
+  and a blank for every count and page number. Fixed by fencing the emoji family behind
+  `unicode-range`.
+- **The ✅/⚠️/🔴 marks were blank for the same reason**, and naming a monochrome family did
+  not help: Pango itemises an emoji-presentation run onto a colour font *before* the CSS
+  stack is read. `_force_text_presentation` now appends U+FE0E to the fenced codepoints,
+  which hands the run back to the stylesheet — prose only, never code blocks, where an
+  invisible selector riding along on a copied command breaks it somewhere else entirely.
+  Two faces share the family because neither covers the set: Symbola predates Unicode 12
+  and has no 🟠🟡🟢🟣; Noto Sans Symbols2 has those and not ✅❌🔴. Their ranges are split
+  rather than overlapped so the choice does not rest on how fontconfig breaks a tie.
+- **An export's bytes depended on when and in what order it ran.** `write_pdf` used
+  WeasyPrint's shared default `FontConfiguration`, so `@font-face` registrations
+  accumulated across requests; and fontTools stamps the wall clock into every subset font's
+  `head` table, so two renders a second apart differed inside the font program at identical
+  length. Fixed with a fresh configuration per render and `SOURCE_DATE_EPOCH`.
+  Reproducibility is what lets a reader tell a re-export from an edited finding.
+- **WeasyPrint 69 was discarding fourteen declarations** that 68 accepted — nine font
+  weights off the 100-step ladder, so `strong` rendered at the inherited weight, and five
+  `word-break: break-word`. CSS Text 3 defines that deprecated value *as*
+  `overflow-wrap: anywhere`, so on a table cell it caused the min-content starvation the
+  neighbouring rule exists to prevent. `requirements.txt` now floors at 69: the open floor
+  meant the host resolved 68 and the image 69, and the container rendered a different
+  document from the one that had been reviewed.
+- **The `development` reach band was unreachable from an environment name**, so a
+  repository deployed only to a sandbox was weighted 1.5× instead of 1.0× and described to
+  the reader as "Internal-facing". A ranking defect, not a wording one — reach is the
+  multiplier the whole of Part 2 turns on. Named-but-unrecognised environments (staging,
+  uat, a team's own label) still map to `internal`: the entry did say where it runs.
+- **`tests/test_export_endpoints.py` had never passed.** `AuthenticationMiddleware` reads
+  `AUTH_REQUIRED` and returns 401 before any dependency resolves, so `dependency_overrides`
+  could not reach the routes; all twenty tests were asserting against an auth error.
+
+**Verification.** 133 tests in the container (`test_report_rendering.py`,
+`test_briefing.py`, `test_export_endpoints.py`), 97 on the host with 17 skipped where the
+Linux fallback fonts are absent. A seven-page report rendered and inspected as images.
+`Dockerfile.api` gains `fonts-symbola`, `fonts-noto-core` and a build-time `fc-cache`.
+
+**Known limitation.** 🔴🟠🟡🔵 differ only by colour, and the fonts that make them visible
+are monochrome, so the severity marker column is now four near-identical hatched circles.
+The Severity column beside it carries the meaning; the marker no longer adds any.
+
 ### Added — reports are written for one reader with three questions (2026-08-07)
 
 **Uncommitted.** Working tree only, on branch `deployment-topology-p1-p2`.

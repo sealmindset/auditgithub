@@ -79,7 +79,7 @@ def parse_args():
     output_group.add_argument('-o', '--output-dir', default=DEFAULT_CONFIG['output_dir'],
                             help=f'Output directory for reports (default: {DEFAULT_CONFIG["output_dir"]})')
     output_group.add_argument('--format', default=DEFAULT_CONFIG['report_format'],
-                            choices=['markdown', 'html', 'json', 'console'],
+                            choices=['markdown', 'html', 'pdf', 'json', 'console'],
                             help=f'Report format (default: {DEFAULT_CONFIG["report_format"]})')
     output_group.add_argument('--keep-temp', action='store_true',
                             help='Keep temporary files after scanning (default: False)')

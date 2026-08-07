@@ -60,8 +60,19 @@ schedule>=1.2.0  # Periodic job scheduler for session cleanup
 slowapi>=0.1.9  # Rate limiting for API protection
 
 # Export/Report Generation
-reportlab>=4.0.0  # For PDF generation
+# Markdown -> HTML -> PDF. WeasyPrint implements CSS Paged Media, which is what supplies
+# page breaks, running headers, folios and repeating table headers; it needs pango/cairo
+# from the OS (see Dockerfile.api). markdown-it-py is CommonMark + GFM tables with no
+# plugin packages required, and pygments highlights fenced code.
+# Floor is 69, not 62: WeasyPrint 69 rejects CSS values that 68 silently accepted
+# (`word-break: break-word`, font weights off the 100-step ladder). An open floor meant
+# the host resolved 68 and the image resolved 69, so the container rendered a different
+# document from the one that had been reviewed and neither build reported anything.
+weasyprint>=69.0,<70.0
+markdown-it-py>=3.0.0
+pygments>=2.17.0
 python-docx>=0.8.11  # For DOCX generation
+reportlab>=4.0.0  # Still used by the API-audit PDF export in src/api/routers/api_audit.py
 google-genai>=0.2.0  # New Google GenAI SDK (replaces deprecated google-generativeai)
 
 # Deployment Topology (P1)

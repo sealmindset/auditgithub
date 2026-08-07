@@ -44,6 +44,10 @@ interface AnalysisResult {
     coverage_notes?: string[]
     hunt_enabled?: boolean
     organizations_in_scope?: string[]
+    // Parts 1 and 2 of the exported report, written when the analysis ran. Reports saved
+    // before this existed leave it undefined, and the exporter falls back to the
+    // rule-written wording and says so in the document.
+    briefing?: Record<string, any>
 }
 
 interface QueryHistory {
@@ -114,20 +118,17 @@ export function ZDAReportsView() {
             hunt_evidence: entry.result.hunt_evidence,
             coverage_notes: entry.result.coverage_notes,
             hunt_enabled: entry.result.hunt_enabled,
-            organizations_in_scope: entry.result.organizations_in_scope
+            organizations_in_scope: entry.result.organizations_in_scope,
+            // The written summary and priority plan that open the report, authored when
+            // the analysis ran. Forwarded so a saved report re-exports to the same
+            // document it produced the first time.
+            briefing: entry.result.briefing
         }
 
         try {
             if (format === 'json') {
                 const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
                 downloadBlob(blob, `zda-report-${entry.id}.json`)
-                return
-            }
-
-            if (format === 'md') {
-                const markdown = generateMarkdown(exportData)
-                const blob = new Blob([markdown], { type: 'text/markdown' })
-                downloadBlob(blob, `zda-report-${entry.id}.md`)
                 return
             }
 
@@ -138,7 +139,11 @@ export function ZDAReportsView() {
                 return
             }
 
-            // For PDF and DOCX, call backend API
+            // PDF, DOCX and Markdown all come off the server's one builder. Markdown used
+            // to be assembled here from a handful of fields, which meant the `.md` of a
+            // saved report carried neither the coverage caveats nor the summary and plan
+            // that the PDF of the same report opened with -- two documents, one analysis,
+            // disagreeing about how much of the estate had actually been examined.
             const response = await apiFetch(`${API_BASE}/ai/zero-day/export/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -151,8 +156,7 @@ export function ZDAReportsView() {
             }
 
             const blob = await response.blob()
-            const extension = format === 'pdf' ? 'pdf' : 'docx'
-            downloadBlob(blob, `zda-report-${entry.id}.${extension}`)
+            downloadBlob(blob, `zda-report-${entry.id}.${format}`)
 
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Export failed'
@@ -170,39 +174,6 @@ export function ZDAReportsView() {
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
-    }
-
-    const generateMarkdown = (data: any): string => {
-        const lines = [
-            `# Zero Day Analysis Report`,
-            ``,
-            `**Generated:** ${new Date(data.timestamp).toLocaleString()}`,
-            `**Query:** ${data.query}`,
-            `**Scope:** ${data.scope.join(', ')}`,
-            ``,
-            `---`,
-            ``,
-            `## AI Analysis`,
-            ``,
-            data.analysis,
-            ``,
-            `---`,
-            ``,
-            `## Affected Repositories (${data.affected_repositories.length})`,
-            ``
-        ]
-
-        if (data.affected_repositories.length === 0) {
-            lines.push(`No affected repositories found.`)
-        } else {
-            lines.push(`| Repository | Reason | Source |`)
-            lines.push(`|------------|--------|--------|`)
-            data.affected_repositories.forEach((repo: any) => {
-                lines.push(`| ${repo.repository} | ${repo.reason || 'Context match'} | ${repo.source || '-'} |`)
-            })
-        }
-
-        return lines.join('\n')
     }
 
     const generateCSV = (repositories: any[]): string => {
@@ -246,13 +217,6 @@ export function ZDAReportsView() {
                 return
             }
 
-            if (format === 'md') {
-                const markdown = generateRepoListMarkdown(exportData)
-                const blob = new Blob([markdown], { type: 'text/markdown' })
-                downloadBlob(blob, `affected-repos-${entry.id}.md`)
-                return
-            }
-
             if (format === 'csv') {
                 const csv = generateCSV(entry.result.affected_repositories)
                 const blob = new Blob([csv], { type: 'text/csv' })
@@ -260,7 +224,9 @@ export function ZDAReportsView() {
                 return
             }
 
-            // For PDF and DOCX, call backend API
+            // PDF, DOCX and Markdown all come off the server's one builder. The
+            // client-side Markdown this replaces omitted the coverage section, so a short
+            // repository list downloaded as `.md` read as an all-clear.
             const response = await apiFetch(`${API_BASE}/ai/zero-day/export/repos/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -273,45 +239,13 @@ export function ZDAReportsView() {
             }
 
             const blob = await response.blob()
-            const extension = format === 'pdf' ? 'pdf' : 'docx'
-            downloadBlob(blob, `affected-repos-${entry.id}.${extension}`)
+            downloadBlob(blob, `affected-repos-${entry.id}.${format}`)
 
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Export failed'
             console.error('Export failed:', message)
             alert(message)
         }
-    }
-
-    const generateRepoListMarkdown = (data: any): string => {
-        const lines = [
-            `# Affected Repositories Report`,
-            ``,
-            `**Generated:** ${new Date(data.timestamp).toLocaleString()}`,
-            `**Query:** ${data.query}`,
-            `**Scope:** ${data.scope.join(', ')}`,
-            `**Total Repositories:** ${data.total_repositories}`,
-            ``,
-            `---`,
-            ``,
-            `## Repository List`,
-            ``
-        ]
-
-        if (data.repositories.length === 0) {
-            lines.push(`No affected repositories found.`)
-        } else {
-            lines.push(`| # | Repository | Reason | Source | Matched Sources |`)
-            lines.push(`|---|------------|--------|--------|-----------------|`)
-            data.repositories.forEach((repo: any, idx: number) => {
-                const matchedSources = (repo.matched_sources || []).join(', ') || '-'
-                lines.push(`| ${idx + 1} | ${repo.repository} | ${repo.reason || 'Context match'} | ${repo.source || '-'} | ${matchedSources} |`)
-            })
-        }
-
-        lines.push(``, `---`, ``, `*Report generated from Zero Day Analysis*`)
-
-        return lines.join('\n')
     }
 
     // Filter reports by search term

@@ -11,9 +11,15 @@ Section shape:
 
 Both `paragraphs` and `table` are optional. The caller renders them; this module decides
 only what is worth saying.
+
+Sections are also serialised to Markdown here (`sections_to_markdown` and the two
+document builders below), because Markdown is now the single intermediate form every
+export passes through: Markdown -> HTML -> PDF, and Markdown -> DOCX. Building the
+document once means the PDF and the Word file cannot drift apart.
 """
 
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, Iterable, List, Optional
 
 
 def _s(value: Any, default: str = "") -> str:
@@ -360,3 +366,238 @@ def build_sections(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         if section:
             sections.append(section)
     return sections
+
+
+# --------------------------------------------------------------------------- #
+# Markdown serialisation
+# --------------------------------------------------------------------------- #
+
+# Escaping lives in `src/reporting/mdwrite.py`, one layer down, because the briefing
+# builder needs the identical definition and two escapers drift silently — a missed pipe
+# does not raise, it shifts every column in a table one place to the left.
+from ...reporting.mdwrite import md_cell as _md_cell  # noqa: E402
+from ...reporting.mdwrite import md_table as _md_table  # noqa: E402
+from ...reporting.mdwrite import md_text as _md_text  # noqa: E402
+
+
+def sections_to_markdown(
+    sections: List[Dict[str, Any]],
+    heading_level: int = 2,
+) -> List[str]:
+    """Render `build_sections` output as Markdown lines."""
+    hashes = "#" * max(1, min(6, heading_level))
+    lines: List[str] = []
+    for section in sections:
+        lines.append(f"{hashes} {_md_text(section['heading'])}")
+        lines.append("")
+        in_list = False
+        for para in section.get("paragraphs") or []:
+            text = _s(para)
+            # The builders emit "• " to mark an item in a run of them. As Markdown that
+            # is a literal bullet character inside a paragraph; turned into a list item
+            # it gets the hanging indent and wrapping a list is supposed to have.
+            if text.startswith("• "):
+                lines.append(f"- {_md_text(text[2:])}")
+                in_list = True
+                continue
+            if in_list:
+                # Without this the next paragraph is a lazy continuation of the last
+                # list item and disappears into the bullet.
+                lines.append("")
+                in_list = False
+            lines.append(_md_text(text))
+            lines.append("")
+        if in_list:
+            lines.append("")
+        table = section.get("table")
+        if table and table.get("rows"):
+            lines.extend(_md_table(table["headers"], table["rows"]))
+            lines.append("")
+    return lines
+
+
+def _scope_str(payload: Dict[str, Any]) -> str:
+    scope = payload.get("scope") or []
+    if isinstance(scope, list):
+        return ", ".join(_s(s) for s in scope)
+    return _s(scope)
+
+
+def _short_date(value: Any, default: str = "N/A") -> str:
+    text = _s(value, default) or default
+    if text == default:
+        return default
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except Exception:
+        return text
+
+
+def format_timestamp(value: Any) -> str:
+    """
+    Render an export timestamp for a cover page.
+
+    The UI sends `new Date().toISOString()`, so the raw value is
+    `2026-08-07T15:30:00.000Z` — machine-readable and wrong on a cover. UTC is kept
+    rather than converted to the server's zone: a report read across time zones needs an
+    unambiguous instant, and the server's locale is not the reader's.
+    """
+    text = _s(value).strip()
+    if not text:
+        return ""
+    try:
+        from datetime import datetime, timezone
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc)
+        return parsed.strftime("%Y-%m-%d %H:%M UTC" if parsed.tzinfo else "%Y-%m-%d %H:%M")
+    except ValueError:
+        return text
+
+
+def document_fields(payload: Dict[str, Any]) -> List[tuple]:
+    """Cover-page fields common to every zero-day export."""
+    fields = [("Query", _s(payload.get("query"), "N/A") or "N/A")]
+    scope = _scope_str(payload)
+    if scope:
+        fields.append(("Scope", scope))
+    orgs = payload.get("organizations_in_scope")
+    if orgs:
+        fields.append(("Organizations", ", ".join(_s(o) for o in orgs)))
+    return fields
+
+
+def analysis_markdown(payload: Dict[str, Any], *, briefed: bool = True) -> str:
+    """
+    The full zero-day analysis as a Markdown document body.
+
+    `analysis` is passed through verbatim: it is authored Markdown from the model, and
+    escaping it is precisely the bug this rewrite exists to fix — it is what turned
+    headings into `##` and tables into pipe-delimited text in the old PDF. It is never
+    interpreted as HTML; the renderer parses with `html: False`.
+
+    With `briefed` (the default) the evidence is wrapped in the three-part structure —
+    situation, action plan, evidence — so a reader reaches a summary and an ordered plan
+    before the raw hunt output. `briefed=False` returns the evidence alone, which is what
+    a caller embedding this in another document wants.
+    """
+    if briefed:
+        return briefed_analysis_markdown(payload)
+    return _analysis_evidence_markdown(payload)
+
+
+def briefed_analysis_markdown(payload: Dict[str, Any]) -> str:
+    """
+    The zero-day analysis as a three-part report.
+
+    The briefing is taken from `payload["briefing"]` when the analysis run authored one,
+    so that re-exporting a stored analysis reproduces the document it produced the first
+    time. Only when none is stored is one derived here, and then by rule rather than by
+    model: an export request is not the place to make a network call to an LLM.
+    """
+    from ...reporting.briefing import (
+        briefing_from_dict,
+        compose_document,
+        deterministic_briefing,
+        findings_from_zda,
+    )
+
+    findings = findings_from_zda(payload)
+    stored = payload.get("briefing")
+    briefing = None
+    if isinstance(stored, dict):
+        briefing = briefing_from_dict(stored, findings)
+    if briefing is None:
+        briefing = deterministic_briefing(findings, payload)
+
+    return compose_document(
+        briefing,
+        findings,
+        evidence_body=_analysis_evidence_markdown(payload),
+    )
+
+
+def _analysis_evidence_markdown(payload: Dict[str, Any]) -> str:
+    """The evidence body: model prose, affected repositories, hunt sections, plan."""
+    lines: List[str] = ["## AI Analysis", ""]
+    analysis = _s(payload.get("analysis")).strip()
+    lines.append(analysis if analysis else "_No analysis text was returned for this run._")
+    lines.append("")
+
+    repos = payload.get("affected_repositories") or []
+    lines.append(f"## Affected Repositories ({len(repos)})")
+    lines.append("")
+    if repos:
+        lines.extend(_md_table(
+            ["Repository", "Reason", "Last Updated", "Source"],
+            [
+                [
+                    _s(r.get("repository")),
+                    _s(r.get("reason"), "Context match") or "Context match",
+                    _short_date(r.get("last_updated")),
+                    _s(r.get("source"), "-") or "-",
+                ]
+                for r in repos
+            ],
+        ))
+    else:
+        lines.append("No affected repositories found.")
+    lines.append("")
+
+    lines.extend(sections_to_markdown(build_sections(payload)))
+
+    plan = payload.get("plan")
+    if plan:
+        # The plan says which surfaces the agent chose to query. Without it a reader
+        # cannot tell a surface that came back empty from one that was never asked.
+        import json as _json
+
+        lines.append("## Analysis Strategy")
+        lines.append("")
+        lines.append("```json")
+        try:
+            lines.append(_json.dumps(plan, indent=2, default=str))
+        except (TypeError, ValueError):
+            lines.append(_s(plan))
+        lines.append("```")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def repo_list_markdown(payload: Dict[str, Any]) -> str:
+    """
+    The affected-repository list as a Markdown document body.
+
+    Carries the coverage section but not the full evidence dump: this is the document
+    most likely to be forwarded on its own, and a short list is exactly where a reader
+    needs to know which repositories could not be seen.
+    """
+    repos = payload.get("repositories") or []
+    lines: List[str] = [
+        f"## Repository List ({payload.get('total_repositories', len(repos))})",
+        "",
+    ]
+    if repos:
+        lines.extend(_md_table(
+            ["#", "Repository", "Reason", "Source", "Matched Sources"],
+            [
+                [
+                    str(index),
+                    _s(r.get("repository")),
+                    _s(r.get("reason"), "Context match") or "Context match",
+                    _s(r.get("source"), "-") or "-",
+                    ", ".join(_s(m) for m in (r.get("matched_sources") or [])) or "-",
+                ]
+                for index, r in enumerate(repos, 1)
+            ],
+        ))
+    else:
+        lines.append("No affected repositories found.")
+    lines.append("")
+
+    coverage = coverage_section(payload)
+    if coverage:
+        lines.extend(sections_to_markdown([coverage]))
+    return "\n".join(lines).rstrip() + "\n"

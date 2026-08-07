@@ -1,0 +1,573 @@
+/*
+ * AuditGH report stylesheet — CSS Paged Media.
+ *
+ * Targets WeasyPrint. Everything here is print layout: page boxes, running
+ * headers/footers, break control and table pagination. There is no screen
+ * media query because the HTML this styles exists to become a PDF; when the
+ * HTML is served directly it should still look like the document it will print as.
+ *
+ * Font stacks are deliberately generic and duplicated across macOS and Debian
+ * names. The API container is python:3.11-slim, which ships no fonts at all, so
+ * the Dockerfile installs DejaVu (text) plus Symbola and Noto Sans Symbols2 for
+ * the ✅/⚠️/🔴 markers used throughout the hunt corpus. Without them those markers
+ * render as tofu boxes — which is exactly what the old reportlab output did.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Page geometry and running furniture                                 */
+/* ------------------------------------------------------------------ */
+
+@page {
+  size: Letter;
+  margin: 22mm 18mm 20mm 18mm;
+
+  @top-left {
+    content: string(doc-title);
+    font-family: var(--sans);
+    font-size: 7.5pt;
+    color: #6b7280;
+    letter-spacing: 0.02em;
+    padding-bottom: 3mm;
+    border-bottom: 0.4pt solid #e5e7eb;
+    width: 100%;
+    vertical-align: bottom;
+  }
+
+  @bottom-left {
+    content: string(doc-mark);
+    font-family: var(--sans);
+    font-size: 7pt;
+    color: #9ca3af;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: top;
+    padding-top: 3mm;
+  }
+
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: var(--sans);
+    font-size: 7.5pt;
+    color: #6b7280;
+    vertical-align: top;
+    padding-top: 3mm;
+  }
+}
+
+/* The cover carries the classification but no running header or folio —
+   a page number on a cover reads as a layout mistake. */
+@page cover {
+  @top-left { content: none; border-bottom: none; }
+  @bottom-right { content: none; }
+}
+
+/* An emoji font named in a font stack does not wait its turn. Colour emoji fonts carry
+   glyphs for the ASCII digits — they are the bases of the keycap sequences (1️⃣) — and
+   Pango hands every digit in the document to Noto Color Emoji even when DejaVu Sans is
+   listed ahead of it. Those glyphs are CBDT bitmaps that WeasyPrint draws as nothing, so
+   the digits stayed in the text layer, kept their advance width, and rendered blank:
+   "Part 1" became "Part ", "3.1 Proof" became ". Proof", every table count and page
+   number an empty gap. A report whose numbers are invisible is worse than no report.
+
+   Fencing the family behind `unicode-range` keeps it reachable for the verdict marks and
+   unreachable for anything else. Do not put a raw emoji family in `--sans`. */
+/* Naming the family is only half of it. Pango itemises a run whose codepoints default to
+   *emoji* presentation onto a colour emoji font before the CSS stack is consulted, so
+   `font-family: Symbola` on a ✅ still produced Noto Color Emoji — whose CBDT bitmaps
+   WeasyPrint embeds and then draws as nothing. `_force_text_presentation` in md_to_pdf.py
+   appends U+FE0E to every codepoint fenced below, which switches the run to text
+   presentation and hands it back to these faces. The two changes only work together:
+   drop either and the marks go blank again on a page that reports no error.
+
+   Two faces, one family, disjoint ranges. Symbola predates Unicode 12 and has no
+   🟠🟡🟢🟣 (U+1F7E0-1F7EB); Noto Sans Symbols2 has those and not ✅❌🔴. The ranges are
+   split rather than overlapped so which face serves a codepoint does not depend on how
+   fontconfig resolves a tie. Anything outside both fences is not covered — see
+   `test_every_mark_in_the_report_templates_has_a_glyph`, which enumerates the corpus. */
+@font-face {
+  font-family: "Report Emoji";
+  /* Apple's and Microsoft's colour fonts draw correctly, so a macOS or Windows host keeps
+     colour marks; Symbola is the Linux fallback that guarantees ink. */
+  src: local("Apple Color Emoji"), local("Segoe UI Emoji"), local("Symbola");
+  unicode-range: U+203C, U+2049, U+20E3, U+2122, U+2139, U+2194-21AA, U+231A-231B,
+                 U+2328, U+23CF-23FA, U+24C2, U+25AA-25FE, U+2600-27BF, U+2934-2935,
+                 U+2B00-2BB9, U+2BFE-2BFF, U+3030, U+303D, U+3297, U+3299,
+                 U+1F000-1F6D4, U+1F6D8-1F6F8, U+1F6FD-1F7D4, U+1F7EC-1F8AF,
+                 U+1F8B2-1F9FF, U+1FAD7-1FAFF;
+}
+
+@font-face {
+  font-family: "Report Emoji";
+  src: local("Apple Color Emoji"), local("Segoe UI Emoji"), local("Noto Sans Symbols2");
+  unicode-range: U+2BBA-2BFD, U+1F6D5-1F6D7, U+1F6F9-1F6FC, U+1F7D5-1F7EB,
+                 U+1F8B0-1F8B1, U+1FA00-1FAD6;
+}
+
+:root {
+  --sans: "Inter", "Helvetica Neue", Helvetica, "Liberation Sans", "DejaVu Sans",
+          Arial, "Report Emoji", sans-serif;
+  --mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas,
+          "Liberation Mono", "DejaVu Sans Mono", monospace;
+
+  --ink: #16191d;
+  --ink-soft: #4b5563;
+  --ink-faint: #6b7280;
+  --rule: #e5e7eb;
+  --rule-strong: #cbd5e1;
+  --accent: #1e3a5f;
+  --accent-soft: #eef2f7;
+  --code-bg: #f6f8fa;
+}
+
+/* ------------------------------------------------------------------ */
+/* Base typography                                                     */
+/* ------------------------------------------------------------------ */
+
+html {
+  font-family: var(--sans);
+  font-size: 10pt;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+body.report {
+  margin: 0;
+  hyphens: none;
+}
+
+/*
+ * Feeds the @page margin boxes.
+ *
+ * These two elements must keep a box: `display: none` removes them from the box
+ * tree entirely and their `string-set` never fires, which silently falls back to
+ * whichever ancestor last set the string — putting the document's *entire* text
+ * into the running header. They are pushed off the page instead, where the page
+ * box clips them.
+ */
+.running-title { string-set: doc-title content(); }
+.running-mark  { string-set: doc-mark content(); }
+
+.running-title, .running-mark {
+  position: absolute;
+  left: -9999pt;
+  top: 0;
+  width: 1pt;
+  height: 0;
+  overflow: hidden;
+}
+
+p {
+  margin: 0 0 0.62em 0;
+  orphans: 3;
+  widows: 3;
+  text-align: left;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 0.4pt solid #b9c6d6;
+  /* Report bodies carry full advisory URLs; without this they punch out of the
+     text block and WeasyPrint will not break them. */
+  overflow-wrap: anywhere;
+}
+
+strong { font-weight: 600; color: #0f1216; }
+em { font-style: italic; }
+s { color: var(--ink-faint); }
+
+hr {
+  border: none;
+  border-top: 0.5pt solid var(--rule);
+  margin: 1.4em 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Headings                                                            */
+/* ------------------------------------------------------------------ */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--sans);
+  color: #0f1216;
+  line-height: 1.25;
+  margin: 0;
+  /* A heading stranded at the foot of a page is the single most common
+     bad break in a long report. */
+  break-after: avoid-page;
+  break-inside: avoid-page;
+}
+
+main.body > h2 {
+  font-size: 14.5pt;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  margin: 1.5em 0 0.6em 0;
+  padding-bottom: 0.28em;
+  border-bottom: 0.75pt solid var(--rule-strong);
+}
+
+main.body > h2:first-child { margin-top: 0; }
+
+/* ------------------------------------------------------------------ */
+/* Part openers                                                        */
+/* ------------------------------------------------------------------ */
+
+/* A three-part report is read three times, with a different question each time. The
+   part opener is the seam a reader flips to, so it takes a page break and enough
+   visual weight to be findable by thumbing the edge of a printed copy. Reports with a
+   single h1 are unaffected: `_strip_leading_h1` removes one matching the cover, and a
+   lone body h1 simply gets a heading that starts its own page, which is correct. */
+main.body > h1 {
+  font-size: 21pt;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--accent, #16324f);
+  margin: 0 0 0.15em 0;
+  padding-bottom: 0.3em;
+  border-bottom: 2pt solid var(--accent, #16324f);
+  break-before: page;
+  break-after: avoid-page;
+}
+
+/* The first part follows the contents page, which has already broken. */
+main.body > h1:first-child { break-before: auto; }
+
+/* The standfirst under a part opener: who this part is for and what question it
+   answers. Set apart from body text so it is read as orientation, not as content. */
+main.body > h1 + p {
+  font-size: 10pt;
+  color: var(--ink-soft);
+  margin: 0.9em 0 1.6em 0;
+  padding-left: 3.5mm;
+  border-left: 2pt solid var(--rule-strong);
+  break-before: avoid-page;
+}
+
+h3 {
+  font-size: 11.5pt;
+  font-weight: 700;
+  margin: 1.25em 0 0.45em 0;
+}
+
+h4 {
+  font-size: 10pt;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  margin: 1.1em 0 0.4em 0;
+}
+
+h5, h6 {
+  font-size: 9.5pt;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 1em 0 0.35em 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Cover                                                               */
+/* ------------------------------------------------------------------ */
+
+.cover {
+  page: cover;
+  break-after: page;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: 34mm;
+}
+
+.cover-mark {
+  font-size: 7.5pt;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b45309;
+  border: 0.75pt solid #fcd9a4;
+  background: #fffaf1;
+  padding: 3mm 4mm;
+  margin-bottom: 22mm;
+}
+
+.cover-title {
+  font-size: 27pt;
+  font-weight: 700;
+  line-height: 1.14;
+  letter-spacing: -0.018em;
+  color: #0f1216;
+  border: none;
+  margin: 0 0 4mm 0;
+  padding: 0;
+  max-width: 92%;
+}
+
+.cover-subtitle {
+  font-size: 12pt;
+  font-weight: 400;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  margin: 0;
+  max-width: 88%;
+}
+
+.cover-meta {
+  margin: auto 0 0 0;
+  padding: 6mm 0 0 0;
+  border-top: 1.5pt solid var(--accent);
+}
+
+.cover-field {
+  display: flex;
+  gap: 6mm;
+  padding: 1.7mm 0;
+  border-bottom: 0.4pt solid var(--rule);
+  font-size: 9pt;
+}
+
+.cover-field dt {
+  flex: 0 0 34mm;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 7.5pt;
+  padding-top: 0.5mm;
+}
+
+.cover-field dd {
+  flex: 1;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ */
+/* Table of contents                                                   */
+/* ------------------------------------------------------------------ */
+
+.toc {
+  break-after: page;
+  break-inside: auto;
+}
+
+.toc h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 0 0 0.8em 0;
+  padding-bottom: 0.28em;
+  border-bottom: 0.75pt solid var(--rule-strong);
+}
+
+.toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc li {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.toc a {
+  display: block;
+  border-bottom: none;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 1.3mm 0;
+}
+
+/* Leader dots plus the resolved page number. target-counter is why the TOC is
+   generated as anchors rather than baked text: the numbers stay correct when
+   content reflows. */
+.toc a::after {
+  content: target-counter(attr(href), page);
+  float: right;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  font-size: 9pt;
+  padding-left: 2mm;
+  background: white;
+}
+
+.toc a::before {
+  content: "";
+  float: right;
+  width: 0;
+}
+
+.toc .toc-text {
+  padding-right: 1.5mm;
+  background: white;
+}
+
+.toc li { border-bottom: 0.4pt dotted #d5dae1; }
+
+/* Part entries. Weighted well above their subsections so the contents page shows the
+   document's three-part shape at a glance rather than as one flat list. */
+.toc-l1 > a {
+  font-weight: 700;
+  font-size: 11pt;
+  color: var(--accent, #16324f);
+  padding-top: 3.2mm;
+}
+.toc-l1 { border-bottom: 0.6pt solid var(--rule-strong) !important; }
+
+.toc-l2 > a { font-weight: 600; font-size: 10pt; padding-left: 4mm; }
+.toc-l3 > a { padding-left: 10mm; font-size: 9.5pt; color: var(--ink-soft); }
+
+/* ------------------------------------------------------------------ */
+/* Cross-references in the body                                        */
+/* ------------------------------------------------------------------ */
+
+/* "The steps to take are in Part 2 (page 4)". A printed report has no hyperlinks, so an
+   internal reference without a resolved page number is an instruction to search the
+   document by hand. Scoped to in-document anchors: external links keep their URL. */
+main.body a[href^="#"]::after {
+  content: " (page " target-counter(attr(href), page) ")";
+  color: var(--ink-faint);
+  font-size: 0.88em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* Lists                                                               */
+/* ------------------------------------------------------------------ */
+
+ul, ol {
+  margin: 0 0 0.7em 0;
+  padding-left: 5.2mm;
+}
+
+li { margin: 0 0 0.24em 0; }
+li > ul, li > ol { margin-top: 0.24em; margin-bottom: 0.3em; }
+li p { margin-bottom: 0.3em; }
+
+/* ------------------------------------------------------------------ */
+/* Tables                                                              */
+/* ------------------------------------------------------------------ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.85em 0 1.1em 0;
+  font-size: 8.8pt;
+  line-height: 1.36;
+  /* Auto layout lets a narrow verdict column stay narrow. Fixed would give the
+     72-row repository tables four equal columns and waste half the width. */
+  table-layout: auto;
+}
+
+/* Repeats the header row on every page a long table spans. Without this the
+   repository tables — which routinely run past a page — arrive headerless. */
+thead { display: table-header-group; }
+tfoot { display: table-footer-group; }
+tr { break-inside: avoid; }
+
+th {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  text-align: left;
+  padding: 2.1mm 2.4mm;
+  font-size: 8.2pt;
+  letter-spacing: 0.025em;
+  border: 0.4pt solid var(--accent);
+  vertical-align: bottom;
+}
+
+td {
+  padding: 1.8mm 2.4mm;
+  border: 0.4pt solid #dfe4ea;
+  vertical-align: top;
+  /* `overflow-wrap: break-word`, deliberately not `anywhere`. `anywhere` counts every
+     character as a wrap opportunity when computing a column's min-content width, so the
+     auto table layout is free to starve a narrow column down to one character — an ID
+     column of "E1" and "C2" rendered as "C" over "2". `break-word` keeps the longest
+     word as the floor while still breaking a token that genuinely cannot fit.
+
+     Do not add `word-break: break-word` here: CSS Text 3 defines that deprecated value
+     as `overflow-wrap: anywhere`, which is the starvation this rule exists to avoid. */
+  overflow-wrap: break-word;
+}
+
+tbody tr:nth-child(even) td { background: #f7f9fb; }
+
+table.wide { font-size: 7.8pt; }
+table.wide th { font-size: 7.4pt; padding: 1.8mm 1.8mm; }
+table.wide td { padding: 1.5mm 1.8mm; }
+
+/* Inline code inside a cell must not force the column wider than its content. */
+td code, th code { font-size: 0.94em; background: none; padding: 0; border: none; }
+
+/* ------------------------------------------------------------------ */
+/* Code                                                                */
+/* ------------------------------------------------------------------ */
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border: 0.4pt solid #e3e8ee;
+  border-radius: 2pt;
+  padding: 0.4mm 1mm;
+  overflow-wrap: anywhere;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 0.5pt solid #e3e8ee;
+  border-radius: 3pt;
+  padding: 3mm 3.5mm;
+  margin: 0.8em 0 1em 0;
+  font-size: 8.2pt;
+  line-height: 1.45;
+  /* A fenced block wider than the text block would otherwise be clipped
+     silently — the reader never learns the line was truncated. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* A long block cannot avoid breaking; let it, rather than overflow the page. */
+pre.long { break-inside: auto; }
+
+/* ------------------------------------------------------------------ */
+/* Blockquotes / callouts                                              */
+/* ------------------------------------------------------------------ */
+
+blockquote {
+  margin: 0.9em 0;
+  padding: 2.5mm 4mm;
+  border-left: 2pt solid var(--accent);
+  background: var(--accent-soft);
+  color: #1f2937;
+  break-inside: avoid;
+}
+
+blockquote > :last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------------ */
+/* Footer note                                                         */
+/* ------------------------------------------------------------------ */
+
+.footer-note {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 0.5pt solid var(--rule);
+  font-size: 8pt;
+  color: var(--ink-faint);
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}

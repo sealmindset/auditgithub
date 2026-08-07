@@ -40,6 +40,9 @@ interface AnalysisResult {
     coverage_notes?: string[]
     hunt_enabled?: boolean
     organizations_in_scope?: string[]
+    // Parts 1 and 2 of the exported report -- the plain-language summary and the ordered
+    // plan -- written once when the analysis ran so every export of this result matches.
+    briefing?: Record<string, any>
 }
 
 interface QueryHistory {
@@ -170,7 +173,13 @@ export function ZeroDayView() {
             hunt_evidence: result.hunt_evidence,
             coverage_notes: result.coverage_notes,
             hunt_enabled: result.hunt_enabled,
-            organizations_in_scope: result.organizations_in_scope
+            organizations_in_scope: result.organizations_in_scope,
+            // The written summary and priority plan that open the report. Authored once
+            // when the analysis ran and echoed back here, so exporting the same result
+            // twice produces the same document. Dropping it does not break the export --
+            // it silently downgrades it to the rule-written wording, which is exactly the
+            // kind of difference nobody notices until two copies of one report disagree.
+            briefing: result.briefing
         }
 
         try {
@@ -181,13 +190,6 @@ export function ZeroDayView() {
                 return
             }
 
-            if (format === 'md') {
-                const markdown = generateMarkdown(exportData)
-                const blob = new Blob([markdown], { type: 'text/markdown' })
-                downloadBlob(blob, `zda-analysis-${Date.now()}.md`)
-                return
-            }
-
             if (format === 'csv') {
                 const csv = generateCSV(result.affected_repositories)
                 const blob = new Blob([csv], { type: 'text/csv' })
@@ -195,7 +197,10 @@ export function ZeroDayView() {
                 return
             }
 
-            // For PDF and DOCX, call backend API
+            // PDF, DOCX and Markdown are all rendered server-side from one builder.
+            // The Markdown export used to be assembled here and omitted the coverage
+            // and blind-spot sections the PDF carried, so the two documents disagreed
+            // about how complete the hunt was.
             const response = await apiFetch(`${API_BASE}/ai/zero-day/export/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -208,8 +213,7 @@ export function ZeroDayView() {
             }
 
             const blob = await response.blob()
-            const extension = format === 'pdf' ? 'pdf' : 'docx'
-            downloadBlob(blob, `zda-analysis-${Date.now()}.${extension}`)
+            downloadBlob(blob, `zda-analysis-${Date.now()}.${format}`)
 
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Export failed'
@@ -227,43 +231,6 @@ export function ZeroDayView() {
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
-    }
-
-    const generateMarkdown = (data: any): string => {
-        const lines = [
-            `# Zero Day Analysis Report`,
-            ``,
-            `**Generated:** ${new Date(data.timestamp).toLocaleString()}`,
-            `**Query:** ${data.query}`,
-            `**Scope:** ${data.scope.join(', ')}`,
-            ``,
-            `---`,
-            ``,
-            `## AI Analysis`,
-            ``,
-            data.analysis,
-            ``,
-            `---`,
-            ``,
-            `## Affected Repositories (${data.affected_repositories.length})`,
-            ``
-        ]
-
-        if (data.affected_repositories.length === 0) {
-            lines.push(`No affected repositories found.`)
-        } else {
-            lines.push(`| Repository | Reason | Source |`)
-            lines.push(`|------------|--------|--------|`)
-            data.affected_repositories.forEach((repo: any) => {
-                lines.push(`| ${repo.repository} | ${repo.reason || 'Context match'} | ${repo.source || '-'} |`)
-            })
-        }
-
-        if (data.plan) {
-            lines.push(``, `---`, ``, `## Analysis Strategy`, ``, '```json', JSON.stringify(data.plan, null, 2), '```')
-        }
-
-        return lines.join('\n')
     }
 
     const generateCSV = (repositories: any[]): string => {
@@ -311,14 +278,6 @@ export function ZeroDayView() {
                 return
             }
 
-            // For Markdown, handle client-side
-            if (format === 'md') {
-                const markdown = generateRepoListMarkdown(exportData)
-                const blob = new Blob([markdown], { type: 'text/markdown' })
-                downloadBlob(blob, `affected-repos-${Date.now()}.md`)
-                return
-            }
-
             // For CSV, handle client-side
             if (format === 'csv') {
                 const csv = generateCSV(result.affected_repositories)
@@ -327,54 +286,27 @@ export function ZeroDayView() {
                 return
             }
 
-            // For PDF and DOCX, call backend API
+            // PDF, DOCX and Markdown are rendered server-side from the same builder, so
+            // the coverage section travels with every format of this list.
             const response = await apiFetch(`${API_BASE}/ai/zero-day/export/repos/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(exportData)
             })
 
-            if (!response.ok) throw new Error('Export failed')
+            if (!response.ok) {
+                const body = await response.json().catch(() => null)
+                throw new Error(body?.detail || `Export failed (${response.status})`)
+            }
 
             const blob = await response.blob()
-            const extension = format === 'pdf' ? 'pdf' : 'docx'
-            downloadBlob(blob, `affected-repos-${Date.now()}.${extension}`)
+            downloadBlob(blob, `affected-repos-${Date.now()}.${format}`)
 
         } catch (err) {
-            console.error('Export failed:', err)
-            setError('Export failed. Please try again.')
+            const message = err instanceof Error ? err.message : 'Export failed'
+            console.error('Export failed:', message)
+            setError(message)
         }
-    }
-
-    const generateRepoListMarkdown = (data: any): string => {
-        const lines = [
-            `# Affected Repositories Report`,
-            ``,
-            `**Generated:** ${new Date(data.timestamp).toLocaleString()}`,
-            `**Query:** ${data.query}`,
-            `**Scope:** ${data.scope.join(', ')}`,
-            `**Total Repositories:** ${data.total_repositories}`,
-            ``,
-            `---`,
-            ``,
-            `## Repository List`,
-            ``
-        ]
-
-        if (data.repositories.length === 0) {
-            lines.push(`No affected repositories found.`)
-        } else {
-            lines.push(`| # | Repository | Reason | Source | Matched Sources |`)
-            lines.push(`|---|------------|--------|--------|-----------------|`)
-            data.repositories.forEach((repo: any, idx: number) => {
-                const matchedSources = (repo.matched_sources || []).join(', ') || '-'
-                lines.push(`| ${idx + 1} | ${repo.repository} | ${repo.reason || 'Context match'} | ${repo.source || '-'} | ${matchedSources} |`)
-            })
-        }
-
-        lines.push(``, `---`, ``, `*Report generated from Zero Day Analysis*`)
-
-        return lines.join('\n')
     }
 
     return (

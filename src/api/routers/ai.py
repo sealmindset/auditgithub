@@ -1,4 +1,3 @@
-import html as html_mod
 import json
 import os
 import uuid
@@ -574,6 +573,47 @@ class ZeroDayResponse(BaseModel):
     organizations_in_scope: Optional[List[str]] = Field(
         None, description="GitHub organizations the analysis was told about."
     )
+    briefing: Optional[Dict[str, Any]] = Field(
+        None,
+        description="The written summary and priority-ordered plan that open the "
+                    "exported report (Parts 1 and 2). Authored once, here, and echoed "
+                    "back on export so a re-exported report is identical to the first "
+                    "one. Priority order and every figure in it are computed in code; "
+                    "only the wording may come from a model."
+    )
+
+async def _author_zda_briefing(
+    result: Dict[str, Any],
+    query: str = "",
+) -> Optional[Dict[str, Any]]:
+    """
+    Write Parts 1 and 2 for this analysis, once, at analysis time.
+
+    This is the only place a model is asked to phrase a briefing. Doing it here rather
+    than in the export endpoints is what makes a re-export reproducible: the exports read
+    this dictionary back and render it, so the same analysis downloaded twice produces
+    the same document. Authoring on export would make the report a function of when it
+    was printed.
+
+    Never fatal. A failure here costs the reader the written summary, not the analysis
+    they asked for, so the briefing is simply omitted and the export falls back to the
+    deterministic wording — which says in the document that it did.
+    """
+    import asyncio
+
+    from ...reporting.briefing import author_briefing, briefing_to_dict, findings_from_zda
+
+    payload = {**result, "query": query or result.get("query") or ""}
+    try:
+        findings = findings_from_zda(payload)
+        # `author_briefing` is synchronous and may call the provider over the network.
+        # Run it off the event loop rather than stalling every other request behind it.
+        briefing = await asyncio.to_thread(author_briefing, findings, payload)
+        return briefing_to_dict(briefing)
+    except Exception as exc:  # noqa: BLE001 - a summary must never fail an analysis
+        logger.warning("Zero-day briefing could not be authored: %s", exc)
+        return None
+
 
 @router.post(
     "/zero-day",
@@ -628,7 +668,8 @@ async def analyze_zero_day(
             hunt_evidence=result.get("hunt_evidence"),
             coverage_notes=result.get("coverage_notes"),
             hunt_enabled=result.get("hunt_enabled"),
-            organizations_in_scope=result.get("organizations_in_scope")
+            organizations_in_scope=result.get("organizations_in_scope"),
+            briefing=await _author_zda_briefing(result, request.query),
         )
     except HTTPException:
         raise
@@ -778,71 +819,97 @@ def _export_str(value, default: str = "") -> str:
 
     dict.get(key, default) still returns None when the key is present with a
     null value, which the AI-generated analysis payload does routinely. Slicing
-    or assigning that None into reportlab/python-docx raises, so normalize here.
+    or interpolating that None into the report Markdown raises, so normalize here.
     """
     if value is None:
         return default
     return value if isinstance(value, str) else str(value)
 
 
-def _pdf_evidence_sections(request: dict, story, styles, meta_style):
+def _export_meta(request: dict, title: str, *, extra_fields=None):
     """
-    Append hunt-evidence and coverage sections to a reportlab story.
+    Cover-page metadata for a zero-day export.
 
-    Kept beside the DOCX equivalent and driven by the same builder so the two formats
-    cannot disagree about what a report contains.
+    The classification banner is not configurable from the request body. These documents
+    carry repository names, credential-privilege findings and hunt blind spots, and the
+    marking a reader checks before forwarding must not be something the caller can
+    weaken.
     """
-    from reportlab.lib import colors
-    from reportlab.lib.units import inch
-    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
-
+    from ...reporting import DocumentMeta
     from ..utils import zda_report
 
-    for section in zda_report.build_sections(request):
-        story.append(Paragraph(html_mod.escape(section["heading"]), styles['Heading2']))
-        story.append(Spacer(1, 8))
-        for para in section.get("paragraphs") or []:
-            story.append(Paragraph(html_mod.escape(_export_str(para)).replace('\n', '<br/>'),
-                                   meta_style))
-            story.append(Spacer(1, 4))
-        table_spec = section.get("table")
-        if table_spec and table_spec.get("rows"):
-            data = [table_spec["headers"]] + [
-                [Paragraph(html_mod.escape(_export_str(cell)), meta_style) for cell in row]
-                for row in table_spec["rows"]
-            ]
-            width = 6.5 * inch / max(1, len(table_spec["headers"]))
-            table = Table(data, colWidths=[width] * len(table_spec["headers"]))
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            story.append(table)
-        story.append(Spacer(1, 16))
+    fields = zda_report.document_fields(request)
+    if extra_fields:
+        fields.extend(extra_fields)
+    return DocumentMeta(
+        title=title,
+        fields=fields,
+        generated=zda_report.format_timestamp(request.get("timestamp")) or None,
+        footer_note="Generated by AuditGH Zero Day Analysis.",
+    )
 
 
-def _docx_evidence_sections(request: dict, doc):
-    """Append the same sections to a python-docx document."""
-    from ..utils import zda_report
+def _markdown_with_front_matter(markdown: str, meta) -> str:
+    """
+    Prefix a Markdown export with the metadata as YAML front matter.
 
-    for section in zda_report.build_sections(request):
-        doc.add_heading(section["heading"], level=1)
-        for para in section.get("paragraphs") or []:
-            doc.add_paragraph(_export_str(para))
-        table_spec = section.get("table")
-        if table_spec and table_spec.get("rows"):
-            table = doc.add_table(rows=1, cols=len(table_spec["headers"]))
-            table.style = 'Table Grid'
-            for i, header in enumerate(table_spec["headers"]):
-                table.rows[0].cells[i].text = _export_str(header)
-            for row in table_spec["rows"]:
-                cells = table.add_row().cells
-                for i, cell in enumerate(row):
-                    cells[i].text = _export_str(cell)
+    The `.md` download is a source document — feeding it back to
+    `scripts/report/md2pdf.py` must reproduce the same PDF, which means the title,
+    classification and cover fields have to travel with it rather than living only in
+    the renderer call that produced the PDF.
+    """
+    import json as _json
+
+    lines = ["---", f"title: {_json.dumps(meta.title)}"]
+    if meta.subtitle:
+        lines.append(f"subtitle: {_json.dumps(meta.subtitle)}")
+    lines.append(f"classification: {_json.dumps(meta.classification)}")
+    lines.append(f"generated: {_json.dumps(meta.resolved_generated())}")
+    if meta.fields:
+        lines.append("fields:")
+        lines.extend(f"  {key}: {_json.dumps(str(value))}" for key, value in meta.fields)
+    lines.append("---")
+    lines.append("")
+    return "\n".join(lines) + markdown
+
+
+def _render_export(markdown: str, meta, fmt: str, filename: str) -> StreamingResponse:
+    """
+    Render a Markdown document body and stream it back.
+
+    Every format comes off the same Markdown so a PDF, a DOCX and a `.md` of one
+    analysis cannot disagree. This is why the Markdown export moved server-side: the two
+    client-side generators it replaces omitted the coverage and blind-spot sections
+    entirely, so the `.md` download read as a complete hunt while the PDF of the same
+    result carried the caveats.
+
+    Rendering failures surface as 500 with the renderer's own message rather than a
+    generic one — a missing system library and a malformed table need different fixes.
+    """
+    from ...reporting import MarkdownRenderError, markdown_to_docx, markdown_to_pdf
+
+    try:
+        if fmt == "pdf":
+            payload = markdown_to_pdf(markdown, meta)
+            media_type = "application/pdf"
+        elif fmt == "md":
+            payload = _markdown_with_front_matter(markdown, meta).encode("utf-8")
+            media_type = "text/markdown; charset=utf-8"
+        else:
+            payload = markdown_to_docx(markdown, meta)
+            media_type = (
+                "application/vnd.openxmlformats-officedocument"
+                ".wordprocessingml.document"
+            )
+    except MarkdownRenderError as exc:
+        logger.error("%s generation failed: %s", fmt.upper(), exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return StreamingResponse(
+        BytesIO(payload),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post(
@@ -853,112 +920,26 @@ def _docx_evidence_sections(request: dict, doc):
         **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
-        500: {"description": "PDF generation failed or reportlab not installed"},
+        500: {"description": "PDF rendering failed or WeasyPrint is not installed"},
     },
 )
 async def export_zda_pdf(request: dict):
     """
     Export Zero Day Analysis as PDF.
 
-    Generates a downloadable PDF report containing the analysis, affected
-    repositories, and metadata. Requires findings:read permission.
+    The analysis is authored Markdown. It is parsed to HTML and laid out with CSS Paged
+    Media, so headings, tables and emphasis reach the reader as structure rather than as
+    the literal `##`, `|---|` and `**` the previous writer produced. Requires
+    findings:read permission.
     """
-    try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.units import inch
+    from ..utils import zda_report
 
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
-        styles = getSampleStyleSheet()
-        story = []
-
-        # Title
-        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, spaceAfter=12)
-        story.append(Paragraph("Zero Day Analysis Report", title_style))
-        story.append(Spacer(1, 12))
-
-        # Metadata
-        meta_style = styles['Normal']
-        story.append(Paragraph(f"<b>Query:</b> {html_mod.escape(str(request.get('query', 'N/A')))}", meta_style))
-        story.append(Paragraph(f"<b>Generated:</b> {html_mod.escape(str(request.get('timestamp', 'N/A')))}", meta_style))
-        scope_list = request.get('scope') or []
-        scope_str = ', '.join(_export_str(s) for s in scope_list) if isinstance(scope_list, list) else _export_str(scope_list)
-        story.append(Paragraph(f"<b>Scope:</b> {html_mod.escape(scope_str)}", meta_style))
-        story.append(Spacer(1, 20))
-
-        # Analysis
-        story.append(Paragraph("AI Analysis", styles['Heading2']))
-        story.append(Spacer(1, 8))
-        analysis_raw = _export_str(request.get('analysis'))
-        analysis_text = html_mod.escape(analysis_raw).replace('\n', '<br/>')
-        try:
-            story.append(Paragraph(analysis_text, meta_style))
-        except Exception:
-            # Fallback to plain text if XML parsing fails
-            story.append(Paragraph(analysis_raw.replace('\n', ' ')[:2000], meta_style))
-        story.append(Spacer(1, 20))
-
-        # Affected Repositories
-        repos = request.get('affected_repositories') or []
-        story.append(Paragraph(f"Affected Repositories ({len(repos)})", styles['Heading2']))
-        story.append(Spacer(1, 8))
-
-        if repos:
-            table_data = [['Repository', 'Last Updated', 'Source']]
-            for repo in repos:
-                last_updated = _export_str(repo.get('last_updated'), 'N/A') or 'N/A'
-                if last_updated != 'N/A':
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
-                        last_updated = dt.strftime('%Y-%m-%d')
-                    except:
-                        pass
-                table_data.append([
-                    _export_str(repo.get('repository'))[:35],
-                    last_updated[:15],
-                    _export_str(repo.get('source'), '-')[:15]
-                ])
-
-            table = Table(table_data, colWidths=[2.8*inch, 2.0*inch, 1.7*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            story.append(table)
-        else:
-            story.append(Paragraph("No affected repositories found.", meta_style))
-
-        story.append(Spacer(1, 20))
-        # Arbitration, evidence and coverage. A zero-repository result is only meaningful
-        # alongside the coverage section, so this is not optional decoration.
-        _pdf_evidence_sections(request, story, styles, meta_style)
-
-        doc.build(story)
-        buffer.seek(0)
-
-        return StreamingResponse(
-            buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": "attachment; filename=zda-analysis.pdf"}
-        )
-
-    except ImportError:
-        raise HTTPException(status_code=500, detail="PDF generation requires reportlab. Install with: pip install reportlab")
-    except Exception as e:
-        logger.error(f"PDF generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    return _render_export(
+        zda_report.analysis_markdown(request),
+        _export_meta(request, "Zero Day Analysis Report"),
+        "pdf",
+        "zda-analysis.pdf",
+    )
 
 
 @router.post(
@@ -976,76 +957,45 @@ async def export_zda_docx(request: dict):
     """
     Export Zero Day Analysis as DOCX.
 
-    Generates a downloadable Word document containing the analysis, affected
-    repositories, and metadata. Requires findings:read permission.
+    Built from the same Markdown as the PDF export, so the two documents cannot
+    disagree about what the analysis says. Requires findings:read permission.
     """
-    try:
-        from docx import Document
-        from docx.shared import Inches, Pt
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from ..utils import zda_report
 
-        doc = Document()
+    return _render_export(
+        zda_report.analysis_markdown(request),
+        _export_meta(request, "Zero Day Analysis Report"),
+        "docx",
+        "zda-analysis.docx",
+    )
 
-        # Title
-        title = doc.add_heading('Zero Day Analysis Report', 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # Metadata
-        doc.add_paragraph(f"Query: {request.get('query', 'N/A')}")
-        doc.add_paragraph(f"Generated: {request.get('timestamp', 'N/A')}")
-        scope_list = request.get('scope') or []
-        scope_str = ', '.join(_export_str(s) for s in scope_list) if isinstance(scope_list, list) else _export_str(scope_list)
-        doc.add_paragraph(f"Scope: {scope_str}")
+@router.post(
+    "/zero-day/export/md",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Export zero-day analysis as Markdown",
+    responses={
+        **CREATE_ERRORS,
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+    },
+)
+async def export_zda_md(request: dict):
+    """
+    Export Zero Day Analysis as Markdown.
 
-        # Analysis
-        doc.add_heading('AI Analysis', level=1)
-        doc.add_paragraph(_export_str(request.get('analysis')))
+    The source document the PDF and DOCX are rendered from, carried with YAML front
+    matter so `scripts/report/md2pdf.py` reproduces the same PDF from it.
+    Requires findings:read permission.
+    """
+    from ..utils import zda_report
 
-        # Affected Repositories
-        repos = request.get('affected_repositories') or []
-        doc.add_heading(f'Affected Repositories ({len(repos)})', level=1)
-
-        if repos:
-            table = doc.add_table(rows=1, cols=3)
-            table.style = 'Table Grid'
-            header_cells = table.rows[0].cells
-            header_cells[0].text = 'Repository'
-            header_cells[1].text = 'Last Updated'
-            header_cells[2].text = 'Source'
-
-            for repo in repos:
-                row_cells = table.add_row().cells
-                row_cells[0].text = _export_str(repo.get('repository'))
-                last_updated = _export_str(repo.get('last_updated'), 'N/A') or 'N/A'
-                if last_updated != 'N/A':
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
-                        last_updated = dt.strftime('%Y-%m-%d')
-                    except:
-                        pass
-                row_cells[1].text = last_updated
-                row_cells[2].text = _export_str(repo.get('source'), '-')
-        else:
-            doc.add_paragraph('No affected repositories found.')
-
-        _docx_evidence_sections(request, doc)
-
-        buffer = BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-
-        return StreamingResponse(
-            buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": "attachment; filename=zda-analysis.docx"}
-        )
-
-    except ImportError:
-        raise HTTPException(status_code=500, detail="DOCX generation requires python-docx. Install with: pip install python-docx")
-    except Exception as e:
-        logger.error(f"DOCX generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
+    return _render_export(
+        zda_report.analysis_markdown(request),
+        _export_meta(request, "Zero Day Analysis Report"),
+        "md",
+        "zda-analysis.md",
+    )
 
 
 # Zero Day Analysis - Repository List Export Endpoints
@@ -1057,113 +1007,30 @@ async def export_zda_docx(request: dict):
         **CREATE_ERRORS,
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions - findings:read required"},
-        500: {"description": "PDF generation failed or reportlab not installed"},
+        500: {"description": "PDF rendering failed or WeasyPrint is not installed"},
     },
 )
 async def export_zda_repos_pdf(request: dict):
     """
     Export Zero Day Analysis affected repositories as PDF.
 
-    Generates a downloadable PDF with a table of affected repositories.
+    The table repeats its header on every page it spans, which the previous writer did
+    not do — a 72-repository list arrived headerless from page two onward.
     Requires findings:read permission.
     """
-    try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.units import inch
+    from ..utils import zda_report
 
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
-        styles = getSampleStyleSheet()
-        story = []
-
-        # Title
-        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, spaceAfter=12)
-        story.append(Paragraph("Affected Repositories Report", title_style))
-        story.append(Spacer(1, 12))
-
-        # Metadata
-        meta_style = styles['Normal']
-        story.append(Paragraph(f"<b>Query:</b> {html_mod.escape(str(request.get('query', 'N/A')))}", meta_style))
-        story.append(Paragraph(f"<b>Generated:</b> {html_mod.escape(str(request.get('timestamp', 'N/A')))}", meta_style))
-        scope_list = request.get('scope') or []
-        scope_str = ', '.join(_export_str(s) for s in scope_list) if isinstance(scope_list, list) else _export_str(scope_list)
-        story.append(Paragraph(f"<b>Scope:</b> {html_mod.escape(scope_str)}", meta_style))
-        story.append(Paragraph(f"<b>Total Repositories:</b> {html_mod.escape(str(request.get('total_repositories', 0)))}", meta_style))
-        story.append(Spacer(1, 20))
-
-        # Repository Table
-        repos = request.get('repositories') or []
-        story.append(Paragraph("Repository List", styles['Heading2']))
-        story.append(Spacer(1, 8))
-
-        if repos:
-            table_data = [['#', 'Repository', 'Reason', 'Source']]
-            for idx, repo in enumerate(repos, 1):
-                table_data.append([
-                    str(idx),
-                    _export_str(repo.get('repository'))[:25],
-                    _export_str(repo.get('reason'), 'Context match')[:35],
-                    _export_str(repo.get('source'), '-')[:15]
-                ])
-
-            table = Table(table_data, colWidths=[0.4*inch, 2.0*inch, 2.8*inch, 1.3*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-                ('ALIGN', (1, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f5f5f5')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')]),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('TOPPADDING', (0, 1), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-            ]))
-            story.append(table)
-        else:
-            story.append(Paragraph("No affected repositories found.", meta_style))
-
-        # A repository list is the document most likely to be forwarded on its own, and a
-        # short or empty list is exactly where a reader needs to know which repositories
-        # could not be seen. Coverage only — the full evidence dump belongs in the
-        # analysis report.
-        story.append(Spacer(1, 20))
-        from ..utils import zda_report
-        coverage = zda_report.coverage_section(request)
-        if coverage:
-            story.append(Paragraph(html_mod.escape(coverage["heading"]), styles['Heading2']))
-            story.append(Spacer(1, 8))
-            for para in coverage.get("paragraphs") or []:
-                story.append(Paragraph(
-                    html_mod.escape(_export_str(para)).replace('\n', '<br/>'), meta_style))
-                story.append(Spacer(1, 4))
-
-        # Footer
-        story.append(Spacer(1, 30))
-        footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
-        story.append(Paragraph("Report generated from Zero Day Analysis", footer_style))
-
-        doc.build(story)
-        buffer.seek(0)
-
-        return StreamingResponse(
-            buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": "attachment; filename=affected-repos.pdf"}
-        )
-
-    except ImportError:
-        raise HTTPException(status_code=500, detail="PDF generation requires reportlab. Install with: pip install reportlab")
-    except Exception as e:
-        logger.error(f"PDF generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    return _render_export(
+        zda_report.repo_list_markdown(request),
+        _export_meta(
+            request,
+            "Affected Repositories Report",
+            extra_fields=[("Total Repositories",
+                           str(request.get("total_repositories", 0)))],
+        ),
+        "pdf",
+        "affected-repos.pdf",
+    )
 
 
 @router.post(
@@ -1181,87 +1048,54 @@ async def export_zda_repos_docx(request: dict):
     """
     Export Zero Day Analysis affected repositories as DOCX.
 
-    Generates a downloadable Word document with a table of affected repositories.
+    Same Markdown as the PDF variant, including the coverage section — a short list is
+    exactly where a reader needs to know which repositories could not be seen.
     Requires findings:read permission.
     """
-    try:
-        from docx import Document
-        from docx.shared import Inches, Pt, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.enum.table import WD_TABLE_ALIGNMENT
+    from ..utils import zda_report
 
-        doc = Document()
+    return _render_export(
+        zda_report.repo_list_markdown(request),
+        _export_meta(
+            request,
+            "Affected Repositories Report",
+            extra_fields=[("Total Repositories",
+                           str(request.get("total_repositories", 0)))],
+        ),
+        "docx",
+        "affected-repos.docx",
+    )
 
-        # Title
-        title = doc.add_heading('Affected Repositories Report', 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # Metadata
-        doc.add_paragraph(f"Query: {request.get('query', 'N/A')}")
-        doc.add_paragraph(f"Generated: {request.get('timestamp', 'N/A')}")
-        scope_list = request.get('scope') or []
-        scope_str = ', '.join(_export_str(s) for s in scope_list) if isinstance(scope_list, list) else _export_str(scope_list)
-        doc.add_paragraph(f"Scope: {scope_str}")
-        doc.add_paragraph(f"Total Repositories: {request.get('total_repositories', 0)}")
+@router.post(
+    "/zero-day/export/repos/md",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    summary="Export affected repositories list as Markdown",
+    responses={
+        **CREATE_ERRORS,
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions - findings:read required"},
+    },
+)
+async def export_zda_repos_md(request: dict):
+    """
+    Export the affected-repository list as Markdown, coverage section included.
 
-        doc.add_paragraph()  # Spacer
+    Requires findings:read permission.
+    """
+    from ..utils import zda_report
 
-        # Repository List
-        doc.add_heading('Repository List', level=1)
-        repos = request.get('repositories') or []
-
-        if repos:
-            table = doc.add_table(rows=1, cols=4)
-            table.style = 'Table Grid'
-
-            # Header row
-            header_cells = table.rows[0].cells
-            headers = ['#', 'Repository', 'Reason', 'Source']
-            for i, header in enumerate(headers):
-                header_cells[i].text = header
-                # Bold header
-                for paragraph in header_cells[i].paragraphs:
-                    for run in paragraph.runs:
-                        run.bold = True
-
-            # Data rows
-            for idx, repo in enumerate(repos, 1):
-                row_cells = table.add_row().cells
-                row_cells[0].text = str(idx)
-                row_cells[1].text = _export_str(repo.get('repository'))
-                row_cells[2].text = _export_str(repo.get('reason'), 'Context match')
-                row_cells[3].text = _export_str(repo.get('source'), '-')
-        else:
-            doc.add_paragraph('No affected repositories found.')
-
-        # Coverage travels with the list, for the same reason as the PDF variant.
-        from ..utils import zda_report
-        coverage = zda_report.coverage_section(request)
-        if coverage:
-            doc.add_heading(coverage["heading"], level=1)
-            for para in coverage.get("paragraphs") or []:
-                doc.add_paragraph(_export_str(para))
-
-        # Footer
-        doc.add_paragraph()
-        footer = doc.add_paragraph('Report generated from Zero Day Analysis')
-        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        buffer = BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-
-        return StreamingResponse(
-            buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": "attachment; filename=affected-repos.docx"}
-        )
-
-    except ImportError:
-        raise HTTPException(status_code=500, detail="DOCX generation requires python-docx. Install with: pip install python-docx")
-    except Exception as e:
-        logger.error(f"DOCX generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
+    return _render_export(
+        zda_report.repo_list_markdown(request),
+        _export_meta(
+            request,
+            "Affected Repositories Report",
+            extra_fields=[("Total Repositories",
+                           str(request.get("total_repositories", 0)))],
+        ),
+        "md",
+        "affected-repos.md",
+    )
 
 
 from ..dependencies import get_tenant_db
