@@ -145,7 +145,7 @@ DeviceProcessEvents
 """
 
 # Why the fetch vector is blind, measured rather than guessed. The first version of this
-# collector hypothesised a mirror. That was wrong: the Linux runner below reached
+# collector hypothesized a mirror. That was wrong: the Linux runner below reached
 # registry.npmjs.org directly, and the row carried the hostname with no path. The tarball
 # path can therefore never appear no matter which registry is used, so the question is not
 # "which host" but "does RemoteUrl carry a path on the platform that installs". Split by
@@ -464,6 +464,31 @@ def interpret(raw: Dict[str, Any], specs: set, all_specs: set,
             "gap": "DeviceNetworkEvents.RemoteUrl carries no path on the platforms that "
                    "install npm packages, so tarball-level install attribution is "
                    "impossible on endpoints",
+            "population": (
+                f"{len(blind_installers)} of {len(installer_rows)} device(s) that ran a "
+                f"package-manager install in the window "
+                f"({', '.join(blind_platforms) or 'platform not reported'}), carrying "
+                f"{blind_cmds:,} of {install_events:,} install command line(s). Those "
+                f"devices produced DeviceNetworkEvents rows with RemoteUrl empty on every "
+                f"one."),
+            "named_by": (
+                "the per-device rows of the installer_devices query in this artifact "
+                "(evidence.installer_devices.rows), each carrying DeviceName, OSPlatform, "
+                "InstallCmds and UrlRows - so the devices needing the configuration change "
+                "can be listed by name without re-running the hunt."),
+            "cannot_confirm_or_deny": (
+                "which package and which version any of those install command lines actually "
+                "fetched. The malicious-spec match runs on the tarball path segment "
+                "'<name>/-/<name>-<version>.tgz', and that segment is absent from every row, "
+                "so a zero here is untested rather than clean."),
+            "closed_by": (
+                "enabling Defender Network Protection (audit mode is sufficient) on macOS and "
+                "Linux endpoints, which is the feature that populates RemoteUrl with a full "
+                "URL on those platforms. Not a permission gap - ThreatHunting.Read.All "
+                "already returns these tables; the column is empty at the source."),
+            "owner": (
+                "Endpoint security - the team that owns the Defender device configuration "
+                "profiles for macOS and Linux"),
             "measured": {
                 "installing_devices": len(installer_rows),
                 "devices_with_no_url_rows": len(blind_installers),
@@ -471,10 +496,6 @@ def interpret(raw: Dict[str, Any], specs: set, all_specs: set,
                 "install_command_lines_on_blind_devices": blind_cmds,
                 "install_command_lines_total": install_events,
             },
-            "closes_it": "Enable Defender Network Protection (audit mode is sufficient) on "
-                         "macOS and Linux endpoints. Not a permission gap - "
-                         "ThreatHunting.Read.All already returns these tables; the column is "
-                         "empty at the source.",
         })
     if not install_events:
         unresolved.append(

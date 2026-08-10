@@ -10,16 +10,23 @@ output of this script is read from an artifact at render time, and every vector 
 no artifact is printed as NOT RUN rather than omitted. A missing section is invisible; a
 NOT RUN row is not.
 
-STRUCTURE - one reader, three states of attention
+STRUCTURE - one reader, four states of attention
 
-The report is not addressed to three audiences. It is addressed to one person three times,
+The report is not addressed to four audiences. It is addressed to one person four times,
 in the order their day actually goes:
 
   Section 1  "My boss just asked me about this."      Plain language, no jargon, one verdict.
-  Section 2  "Right, I have to do something."         Ordered actions, owners, effort.
-  Section 3  "Engineering wants proof and targets."   Counts, queries, repositories, fixes.
+  Section 2  "Could it happen to us?"                 The chain, link by link, and what we hold.
+  Section 3  "Right, I have to do something."         Ordered actions, owners, effort.
+  Section 4  "Engineering wants proof and targets."   Counts, queries, repositories, fixes.
 
-Section 3 opens with the attack-vector status table because the first technical question is
+Section 2 exists because the first three sections used to be the whole report and a reader
+who got a clean verdict out of Section 1 always asked one more question that nothing below
+answered: could it happen to us? A hunt measures whether an attack ARRIVED. It says nothing
+about what stood in the way, so a clean result is silent on whether anything did - and on
+the run that prompted this section, nothing much had. Section 2 is that silence, filled in.
+
+Section 4 opens with the attack-vector status table because the first technical question is
 always "what did you actually look at, and did you look properly?".
 
 DOCTRINE THIS ENCODES
@@ -53,6 +60,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,6 +133,91 @@ STATUS_NOTE = {
     BLOCKED: "Could not look at all. No result, in either direction.",
     NOT_RUN: "Did not run this cycle.",
 }
+
+# ----------------------------------------------------------------------------------
+# CONTROL POSTURE - a third axis, and the one the other two cannot answer.
+#
+# RESULT and COVERAGE between them answer "did we find it" and "how much of the estate did
+# we look at". Neither answers the question an executive has to fund, which is the one they
+# ask the moment the verdict comes back clean: could it happen to us?
+#
+# Nothing in a result-and-coverage report answers that, and the gap is not academic. The run
+# that prompted this section came back clean on every observable vector for a reason that is
+# not a control anybody operates: the estate did not depend on the 443 package names the
+# attacker happened to choose. Version pinning would have helped and is real, but it was not
+# what saved us. The next campaign chooses different packages.
+#
+# A report that stops at "no evidence of compromise" therefore invites the reader to bank a
+# result no defense earned. That is the same error as a zero with no coverage behind it, one
+# axis further out - and it is the more expensive error, because it is the one that gets
+# remediation budget cancelled.
+#
+#   RESULT   - did we find it, in the population we can observe?
+#   COVERAGE - how much of the estate is that population?
+#   CONTROL  - if it arrives tomorrow, what is in its way?
+#
+# WHY THE CHAIN AND NOT A LIST OF CONTROLS
+#
+# The axis is rendered as the campaign's own chain, link by link. A list of controls we
+# happen to hold cannot distinguish "we hold the links that matter" from "we hold seven
+# controls, none of them on the path" - and a reader has no way to tell which they are
+# looking at. Ordering by the attacker's steps makes an unheld link impossible to miss,
+# because the row is there whether or not we have anything to put in it.
+#
+# THE STATE THAT MATTERS MOST IS UNMEASURED
+#
+# Five states, and the split between the last two carries the same weight that
+# INCOMPLETE-versus-coverage_gap carries on the result axis:
+#
+#   OPEN       - we looked, and nothing is in the way. A decision to make, and it has a cost.
+#   UNMEASURED - we have not established whether anything is in the way. A question to
+#                answer, and far cheaper than the decision. Printing it as OPEN overstates
+#                what we know; printing it as CONTROLLED is simply false.
+#
+# Most prevention links on a hunt-driven report land on UNMEASURED, because a threat hunt
+# instruments detection and not prevention. Saying so plainly is the finding, not a
+# weakness in the report: it converts "we think we are fine" into a short list of questions
+# with names on them.
+#
+# A link may claim CONTROLLED or PARTLY CONTROLLED only by naming the artifact and the
+# number behind it - `build_chain` derives all five states from coverage artifacts, for the
+# same reason every other number here is derived. A control posture typed by hand decays
+# within one cycle into a list of things somebody once intended to do, and reads exactly
+# like a list of things that are in place.
+CONTROLLED = "CONTROLLED"
+PARTLY_CONTROLLED = "PARTLY CONTROLLED"
+DETECTION_ONLY = "DETECTION ONLY"
+OPEN = "OPEN"
+UNMEASURED = "UNMEASURED"
+
+CONTROL_STATE_NOTE = {
+    CONTROLLED: "A control we operate stands in the way of this step, and the artifact "
+                "and number behind that claim are named. Not a guarantee - a measured "
+                "obstacle.",
+    PARTLY_CONTROLLED: "A control stands in the way of most of this step and has a named, "
+                       "counted hole. The hole is the work item, and it is listed.",
+    DETECTION_ONLY: "We would see this step happen, and the control proving we would see "
+                    "it is named. Nothing prevents it. Detection is worth having and is "
+                    "not the same as an obstacle.",
+    OPEN: "We looked for something in the way of this step and found nothing. This is a "
+          "decision with a cost attached, not an oversight.",
+    UNMEASURED: "We have not established whether anything is in the way. Cheaper to answer "
+                "than to decide, and it must not be read as either good or bad news.",
+}
+
+# A CHAIN LINK HAS TO NAME ITS EVIDENCE OR ITS QUESTION
+#
+# The failure mode this guards against is a control-posture table that reads like a security
+# programme summary: every row green, no numbers, nothing falsifiable. So a link claiming any
+# state other than UNMEASURED must carry `evidence` - artifact-derived sentences with counts
+# in them - and every link regardless of state must carry `closed_by` and `owner`, because a
+# posture row nobody owns is a worry with no work item, which §0.6(c) already forbids
+# elsewhere in this file.
+#
+# UNMEASURED is the one state allowed to have no evidence, by definition: the whole content
+# of the row is that we did not measure it. It still needs `closed_by` - the measurement that
+# would resolve it - and an owner to make it.
+CHAIN_LINK_FIELDS = ("link", "worm_needs", "state", "closed_by", "owner")
 
 # Coverage gaps. Populations the hunt cannot observe, reported on their own axis.
 #
@@ -274,6 +367,37 @@ def validate_vectors(vectors: List[dict]) -> List[str]:
     return problems
 
 
+def validate_chain(chain: List[dict]) -> List[str]:
+    """Apply §0.6 to the control axis. Same contract, different claim.
+
+    A control-posture table is the easiest place in a security report to write something
+    unfalsifiable, because the reader has no number to check it against and every row can be
+    made to sound reassuring. These checks make that shape impossible to publish: a link
+    claiming an obstacle has to show the count, and a link claiming nothing has to name who
+    answers it.
+    """
+    problems: List[str] = []
+    for index, link in enumerate(chain):
+        label = link.get("link") or f"chain[{index}]"
+        missing = [f for f in CHAIN_LINK_FIELDS if not str(link.get(f) or "").strip()]
+        if missing:
+            problems.append(f"chain link {label}: missing {', '.join(missing)}. Every link "
+                            f"needs all of {', '.join(CHAIN_LINK_FIELDS)} - a posture row "
+                            f"with no owner is a worry with no work item.")
+        state = link.get("state")
+        if state not in CONTROL_STATE_NOTE:
+            problems.append(f"chain link {label}: state {state!r} is not one of "
+                            f"{', '.join(CONTROL_STATE_NOTE)}.")
+        # UNMEASURED is the only state whose entire content is the absence of a measurement,
+        # so it is the only one exempt. Everything else asserts something about an obstacle
+        # and has to show the artifact it read.
+        if state != UNMEASURED and not link.get("evidence"):
+            problems.append(f"chain link {label}: state {state} with no evidence. A claim "
+                            f"about what stands in an attacker's way is worth exactly the "
+                            f"number behind it - and UNMEASURED is available and honest.")
+    return problems
+
+
 def read_json(path: Path) -> Optional[dict]:
     if not path.exists():
         return None
@@ -298,9 +422,20 @@ def latest_round(pattern: str, fallback: str) -> Path:
     strictly a re-run of the earlier one over the same repository set. What matters is
     that the choice is printed, so a reader can see which artifact the numbers came from
     rather than inferring it from a default buried in an argument list.
+
+    The round number is extracted with a regex rather than by splitting on underscores. The
+    split version assumed the round was followed by one - `foo_r5_coverage.json` - and threw
+    ValueError on `foo_r5.json`, taking the whole render down at argument-parsing time before
+    any artifact had been read. A filename convention held by two collectors is not a
+    convention, and a resolver for a naming pattern should not itself insist on a narrower
+    one. Anything that does not carry a round number at all sorts as round 0 rather than
+    crashing, so an unexpected filename in the directory costs nothing.
     """
-    rounds = sorted(HUNT.glob(pattern),
-                    key=lambda p: int(p.name.split("_r")[-1].split("_")[0]))
+    def round_of(path: Path) -> int:
+        found = re.search(r"_r(\d+)(?:[._]|$)", path.name)
+        return int(found.group(1)) if found else 0
+
+    rounds = sorted(HUNT.glob(pattern), key=round_of)
     return rounds[-1] if rounds else HUNT / fallback
 
 
@@ -584,7 +719,19 @@ def vector_code_search(search: Optional[dict]) -> dict:
     }
 
 
-def vector_ioc(ioc: Optional[dict]) -> dict:
+def vector_ioc(ioc: Optional[dict], lockfiles: Optional[dict] = None) -> dict:
+    """Declared dependencies against the campaign's known-malicious specs.
+
+    `lockfiles` is the second artifact and it is not optional in spirit, only in signature.
+    It carries the population this vector cannot speak for: repositories with a package.json
+    and no committed lockfile. Their installed versions are recorded nowhere in the
+    repository, so a spec comparison has nothing to compare - they are unmeasured, not clean.
+
+    That population was stated for five revisions as a doctrinal sentence in the coverage
+    list ("repositories with no inventory row are outside this vector") and never as a
+    counted row in the coverage register, where it plainly belongs by the register's own
+    rule. A caveat in prose is discounted; a counted population with an owner is worked.
+    """
     if not ioc:
         return {"name": "Dependency inventory vs campaign IOCs", "status": NOT_RUN,
                 "scope": "-", "counts": {}, "coverage": [], "findings": []}
@@ -592,6 +739,36 @@ def vector_ioc(ioc: Optional[dict]) -> dict:
     exact = ioc.get("exact_matches", []) or []
     adjacent = ioc.get("adjacent", {}) or {}
     status = FINDINGS if exact else CLEAR
+
+    # The lockfile shortfall is a coverage gap and not an INCOMPLETE item, and the line is
+    # worth being exact about. INCOMPLETE means we hold the data and have not read it. Here
+    # the data does not exist: nothing in the repository records what those installs
+    # resolved to, and no amount of our effort produces it. Somebody has to commit a
+    # lockfile. That is the coverage_gaps side of the distinction at the top of this file.
+    lock_counts = ((lockfiles or {}).get("counts") or {})
+    no_lockfile = lock_counts.get("manifest_but_no_lockfile") or 0
+    gaps: List[dict] = []
+    if no_lockfile:
+        gaps.append({
+            "gap": "Repositories with a package.json and no committed lockfile",
+            "population": f"{no_lockfile} of {lock_counts.get('repos', 0)} npm-relevant "
+                          f"repositories ({lock_counts.get('repos_with_parsed_lockfile', 0)} "
+                          f"had a lockfile read and parsed)",
+            "named_by": "the per-repository records in the lockfile collector's JSONL output "
+                        "carrying a manifest and no lockfile path - one row per repository, "
+                        "keyed by full_name, which is the identifier a repository owner acts on",
+            "cannot_confirm_or_deny": "which versions of their dependencies are actually "
+                                      "installed, so neither a match nor a clean result "
+                                      "against the campaign specs is possible for them - a "
+                                      "declared range says what is permitted, not what "
+                                      "resolved",
+            "closed_by": "committing a lockfile in each repository, which is also the "
+                         "control that stops a newly-published malicious version from being "
+                         "resolved into a build at all. Until then this vector cannot answer "
+                         "for them and must not be read as though it does",
+            "owner": "Repository owners - see the ownership resolution table; unowned "
+                     "repositories need an owner assigned first",
+        })
     return {
         "name": "Dependency inventory vs campaign IOCs",
         "status": status,
@@ -605,6 +782,10 @@ def vector_ioc(ioc: Optional[dict]) -> dict:
             "npm rows pinned to an exact version": inventory.get("npm_pinned", 0),
             "EXACT malicious matches": len(exact),
             "Adjacent packages (right name, safe version)": len(adjacent),
+            "Installed pairs read from committed lockfiles": lock_counts.get("pairs", 0),
+            "Repositories with a lockfile read and parsed": lock_counts.get(
+                "repos_with_parsed_lockfile", 0),
+            "Repositories with a manifest and NO lockfile (unmeasured)": no_lockfile,
         },
         "coverage": [
             f"Inventory covers {inventory.get('repos', 0)} repositories. Repositories with "
@@ -612,8 +793,17 @@ def vector_ioc(ioc: Optional[dict]) -> dict:
             f"{inventory.get('npm_pinned', 0)} of {inventory.get('npm_rows', 0)} npm rows "
             f"are exact-pinned ({pct(inventory.get('npm_pinned', 0), inventory.get('npm_rows', 1))}), "
             f"so a version comparison is meaningful for that share.",
-        ],
+        ] + ([
+            f"Lockfile pass: {lock_counts.get('pairs', 0)} installed package@version pair(s) "
+            f"read from {lock_counts.get('repos_with_parsed_lockfile', 0)} of "
+            f"{lock_counts.get('repos', 0)} npm-relevant repositories. "
+            f"{lock_counts.get('repos_with_affected_name_present', 0)} of them carry a "
+            f"campaign package NAME at some other version, which is the positive control "
+            f"that makes the zero on malicious versions a measured absence rather than "
+            f"silence - the matcher demonstrably reaches these names.",
+        ] if lock_counts else []),
         "adjacent": adjacent,
+        "coverage_gaps": gaps,
         "findings": [],
     }
 
@@ -866,6 +1056,148 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
     }
 
 
+def vector_install_activity(install: Optional[dict]) -> dict:
+    """Package acquisition on endpoints - what was actually downloaded, and from where.
+
+    This vector was missing from the report for five revisions while its artifact sat on
+    disk, and the omission mattered more than any number it carries. Every other dependency
+    vector answers "what is written down in our repositories". This is the only one that
+    answers "what did a machine actually fetch", which is the question a worm's arrival
+    turns on: a lockfile records an intention, and an install records an event.
+
+    Its artifact currently reports a CONTRADICTION rather than a clean result, and that is
+    the correct output. 69 package-manager install commands ran inside the window while
+    DeviceNetworkEvents recorded zero tarball fetches, which means package downloads are not
+    observable on that table - so matching them against 2,208 malicious specs could not have
+    found anything either way. Reporting that as a zero would be the §0.1 error in its purest
+    form: a query that could not have found the thing, returning nothing, read as clean.
+
+    The artifact is already in vector shape, so it passes through. The fallback below says
+    NOT RUN and asserts nothing about access, for the same reason `vector_endpoint`'s does.
+    """
+    if install:
+        return install
+    return {
+        "name": "Endpoint install activity (package acquisition)",
+        "status": NOT_RUN,
+        "scope": "0 devices queried",
+        "counts": {"Install command lines observed": 0},
+        "coverage": [
+            "No install-activity artifact was supplied, so the acquisition collector did "
+            "not run this cycle. Every other dependency vector reads what our repositories "
+            "declare; this is the only one that reads what a machine fetched, so its "
+            "absence leaves the arrival question answered only by intention.",
+        ],
+        "findings": [],
+    }
+
+
+def vector_registry_proxy(feeds: Optional[dict]) -> dict:
+    """The internal package registry, and whether it proxied a malicious version.
+
+    A mirror with an npmjs.org upstream serves the identical malicious tarball under its own
+    hostname. That makes this vector load-bearing in two directions at once, and both were
+    missing from the report:
+
+      - as a RESULT, whether the feed cached a malicious version, and
+      - as a CONTROL, whether a controlled feed stands between a developer and the public
+        registry at all - which is the strongest single obstacle available against this
+        entire class of worm.
+
+    The artifact sets `coverage_supports_negative_finding` itself, and this function refuses
+    to promote its verdict past what that flag allows. On the run this was written against
+    the flag is false: four feeds were readable, three carry an npmjs upstream, and the npm
+    package listing returned zero packages across all of them. Zero listed packages is not
+    evidence that nothing was proxied - it is evidence that the listing did not enumerate
+    npm, which is a different sentence with a different conclusion.
+    """
+    if not feeds:
+        return {"name": "Internal package registry (proxy of npmjs)", "status": NOT_RUN,
+                "scope": "-", "counts": {}, "coverage": [], "findings": []}
+
+    malicious = feeds.get("MALICIOUS_VERSIONS_FOUND", []) or []
+    affected = feeds.get("affected_names_found_in_any_feed", []) or []
+    upstream = feeds.get("feeds_with_npmjs_upstream", []) or []
+    unmeasured = feeds.get("feeds_UNMEASURED_no_read_packages", []) or []
+    errors = feeds.get("feeds_with_errors", []) or []
+    listed = feeds.get("npm_packages_listed_total", 0)
+    supported = bool(feeds.get("coverage_supports_negative_finding"))
+
+    # Three states, and the middle one is the whole reason this function is not two lines.
+    # A malicious version found is a finding. A clean result the coverage supports is CLEAR.
+    # A clean result the coverage does NOT support is neither - it is unfinished work, and it
+    # is reported as the named item that would finish it.
+    unresolved: List[str] = []
+    if malicious:
+        status = FINDINGS
+    elif supported:
+        status = CLEAR
+    else:
+        status = INCOMPLETE
+        unresolved.append(
+            f"The feed listing returned {listed} npm package(s) across "
+            f"{feeds.get('feeds_checked', 0)} feed(s), of which {len(upstream)} proxy "
+            f"registry.npmjs.org. A zero match against the campaign set is therefore not a "
+            f"measured absence - the listing did not enumerate npm, so it could not have "
+            f"matched. Ours to close: list each npmjs-upstream feed's npm packages "
+            f"specifically (the artifact's own `coverage_supports_negative_finding` is "
+            f"false, which is the flag saying so), then re-run the comparison against the "
+            f"campaign specs. Feeds needing it: "
+            f"{', '.join(upstream) if upstream else 'none recorded'}.")
+    for feed in unmeasured:
+        unresolved.append(
+            f"Feed {feed.get('feed')} was not measured: {feed.get('reason')}. "
+            f"npmjs upstream configured: {feed.get('npmjs_upstream_configured')}. "
+            f"Ours to close only if the grant is ours to make - otherwise this becomes an "
+            f"access request naming ReadPackages on that feed.")
+
+    return {
+        "name": "Internal package registry (proxy of npmjs)",
+        "status": status,
+        "scope": f"{feeds.get('feeds_checked', 0)} feed(s) across "
+                 f"{len(feeds.get('organisations_checked') or [])} Azure DevOps organizations",
+        "counts": {
+            "Feeds enumerated": feeds.get("feeds_checked", 0),
+            "Feeds readable": feeds.get("feeds_readable", 0),
+            "Feeds proxying registry.npmjs.org upstream": len(upstream),
+            "npm packages listed across all feeds": listed,
+            "Malicious versions found in a feed": len(malicious),
+            "Campaign package names present at any version": len(affected),
+            "Feeds unmeasured (no ReadPackages)": len(unmeasured),
+        },
+        "coverage": [
+            f"Identity: {feeds.get('identity', 'unrecorded')}. "
+            f"{feeds.get('feeds_readable', 0)} of {feeds.get('feeds_checked', 0)} feed(s) "
+            f"readable, {len(errors)} returning an error.",
+            f"Listing endpoint proved it returns rows on "
+            f"{plural(len(feeds.get('feeds_where_endpoint_proved_it_returns_rows') or []), 'feed')}"
+            f", so the endpoint itself works. Protocol breakdown across all feeds: "
+            f"{feeds.get('packages_by_protocol_all_feeds') or 'none recorded'} - which is "
+            f"the number that decides whether an npm comparison was possible at all.",
+            f"Feeds carrying an npmjs.org upstream: "
+            f"{', '.join(upstream) if upstream else 'none'}. A proxy with that upstream "
+            f"serves the identical malicious tarball under its own hostname, so a hunt that "
+            f"only watches registry.npmjs.org would not see the fetch.",
+            f"The artifact's own coverage flag: coverage_supports_negative_finding="
+            f"{supported}. This vector's status is bounded by that flag and does not "
+            f"outrun it.",
+        ],
+        "limits": [
+            "Covers Azure Artifacts feeds reachable by this identity. A registry proxy "
+            "elsewhere - a Nexus or Artifactory instance, a per-team .npmrc pointing "
+            "somewhere else - is outside this vector and is not cleared by it.",
+            "Retention policies can remove a cached version before this check runs, so a "
+            "clean result is a statement about the cache as it stands, not about every "
+            "version the feed ever served.",
+        ],
+        "unresolved_items": unresolved,
+        "evidence_for_status": [
+            f"{m}" for m in malicious
+        ] or None,
+        "findings": [{"spec": m} for m in malicious],
+    }
+
+
 # ----------------------------------------------------------------------------------
 # Verdict. Deterministic, so the same artifacts always produce the same color and nobody
 # has to argue about whether today felt amber.
@@ -976,8 +1308,12 @@ def build_state(vectors: List[dict], verdict: dict,
     coverage = coverage or compute_coverage(vectors)
     return {
         "rag": verdict["rag"],
+        # The vector each gap came from is carried too, because "this population went dark"
+        # and "a check ran for the first time and named a population nobody had measured" are
+        # different sentences and only the diff can tell them apart.
         "coverage": {"state": coverage["state"],
-                     "gaps": sorted(g["gap"] for g in coverage["gaps"])},
+                     "gaps": sorted(g["gap"] for g in coverage["gaps"]),
+                     "gap_vectors": {g["gap"]: g["vector"] for g in coverage["gaps"]}},
         "vectors": {v["name"]: {"status": v["status"], "counts": v.get("counts", {})}
                     for v in vectors},
     }
@@ -1023,9 +1359,32 @@ def render_delta(previous: Optional[dict], current: dict,
                          f"tomorrow, one appearing or closing shows here.")
     else:
         before_gaps = set((previous.get("coverage") or {}).get("gaps") or [])
+        gap_vectors = now_coverage.get("gap_vectors") or {}
+        before_vectors = previous.get("vectors") or {}
         for gap in sorted(now_gaps - before_gaps):
-            lines.append(f"**New blind spot:** {gap}. This population was answerable in the "
-                         f"previous run and is not in this one.")
+            # A gap named by a vector that did not run before is a measurement we did not
+            # have, not visibility we lost. Reporting it as lost visibility would be a claim
+            # about the previous run that no artifact supports - and it would tell a reader
+            # the estate is getting darker on the day the hunt got wider.
+            source = gap_vectors.get(gap)
+            if source and source not in before_vectors:
+                lines.append(f"**Newly measured blind spot:** {gap}. Named by {source}, which "
+                             f"ran for the first time this cycle. The population was not "
+                             f"measured before, so nothing here says it was answerable then - "
+                             f"this is the hunt widening, not the estate going dark.")
+            else:
+                # The vector ran before, so the gap is either newly lost visibility or a
+                # population that vector measured for the first time this cycle. The state
+                # file records which gaps existed, not why they appeared, so neither reading
+                # is asserted here - saying "this went dark" would be a claim about the
+                # previous run that nothing in the corpus supports.
+                lines.append(f"**Blind spot newly registered:** {gap}. Named by "
+                             f"{source or 'a vector that also ran previously'} and absent "
+                             f"from the previous run's coverage register. That is either a "
+                             f"population that went dark or one this cycle measured for the "
+                             f"first time; the state file records which gaps existed, not "
+                             f"why, so whoever changed that collector owns the one line "
+                             f"saying which.")
         for gap in sorted(before_gaps - now_gaps):
             lines.append(f"**Blind spot closed:** {gap}. This hunt can now answer for that "
                          f"population.")
@@ -1070,7 +1429,7 @@ def render_delta(previous: Optional[dict], current: dict,
             lines.append(
                 f"Vector list changed: **{name}** (was {before.get('status')}) is not in "
                 f"this run, and {', '.join(appeared)} appeared. If that is a rename, "
-                f"coverage is unchanged; confirm against Section 3 before reading it as "
+                f"coverage is unchanged; confirm against Section 4 before reading it as "
                 f"either.")
         else:
             lines.append(
@@ -1087,6 +1446,394 @@ def render_delta(previous: Optional[dict], current: dict,
 # Actions. Each is emitted only when the data triggers it, and each carries the evidence
 # that triggered it so the manager section and the technical section cannot disagree.
 # ----------------------------------------------------------------------------------
+
+def build_chain(ioc: dict, lockfiles: Optional[dict], proxy: dict, install: dict,
+                endpoint: dict, ci: dict, reusable: dict,
+                posture: Optional[dict], dead_drops: Optional[dict]) -> List[dict]:
+    """The campaign's chain, link by link, with what stands in the way of each step.
+
+    Every state is derived from an artifact. Where no artifact speaks to a link the state is
+    UNMEASURED and the row says what measurement would settle it - which on a hunt-driven
+    report is most of the prevention links, because a hunt instruments detection.
+
+    The ordering is the attacker's, not ours. That is deliberate: a list ordered by the
+    controls we happen to hold cannot show a reader that link 4 has nothing in it, because a
+    link with nothing in it produces no entry in that kind of list.
+    """
+    lock_counts = ((lockfiles or {}).get("counts") or {})
+    posture_counts = ((posture or {}).get("counts") or {})
+    ioc_counts = ioc.get("counts", {}) or {}
+    endpoint_counts = endpoint.get("counts", {}) or {}
+    install_counts = install.get("counts", {}) or {}
+    ci_counts = ci.get("counts", {}) or {}
+    reusable_counts = reusable.get("counts", {}) or {}
+
+    pinned = ioc_counts.get("npm rows pinned to an exact version", 0)
+    npm_rows = ioc_counts.get("npm rows", 0)
+    no_lockfile = lock_counts.get("manifest_but_no_lockfile", 0)
+    upstream_feeds = proxy.get("counts", {}).get(
+        "Feeds proxying registry.npmjs.org upstream", 0)
+
+    # Read from the install artifact's own control rows rather than restated, so that a
+    # re-run that changes them changes the chain. The registry-host row is what killed the
+    # mirror hypothesis this chain used to carry: the estate's installs were seen going to
+    # the public registry, and the missing tarball path is a telemetry limit, not a mirror.
+    install_ev = install.get("evidence") or {}
+
+    def control_row(key: str) -> dict:
+        rows = ((install_ev.get(key) or {}).get("rows") or [])
+        return rows[0] if rows else {}
+
+    registry_control = control_row("registry_traffic_control")
+    registry_rows = registry_control.get("Rows", install_counts.get(
+        "registry_rows_in_window", 0))
+    registry_devices = registry_control.get("Devices", 0)
+    lifecycle = control_row("lifecycle_hook_control")
+
+    chain: List[dict] = []
+
+    # LINK 1 - acquisition. Pinning is a real control and the only one on this chain that
+    # was doing work on the run this was written. It is PARTLY, not fully: a pin protects
+    # the repositories that have one.
+    link1_state = PARTLY_CONTROLLED if pinned and npm_rows else UNMEASURED
+    chain.append({
+        "link": "1. Getting a poisoned version into one of our builds",
+        "worm_needs": "a newly published malicious version to be resolved and downloaded by "
+                      "one of our repositories or pipelines",
+        "state": link1_state,
+        "evidence": [
+            f"{pinned} of {npm_rows} npm dependency rows are pinned to an exact version "
+            f"({pct(pinned, npm_rows or 1)}). A pinned dependency cannot resolve to a "
+            f"version published after the pin, which is precisely the move this campaign "
+            f"makes. This is the strongest control we can currently demonstrate.",
+            f"{no_lockfile} repositories have a package.json and no committed lockfile, so "
+            f"nothing records what they resolve to and a fresh install can pick up whatever "
+            f"is newest. These are the hole in the control, not an accounting note.",
+            f"{upstream_feeds} internal package feed(s) proxy registry.npmjs.org upstream. A "
+            f"proxy with that upstream serves the identical malicious tarball under its own "
+            f"hostname, so it is not a filter unless somebody configured it to be one - and "
+            f"whether it is, is not established.",
+            f"Those feeds are an open control question, not an observed install path: the "
+            f"only package-registry host contacted from any onboarded device in the window "
+            f"was registry.npmjs.org ({registry_rows} rows from {registry_devices} devices). "
+            f"Installs on the measured devices go to the public registry directly, so a "
+            f"quarantine window on an internal feed only helps the traffic somebody first "
+            f"routes through it.",
+        ] if link1_state != UNMEASURED else [],
+        "closed_by": "commit a lockfile in the repositories without one, then decide whether "
+                     "installs must go through a controlled feed with a quarantine window on "
+                     "newly published versions. The second half is the control that would "
+                     "make this link CONTROLLED rather than partly.",
+        "owner": "Platform / DevOps with the artifact registry admin; repository owners for "
+                 "the lockfiles",
+    })
+
+    # LINK 2 - execution. The primitive the entire class depends on. Nothing in this hunt
+    # measures whether lifecycle scripts are permitted, and the honest state is UNMEASURED -
+    # NOT open. The install-command count proves installs happen; it says nothing about
+    # whether their scripts are allowed to run.
+    install_lines = install_counts.get("install_command_lines", 0)
+    hook_rows = lifecycle.get("Rows", 0)
+    hook_devices = lifecycle.get("Devices", 0)
+    chain.append({
+        "link": "2. Running its code during the install",
+        "worm_needs": "the package manager to execute the package's own install script, "
+                      "which is where every payload in this campaign begins",
+        "state": UNMEASURED,
+        "evidence": [
+            f"{install_lines} package-manager install command line(s) were observed inside "
+            f"the attack window, so installs demonstrably happen here.",
+            f"{hook_rows:,} install-time script execution(s) ran on {hook_devices} device(s) "
+            f"inside the same window, none of them carrying a campaign artifact name. This is "
+            f"not a near miss and it is not reassurance either: it is the measurement that "
+            f"the exact primitive this campaign needs is enabled and firing in the thousands "
+            f"inside this one window, as part of ordinary work.",
+            "None of those executions can be attributed to a package. The process table "
+            "records the command line and the parent shell but not the working directory, so "
+            "the node_modules path that would name the package is absent - which is why the "
+            "campaign-name zero is a control passing, not a clean result.",
+            "Whether lifecycle scripts are permitted to run is a different question from "
+            "whether they do, and no artifact in this hunt answers it.",
+        ] if install_lines else [],
+        "closed_by": "establish whether installs run with lifecycle scripts disabled in CI "
+                     "and on developer machines. This is the single highest-value control "
+                     "available against this whole class of worm, and it is currently a "
+                     "question rather than a finding - answering it costs hours",
+        "owner": "Platform / DevOps",
+    })
+
+    # LINK 3 - the payload runtime. Detection is proven and prevention is not measured, and
+    # those are two different sentences that a single "clean" would fuse.
+    bun_seen = endpoint_counts.get("bun.exe or bunx.exe, any table, any device", 0)
+    chain.append({
+        "link": "3. Fetching a separate runtime to hide the payload",
+        "worm_needs": "to download the Bun runtime and execute its payload under it, "
+                      "bypassing the Node runtime a defender is watching",
+        "state": DETECTION_ONLY,
+        "evidence": [
+            f"{endpoint_counts.get('Bun questions asked', 0)} distinct Bun questions were "
+            f"asked of endpoint telemetry and "
+            f"{endpoint_counts.get('Bun questions with a readable answer', 0)} returned an "
+            f"answer a control supports. bun.exe/bunx.exe: {bun_seen} rows across process, "
+            f"file and image-load tables over 30 days.",
+            f"{posture_counts.get('workflows_fetching_bun', 0)} workflow(s) fetch Bun and "
+            f"{posture_counts.get('workflows_referencing_bun_exe', 0)} reference bun.exe, "
+            f"out of {posture_counts.get('workflows_analysed', 0)} read.",
+            "Detection here is genuinely good and it is detection. No artifact establishes "
+            "that a runner or a laptop is prevented from downloading a runtime from the "
+            "internet.",
+        ],
+        "closed_by": "decide whether build runners are permitted arbitrary internet egress. "
+                     "An allowlist on the runners would move this link from detected to "
+                     "prevented; the 95 self-hosted runners are where to start",
+        "owner": "Platform / DevOps with Network security",
+    })
+
+    # LINK 4 - the payoff. This is the one link where the numbers ARE the finding, so it is
+    # the one link that can honestly be called OPEN rather than unmeasured.
+    whole_ctx = ci_counts.get("Workflows handing the WHOLE secrets context to a step", 0)
+    into_run = ci_counts.get("Workflows interpolating individual secrets into run:", 0)
+    no_perms = ci_counts.get("Workflows with no permissions: block", 0)
+    self_hosted = ci_counts.get("Workflows on self-hosted runners", 0)
+    mutable = ci_counts.get("Third-party action references on a mutable ref", 0)
+    consumers = reusable_counts.get("Consumer repositories behind those definitions", 0)
+    chain.append({
+        "link": "4. Reaching our credentials once it is running",
+        "worm_needs": "the process it has compromised to be able to read secrets - and "
+                      "ideally all of them at once, rather than the one the job needed",
+        "state": OPEN if (whole_ctx or into_run) else UNMEASURED,
+        "evidence": [
+            f"{whole_ctx} workflow(s) hand the entire secrets context to a step as one "
+            f"object, and {into_run} interpolate individual secrets into a shell command.",
+            f"{no_perms} of {ci_counts.get('Workflow files read', 0)} workflows declare no "
+            f"permissions block at all, so the job token carries whatever the repository "
+            f"default grants rather than what the job needs.",
+            f"{mutable} third-party action reference(s) sit on a mutable label that their "
+            f"owner can repoint with no version change visible to us - the campaign's own "
+            f"mechanism, applied to our build steps instead of our packages.",
+            f"{consumers} consumer repositories sit behind the shared definitions that pass "
+            f"the whole context onward, so this is not a per-repository problem with a "
+            f"per-repository blast radius.",
+            f"{self_hosted} workflow(s) run on self-hosted runners, where a compromised job "
+            f"is on our network rather than a disposable cloud VM.",
+            "This is the link with the least in its way, and it is the link that decides how "
+            "expensive any success at links 1 to 3 turns out to be.",
+        ],
+        "closed_by": "replace every whole-context pass with an explicit list of the secrets "
+                     "the step needs, and add a permissions block to every workflow. Section "
+                     "3 carries the ranked target list; the top four sinks are one file each",
+        "owner": "Platform / DevOps - owner of the shared workflow repositories",
+    })
+
+    # LINK 5 - exfiltration. Dead-drop detection is proven; egress prevention is not measured.
+    drop_count = ((dead_drops or {}).get("result") or {}).get("marker_repository_count")
+    drop_examined = (((dead_drops or {}).get("controls") or {}).get("repos_examined") or 0)
+    chain.append({
+        "link": "5. Getting the credentials out",
+        "worm_needs": "to publish what it stole - to a repository it creates in our own "
+                      "organization, or to an endpoint on the internet",
+        "state": DETECTION_ONLY if drop_count is not None else UNMEASURED,
+        "evidence": [
+            f"{drop_count} marker repositories across {drop_examined} repositories examined, "
+            f"with positive and negative controls passing - so the sweep could have found one "
+            f"and did not.",
+            "That covers the dead-drop route specifically. Whether an ordinary outbound HTTP "
+            "request from a build runner or a laptop would be blocked or logged is not "
+            "established by any artifact here.",
+        ] if drop_count is not None else [],
+        "closed_by": "keep the dead-drop sweep running every cycle - it costs nothing, it "
+                     "reads an artifact we already collect - and separately establish what "
+                     "outbound egress a build runner is permitted",
+        "owner": "Security operations for the sweep; Network security for egress",
+    })
+
+    # LINK 6 - propagation. The one link that can be called CONTROLLED, and only because a
+    # precondition is absent rather than because a control was built. Worth stating that way
+    # round: an absent precondition can appear the day somebody adds a publish workflow.
+    oidc_publish = posture_counts.get("workflows_with_oidc_publish_capability")
+    id_token_only = posture_counts.get("workflows_requesting_id_token_without_publish_step", 0)
+    chain.append({
+        "link": "6. Using our credentials to infect others",
+        "worm_needs": "a credential or a trusted-publishing identity that can publish a "
+                      "package the wider world installs - the step that turns a victim into "
+                      "a carrier",
+        "state": CONTROLLED if oidc_publish == 0 else (
+            OPEN if oidc_publish else UNMEASURED),
+        "evidence": [
+            f"{oidc_publish} of {posture_counts.get('workflows_analysed', 0)} workflows "
+            f"combine an OIDC identity token with a publish step, which is the precondition "
+            f"for the trusted-publishing abuse Unit 42 documented - genuine provenance, no "
+            f"stolen credential, so signature checking does not see it.",
+            f"{id_token_only} workflow(s) request an identity token without a publish step. "
+            f"Not the precondition, but the half of it that is cheapest to remove.",
+            "This link is held because a precondition is absent, not because a control was "
+            "built. It can reappear the week somebody adds a publish workflow, which is why "
+            "the check runs every cycle rather than once.",
+        ] if oidc_publish is not None else [],
+        "closed_by": "keep this check in every run, and require review on any workflow that "
+                     "introduces publish capability. If we do begin publishing packages "
+                     "publicly, this link changes state and the report will say so",
+        "owner": "Platform / DevOps with Information security",
+    })
+
+    # LINK 7 - persistence. Detection first-executed in r9; prevention exists in exactly one
+    # repository's settings file, which is not a policy.
+    persistence = next((c for c in (endpoint.get("coverage") or [])
+                        if c.startswith("Persistence sweep")), None)
+    chain.append({
+        "link": "7. Staying after we clean up",
+        "worm_needs": "a watchdog, a scheduled task or an agent hook that survives removal "
+                      "of the package and re-establishes access",
+        "state": DETECTION_ONLY if persistence else UNMEASURED,
+        "evidence": [
+            persistence,
+            "Prevention here exists in one repository we happened to look at, whose agent "
+            "settings deny the two primitives this campaign relies on. One repository's "
+            "configuration is an example, not a control - it becomes one when it is the "
+            "estate default.",
+        ] if persistence else [],
+        "closed_by": "make the deny list that already exists in one repository's agent "
+                     "settings the estate default, so the primitives this campaign needs are "
+                     "refused before any hunt has to detect them",
+        "owner": "Platform / DevOps with Information security",
+    })
+    return chain
+
+
+def build_green_gate(vectors: List[dict], actions: List[dict], coverage: dict,
+                     chain: List[dict], freshness: List[dict]) -> List[dict]:
+    """What would have to be true for this report to read GREEN, derived not typed.
+
+    This exists because "when can development resume" and "when does this go green" are the
+    two questions a report like this provokes and neither was answered anywhere in it. A
+    reader left to infer the answer infers the cautious one, which is how a clean hunt ends
+    up holding delivery for weeks on the strength of posture work that was never a blocker.
+
+    So the gate is explicit, ordered, and separated into what we can close ourselves and what
+    needs somebody else's decision or budget. The last part matters most: on the run this was
+    written, everything engineering could do amounted to days, and the only true blockers were
+    two decisions nobody had been asked to make.
+    """
+    gate: List[dict] = []
+
+    # 1. Unread items. Ours, cheap, and they are the reason a vector says INCOMPLETE.
+    for vector in vectors:
+        items = vector.get("unresolved_items") or []
+        if vector["status"] == INCOMPLETE and items:
+            gate.append({
+                "gate": f"Finish the {plural(len(items), 'unread item')} on {vector['name']}",
+                "why": "A vector with unread items is unfinished, not clean, so it cannot "
+                       "contribute a clear result no matter what it found.",
+                "blocks_green": True,
+                "ours": True,
+                "effort": "Hours to days",
+                "owner": "The hunt team",
+                "detail": items,
+            })
+
+    # 2. Exposure findings. These do NOT block a clean breach verdict and the gate says so
+    #    explicitly, because conflating the two is what holds development for no reason.
+    exposure = [v for v in vectors if v["status"] == FINDINGS
+                and not v.get("is_compromise_evidence")]
+    if exposure:
+        p1 = [a for a in actions if a["priority"] == 1]
+        gate.append({
+            "gate": f"Close the priority-1 exposure work on "
+                    f"{' and '.join(v['name'] for v in exposure)}",
+            "why": "These are hardening findings, not evidence of compromise. They keep the "
+                   "report off GREEN because they are real exposure - they do not make this "
+                   "an incident and they are not a reason to pause delivery.",
+            "blocks_green": True,
+            "ours": True,
+            "effort": "Days for the priority-1 set",
+            "owner": "; ".join(sorted({o for a in p1 for o in a["owners"]})) or "Platform / DevOps",
+            "detail": [f"P{a['priority']}: {a['title']} - {a['scope']}" for a in p1],
+        })
+
+    # 3. Coverage gaps. The honest part: some of these can never be closed, so GREEN cannot
+    #    mean "proven absent everywhere" and the gate has to define itself in terms a reader
+    #    can actually reach.
+    if coverage.get("gaps"):
+        gate.append({
+            "gate": f"Decide, for each of {plural(len(coverage['gaps']), 'unobservable population')}, "
+                    f"whether to make it visible or accept in writing that it stays dark",
+            "why": "At least one of these cannot be closed at any price - the platform emits "
+                   "no telemetry and no onboarding changes that. So GREEN can never mean "
+                   "'proven absent everywhere'; it can only mean every remaining blind spot "
+                   "has a named owner who has accepted it. That is a decision, and nobody "
+                   "has been asked to make it.",
+            "blocks_green": True,
+            "ours": False,
+            "effort": "Mixed - each row in the coverage register says which",
+            "owner": "; ".join(sorted({g["owner"] for g in coverage["gaps"]})),
+            "detail": [f"{g['gap']} - {g['population']}" for g in coverage["gaps"]],
+        })
+
+    # 4. Control posture. A link with nothing in its way is not a hunt finding, which is
+    #    exactly why it needs to be in the gate: otherwise it never blocks anything and
+    #    never gets funded.
+    open_links = [c for c in chain if c["state"] == OPEN]
+    unmeasured_links = [c for c in chain if c["state"] == UNMEASURED]
+    if unmeasured_links:
+        gate.append({
+            "gate": f"Answer the {plural(len(unmeasured_links), 'unmeasured control question')} "
+                    f"in Section 2",
+            "why": "Each is a link in the attack chain where we have not established whether "
+                   "anything is in the way. These are questions, not decisions, and they are "
+                   "the cheapest items on this list - answering one can turn a worry into a "
+                   "control we already had.",
+            "blocks_green": True,
+            "ours": True,
+            "effort": "Hours each",
+            "owner": "; ".join(sorted({c["owner"] for c in unmeasured_links})),
+            "detail": [f"{c['link']} - {c['closed_by']}" for c in unmeasured_links],
+        })
+    if open_links:
+        gate.append({
+            "gate": f"Put a control in the way of "
+                    f"{plural(len(open_links), 'chain link')} that currently has none",
+            "why": "We looked and found nothing standing in the way of these steps. That is "
+                   "a decision with a cost, not an oversight, and it is the decision that "
+                   "determines how expensive the next campaign is rather than whether it "
+                   "arrives.",
+            "blocks_green": True,
+            "ours": True,
+            "effort": "Days to weeks",
+            "owner": "; ".join(sorted({c["owner"] for c in open_links})),
+            "detail": [f"{c['link']} - {c['closed_by']}" for c in open_links],
+        })
+
+    # 5. Freshness. A stale artifact does not block GREEN on its own merit - it blocks the
+    #    claim that GREEN describes today.
+    stale = [f for f in freshness if f.get("stale")]
+    if stale:
+        gate.append({
+            "gate": f"Re-run {plural(len(stale), 'collector')} whose artifact is stale",
+            "why": "A stale artifact is not wrong, it answers a question about the day it was "
+                   "collected. GREEN has to describe today or it describes nothing.",
+            "blocks_green": True,
+            "ours": True,
+            "effort": "Minutes to hours",
+            "owner": "The hunt team",
+            "detail": [f"{f['feeds']} - {f['artifact']} ({f['age']})" for f in stale],
+        })
+
+    # 6. Vectors that did not run. Last, because it is the most obvious and the most often
+    #    forgotten when a report is assembled from whatever happened to be collected.
+    absent = [v["name"] for v in vectors if v["status"] in (NOT_RUN, BLOCKED)]
+    if absent:
+        gate.append({
+            "gate": f"Run the {plural(len(absent), 'vector')} that did not run this cycle",
+            "why": "A vector that did not run contributes no result in either direction. It "
+                   "cannot be counted toward GREEN and it is not evidence of a problem.",
+            "blocks_green": True,
+            "ours": True,
+            "effort": "Varies by vector",
+            "owner": "The hunt team",
+            "detail": absent,
+        })
+    return gate
+
 
 def build_actions(ci: dict, endpoint: dict, ioc: dict, owners: Optional[dict],
                   registry: dict, reusable: dict) -> List[dict]:
@@ -1452,10 +2199,14 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
            ioc: dict, ci: dict, registry: dict, owners: Optional[dict],
            reusable: dict, as_of: str, campaign: str,
            sources: Optional[List[dict]] = None,
-           coverage: Optional[dict] = None) -> str:
+           coverage: Optional[dict] = None,
+           chain: Optional[List[dict]] = None,
+           gate: Optional[List[dict]] = None) -> str:
     out: List[str] = []
     w = out.append
     coverage = coverage or compute_coverage(vectors)
+    chain = chain or []
+    gate = gate or []
 
     # YAML front matter drives the cover page, the table of contents and the per-page
     # classification marking in src/reporting/md_to_pdf.py. Emitted here rather than added
@@ -1483,9 +2234,10 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w(f"**Produced by:** `scripts/hunt/render_hunt_report.py` from the hunt's own "
       f"coverage artifacts. Every number is read from an artifact, not typed.")
     w("")
-    w("> **How to read this.** Section 1 answers your boss. Section 2 tells you what to "
-      "do and in what order. Section 3 is the proof, the target list and the fixes for "
-      "the engineers. Read only as far as you need.")
+    w("> **How to read this.** Section 1 answers your boss: were we hit. Section 2 answers "
+      "the question that follows it: could it happen to us, and what is in the way. Section "
+      "3 tells you what to do and in what order. Section 4 is the proof, the target list and "
+      "the fixes for the engineers. Read only as far as you need.")
     w("")
     w("---")
     w("")
@@ -1512,7 +2264,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         w("")
         w("These are not findings and they are not counted as any. Nothing in them is known "
           "to be wrong; nothing in them is known to be right. Every one of them can be "
-          "listed device by device - Section 3 carries the query that produces each list, so "
+          "listed device by device - Section 4 carries the query that produces each list, so "
           "the owner above can be handed the actual members rather than a number.")
         w("")
     w("**In one paragraph.** A worm has been spreading through the public library of "
@@ -1567,11 +2319,16 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                                                  "what was poisoned and when",
         "Endpoint / identity (Microsoft Defender)": "Staff laptops and servers reporting to "
                                                     "Microsoft Defender",
+        "Endpoint install activity (package acquisition)": "What our machines actually "
+                                                          "downloaded during the attack, not "
+                                                          "just what our files declare",
+        "Internal package registry (proxy of npmjs)": "Our own package mirror, which serves "
+                                                     "public packages under our name",
     }
     PLAIN_STATUS = {
         CLEAR: "Clean - looked everywhere we can look, and we can prove the check works",
         FINDINGS: "Things to fix",
-        BLOCKED: "**Could not check - access needed, named in Section 3**",
+        BLOCKED: "**Could not check - access needed, named in Section 4**",
         NOT_RUN: "Not checked this cycle",
     }
     for vector in vectors:
@@ -1581,7 +2338,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             # is outstanding, rather than carrying away a vague unease.
             outstanding = len(vector.get("unresolved_items") or [])
             plain = (f"Clean so far - **{outstanding} item(s) still to check**, listed in "
-                     f"Section 3")
+                     f"Section 4")
         elif vector["status"] == CORROBORATING:
             plain = "Supporting check only - can spot a problem, cannot declare us clean"
         else:
@@ -1616,7 +2373,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
 
     if compromise:
         remember = ("This campaign reached us. " + "; ".join(v["name"] for v in compromise)
-                    + " carries the evidence, and Section 3 names it. Everything below "
+                    + " carries the evidence, and Section 4 names it. Everything below "
                       "that is secondary until it is contained.")
     else:
         remember = "Nothing we can observe matches this campaign."
@@ -1628,7 +2385,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                 parts.append(f"{len(unchecked)} vector(s) not checked at all this cycle "
                              f"({', '.join(unchecked)})")
             remember += (" That is a statement about what we read, not about the estate: "
-                         + " and ".join(parts) + ", each listed in Section 3.")
+                         + " and ".join(parts) + ", each listed in Section 4.")
         if coverage["gaps"]:
             # The distinction this sentence carries is the one Rob's principle turns on. The
             # residue above is work we have not done. This is work we cannot do at all
@@ -1651,7 +2408,71 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     w("")
 
     # ---------------- SECTION 2 ----------------
-    w("## Section 2 - What to do, in order")
+    #
+    # The section that answers the question Section 1 provokes and cannot answer. Placed
+    # before the action list deliberately: a reader who sees the actions first reads them as
+    # a backlog, and a reader who sees this first reads the same actions as the specific
+    # links they close.
+    if chain:
+        w("## Section 2 - Could it happen to us")
+        w("")
+        w("Section 1 says whether this campaign reached us. It does not say what stood in "
+          "its way, and those are different questions with different answers. A hunt "
+          "measures arrival; it does not measure defense, so a clean result is silent on "
+          "whether anything was actually stopping the thing.")
+        w("")
+        # The single most important sentence in the report for a reader deciding whether to
+        # fund anything, and it is derived from the dependency vector rather than asserted.
+        pinned = ioc.get("counts", {}).get("npm rows pinned to an exact version", 0)
+        npm_rows = ioc.get("counts", {}).get("npm rows", 0)
+        w(f"**Why today's result came back clean.** Not because a control caught something. "
+          f"The estate does not depend on the package names this attacker chose - so there "
+          f"was nothing here for the worm to arrive in. Version pinning "
+          f"({pinned} of {npm_rows} dependency rows, {pct(pinned, npm_rows or 1)}) would "
+          f"have helped and is worth keeping, but it was not what decided the outcome. The "
+          f"next campaign picks different packages, and that is the case this section is "
+          f"about.")
+        w("")
+        w("**The campaign's chain, link by link.** Each row is a step the worm has to "
+          "complete. The state says what is in its way, and every state is read from the "
+          "same artifacts as the rest of this report.")
+        w("")
+        w("| # | The worm needs to | What is in its way | What would change it |")
+        w("|---|---|---|---|")
+        for link in chain:
+            w(f"| {md_cell(link['link'].split('.', 1)[0])} | "
+              f"{md_cell(link['worm_needs'])} | **{link['state']}** | "
+              f"{md_cell(link['closed_by'])} |")
+        w("")
+        w("What each state means:")
+        w("")
+        for state, note in CONTROL_STATE_NOTE.items():
+            present = sum(1 for link in chain if link["state"] == state)
+            w(f"- **{state}** ({present} of {len(chain)} links) - {note}")
+        w("")
+        # The tally is the executive summary of the section and it must not be softened. A
+        # reader who takes one line from this page should take this one.
+        held = sum(1 for link in chain if link["state"] in (CONTROLLED, PARTLY_CONTROLLED))
+        detected = sum(1 for link in chain if link["state"] == DETECTION_ONLY)
+        unknown = sum(1 for link in chain if link["state"] == UNMEASURED)
+        wide_open = sum(1 for link in chain if link["state"] == OPEN)
+        w(f"**In one line.** Of {len(chain)} links, we have a measured obstacle in front of "
+          f"{held}, we would detect {detected} after the fact without preventing them, "
+          f"{wide_open} has nothing in the way at all, and for {unknown} we have not "
+          f"established whether anything is in the way. That last number is the cheapest "
+          f"one on this page to reduce: it is questions, not projects.")
+        w("")
+        if wide_open or unknown:
+            w("> **What this is not.** None of this is evidence that anything happened. It "
+              "is the answer to what happens next time, and it is the part of the picture a "
+              "clean hunt result cannot supply. Read it as the case for the work in Section "
+              "3, not as a reason to pause the work already in flight.")
+            w("")
+        w("---")
+        w("")
+
+    # ---------------- SECTION 3 ----------------
+    w("## Section 3 - What to do, in order")
     w("")
     if not actions:
         w("No actions arising from this run.")
@@ -1694,7 +2515,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                 w(f"- `{target}`")
             if len(action["targets"]) > len(shown):
                 w(f"- _...and {len(action['targets']) - len(shown)} more. The complete list "
-                  f"is in Section 3._")
+                  f"is in Section 4._")
             w("")
     w("**Decisions needed from you.**")
     w("")
@@ -1719,7 +2540,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
         gaps = (endpoint_vector or {}).get("coverage_gaps") or []
         decisions = [f"Endpoint telemetry was queried and found nothing across the "
                      f"population it can observe. {plural(len(gaps), 'population')} sit "
-                     f"outside that - named and enumerable in Section 3. Decide for each: "
+                     f"outside that - named and enumerable in Section 4. Decide for each: "
                      f"fund the change that makes it visible, or accept in writing that "
                      f"this hunt can neither confirm nor deny anything inside it."
                      ] if gaps else []
@@ -1731,13 +2552,69 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
     for index, decision in enumerate(decisions, start=1):
         w(f"{index}. {decision}")
     w("")
+
+    # THE GATE. Written because two questions were being asked of every one of these reports
+    # and neither was answered anywhere in it: what would make this GREEN, and can development
+    # continue in the meantime. A reader left to infer the second answer infers the cautious
+    # one, which is how a clean hunt result ends up holding delivery on the strength of
+    # posture work that was never a blocker to anything.
+    if gate:
+        w(f"### What would move this report to {'GREEN' if verdict['rag'] != 'GREEN' else 'and keep it GREEN'}")
+        w("")
+        # The honesty clause. It goes first because it changes how every row below is read,
+        # and because a gate that implies an unreachable finish line is a gate nobody starts.
+        permanent = [g for g in coverage["gaps"] if "no Defender onboarding can close this"
+                     in (g.get("closed_by") or "") or "permanent" in (g.get("closed_by") or "")]
+        if permanent:
+            w(f"**First, what GREEN cannot mean.** {plural(len(permanent), 'population')} in "
+              f"the coverage register cannot be made observable at any price - the platform "
+              f"emits no telemetry and no onboarding changes that. So GREEN can never mean "
+              f"\"proven absent everywhere\". The only definition that is reachable, and the "
+              f"one this gate is built on:")
+            w("")
+            w("> **GREEN** = every vector clear, zero unread items, and every remaining blind "
+              "spot carries a named owner who has accepted it in writing.")
+            w("")
+        breach_clear = not [v for v in vectors if v["status"] == FINDINGS
+                            and v.get("is_compromise_evidence")]
+        if breach_clear:
+            w("**Second, and separately: none of this is a reason to pause development.** "
+              "There is no evidence of compromise, no repository to quarantine and no "
+              "credential known to be stolen. Every item below is hardening or measurement. "
+              "Holding delivery against them buys nothing.")
+            w("")
+        w("| # | Gate | Effort | Ours to close | Owner |")
+        w("|---|---|---|---|---|")
+        for index, item in enumerate(gate, 1):
+            w(f"| {index} | {md_cell(item['gate'])} | {item['effort']} | "
+              f"{'Yes' if item['ours'] else '**No - a decision**'} | "
+              f"{md_cell(item['owner'])} |")
+        w("")
+        ours = [g for g in gate if g["ours"]]
+        theirs = [g for g in gate if not g["ours"]]
+        w(f"{plural(len(ours), 'gate')} can be closed by the teams already doing this work. "
+          f"{plural(len(theirs), 'gate')} cannot - "
+          + ("they need a budget or an ownership decision that nobody has been asked to make, "
+             "and they are the real blockers."
+             if theirs else "so engineering can reach this on its own."))
+        w("")
+        for index, item in enumerate(gate, 1):
+            w(f"#### {index}. {item['gate']}")
+            w("")
+            w(f"{item['why']}")
+            w("")
+            for line in item["detail"][:15]:
+                w(f"- {line}")
+            if len(item["detail"]) > 15:
+                w(f"- _...and {len(item['detail']) - 15} more, listed in Section 4._")
+            w("")
     w("---")
     w("")
 
-    # ---------------- SECTION 3 ----------------
-    w("## Section 3 - Evidence")
+    # ---------------- SECTION 4 ----------------
+    w("## Section 4 - Evidence")
     w("")
-    w("### 3.1 Attack vector status")
+    w("### 4.1 Attack vector status")
     w("")
     w("| Attack vector | Status | Scope examined | Headline counts |")
     w("|---|---|---|---|")
@@ -1766,7 +2643,42 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
 
     def heading(title: str) -> str:
         section[0] += 1
-        return f"### 3.{section[0]} {title}"
+        return f"### 4.{section[0]} {title}"
+
+    # The evidence behind Section 2. First in the evidence section, alongside the coverage
+    # register, because both are limits on how the results below should be read - and because
+    # the control axis is the newest and the one a technical reader will most want to check
+    # the derivation of before believing the summary table.
+    if chain:
+        w(heading("Control posture - the evidence behind each link"))
+        w("")
+        w("Section 2 states what is in the way of each step. This is where each of those "
+          "states comes from. Every line is read from a coverage artifact, and a link with "
+          "no lines under it is a link stated as UNMEASURED - which is the honest output "
+          "when no artifact speaks to it, and is not the same as a link with nothing in "
+          "the way.")
+        w("")
+        for link in chain:
+            w(f"**{link['link']}** - {link['state']}")
+            w("")
+            w(f"*The worm needs:* {link['worm_needs']}")
+            w("")
+            if link.get("evidence"):
+                for line in link["evidence"]:
+                    w(f"- {line}")
+            else:
+                w("- No artifact in this hunt measures whether anything stands in the way "
+                  "of this step. That is why the state is UNMEASURED and not a judgement in "
+                  "either direction.")
+            w("")
+            w(f"*What would change the state:* {link['closed_by'].rstrip('.')}.  ")
+            w(f"*Owner:* {link['owner']}")
+            w("")
+        w("> Read the states, not a total. These links are not equally weighted and they do "
+          "not sum: a control on the first link prevents the attack, and a control on the "
+          "last one only limits what an attacker keeps. A count of held links says less "
+          "than which links are held.")
+        w("")
 
     # The coverage register. Everything this hunt cannot see, on its own axis, before any
     # result is discussed.
@@ -1890,7 +2802,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
                 w(f"- {line}")
             w("")
         # Section 1 puts a count of unread items on the face of the report; without this
-        # block Section 3 never says what they are, so the one number a reader is asked to
+        # block Section 4 never says what they are, so the one number a reader is asked to
         # act on is the one number they cannot look up.
         if vector.get("unresolved_items"):
             w(f"**Not read - {len(vector['unresolved_items'])} item(s). Closing these "
@@ -2107,7 +3019,7 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
             for repo in unowned_prod:
                 w(f"- `{repo}`")
         w("")
-        # The complete unowned list lives here, because the action in Section 2 caps its
+        # The complete unowned list lives here, because the action in Section 3 caps its
         # target list and points at this section for the rest.
         unowned_all = sorted(repo for repo, row in (owners.get("repos") or {}).items()
                              if row.get("owner_state") == "unowned")
@@ -2206,6 +3118,29 @@ def main() -> int:
                         default=HUNT / "reusable_workflow_targets.json",
                         help="Shared reusable workflow definitions with consumer counts "
                              "and whole-secrets-context exposure, from the topology tables.")
+    parser.add_argument("--lockfiles", type=Path,
+                        default=latest_round("lockfiles_r*_coverage.json",
+                                             "lockfiles_r5_coverage.json"),
+                        help="Installed versions read from committed lockfiles. Supplies the "
+                             "dependency vector's coverage gap - repositories with a "
+                             "manifest and no lockfile record nothing about what they "
+                             "resolved to, so they are unmeasured rather than clean.")
+    parser.add_argument("--install-activity", type=Path,
+                        default=latest_round("install_activity_r*.json",
+                                             "install_activity_r1.json"),
+                        help="Endpoint package-acquisition results. The only vector that "
+                             "observes what a machine actually fetched rather than what a "
+                             "repository declares.")
+    parser.add_argument("--registry-proxy", type=Path,
+                        default=HUNT / "azure_artifacts_feeds.json",
+                        help="Internal package feeds and their upstreams. A feed proxying "
+                             "npmjs serves the identical malicious tarball under its own "
+                             "hostname, so this is both a result and the strongest available "
+                             "control point.")
+    parser.add_argument("--dead-drops", type=Path,
+                        default=latest_round("dead_drops_r*.json", "dead_drops_r5.json"),
+                        help="Dead-drop repository sweep, which supplies the exfiltration "
+                             "link of the control chain.")
     parser.add_argument("--state", type=Path, default=HUNT / "report_state.json",
                         help="Previous run's counts, for the delta section.")
     parser.add_argument("--dispositions", type=Path, default=HUNT / "dispositions.json",
@@ -2234,12 +3169,17 @@ def main() -> int:
     dispositions = load_dispositions(args.dispositions)
     branches = vector_branches(read_json(args.branches), dispositions)
     search = vector_code_search(read_json(args.code_search))
-    ioc = vector_ioc(ioc_payload)
+    lockfiles = read_json(args.lockfiles)
+    ioc = vector_ioc(ioc_payload, lockfiles)
     owners = read_json(args.owners)
-    ci = vector_ci(read_json(args.posture), owners)
+    posture_payload = read_json(args.posture)
+    ci = vector_ci(posture_payload, owners)
     reusable = vector_reusable(read_json(args.reusable))
     registry = vector_registry(read_json(args.registry))
     endpoint = vector_endpoint(read_json(args.endpoint))
+    install = vector_install_activity(read_json(args.install_activity))
+    proxy = vector_registry_proxy(read_json(args.registry_proxy))
+    dead_drops = read_json(args.dead_drops)
 
     # Only these vectors can produce evidence that the campaign actually reached us.
     # CI posture findings are exposure, not compromise, and conflating the two is how a
@@ -2252,17 +3192,27 @@ def main() -> int:
     # one surface that can observe it - and while it sat outside this tuple that finding
     # would have been classed as exposure and rendered as "weaknesses that would make the
     # next one worse". The verdict would have read AMBER on a day the estate was breached.
-    for vector in (trees, branches, search, ioc, endpoint):
+    # The two new vectors belong here for the same reason the endpoint vector does. Install
+    # activity is the only vector that observes an ACQUISITION rather than a declaration - if
+    # a machine fetched a malicious tarball, that is the campaign reaching us and nothing
+    # about it is exposure. A malicious version cached in our own package feed is likewise a
+    # compromise of the supply path, not a hygiene finding.
+    for vector in (trees, branches, search, ioc, endpoint, install, proxy):
         vector["is_compromise_evidence"] = True
 
-    vectors = [trees, branches, search, ioc, ci, reusable, registry, endpoint]
+    # Order is the reader's, not the collector's: the four vectors that answer "did it get
+    # in" first, then the two that answer "how did it get in", then posture, then endpoint.
+    vectors = [trees, branches, search, ioc, proxy, install, ci, reusable, registry, endpoint]
 
     # §0.6 is checked before anything is written, and a violation stops the render rather
     # than annotating it. A report that cannot substantiate itself is worse than no report,
     # because it is read with exactly the same trust as one that can - and the failure mode
     # this guards against has already shipped once, silently, in a document that looked
     # complete on every page.
-    problems = validate_vectors(vectors)
+    chain = build_chain(ioc, lockfiles, proxy, install, endpoint, ci, reusable,
+                        posture_payload, dead_drops)
+
+    problems = validate_vectors(vectors) + validate_chain(chain)
     if problems:
         print("[report] REFUSING TO RENDER - unsubstantiated claims (doctrine §0.6):",
               file=sys.stderr)
@@ -2289,6 +3239,10 @@ def main() -> int:
                         ("Shared reusable workflows", args.reusable),
                         ("Registry ground truth", args.registry),
                         ("Endpoint / Defender", args.endpoint),
+                        ("Endpoint install activity", args.install_activity),
+                        ("Internal package registry (proxy)", args.registry_proxy),
+                        ("Installed versions from lockfiles", args.lockfiles),
+                        ("Dead-drop repository sweep", args.dead_drops),
                         ("CODEOWNERS and blast radius", args.owners)):
         # Repo-relative, always. The default paths are absolute, and this report is
         # circulated - an absolute path publishes the analyst's home directory and
@@ -2310,8 +3264,17 @@ def main() -> int:
             "age_hours": hours,
         })
 
+    # The gate reads the same freshness rows the provenance table prints, so a stale
+    # artifact cannot show as stale in one place and current in the other. 36 hours is the
+    # threshold used in both, named once here rather than twice.
+    for source in sources:
+        source["artifact"] = source["path"]
+        source["stale"] = (source["age_hours"] is not None and source["age_hours"] > 36)
+    gate = build_green_gate(vectors, actions, coverage, chain, sources)
+
     document = render(vectors, verdict, delta, actions, ioc, ci, registry, owners,
-                      reusable, as_of, campaign, sources=sources, coverage=coverage)
+                      reusable, as_of, campaign, sources=sources, coverage=coverage,
+                      chain=chain, gate=gate)
 
     out_path = args.out or (HUNT / "reports" / f"hunt-report-{as_of}.md")
     out_path.parent.mkdir(parents=True, exist_ok=True)

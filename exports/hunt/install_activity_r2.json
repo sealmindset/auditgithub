@@ -1,0 +1,397 @@
+{
+  "name": "Endpoint install activity (Microsoft Defender)",
+  "status": "INCOMPLETE",
+  "as_of": "2026-08-10T15:30:56.449053+00:00",
+  "scope": "onboarded devices, window 2026-08-04T09:35:00.763Z .. 2026-08-05T00:00:00Z, 4 advanced-hunting queries",
+  "counts": {
+    "registry_rows_in_window": 14,
+    "tarball_rows_per_control": 0,
+    "tarball_fetches_returned": 0,
+    "tarball_fetches_parsed": 0,
+    "install_command_lines": 69,
+    "malicious_or_suspected_specs_fetched": 0,
+    "campaign_packages_at_clean_versions": 0,
+    "dropped_file_writes_30d": 0,
+    "dropped_files_at_known_hash": 0
+  },
+  "coverage": [
+    "Registry-traffic control: 14 DeviceNetworkEvents row(s) to npmjs.org from 4 device(s) inside the window, 0 of them tarball fetches (2026-08-04T09:52:24.9149919Z .. 2026-08-04T22:22:24.6594776Z). Without this the fetch result below would be unreadable.",
+    "Install-activity control: 69 package-manager command line(s) carrying an install verb, on 5 device(s), inside the window. This is what makes a malicious-fetch zero a measured absence rather than an untested window.",
+    "Installing devices, with the URL coverage of each \u2014 the join that decides whether any of these installs could have been attributed to a package: usmmpjg7gqxf (macOS 26.5) 53 install cmd(s), 886 network row(s), 0 with a URL, 0 tarball-shaped; cxdkrprdapp12.comfort.com (Linux 8.10) 7 install cmd(s), 155 network row(s), 136 with a URL, 0 tarball-shaped; usg44ctjl670 (macOS 26.6) 4 install cmd(s), 2,221 network row(s), 0 with a URL, 0 tarball-shaped; cxdkrprdapp16.comfort.com (Linux 8.10) 3 install cmd(s), 104 network row(s), 76 with a URL, 0 tarball-shaped; ushfm9kdg9hv (macOS 26.6) 2 install cmd(s), 1,593 network row(s), 0 with a URL, 0 tarball-shaped",
+    "RemoteUrl population by platform over 7 days, which is the general form of the same limit: Windows11 2,831 device(s), 68,229,524 row(s), 31,028,285 with a URL, 17,005,280 with a path; macOS 83 device(s), 687,005 row(s), 0 with a URL, 0 with a path; WindowsServer2019 63 device(s), 365,121 row(s), 66,372 with a URL, 0 with a path; WindowsServer2022 45 device(s), 294,610 row(s), 61,684 with a URL, 0 with a path; WindowsServer2016 50 device(s), 268,720 row(s), 66,817 with a URL, 0 with a path; Linux 308 device(s), 200,063 row(s), 132,459 with a URL, 0 with a path; WindowsServer2025 20 device(s), 96,294 row(s), 27,594 with a URL, 0 with a path; WindowsServer2012R2 11 device(s), 63,889 row(s), 11,453 with a URL, 0 with a path; Windows10 2 device(s), 27,958 row(s), 7,908 with a URL, 5,469 with a path; iOS 1 device(s), 1 row(s), 1 with a URL, 0 with a path",
+    "6 of the install command line(s) ran from a self-hosted GitHub Actions runner toolcache path, so part of this estate's CI executes on onboarded endpoints. Those devices are covered by both this vector and the Actions posture sweep; a runner that installs a campaign spec would appear here as an endpoint, which is why the two results must not be added together as if they were separate populations.",
+    "Lifecycle-script control: 2,670 execution(s) of an install-time script on 101 device(s) in the window (2026-08-04T09:40:51.285934Z .. 2026-08-04T23:59:57.668423Z), 0 of them carrying a campaign artifact name. Counted by aggregation rather than by reading rows, so the campaign-name figure is a count over the whole window and not over a truncated sample. A zero for campaign names is only meaningful because the total is non-zero \u2014 that is what proves the table records lifecycle scripts at all.",
+    "Window 2026-08-04T09:35:00.763Z .. 2026-08-05T00:00:00Z, which deliberately runs past the last malicious publish (13:18:41.376Z). A version stays installable until it is unpublished, those removal times are not in this corpus, so an install-side window bounded by the publish tail would be too narrow by an unknown amount.",
+    "Matched against 2,208 malicious specs and 34 suspected-uncleaned specs across 442 package names, read from exports/hunt/rederive_window_18z.json rather than embedded in the query.",
+    "Package-registry hosts contacted in the window, which is what decides whether a fetch was observable at all: registry.npmjs.org 14 row(s) from 4 device(s), 0 tarball-like. 0 of 1 host(s) carried a tarball-shaped URL.",
+    "0 tarball fetch(es) parsed to a name and version and compared individually. 0 matched the campaign set; 0 were campaign PACKAGES at non-malicious versions.",
+    "Dropped-file sweep over 30 days: no write of setup.mjs, math_init.js, Math_Symbol.js or router_runtime.js anywhere in the estate."
+  ],
+  "unresolved_items": [
+    "CONTRADICTION, not a clean result: 69 package-manager install command line(s) ran in the window and DeviceNetworkEvents recorded 0 tarball fetches. Package downloads are therefore not observable on this table, so matching against 2,208 specs could not have found anything and this vector must not be read as clean. Package-registry hosts actually seen in the window: registry.npmjs.org (14 rows, 0 tarball-like). Cause, measured rather than inferred: 3 of 5 installing device(s) (macOS, 59 of 69 install command lines) produced DeviceNetworkEvents rows in the window with RemoteUrl empty on every one, so no URL - malicious or benign - could have been recorded for the traffic those installs generated. On the 2 device(s) that do populate RemoteUrl, the npmjs rows carry the hostname with no path, so the '<name>/-/<name>-<version>.tgz' segment this check matches on cannot appear there either. A mirror is therefore NOT the explanation: the connection to the registry was recorded, only the path was not. Ours to close, and it is a configuration change rather than an access request: enable Defender Network Protection in block or audit mode on macOS and Linux, which is the feature that populates RemoteUrl with a full URL on those platforms. Until then, per-package install attribution on endpoints is unavailable and the lockfile and Actions vectors carry this question alone.",
+    "2,670 lifecycle-script execution(s) ran on 101 device(s) in the window (install.js / install.cjs and similar), none carrying a campaign artifact name. None can be attributed to a package: DeviceProcessEvents records the command line 'node install.cjs' and the parent shell, but not the working directory, so the node_modules path that would name the package is absent. These executions are the lifecycle vector this worm uses, and they are neither cleared nor implicated. Ours to close by reading InitiatingProcessFolderPath against a package manifest on the named devices, which is host-side work rather than a query."
+  ],
+  "coverage_gaps": [
+    {
+      "gap": "DeviceNetworkEvents.RemoteUrl carries no path on the platforms that install npm packages, so tarball-level install attribution is impossible on endpoints",
+      "population": "3 of 5 device(s) that ran a package-manager install in the window (macOS), carrying 59 of 69 install command line(s). Those devices produced DeviceNetworkEvents rows with RemoteUrl empty on every one.",
+      "named_by": "the per-device rows of the installer_devices query in this artifact (evidence.installer_devices.rows), each carrying DeviceName, OSPlatform, InstallCmds and UrlRows - so the devices needing the configuration change can be listed by name without re-running the hunt.",
+      "cannot_confirm_or_deny": "which package and which version any of those install command lines actually fetched. The malicious-spec match runs on the tarball path segment '<name>/-/<name>-<version>.tgz', and that segment is absent from every row, so a zero here is untested rather than clean.",
+      "closed_by": "Enable Defender Network Protection (audit mode is sufficient) on macOS and Linux endpoints. Not a permission gap - ThreatHunting.Read.All already returns these tables; the column is empty at the source.",
+      "owner": "Endpoint security - the team that owns the Defender device configuration profiles for macOS and Linux",
+      "measured": {
+        "installing_devices": 5,
+        "devices_with_no_url_rows": 3,
+        "blind_platforms": [
+          "macOS"
+        ],
+        "install_command_lines_on_blind_devices": 59,
+        "install_command_lines_total": 69
+      },
+      "_correction": "Field names normalized in place on 2026-08-10 to the coverage-gap contract (gap, population, named_by, cannot_confirm_or_deny, closed_by, owner). The collector emitted 'closes_it' and 'measured' only; scripts/hunt/hunt_install_activity.py now emits the full set, so the next run reproduces this shape without patching. No measured value was changed - population, named_by and cannot_confirm_or_deny are derived from the 'measured' block and the installer_devices rows already in this file."
+    }
+  ],
+  "access_required": [],
+  "findings": [],
+  "campaign_packages_at_clean_versions": [],
+  "dropped_file_leads_name_only": [],
+  "derivation": {
+    "artifact": "exports/hunt/rederive_window_18z.json",
+    "malicious_specs": 2208,
+    "suspected_uncleaned_specs": 34,
+    "distinct_malicious_names": 442,
+    "bound_summary": {
+      "latest_malicious_publish": "2026-08-04T13:18:41.376Z",
+      "latest_suspected_uncleaned_publish": "2026-08-04T17:52:34.295Z",
+      "bracket_end": "2026-08-04T18:00:00+00:00",
+      "_how_to_read_this": "If the latest publish sits well inside the bracket, the bracket is not the thing bounding it and the close time is a registry fact. If it sits at the bracket edge, widen the bracket again before reporting a close.",
+      "limited_run": false
+    }
+  },
+  "identity": {
+    "client_id": "ca38f5b8-907f-43b6-bdbf-d1396039076b",
+    "tenant_id": "ed8aabd5\u2026",
+    "status": "ok",
+    "roles": [
+      "SecurityAlert.Read.All",
+      "SecurityIncident.Read.All",
+      "ThreatHunting.Read.All"
+    ],
+    "capabilities": {
+      "runHuntingQuery": {
+        "available": true
+      },
+      "alerts_v2": {
+        "available": true
+      },
+      "incidents": {
+        "available": true
+      },
+      "signIns": {
+        "available": false,
+        "reason": "'signIns' requires one of ['AuditLog.Read.All']; the token carries ['SecurityAlert.Read.All', 'SecurityIncident.Read.All', 'ThreatHunting.Read.All']. Grant the role and consent it, or record this as an uncovered surface \u2014 do not report the resulting zero as a finding."
+      }
+    },
+    "provenance": {
+      "found": true,
+      "source": "db_global",
+      "credential_type": "graph_app",
+      "organization": null,
+      "name": "default",
+      "privilege_level": "app_only",
+      "scopes": [
+        "SecurityAlert.Read.All",
+        "SecurityIncident.Read.All",
+        "ThreatHunting.Read.All"
+      ],
+      "known_gaps": [
+        "no AuditLog.Read.All: GET /auditLogs/signIns unavailable app-only. Sign-in analysis must use advanced hunting tables (AADSpnSignInEventsBeta / IdentityLogonEvents), which ThreatHunting.Read.All does cover."
+      ],
+      "owned_by_auditgithub": true,
+      "last_verified_at": "2026-08-05T20:41:32.330161",
+      "last_verification_status": "ok",
+      "client_id": "ca38f5b8\u2026",
+      "tenant_id": "ed8aabd5\u2026"
+    }
+  },
+  "evidence": {
+    "registry_traffic_control": {
+      "ok": true,
+      "row_count": 1,
+      "rows": [
+        {
+          "Rows": 14,
+          "Devices": 4,
+          "TarballRows": 0,
+          "FirstSeen": "2026-08-04T09:52:24.9149919Z",
+          "LastSeen": "2026-08-04T22:22:24.6594776Z"
+        }
+      ]
+    },
+    "registry_hosts_in_window": {
+      "ok": true,
+      "row_count": 1,
+      "rows": [
+        {
+          "Host": "registry.npmjs.org",
+          "Rows": 14,
+          "Devices": 4,
+          "TarballLike": 0,
+          "LastSeen": "2026-08-04T22:22:24.6594776Z"
+        }
+      ]
+    },
+    "install_process_control": {
+      "ok": true,
+      "row_count": 2,
+      "rows": [
+        {
+          "FileName": "node",
+          "Events": 2742,
+          "Devices": 17,
+          "InstallEvents": 69,
+          "InstallDevices": 5,
+          "FirstSeen": "2026-08-04T09:36:55.61991Z",
+          "LastSeen": "2026-08-04T23:57:31.101392Z"
+        },
+        {
+          "FileName": "node.exe",
+          "Events": 966,
+          "Devices": 149,
+          "InstallEvents": 0,
+          "InstallDevices": 0,
+          "FirstSeen": "2026-08-04T09:35:24.9635831Z",
+          "LastSeen": "2026-08-04T23:56:45.2353645Z"
+        }
+      ]
+    },
+    "install_commands": {
+      "ok": true,
+      "row_count": 8,
+      "rows": [
+        {
+          "ProcessCommandLine": "node /Users/Lukas.Menne@sleepnumber.com/.nvm/versions/node/v24.14.1/bin/npm install -g @anthropic-ai/claude-code@2.1.222",
+          "Rows": 22,
+          "Devices": 1,
+          "FirstSeen": "2026-08-04T22:42:20.327368Z",
+          "LastSeen": "2026-08-04T23:57:31.101392Z"
+        },
+        {
+          "ProcessCommandLine": "node install.cjs",
+          "Rows": 20,
+          "Devices": 1,
+          "FirstSeen": "2026-08-04T10:53:11.480823Z",
+          "LastSeen": "2026-08-04T23:37:02.302761Z"
+        },
+        {
+          "ProcessCommandLine": "node /Users/Lukas.Menne@sleepnumber.com/.nvm/versions/node/v24.14.1/bin/npm install -g @anthropic-ai/claude-code@2.1.221",
+          "Rows": 11,
+          "Devices": 1,
+          "FirstSeen": "2026-08-04T13:27:30.463736Z",
+          "LastSeen": "2026-08-04T17:57:30.756443Z"
+        },
+        {
+          "ProcessCommandLine": "node /shared/github/hostedtoolcache/node/22.23.2/x64/bin/npm ci",
+          "Rows": 6,
+          "Devices": 2,
+          "FirstSeen": "2026-08-04T12:23:00.86296Z",
+          "LastSeen": "2026-08-04T12:57:31.283996Z"
+        },
+        {
+          "ProcessCommandLine": "node install.js",
+          "Rows": 4,
+          "Devices": 2,
+          "FirstSeen": "2026-08-04T12:23:53.758133Z",
+          "LastSeen": "2026-08-04T12:57:28.319129Z"
+        },
+        {
+          "ProcessCommandLine": "node /opt/homebrew/bin/npm update -g",
+          "Rows": 2,
+          "Devices": 1,
+          "FirstSeen": "2026-08-04T13:18:16.869253Z",
+          "LastSeen": "2026-08-04T13:20:14.384745Z"
+        },
+        {
+          "ProcessCommandLine": "node /Users/ian.mckay1@sleepnumber.com/.nvm/versions/node/v26.5.0/bin/npm install",
+          "Rows": 2,
+          "Devices": 1,
+          "FirstSeen": "2026-08-04T15:34:17.2513Z",
+          "LastSeen": "2026-08-04T15:35:02.899971Z"
+        },
+        {
+          "ProcessCommandLine": "node /Users/ian.mckay1@sleepnumber.com/.nvm/versions/node/v26.5.0/bin/npm install --no-progress",
+          "Rows": 2,
+          "Devices": 1,
+          "FirstSeen": "2026-08-04T15:34:16.663727Z",
+          "LastSeen": "2026-08-04T15:34:17.744962Z"
+        }
+      ]
+    },
+    "installer_devices": {
+      "ok": true,
+      "row_count": 5,
+      "rows": [
+        {
+          "DeviceName": "usmmpjg7gqxf",
+          "OSPlatform": "macOS",
+          "OSVersion": "26.5",
+          "InstallCmds": 53,
+          "DistinctCmds": 3,
+          "NetRows": 886,
+          "UrlRows": 0,
+          "NpmRows": 0,
+          "TgzRows": 0
+        },
+        {
+          "DeviceName": "cxdkrprdapp12.comfort.com",
+          "OSPlatform": "Linux",
+          "OSVersion": "8.10",
+          "InstallCmds": 7,
+          "DistinctCmds": 2,
+          "NetRows": 155,
+          "UrlRows": 136,
+          "NpmRows": 1,
+          "TgzRows": 0
+        },
+        {
+          "DeviceName": "usg44ctjl670",
+          "OSPlatform": "macOS",
+          "OSVersion": "26.6",
+          "InstallCmds": 4,
+          "DistinctCmds": 2,
+          "NetRows": 2221,
+          "UrlRows": 0,
+          "NpmRows": 0,
+          "TgzRows": 0
+        },
+        {
+          "DeviceName": "cxdkrprdapp16.comfort.com",
+          "OSPlatform": "Linux",
+          "OSVersion": "8.10",
+          "InstallCmds": 3,
+          "DistinctCmds": 2,
+          "NetRows": 104,
+          "UrlRows": 76,
+          "NpmRows": 0,
+          "TgzRows": 0
+        },
+        {
+          "DeviceName": "ushfm9kdg9hv",
+          "OSPlatform": "macOS",
+          "OSVersion": "26.6",
+          "InstallCmds": 2,
+          "DistinctCmds": 1,
+          "NetRows": 1593,
+          "UrlRows": 0,
+          "NpmRows": 0,
+          "TgzRows": 0
+        }
+      ]
+    },
+    "url_coverage_by_platform": {
+      "ok": true,
+      "row_count": 10,
+      "rows": [
+        {
+          "OSPlatform": "Windows11",
+          "NetRows": 68229524,
+          "UrlRows": 31028285,
+          "PathRows": 17005280,
+          "Devices": 2831
+        },
+        {
+          "OSPlatform": "macOS",
+          "NetRows": 687005,
+          "UrlRows": 0,
+          "PathRows": 0,
+          "Devices": 83
+        },
+        {
+          "OSPlatform": "WindowsServer2019",
+          "NetRows": 365121,
+          "UrlRows": 66372,
+          "PathRows": 0,
+          "Devices": 63
+        },
+        {
+          "OSPlatform": "WindowsServer2022",
+          "NetRows": 294610,
+          "UrlRows": 61684,
+          "PathRows": 0,
+          "Devices": 45
+        },
+        {
+          "OSPlatform": "WindowsServer2016",
+          "NetRows": 268720,
+          "UrlRows": 66817,
+          "PathRows": 0,
+          "Devices": 50
+        },
+        {
+          "OSPlatform": "Linux",
+          "NetRows": 200063,
+          "UrlRows": 132459,
+          "PathRows": 0,
+          "Devices": 308
+        },
+        {
+          "OSPlatform": "WindowsServer2025",
+          "NetRows": 96294,
+          "UrlRows": 27594,
+          "PathRows": 0,
+          "Devices": 20
+        },
+        {
+          "OSPlatform": "WindowsServer2012R2",
+          "NetRows": 63889,
+          "UrlRows": 11453,
+          "PathRows": 0,
+          "Devices": 11
+        },
+        {
+          "OSPlatform": "Windows10",
+          "NetRows": 27958,
+          "UrlRows": 7908,
+          "PathRows": 5469,
+          "Devices": 2
+        },
+        {
+          "OSPlatform": "iOS",
+          "NetRows": 1,
+          "UrlRows": 1,
+          "PathRows": 0,
+          "Devices": 1
+        }
+      ]
+    },
+    "lifecycle_hook_control": {
+      "ok": true,
+      "row_count": 1,
+      "rows": [
+        {
+          "Rows": 2670,
+          "Devices": 101,
+          "IocRows": 0,
+          "IocDevices": 0,
+          "FirstSeen": "2026-08-04T09:40:51.285934Z",
+          "LastSeen": "2026-08-04T23:59:57.668423Z"
+        }
+      ]
+    },
+    "postinstall_hooks": {
+      "ok": true,
+      "row_count": 0,
+      "rows": []
+    },
+    "tarball_fetches": {
+      "ok": true,
+      "row_count": 0,
+      "rows": []
+    },
+    "dropped_files_30d": {
+      "ok": true,
+      "row_count": 0,
+      "rows": []
+    }
+  }
+}

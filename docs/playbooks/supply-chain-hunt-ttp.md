@@ -1359,6 +1359,31 @@ gap. No blanks, no implied coverage.
   `has_any(" ci ")` bug, ascending truncation, the Zscaler-IP misjudgment); each is now a rule in
   this playbook.
 
+### 7.1 The report itself is a contract — see the report template
+
+The obligations above say what a verdict owes its reader. **The shape that discharges them is
+specified in [`hunt-report-template.md`](hunt-report-template.md) and enforced by
+`scripts/hunt/render_hunt_report.py`.** Read it before writing any report for this class of hunt.
+Three of its rules extend this section rather than restate it:
+
+- **Three axes, not one.** RESULT (evidence of compromise in the observable population), COVERAGE
+  (how much of the estate that population is), and **CONTROL** (if it arrives tomorrow, what is in
+  its way). This section's verdict table is the RESULT axis only. A hunt measures arrival, not
+  defense, so a clean table here is silent on the question the reader has next.
+- **The CONTROL axis is a chain ordered by the attacker, not a list of controls we hold.** A list
+  of our controls cannot show that a link has nothing in it, because an empty link produces no row.
+  Five states: CONTROLLED, PARTLY CONTROLLED, DETECTION ONLY, OPEN, UNMEASURED — and only
+  UNMEASURED may be stated without a number behind it.
+- **OPEN and UNMEASURED are priced differently and must not be fused.** OPEN is a decision with a
+  cost. UNMEASURED is an afternoon that might turn out to be a control we already had. This is the
+  same distinction as INCOMPLETE-versus-coverage-gap on the RESULT axis.
+
+The template also carries the **GREEN gate**: what would have to be true for the report to read
+GREEN, split into what the teams already doing this work can close and what needs a budget or an
+ownership decision nobody has been asked to make. Run r5 produced seven of the former and one of
+the latter — and the gate states explicitly that exposure findings are not a reason to pause
+delivery, because a report that leaves that unsaid gets the cautious reading inferred.
+
 ---
 
 ## 8. Reference-run index
@@ -1389,8 +1414,28 @@ gap. No blanks, no implied coverage.
 | `repo_owners_r5.json` | 182 finding repos attributed; 36 unowned, 0 lookup errors |
 | `dead_drops_r5.json` | 2,811 repos by name and description, 0 markers, controls pass |
 | `endpoint_hunt_r9.json` | Defender endpoint and identity hunt |
+| `install_activity_r2.json` | Endpoint install activity. INCOMPLETE by its own control: 69 install command lines, 0 tarball fetches |
+| `azure_artifacts_feeds.json` | 5 internal feeds, 3 with npmjs upstream, 0 npm packages enumerated — `coverage_supports_negative_finding: false` |
 | `dispositions.json` | The one flag, adjudicated with reason and evidence |
 | `curlpipe_workflows_r5.json`, `pr_target_workflow_r5.yml` | Source text of the workflows read by hand |
+
+**Run r5 control posture (the CONTROL axis, §7.1).** Seven links, every state read from the
+artifacts above. Two links have a measured obstacle, three would be detected after the fact without
+being prevented, one has nothing in the way, and one is unmeasured:
+
+| # | The step the worm has to complete | State | Why |
+|---|---|---|---|
+| 1 | Get a poisoned version resolved into one of our builds | PARTLY CONTROLLED | 47,758 of 47,821 npm rows pinned (99.9%); hole is 36 repos with a manifest and no lockfile, plus 3 feeds with npmjs upstream and no established quarantine |
+| 2 | Run its code during the install | UNMEASURED | 2,670 install-time script executions on 101 devices inside the window, none attributable to a package — the primitive is enabled and firing; whether it *may* run is not established |
+| 3 | Fetch Bun to hide the payload | DETECTION ONLY | 7 of 7 Bun questions answered with a control; 0 rows, 0 workflows. Nothing prevents a runner downloading a runtime |
+| 4 | Reach our credentials once running | **OPEN** | 119 workflows pass the whole secrets context, 838 interpolate secrets into `run:`, 4,933 of 5,077 declare no `permissions:` block, 1,823 consumer repos behind the shared definitions |
+| 5 | Get the credentials out | DETECTION ONLY | 0 marker repos across 2,811 examined, controls pass. Egress from a runner is not established |
+| 6 | Use our credentials to infect others | CONTROLLED | 0 of 5,077 workflows combine an OIDC token with a publish step — **a precondition absent, not a control built**, so it is re-checked every cycle |
+| 7 | Stay after we clean up | DETECTION ONLY | Persistence sweep, 0 rows over 30 days. Prevention exists in exactly one repository's agent settings, which is an example rather than an estate default |
+
+**The decisive fact of run r5, stated as §7 requires:** the clean result came from *which packages
+the attacker chose* — the estate does not depend on them. Version pinning is structural and worth
+keeping, and it was not what decided the outcome. Link 4 is where the next campaign's cost is set.
 
 **Net verdict of the reference run:** not exposed on any surface, in any org. Protective factors —
 pinned lockfiles across all 153 affected-family repos (**structural**), and a publish window falling
