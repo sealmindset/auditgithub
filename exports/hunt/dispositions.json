@@ -1,0 +1,24 @@
+{
+  "_what_this_file_is": "Adjudications of individual flagged items from the hunt sweeps. The coverage artifacts record what a collector OBSERVED; this file records what a human CONCLUDED and on what basis. They are separate files so that a judgement can never be mistaken for a measurement.",
+  "_rules": [
+    "An entry needs both `reason` and `evidence` or the renderer ignores it and the flag stays open. Clearing a flag by listing its id with no stated basis is the unprovable claim doctrine 0.6 forbids.",
+    "`evidence` must state what was actually checked and what was found - not a conclusion restated. A reader has to be able to repeat the check.",
+    "A cleared item is still printed in the report with its reason. A disposition changes whether an item counts as evidence of compromise; it never hides the item.",
+    "`disposition` is one of: cleared, confirmed, unresolved. Only `cleared` removes an item from the status calculation. `unresolved` is the honest default for anything reviewed without a conclusion, and it keeps the flag open.",
+    "Never clear a flag because it looks routine. Clear it because a campaign indicator was specifically looked for and specifically absent."
+  ],
+  "dispositions": [
+    {
+      "id": "cc7de3928f74",
+      "vector": "GitHub repositories - branches and commits",
+      "repo": "SleepNumber/sndotcom",
+      "disposition": "cleared",
+      "flagged_because": "The commit changes .claude/settings.json, and it landed at 2026-08-04T14:16:01Z - inside the attack window. Claude Code settings are a campaign injection target, so the flag was correct to fire and should fire again on the next such change.",
+      "reason": "The file was read at this commit and does not carry the campaign's injection. The worm's vector into Claude Code settings is a `hooks` entry that executes a command; this file has no `hooks` key at all. Its `deny` list independently blocks the two primitives the campaign relies on.",
+      "evidence": "GET /repos/SleepNumber/sndotcom/contents/.claude/settings.json?ref=cc7de3928f74, read 2026-08-10. Keys present: $schema, permissions.allow, permissions.deny, enabledPlugins. No `hooks` key. permissions.deny contains \"Bash(curl *)\", \"Read(.env)\", \"Read(./.env)\", \"Edit(.env)\", \"Edit(./.env)\", \"Bash(rm -rf *)\" - so curl-to-shell and .env reads are denied. permissions.allow contains no bare Bash and no install command; the broadest entries are \"Bash(npm run *)\" and \"Bash(npx tsc:*)\". Authored and committed by luismercadoSN (Luis Mercado, luis.mercado@sleepnumber.com) with committer web-flow, i.e. a merge performed through the GitHub web UI, not a token-driven push. Message: \"Merge pull request #3362 from SleepNumber/release-to-main\". Neither of the campaign's commit identities (claude <claude@users.noreply.github.com>, github-advanced-security[bot]) appears, and agent_coauthor_trailer is false.",
+      "not_claimed": "This clears the .claude/settings.json content at this commit and the commit's authorship. It does not review the other 60-odd files in the same merge; those are covered by the estate-wide sweeps (lockfile IOC match, posture sweep, tree sweep), not by this adjudication.",
+      "adjudicated_at": "2026-08-10",
+      "adjudicated_by": "hunt run r5"
+    }
+  ]
+}

@@ -353,7 +353,19 @@ PARSERS = {
 }
 
 
-def collect_repo(record: dict, token: str, scope: Set[str]) -> dict:
+# Names that are malicious at ANY version, so spec matching cannot see them. The campaign
+# injects a dependency of its own into the manifests it rewrites; there is no "safe version"
+# of it to subtract, and `all_pairs & scope` therefore returns nothing however complete the
+# spec set is. Cycode named `@opensearch/setup` and recorded that no rule in
+# github_conf/detections/npm_supply_chain_rules.json keys on a dependency name at all, which
+# left this as a dependency-inventory question with nothing asking it. This is the ask.
+WATCH_NAMES: Set[str] = {
+    "@opensearch/setup",
+}
+
+
+def collect_repo(record: dict, token: str, scope: Set[str],
+                 watch_names: Set[str]) -> dict:
     org, repo = record["org"], record["repo"]
     ref = record.get("branch_inspected") or record.get("default_branch")
     lockfiles = [p for p in (record.get("npm_manifests") or [])
@@ -396,6 +408,15 @@ def collect_repo(record: dict, token: str, scope: Set[str]) -> dict:
         if name in scope_names:
             present.setdefault(name, []).append(version)
     out["affected_names_present"] = {k: sorted(set(v)) for k, v in sorted(present.items())}
+    # Injected-dependency names, matched at any version. Kept separate from "matches" because
+    # a hit here means something different: not "a known-bad version is installed" but "a
+    # package that only exists because the worm put it in a manifest is in the tree".
+    watch_hits = {}
+    for pair in all_pairs:
+        name, _, version = pair.rpartition("@")
+        if name in watch_names:
+            watch_hits.setdefault(name, []).append(version)
+    out["watch_name_hits"] = {k: sorted(set(v)) for k, v in sorted(watch_hits.items())}
     return out
 
 
@@ -419,7 +440,12 @@ def main() -> int:
                         help="Minimum seconds between requests across all workers. Set "
                              "this above 0 if the contents endpoint starts returning 403 "
                              "while the core quota is still healthy.")
+    parser.add_argument("--watch-names", nargs="*", default=None,
+                        help="Package names to flag at ANY version, for injected "
+                             "dependencies that have no safe version to subtract. Defaults "
+                             f"to {sorted(WATCH_NAMES)}.")
     args = parser.parse_args()
+    watch_names = set(args.watch_names) if args.watch_names is not None else set(WATCH_NAMES)
 
     global THROTTLE
     THROTTLE = Throttle(min_interval=args.min_interval)
@@ -471,7 +497,7 @@ def main() -> int:
                                                 ("org", "repo", "full_name")},
                                              "error": "no token for org"}) + "\n")
                     continue
-                futures[pool.submit(collect_repo, record, token, scope)] = record
+                futures[pool.submit(collect_repo, record, token, scope, watch_names)] = record
 
             for done, future in enumerate(as_completed(futures), 1):
                 record = futures[future]
@@ -498,11 +524,17 @@ def main() -> int:
                           file=sys.stderr)
                 if result.get("affected_names_present"):
                     counts["repos_with_affected_name_present"] += 1
+                if result.get("watch_name_hits"):
+                    counts["REPOS_WITH_WATCHED_NAME"] += 1
+                    findings.append(result)
+                    print(f"  WATCHED NAME {result['full_name']}: "
+                          f"{result['watch_name_hits']}", file=sys.stderr)
                 if done % 50 == 0:
                     print(f"  {done}/{len(futures)}", file=sys.stderr)
 
     coverage = {
         "scope_specs": len(scope),
+        "watch_names": sorted(watch_names),
         "confirmed_live_included": confirmed_live,
         "counts": dict(counts),
         "findings": findings,
@@ -516,6 +548,14 @@ def main() -> int:
             "repository, so this method cannot clear them; they are unmeasured, not clean.",
             "repos_with_parse_failure is an explicit coverage hole. Those repositories "
             "were fetched but not understood.",
+            "REPOS_WITH_WATCHED_NAME counts repositories whose tree contains an "
+            "injected-dependency name at ANY version. This cannot be folded into "
+            "REPOS_WITH_MATCH: there is no safe version of an injected package to "
+            "subtract, so spec matching structurally cannot see it. A zero here is weaker "
+            "evidence than the spec zero above, because no control proves the name could "
+            "have been found - the name has never appeared in this estate at any version, "
+            "so unlike the four affected names there is no positive case demonstrating "
+            "the matcher reaches it.",
         ],
     }
     coverage_path = args.out.with_name(args.out.stem + "_coverage.json")

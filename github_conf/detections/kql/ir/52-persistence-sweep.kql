@@ -12,6 +12,15 @@
 // (Linux), .local/bin, .claude, .vscode, plus Windows Run keys. The lock file
 // /tmp/tmp.dpkg_14527.lock is the worm's own single-instance marker — a strong,
 // low-false-positive indicator of execution on a Linux host.
+//
+// Added 2026-08-10: the gh-token-monitor watchdog. This sweep shipped without it, which
+// made it the wrong query to run at the one moment it matters most. The watchdog polls
+// api.github.com/user every 60s for 24h and fires the payload when the token it watches
+// stops working, so **revocation is its trigger**. Playbook §7 step 1.5 requires it to be
+// removed BEFORE any credential is rotated — and this was the only estate-wide query that
+// could have located it. Filename matching is acceptable for these four names and nowhere
+// else in this corpus: nothing legitimate ships a file called gh-token-monitor.sh, whereas
+// setup.mjs and Math_Symbol.js both have benign homonyms.
 
 let TargetDevice = "*";
 let Lookback = 30d;
@@ -27,7 +36,12 @@ union withsource=SourceTable
                                "settings.json","tasks.json"))
          or FileName =~ "tmp.dpkg_14527.lock"
          or (FolderPath has ".github" and FileName =~ "codeql_analysis.yml")
+         or FileName in~ ("gh-token-monitor.sh", "gh-token-monitor.service",
+                          "com.user.gh-token-monitor.plist", "com.user.gh-token-monitor")
+         or FolderPath has_any ("\\gh-token-monitor", "/gh-token-monitor")
     | extend Surface = case(
+        FileName has "gh-token-monitor" or FolderPath has "gh-token-monitor",
+                                                    "revocation-triggered watchdog",
         FolderPath has "LaunchAgents",              "macOS LaunchAgent",
         FolderPath has ".config/systemd/user",      "Linux systemd user unit",
         FolderPath has "/.local/bin",               "Linux user bin",
@@ -58,3 +72,9 @@ union withsource=SourceTable
 // applies, so expect benign rows — the point is to review each one on a device already
 // confirmed compromised, not to alert on them. Compare against the IOC hashes
 // 927387d0... (.vscode/tasks.json) and 14eb4ce0... (.claude/settings.json).
+//
+// A watchdog row is not one finding among several. It reverses the order of the response:
+// remove the unit or plist and the script, confirm `pgrep -af gh-token-monitor` returns
+// nothing, and only then rotate. Quarantining the script alone leaves the systemd unit and
+// the launchd plist in place, so this query's FolderPath branch exists to surface those
+// two even when the script itself has already been removed.

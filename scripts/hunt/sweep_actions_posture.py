@@ -89,6 +89,26 @@ TOJSON_SECRETS_RE = re.compile(r"toJSON\s*\(\s*secrets\s*\)", re.IGNORECASE)
 BUN_FETCH_RE = re.compile(
     r"oven-sh/bun/releases/download|bun-windows-[a-z0-9-]+\.zip|bun-dl-|bun\.exe",
     re.IGNORECASE)
+# The trusted-publishing precondition (§6 check 11, added 2026-08-10 from Unit 42). The
+# worm's second propagation path never touches a stolen registry token: it asks the runner
+# for an OIDC token with audience npm:registry.npmjs.org, trades it for a publish
+# credential, and then mints genuine Sigstore provenance over the poisoned artifact. That
+# path needs exactly two things in the workflow -- an OIDC token it can request, and a
+# publish step whose credential the exchange replaces. Neither is a misconfiguration on
+# its own; together they are the capability, and any code that reaches the runner inherits
+# it. Counted as a precondition, never reported as a finding.
+ID_TOKEN_WRITE_RE = re.compile(r"^\s*id-token\s*:\s*(['\"]?)write\1\s*$", re.MULTILINE)
+PUBLISH_STEP_RE = re.compile(
+    r"npm\s+publish|pnpm\s+publish|yarn\s+npm\s+publish|npm-publish"
+    r"|changesets/action|semantic-release|np\s+--"
+    r"|twine\s+upload|gh-action-pypi-publish|poetry\s+publish|flit\s+publish"
+    r"|gem\s+push|cargo\s+publish|mvn\s+deploy|gradle\s+publish|dotnet\s+nuget\s+push",
+    re.IGNORECASE)
+# npm's audience string, and the audience the payload uses for the attestation half. A
+# literal hit is not the worm -- setup-node's provenance support uses the same audience --
+# but a workflow naming it has already opted into the exchange this path abuses.
+OIDC_AUDIENCE_RE = re.compile(r"npm:registry\.npmjs\.org|audience\s*:\s*['\"]?sigstore",
+                              re.IGNORECASE)
 
 # Actions published by GitHub itself. Still mutable, but the tag owner is the platform,
 # so they are separated from arbitrary third parties rather than being excused.
@@ -199,7 +219,15 @@ def analyse_workflow(path: str, text: str) -> dict:
         "bun_fetch_markers": sorted({m.lower() for m in BUN_FETCH_RE.findall(text)}),
         "references_bun_exe": bool(re.search(r"bun\.exe", text, re.IGNORECASE)),
         "has_on_block": bool(ON_BLOCK_RE.search(text)),
+        "requests_oidc_id_token": bool(ID_TOKEN_WRITE_RE.search(text)),
+        "publish_steps": sorted({m.strip().lower()
+                                 for m in PUBLISH_STEP_RE.findall(text)}),
+        "names_publishing_oidc_audience": bool(OIDC_AUDIENCE_RE.search(text)),
     })
+    # The pair, not either half. Recorded as a precondition for the trusted-publishing
+    # path (§6 check 11), which is why the key says capability and not finding.
+    out["oidc_publish_capability"] = bool(
+        out["requests_oidc_id_token"] and out["publish_steps"])
     return out
 
 
@@ -326,6 +354,21 @@ def main() -> int:
                   "markers": w["bun_fetch_markers"],
                   "references_bun_exe": w.get("references_bun_exe")}
                  for name, w in workflows if w.get("bun_fetch_markers")]
+    # §6 check 11 of the hunt TTP, added 2026-08-10 and never executed before this run.
+    oidc_publish = [{"repo": name, "path": w["path"],
+                     "publish_steps": w["publish_steps"],
+                     "names_publishing_oidc_audience": w.get(
+                         "names_publishing_oidc_audience"),
+                     "declares_permissions": w.get("declares_permissions")}
+                    for name, w in workflows if w.get("oidc_publish_capability")]
+    # Emitted as {repo, path} dicts like every other finding list, not as "repo:path"
+    # strings. collect_repo_owners.py reads entry["repo"] and silently skips anything
+    # that is not a dict, so a string list here is a finding set with no owner attached.
+    id_token_only = [{"repo": name, "path": w["path"],
+                      "declares_permissions": w.get("declares_permissions")}
+                     for name, w in workflows
+                     if w.get("requests_oidc_id_token")
+                     and not w.get("oidc_publish_capability")]
 
     third_party = Counter()
     for _, workflow in workflows:
@@ -367,9 +410,13 @@ def main() -> int:
             "workflows_fetching_bun": len(bun_fetch),
             "workflows_referencing_bun_exe": sum(
                 1 for b in bun_fetch if b["references_bun_exe"]),
+            "workflows_with_oidc_publish_capability": len(oidc_publish),
+            "workflows_requesting_id_token_without_publish_step": len(id_token_only),
             "CRITICAL_privileged_trigger_with_pr_head_checkout": len(critical),
         },
         "critical_privileged_trigger_with_pr_head_checkout": critical,
+        "oidc_publish_capability_workflows": oidc_publish,
+        "id_token_write_without_publish_step": id_token_only[:200],
         "serialises_whole_secrets_context": tojson_secrets,
         "bun_fetch_workflows": bun_fetch,
         "self_hosted_runner_workflows": self_hosted,
@@ -400,6 +447,15 @@ def main() -> int:
             "bun.exe is matched explicitly because the Windows bootstrap writes that "
             "name and never touches /tmp or chmod, so the POSIX-shaped checks in this "
             "corpus could not have seen it.",
+            "id-token: write combined with a publish step is a capability count, not a "
+            "finding: it is how trusted publishing is designed to work, and pinning or "
+            "provenance does not reduce it. It is counted because the campaign's second "
+            "propagation path needs no stolen registry credential at all — it mints one "
+            "from the runner's OIDC token and then produces genuine Sigstore provenance "
+            "over the poisoned artifact, so provenance verification passes downstream. "
+            "The number states how many workflows in this estate could be driven that "
+            "way by any code that reaches their runner; the mitigation is narrowing what "
+            "reaches those runners, not rotating a token.",
         ],
         "limits": [
             "Default branch only, and only repositories the tree sweep found to have "
@@ -408,6 +464,12 @@ def main() -> int:
             "itself use mutable refs internally, which is not visible here.",
             "Reusable workflows called with workflow_call are analyzed where they live in "
             "this estate and not where they are external.",
+            "The OIDC-plus-publish pair is matched per file, not per job. A workflow that "
+            "grants id-token: write to one job and publishes from a different job is "
+            "counted, so the number is an upper bound on the capability; a workflow that "
+            "delegates publishing to an external reusable workflow is not counted, so it "
+            "is a lower bound on the estate. Both directions are stated because neither "
+            "can be closed by static text.",
         ],
     }
     coverage_path.write_text(json.dumps(coverage, indent=2))

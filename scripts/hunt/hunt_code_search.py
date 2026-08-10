@@ -73,6 +73,23 @@ QUERIES: List[Dict[str, str]] = [
     {"key": "codeql_analysis.yml", "q": "filename:codeql_analysis.yml",
      "means": "GitHub Actions exfiltration workflow planted by the worm",
      "expect_path": ".github/workflows/codeql_analysis.yml"},
+    # Unit 42, 2026-08-10. A third dropped file, named with no hash published, so this is
+    # the only way to look for it short of reading every tree. A hit is a lead: the file
+    # has to be read before it is called anything else.
+    {"key": "router_runtime.js", "q": "filename:router_runtime.js",
+     "means": "third dropped payload file named by Unit 42; no published hash, so a hit "
+              "is a lead until the contents are read"},
+    # --- dependency-injection marker -----------------------------------------
+    # Cycode calls @opensearch/setup a malicious optionalDependencies entry added before
+    # the patch-bump republish; Unit 42 calls it a typosquat of the @opensearch-project
+    # scope injected on the OIDC trusted-publishing path. Both agree it is malicious when
+    # present, which is all a search needs. The authoritative answer comes from the
+    # dependency inventory, not from here - code search is corroborating only (§0.3).
+    {"key": "opensearch_setup_dep", "q": "\"@opensearch/setup\"",
+     "means": "worm dependency-injection marker; no legitimate package declares it"},
+    {"key": "node_runtime_init", "q": "\"_NODE_RUNTIME_INIT\"",
+     "means": "the payload's recursion guard, set in the process environment. Present in "
+              "a repository only if the payload or a copy of it was committed"},
     # --- in-file markers -----------------------------------------------------
     {"key": "marker_march", "q": "\"thebeautifulmarchoftime\"",
      "means": "signed GitHub fallback-exfiltration marker"},

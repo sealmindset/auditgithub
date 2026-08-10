@@ -161,6 +161,20 @@ AlertEvidence
 | limit 5
 """
 
+# The control for the persistence sweep's registry branch. ir/52 unions DeviceFileEvents
+# with DeviceRegistryEvents, and coverage/07 only proves the first of those is populated.
+# Without this, a zero on the Windows Run-key branch is indistinguishable from a table
+# nobody is feeding - the exact failure mode this corpus keeps designing against.
+Q_REGISTRY_CONTROL = """
+DeviceRegistryEvents
+| where Timestamp > ago({lookback}d)
+| summarize Rows = count(), Devices = dcount(DeviceId),
+            RunKeyRows = countif(RegistryKey has_any (@"\\CurrentVersion\\Run",
+                                                      @"\\CurrentVersion\\RunOnce")),
+            LastSeen = max(Timestamp)
+| limit 5
+"""
+
 # Onboarding. The denominator for every count above. A device that is not reporting cannot
 # produce a hit, and a hunt that does not say how many of those there are is quoting a
 # percentage with the denominator hidden.
@@ -243,6 +257,28 @@ def run(lookback_days: int) -> Dict[str, Any]:
         "rule_17_published_signatures": hunt(
             "rule_17",
             (KQL / "detections/17-defender-published-signatures.kql").read_text()),
+        # Added 2026-08-10. Both files were committed and neither had ever been executed,
+        # which is the same failure §0.6(a) records for rule 17: a query nobody runs is
+        # not coverage, and the corpus had been counting these two as if they were.
+        #
+        # 52 is the only estate-wide query that can find the gh-token-monitor watchdog, and
+        # the watchdog decides the ORDER of the response - it fires the payload when a
+        # credential it watches is revoked, so §7 step 1.5 removes it before anything is
+        # rotated. A hunt that recommends rotation without having run this is recommending
+        # a trigger.
+        "persistence_sweep": hunt(
+            "ir_52",
+            (KQL / "ir/52-persistence-sweep.kql").read_text()),
+        # 07 is 52's action control, not a finding. The agent-hook-drop rule arms
+        # stopAndQuarantineFiles, which needs a sha1Column: where SHA1 is empty the action
+        # silently no-ops, the alert still fires, and the operator believes a file was
+        # quarantined that was not. On this campaign that belief is dangerous, because
+        # quarantining the watchdog script leaves the unit and the plist behind.
+        "file_hash_column_coverage": hunt(
+            "coverage_07",
+            (KQL / "coverage/07-file-hash-column-coverage.kql").read_text()),
+        "registry_table_control": hunt(
+            "registry_control", Q_REGISTRY_CONTROL.format(lookback=lookback_days)),
         "alert_table_control": hunt(
             "alert_table_control", Q_ALERT_TABLE_CONTROL.format(lookback=lookback_days)),
         "threatfamily_control": hunt(
@@ -630,6 +666,94 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         # positive on the coverage axis - a request for a permission that closes nothing.
         pass
 
+    # ------------------------------------------------------------------------------
+    # Persistence (ir/52) and its action control (coverage/07). Both run here for the
+    # first time on 2026-08-10.
+    # ------------------------------------------------------------------------------
+    persist = ev.get("persistence_sweep") or {"ok": False, "rows": [],
+                                              "error": "query not executed"}
+    persist_rows = persist.get("rows") or []
+    # Three populations, and collapsing them would be the mistake. A watchdog row changes
+    # the ORDER of the response. A worm lock or an exfil workflow is a hit. A settings.json
+    # or tasks.json row is the benign developer population this query deliberately returns
+    # by path so it can be reviewed on a device already known to be compromised - counting
+    # those as findings would make the query unrunnable in practice.
+    watchdog_rows = [r for r in persist_rows
+                     if (r.get("Surface") or "") == "revocation-triggered watchdog"]
+    hard_surfaces = {"worm single-instance lock", "exfil workflow", "Windows Run key"}
+    hard_rows = [r for r in persist_rows if (r.get("Surface") or "") in hard_surfaces]
+    hook_rows = [r for r in persist_rows
+                 if r not in watchdog_rows and r not in hard_rows]
+
+    for row in watchdog_rows:
+        findings.append({
+            "id": f"ENDPOINT-WATCHDOG-{row.get('DeviceName', 'unknown')}",
+            "what": ("gh-token-monitor watchdog artifact on "
+                     f"{row.get('DeviceName')}. DO NOT ROTATE ANY CREDENTIAL ON THIS HOST "
+                     "until it is removed - revocation is this watchdog's trigger. Remove "
+                     "the systemd user unit or launchd plist AND the script, confirm "
+                     "`pgrep -af gh-token-monitor` is empty, then rotate per playbook §7 "
+                     "step 1.5."),
+            "evidence": row,
+        })
+    for row in hard_rows:
+        findings.append({
+            "id": f"ENDPOINT-PERSIST-{row.get('DeviceName', 'unknown')}",
+            "what": f"{row.get('Surface')} on {row.get('DeviceName')}",
+            "evidence": row,
+        })
+    if not persist.get("ok"):
+        unresolved_items.append(
+            "Persistence sweep (ir/52-persistence-sweep.kql) did not execute: "
+            f"{persist.get('error')}. The gh-token-monitor watchdog is unsearched, so no "
+            "credential rotation should be scheduled on the strength of this run.")
+
+    # The action control. Where SHA1 is empty, stopAndQuarantineFiles silently no-ops: the
+    # alert fires, the operator believes the file was quarantined, and it was not. On this
+    # campaign that belief is worse than no alert, because quarantining the watchdog script
+    # leaves the unit and the plist running.
+    hash_cov = ev.get("file_hash_column_coverage") or {"ok": False, "rows": []}
+    sha1_short = [r for r in (hash_cov.get("rows") or [])
+                  if (r.get("Sha1CoveragePct") is not None
+                      and float(r.get("Sha1CoveragePct")) < 99.0)]
+    missing_device_id = [r for r in (hash_cov.get("rows") or [])
+                         if (r.get("MissingDeviceId") or 0) > 0]
+    # One item, not one per platform. Six near-identical lines would read as six problems
+    # and would keep this vector amber forever, because SHA1 will never be 100% on a real
+    # tenant. The work is a single doctrine change, so it is a single item.
+    #
+    # And the claim is stated at the strength the data supports: 97.1% coverage does NOT
+    # mean the action cannot land on that platform. It means it silently no-ops on the
+    # complement, while the alert fires either way - so an alert must never be read as
+    # proof that the file was quarantined.
+    if sha1_short:
+        worst = min(sha1_short, key=lambda r: float(r.get("Sha1CoveragePct") or 0))
+        detail = "; ".join(
+            f"{r.get('Platform')} {r.get('Sha1CoveragePct')}% of {(r.get('Rows') or 0):,}"
+            for r in sorted(sha1_short,
+                            key=lambda r: float(r.get("Sha1CoveragePct") or 0)))
+        unresolved_items.append(
+            f"stopAndQuarantineFiles will silently no-op on the fraction of matching "
+            f"DeviceFileEvents rows that carry no SHA1, worst case "
+            f"{100 - float(worst.get('Sha1CoveragePct') or 0):.1f}% of rows on "
+            f"{worst.get('Platform')} ({detail}; macOS is the only platform at 100%). The "
+            f"alert fires regardless, so on this campaign an operator can believe the "
+            f"watchdog script was quarantined when it was not - and quarantine would not "
+            f"have removed its systemd unit or launchd plist in any case. Ours to close: "
+            f"state in the rule and in playbook §7 step 1.5 that quarantine is not "
+            f"confirmation, and that removal is verified with `pgrep -af gh-token-monitor` "
+            f"on the host.")
+    for row in missing_device_id:
+        unresolved_items.append(
+            f"{row.get('MissingDeviceId'):,} matching DeviceFileEvents rows on "
+            f"{row.get('Platform')} carry no DeviceId, which breaks every automated action "
+            f"and the alert entity mapping, not just quarantine.")
+    if not hash_cov.get("ok"):
+        unresolved_items.append(
+            "coverage/07-file-hash-column-coverage.kql did not execute: "
+            f"{hash_cov.get('error')}. Whether the armed quarantine action has a target is "
+            "therefore unknown, and an armed action that silently no-ops reads as success.")
+
     # Status is now the RESULT axis only. CLEAR means: over the population these queries can
     # observe, they could have found the campaign and did not. It does not mean the
     # population is the estate - `coverage_gaps` carries that, the renderer prints it beside
@@ -693,6 +817,54 @@ def interpret(raw: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         f"readable answer. Each is listed with the control that earns it; the "
         f"{len(bun_questions) - answered} whose control failed are withdrawn rather than "
         f"reported as zero.")
+    # Persistence, stated as coverage because a zero here is the claim the eradication
+    # advice rests on, and until 2026-08-10 nothing in this corpus had ever made it.
+    if persist.get("ok"):
+        # Both halves of the union need their own control, because ir/52 returns one zero
+        # across two tables and a reader cannot tell which table was empty.
+        file_rows_proven = sum((r.get("Rows") or 0) for r in (hash_cov.get("rows") or []))
+        reg = ev.get("registry_table_control") or {"ok": False, "rows": []}
+        reg_row = (reg.get("rows") or [{}])[0]
+        reg_rows, reg_runkeys = (reg_row.get("Rows") or 0), (reg_row.get("RunKeyRows") or 0)
+        coverage.append(
+            f"Persistence sweep executed for the first time (ir/52, committed file, not a "
+            f"paraphrase): {len(persist_rows):,} row(s) over 30 days across "
+            f"DeviceFileEvents and DeviceRegistryEvents. gh-token-monitor artifacts - the "
+            f"watchdog whose trigger is credential revocation - returned "
+            f"{len(watchdog_rows)} row(s); worm single-instance locks, planted exfil "
+            f"workflows and campaign Run keys returned {len(hard_rows)} row(s). The "
+            f"remaining {len(hook_rows)} row(s) are IDE and agent hook files returned by "
+            f"path without a hash filter, which is what this query is written to do: they "
+            f"are the benign developer population, to be reviewed on a device already "
+            f"confirmed compromised, and are not hits.")
+        coverage.append(
+            f"Both halves of that zero are controlled, separately, because one number "
+            f"spans two tables: DeviceFileEvents is demonstrably populated at "
+            f"{file_rows_proven:,} matching rows over 7 days (coverage/07, above), and "
+            f"DeviceRegistryEvents at {reg_rows:,} rows over {lookback} days of which "
+            f"{reg_runkeys:,} are Run or RunOnce keys. Neither table is empty, so the "
+            f"persistence zero is a measured absence on both branches."
+            if reg.get("ok") and reg_rows else
+            f"COVERAGE SPLIT: DeviceFileEvents is proven populated ({file_rows_proven:,} "
+            f"matching rows), but the DeviceRegistryEvents control returned "
+            f"{'an error: ' + str(reg.get('error')) if not reg.get('ok') else 'no rows'}. "
+            f"The file branch of the persistence zero is readable; the Windows Run-key "
+            f"branch is not, and is withdrawn rather than reported as clean.")
+        if not (reg.get("ok") and reg_rows):
+            unresolved_items.append(
+                "The DeviceRegistryEvents control returned nothing, so the Windows Run-key "
+                "branch of the persistence sweep produced an uninterpretable zero. Ours to "
+                "close: establish whether registry telemetry is collected on this tenant "
+                "before the Run-key result is reported either way.")
+    if hash_cov.get("ok") and hash_cov.get("rows"):
+        coverage.append(
+            "Quarantine-action control (coverage/07, also first executed here): SHA1 "
+            "coverage on the file shapes the agent-hook-drop rule matches is "
+            + "; ".join(f"{r.get('Platform')} {r.get('Sha1CoveragePct')}% of "
+                        f"{(r.get('Rows') or 0):,} rows"
+                        for r in (hash_cov.get("rows") or [])[:6])
+            + ". This decides whether an armed stopAndQuarantineFiles has anything to act "
+              "on; below 100% the action no-ops while the alert still fires.")
     for row in benign:
         coverage.append(
             f"Triaged and explained: {row.get('FileName')} on {row.get('DeviceName')} "

@@ -106,6 +106,23 @@ def parse_codeowners(text: str) -> Dict[str, object]:
     }
 
 
+def entry_repo(entry: object) -> Optional[str]:
+    """Extract the repository from a posture finding entry, whatever shape it has.
+
+    Finding lists are dicts with a `repo` key. Older ones, and any new check written in
+    a hurry, emit a bare "org/repo:path" string instead. Both are accepted here rather
+    than skipped, because a skipped entry is a finding that reaches the report with no
+    owner and no error - the one outcome this script exists to prevent. Anything that
+    yields no org/repo is recorded in `unattributable_findings`, never dropped.
+    """
+    if isinstance(entry, dict):
+        return entry.get("repo") or None
+    if isinstance(entry, str):
+        candidate = entry.split(":", 1)[0].strip()
+        return candidate if candidate.count("/") == 1 and all(candidate.split("/")) else None
+    return None
+
+
 def resolve_repo(full_name: str, ref: Optional[str], token: str,
                  throttle: Throttle) -> Dict[str, object]:
     org, repo = full_name.split("/", 1)
@@ -181,15 +198,25 @@ def main() -> int:
     # if a new finding list is added to the posture sweep it must be added here too, or
     # the report will name a repository it cannot attribute.
     targets: set = set(args.extra_repos)
+    unattributable: List[dict] = []
     if args.posture.exists():
         posture = json.loads(args.posture.read_text())
         for key in ("serialises_whole_secrets_context", "remote_code_piped_to_shell",
                     "self_hosted_runner_workflows", "secrets_interpolated_into_run",
                     "critical_privileged_trigger_with_pr_head_checkout",
-                    "bun_fetch_workflows"):
+                    "bun_fetch_workflows",
+                    # Added 2026-08-10 with the check-11 detection. Empty in r5, which is
+                    # why forgetting it would have gone unnoticed until the first estate
+                    # that does use trusted publishing - and then the report would have
+                    # named a repository with no owner attached.
+                    "oidc_publish_capability_workflows",
+                    "id_token_write_without_publish_step"):
             for entry in posture.get(key, []) or []:
-                if isinstance(entry, dict) and entry.get("repo"):
-                    targets.add(entry["repo"])
+                repo = entry_repo(entry)
+                if repo:
+                    targets.add(repo)
+                else:
+                    unattributable.append({"key": key, "entry": entry})
     else:
         print(f"[owners] posture coverage absent at {args.posture}", file=sys.stderr)
 
@@ -241,6 +268,10 @@ def main() -> int:
         # Called out on its own because it is the intersection that matters: nobody is
         # accountable and the repository can reach production.
         "unowned_and_reaches_production": sorted(unowned_prod),
+        # A finding whose entry named no repository. Non-empty means the report has a
+        # line this script could not route to anyone; that is a defect in the posture
+        # emitter, not a property of the estate.
+        "unattributable_findings": unattributable,
         "topology_rows_available": len(topology),
         "repos": {r["repo"]: r for r in resolved},
         "limits": [
@@ -258,6 +289,9 @@ def main() -> int:
     for state, count in sorted(states.items()):
         print(f"  {state}: {count}", file=sys.stderr)
     print(f"  unowned AND reaches production: {len(unowned_prod)}", file=sys.stderr)
+    if unattributable:
+        print(f"  UNATTRIBUTABLE findings (no repo in entry): {len(unattributable)}",
+              file=sys.stderr)
     return 0
 
 

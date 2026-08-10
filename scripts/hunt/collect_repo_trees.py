@@ -145,11 +145,14 @@ def load_indicator_basenames() -> Dict[str, List[str]]:
     # under version control and looked like coverage. It uses a different schema from
     # the other two (persistence.repository_scoped rather than dropped_files), which is
     # why a loader that only understood one shape skipped it silently.
-    for name in ("shai_hulud_2026_08.json", "chaindrop_elastic_2026_08.json",
-                 "chaindrop_stepsecurity_2026_08.json"):
-        path = IOC_DIR / name
-        if not path.exists():
-            continue
+    #
+    # That was the second half of the same bug. The first half was this loop naming its
+    # files, so adding a source to github_conf/ioc/ left the sweep unchanged and nothing
+    # failed to say so. It recurred on 2026-08-10 with two new sources (Cycode, Unit 42),
+    # one of which carries the only known name for a third dropped file. Enumerating the
+    # directory means a new source file reaches the sweep by existing, which is the same
+    # property the docstring above claims for reading the IOC files at all.
+    for path in sorted(IOC_DIR.glob("*.json")):
         data = json.loads(path.read_text())
         persistence = data.get("persistence", {}) or {}
         repo_scoped = persistence.get("repository_scoped", []) or []

@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "campaign": "shai-hulud-here-we-go-again",
+  "source_name": "Cycode",
+  "source_url": "https://cycode.com/blog/keyv-cacheable-npm-worm-ai-coding-agents/",
+  "compiled_at": "2026-08-10",
+  "_why_a_separate_file": [
+    "Same rule as chaindrop_elastic_2026_08.json and chaindrop_stepsecurity_2026_08.json:",
+    "one source, one file, so a claim can be attributed and contradicted rather than",
+    "averaged. Cycode's distinct contribution is the affected-version table with a named",
+    "safe rollback for each package, and an explicit denial of the transitive-reach",
+    "narrative that other reporting implies. Both are claims that need an owner.",
+    "Ingested 2026-08-10. Per the section 7 three-step process, ingestion is not coverage:",
+    "the diff of this file against the indicator lists and the deployed rules is recorded",
+    "in _diff_against_corpus below."
+  ],
+  "_relationship_to_shai_hulud_2026_08": {
+    "confirms": [
+      "setup.mjs SHA-256 54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668 at 29,918 bytes",
+      "stage-2 payload SHA-256 9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc at 727,680 bytes",
+      "Ethereum resolver contract 0xE1f2395ee43e45A1556EC6438a88c31B83493103 and getter selector 0x53ed5143",
+      "npm-cache.com with the /router exfil path",
+      "the gh-token-monitor watchdog, its systemd unit and LaunchAgent paths, and revocation-as-trigger behavior",
+      "cross-wired .claude and .vscode persistence, so cleaning one path leaves the other armed",
+      "AES-256-GCM exfil envelope with an RSA-wrapped session key",
+      "AI coding agent credential stores as harvest targets",
+      "the C2 response 'code' field reaching eval, so a contacted host is scoped as arbitrary code execution"
+    ],
+    "does_not_mention": [
+      "awqhnjewqjkl.icu",
+      "js-mirror.com and pypi-get.com",
+      "the second setup.mjs variant at 11,017 bytes",
+      "any propagation-close timestamp",
+      "the GitHub Actions runner memory scrape",
+      "the codeql_analysis.yml exfil workflow"
+    ],
+    "contradicts": [
+      {
+        "claim": "No commonly declared dependency range accepts keyv 6.x, so the widely repeated 'ESLint pulls keyv transitively' account does not explain keyv 6.0.0 installations. Only an explicit npm i keyv@latest or a declaration pinned into 6.x installed it.",
+        "conflicts_with": "docs/playbooks/supply-chain-hunt-ttp.md line 538, which records the three adjacent packages found in this estate as transitive eslint dev-toolchain dependencies.",
+        "status": "OPEN. Not resolved here and deliberately not averaged.",
+        "why_it_may_not_be_a_real_conflict": [
+          "The two statements are about different things. Cycode is describing reachability of keyv 6.x; the corpus line is describing how three ADJACENT packages - right name, safe version - arrived in this estate. Adjacency via eslint and reachability of 6.x can both hold.",
+          "Resolvable from evidence already collected: check_declared_ranges.py over the r5 lockfile set answers, for this estate, whether any declared range would have accepted keyv 6.x. That is an estate-specific answer and does not settle Cycode's general claim."
+        ],
+        "resolution_owner": "check_declared_ranges.py on the r5 inventory"
+      },
+      {
+        "claim": "'2,000-plus versions across affected scopes' after worm propagation.",
+        "conflicts_with": "totals_claimed in chaindrop_stepsecurity_2026_08.json and package_scope_claimed in chaindrop_elastic_2026_08.json, and Unit 42's 'over 400 packages'.",
+        "status": "OPEN. Three sources, three magnitudes, different units - packages versus versions - and different as-of times. Recorded, not reconciled. No estate decision depends on the total: matching is done against the derived package@version set, not a count."
+      }
+    ],
+    "note": "Cycode is a corroborating source for the file and network indicators and a primary source for the version table below."
+  },
+  "aliases_added": [],
+
+  "hashes": {
+    "setup.mjs_v1": {
+      "sha256": "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668",
+      "bytes": 29918,
+      "filenames": ["setup.mjs"]
+    },
+    "stage2": {
+      "sha256": "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+      "bytes": 727680,
+      "filenames": ["Math_Symbol.js", "math_init.js"]
+    }
+  },
+
+  "dropped_files": [
+    ".claude/settings.json",
+    ".claude/math_init.js",
+    ".claude/setup.mjs",
+    ".vscode/tasks.json",
+    ".vscode/setup.mjs",
+    "setup.mjs",
+    "Math_Symbol.js"
+  ],
+
+  "persistence": {
+    "repository_scoped": [
+      ".claude/settings.json",
+      ".claude/math_init.js",
+      ".claude/setup.mjs",
+      ".vscode/tasks.json",
+      ".vscode/setup.mjs"
+    ],
+    "cross_wiring": {
+      "claim": ".claude/settings.json invokes .vscode/setup.mjs, and .vscode/tasks.json invokes .claude/setup.mjs.",
+      "_consequence": "Removing one directory leaves a live trigger pointing into the other. Eradication has to treat the two directories as one unit, and a hunt that finds only one side has not cleared the host."
+    },
+    "host_scoped": [
+      "~/.local/bin/gh-token-monitor.sh",
+      "~/.config/gh-token-monitor/",
+      "~/.config/systemd/user/gh-token-monitor.service",
+      "~/Library/LaunchAgents/com.user.gh-token-monitor.plist"
+    ],
+    "single_instance_lock": "tmp.dpkg_14527.lock",
+    "_lock_caveat": "Cycode quotes one observed filename with a concrete pid. The pid varies; hunt tmp.dpkg_<pid>.lock as a pattern, not this literal."
+  },
+
+  "c2": {
+    "domains_confirmed": ["npm-cache.com"],
+    "exfil_path": "/router",
+    "domain_registered": "2026-05-22",
+    "ethereum": {
+      "contract": "0xE1f2395ee43e45A1556EC6438a88c31B83493103",
+      "contract_type": "StringListStore",
+      "getter_selector": "0x53ed5143",
+      "rpc_endpoints_named": [
+        "eth-mainnet.nodereal.io",
+        "go.getblock.io",
+        "eth.llamarpc.com"
+      ],
+      "rpc_endpoint_count_claimed": 75
+    },
+    "envelope": {
+      "chain": "serialize -> gzip -> AES-256-GCM -> session key wrapped with embedded RSA public key",
+      "host_fingerprint": "SHA-256 over concatenated system properties"
+    },
+    "rce": "A C2 response may carry a 'code' field that is passed to eval."
+  },
+
+  "affected_versions": {
+    "_use": "Primary source for this table. Feed to match_npm_ioc.py alongside the oracle-derived set; the rollback column is what a remediation ticket needs.",
+    "packages": [
+      {"name": "keyv", "malicious": "6.0.0", "safe": ["5.6.0", "6.0.0-rc.1"]},
+      {"name": "cacheable", "malicious": "2.5.1", "safe": ["2.5.0"]},
+      {"name": "cacheable-request", "malicious": "13.0.20", "safe": ["13.0.19"]},
+      {"name": "cache-manager", "malicious": "7.2.10", "safe": ["7.2.9"]},
+      {"name": "flat-cache", "malicious": "6.1.24", "safe": ["6.1.23"]},
+      {"name": "file-entry-cache", "malicious": "11.1.6", "safe": ["11.1.5"]},
+      {"name": "@cacheable/utils", "malicious": "2.5.1", "safe": ["2.5.0"]},
+      {"name": "@cacheable/memory", "malicious": "2.2.1", "safe": ["2.2.0"]},
+      {"name": "@cacheable/node-cache", "malicious": "3.1.2", "safe": ["3.1.1"]},
+      {"name": "@cacheable/net", "malicious": "2.1.1", "safe": ["2.1.0"]},
+      {"name": "ecto", "malicious": "5.0.1", "safe": ["5.0.0"]}
+    ],
+    "maintainer_account": {
+      "handle": "jaredwray",
+      "packages_maintained": 61,
+      "malicious_releases_identified": 11,
+      "_standing": "Named by Cycode as the incident victim, not a participant."
+    }
+  },
+
+  "injection_marker": {
+    "optional_dependency": "@opensearch/setup",
+    "claim": "A malicious optionalDependencies entry added before the patch-bump republish.",
+    "_why_this_is_the_most_useful_new_indicator": [
+      "It is a dependency name, which means it appears in package.json and in every lockfile",
+      "format the inventory already parses - no new telemetry and no new privilege needed.",
+      "Unit 42 gives the same string a different and narrower role: a typosquat of the",
+      "@opensearch-project scope used on the OIDC trusted-publishing path. Both agree the",
+      "string is malicious when present. The disagreement is about which path put it there,",
+      "which does not change the hunt: search for the name, then attribute the hit."
+    ]
+  },
+
+  "self_republish": {
+    "mechanism": "patch bumps published inside version ranges teams already had, so npm install re-resolution installs them without any explicit action",
+    "worked_example": "cacheable-request declared as ^13.0.18 silently resolves to malicious 13.0.20",
+    "user_agent": "Bun/1.3.13",
+    "bun_source": "official Bun GitHub releases",
+    "_why_the_bun_source_is_not_an_indicator": "Blocking the Bun release CDN breaks legitimate installs. The detection is the Bun process fetching and executing a script from a repository or temp path, not the download origin."
+  },
+
+  "credential_targets_added": {
+    "_use": "These classes were absent from the corpus rotation scope. Section 6.2 rotation scope must name them or the sweep is narrower than the theft.",
+    "classes": [
+      "Jenkins master.key",
+      "Argo CD secrets",
+      "Harbor secrets",
+      "HashiCorp Vault tokens",
+      "Kubernetes service-account tokens",
+      "/etc/shadow",
+      "Alibaba Cloud and Tencent Cloud instance metadata and IAM credentials",
+      "GitHub Actions OIDC tokens and organization or repository secrets",
+      "npm tokens",
+      "cryptocurrency key material - Foundry, Solana, Monero"
+    ],
+    "ai_tooling": ["Claude", "OpenAI", "Codex", "Cursor", "Gemini"]
+  },
+
+  "timeline_claimed_utc": {
+    "date": "2026-08-04",
+    "events": [
+      {"at": "09:02", "what": "initial malicious commit pushed to the keyv main branch"},
+      {"at": "09:04", "what": "IDE and agent persistence hooks deployed"},
+      {"at": "09:23", "what": "test file removed"},
+      {"at": "09:35", "what": "trojanized keyv published to npm"},
+      {"at": "10:09-10:14", "what": "cacheable family packages published"},
+      {"at": "10:28", "what": "ecto published"}
+    ],
+    "_bearing_on_the_open_window_escalation": [
+      "Cycode's latest observed publish is 10:28Z and it makes no propagation-close claim.",
+      "That is consistent with the registry oracle's 12:11:19.909Z bound and does not",
+      "support StepSecurity's 13:20Z close, but it is silence rather than a denial:",
+      "an absent claim is not evidence against one. The escalation stays OPEN."
+    ]
+  },
+
+  "detection_bypass_claims": [
+    "GitHub-signed provenance is valid because the source was already compromised when it was signed.",
+    "Domain reputation does not help: stage 1 comes from github.com and the C2 address is resolved on chain at runtime.",
+    "npm ci --ignore-scripts is insufficient. Two of the three execution triggers are IDE and agent hooks that do not run install scripts."
+  ],
+
+  "hunting_notes": [
+    "Hunt @opensearch/setup as a dependency name across package.json and every lockfile. It needs no new telemetry, and a hit is unambiguous - no legitimate package declares it.",
+    "The affected-version table is the rollback source. A hit needs a named safe version in the same row or the ticket cannot be actioned.",
+    "Bun/1.3.13 is a user-agent string, so it is only visible where request user agents are logged - proxy or egress telemetry, not endpoint file events. Do not present it as endpoint coverage.",
+    "StringListStore is the contract type name, not an indicator. The contract address is the indicator and the corpus already carries it.",
+    "The cross-wiring is the operationally important claim: a host where only .claude was cleaned is still triggered from .vscode. Eradication verification has to check both."
+  ],
+
+  "_diff_against_corpus": {
+    "_process": "Section 7 step 2. Diffed on 2026-08-10 against github_conf/ioc/*, docs/playbooks/*, github_conf/detections/*.",
+    "absent_from_every_indicator_list_and_rule_before_this_file": [
+      "@opensearch/setup",
+      "StringListStore",
+      "Bun/1.3.13",
+      "Jenkins master.key",
+      "Argo CD secrets",
+      "Harbor secrets",
+      "the per-package safe rollback versions"
+    ],
+    "already_present": [
+      "both file hashes and their byte sizes",
+      "the contract address and getter selector",
+      "npm-cache.com and /router",
+      "the three named RPC endpoints and the 75-endpoint claim",
+      "the gh-token-monitor artifact set",
+      "the AI credential paths",
+      "tmp.dpkg_<pid>.lock and bun-dl-* staging"
+    ],
+    "rule_coverage_of_the_new_indicators": "NONE. No rule in github_conf/detections/npm_supply_chain_rules.json keys on a dependency name, so @opensearch/setup has no detection - it is a dependency-inventory hunt only. Recorded here so ingesting this file is not mistaken for coverage."
+  }
+}

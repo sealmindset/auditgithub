@@ -410,12 +410,61 @@ def vector_repo_files(trees: Optional[dict]) -> dict:
     }
 
 
-def vector_branches(branches: Optional[dict]) -> dict:
+def load_dispositions(path: Optional[Path]) -> Dict[str, dict]:
+    """Load adjudications of individual flagged items, keyed by their identifier.
+
+    A detection flag and its adjudication are different kinds of statement and are kept in
+    different files on purpose. The coverage artifact records what the sweep *observed* and
+    is written by the collector; this file records what a human *concluded* and why. Merging
+    them would let a judgement be mistaken for a measurement.
+
+    A disposition only counts if it carries `reason` AND `evidence`. Clearing a flag by
+    listing its identifier with no stated basis is exactly the unprovable claim §0.6
+    forbids, so an entry missing either field is ignored and the flag stays open. This
+    fails toward the alarm, which is the correct direction to fail.
+
+    Nothing is ever hidden by a disposition. A cleared item is still printed, with its
+    reason, so a reader can disagree with the adjudication. What a disposition changes is
+    whether the item counts as evidence of compromise.
+    """
+    if not path or not path.exists():
+        return {}
+    payload = read_json(path) or {}
+    out: Dict[str, dict] = {}
+    for entry in payload.get("dispositions", []) or []:
+        key = str(entry.get("id") or "").strip()
+        if not key:
+            continue
+        if not (entry.get("reason") and entry.get("evidence")):
+            print(f"[report] ignoring disposition for {key}: a disposition needs both "
+                  f"`reason` and `evidence`, so this flag stays open", file=sys.stderr)
+            continue
+        out[key] = entry
+    return out
+
+
+def vector_branches(branches: Optional[dict],
+                    dispositions: Optional[Dict[str, dict]] = None) -> dict:
     if not branches:
         return {"name": "GitHub repositories - branches and commits", "status": NOT_RUN,
                 "scope": "-", "counts": {}, "coverage": [], "findings": []}
+    dispositions = dispositions or {}
     campaign = branches.get("campaign_branches_found", []) or []
-    flagged = branches.get("flagged_commits", []) or []
+    all_flagged = branches.get("flagged_commits", []) or []
+
+    def adjudication(commit: dict) -> Optional[dict]:
+        sha = str(commit.get("sha") or "")
+        for key in (sha, sha[:12]):
+            if key and key in dispositions:
+                return dispositions[key]
+        return None
+
+    # Only items still open drive the status. A commit reviewed against the campaign's
+    # actual indicators and found benign is a flag that did its job, not an incident.
+    flagged = [c for c in all_flagged
+               if (adjudication(c) or {}).get("disposition") != "cleared"]
+    cleared = [(c, adjudication(c)) for c in all_flagged
+               if (adjudication(c) or {}).get("disposition") == "cleared"]
     proven = (branches.get("branch_enumeration_query_proven")
               and branches.get("commit_inspection_query_proven")
               and branches.get("coverage_supports_negative_finding"))
@@ -434,7 +483,10 @@ def vector_branches(branches: Optional[dict]) -> dict:
             "Branches enumerated": branches.get("branches_enumerated", 0),
             "Commits inspected": branches.get("commits_inspected", 0),
             "Campaign branches found": len(campaign),
-            "Flagged commits": len(flagged),
+            "Flagged commits - open": len(flagged),
+            # Printed even when zero. A run where every flag was reviewed and cleared must
+            # not look identical to a run where nothing ever fired.
+            "Flagged commits - reviewed and cleared": len(cleared),
             # `bun_artifacts_changed` is a field on each *commit* record, not a key on the
             # sweep's top-level dict, so reading it from `branches` returned the default
             # every time and this metric was structurally incapable of being non-zero. It
@@ -453,9 +505,33 @@ def vector_branches(branches: Optional[dict]) -> dict:
             f"commit inspection query proven: {branches.get('commit_inspection_query_proven')}.",
             f"{trailers.get('count', 0)} agent-trailer commit(s) reviewed and deliberately "
             f"not flagged: {trailers.get('why_not_flagged', '')}",
+        ] + [
+            # The adjudication is part of the coverage story, not a footnote: a reader has to
+            # be able to see which flags were cleared, on what basis, and disagree.
+            f"Flag reviewed and cleared: {c.get('repo', '?')} "
+            f"{(c.get('sha') or '?')[:12]} - {d.get('reason')} Evidence: {d.get('evidence')}"
+            + (f" Adjudicated {d['adjudicated_at']}" if d.get("adjudicated_at") else "")
+            for c, d in cleared
         ],
         "limits": branches.get("limits", []),
-        "findings": [],
+        # This was hardcoded to []. The status line above sets FINDINGS whenever a campaign
+        # branch or a flagged commit exists, so the vector could report FINDINGS while
+        # naming nothing - and the §0.6 gate correctly refused to render it. A flag that
+        # fires and cannot say where is worse than no flag, because the reader has nothing
+        # to check. Each entry names the repository, the branch and the commit so the
+        # reader can go look, and carries the disposition where the sweep recorded one.
+        "findings": (
+            [f"Campaign branch: {c.get('repo', '?')} @ "
+             f"{c.get('branch') or c.get('name') or '?'}"
+             for c in campaign]
+            + [f"Flagged commit: {c.get('repo', '?')} {(c.get('sha') or '?')[:12]} "
+               f"by {c.get('author_login') or c.get('author_name') or '?'} at "
+               f"{c.get('authored_at', '?')} - matched on "
+               f"{c.get('campaign_files_changed') or c.get('bun_artifacts_changed') or []}"
+               f"{' (agent co-author trailer)' if c.get('agent_coauthor_trailer') else ''}"
+               f' - "{c.get("message_first_line", "")}"'
+               for c in flagged]
+        ),
     }
 
 
@@ -2132,6 +2208,12 @@ def main() -> int:
                              "and whole-secrets-context exposure, from the topology tables.")
     parser.add_argument("--state", type=Path, default=HUNT / "report_state.json",
                         help="Previous run's counts, for the delta section.")
+    parser.add_argument("--dispositions", type=Path, default=HUNT / "dispositions.json",
+                        help="Adjudications of individual flagged items. An entry needs "
+                             "both `reason` and `evidence` or it is ignored and the flag "
+                             "stays open. Cleared items are still printed with their "
+                             "reason - a disposition changes whether an item counts as "
+                             "evidence of compromise, never whether it is shown.")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--as-of", type=str, default=None)
     parser.add_argument("--added-check", action="append", default=[],
@@ -2149,7 +2231,8 @@ def main() -> int:
     campaign = (ioc_payload or {}).get("campaign", "shai-hulud / CHAINDROP npm worm")
 
     trees = vector_repo_files(read_json(args.trees))
-    branches = vector_branches(read_json(args.branches))
+    dispositions = load_dispositions(args.dispositions)
+    branches = vector_branches(read_json(args.branches), dispositions)
     search = vector_code_search(read_json(args.code_search))
     ioc = vector_ioc(ioc_payload)
     owners = read_json(args.owners)

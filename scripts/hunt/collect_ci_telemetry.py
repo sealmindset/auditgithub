@@ -60,8 +60,20 @@ from check_declared_ranges import (  # noqa: E402
 # The corrected worm window, derived from registry publish timestamps rather than from a
 # vendor's rounded "detected on" date. The first hunt used a window that began after the
 # first malicious publish, which is why it is stated explicitly here.
+#
+# Widened on 2026-08-10 from 13:18:42Z. Unit 42 documents the operator rotating the C2
+# address on chain at 2026-08-04T15:15:26Z, transaction
+# 0xc55920f1bd0531b6738153068a666c080ddded47e6256f1fd980d51c0b507c91 - a signed artifact
+# with a timestamp, which is harder evidence than either the 13:20Z propagation close
+# StepSecurity claims or the 12:11:19.909Z last-publish bound the registry oracle proves.
+# Every earlier run therefore hunted to a boundary that provably excluded 1h56m of
+# operator activity.
+#
+# This moves the HUNT window only. The reported last malicious publish stays
+# 12:11:19.909Z: rotating a C2 address is operator activity, not propagation, and the two
+# numbers answer different questions. See chaindrop_unit42_2026_08.json.
 WINDOW_START = "2026-08-04T09:35:00Z"
-WINDOW_END = "2026-08-04T13:18:42Z"
+WINDOW_END = "2026-08-04T16:00:00Z"
 
 # Campaign markers that are visible in a run record.
 CAMPAIGN_BRANCH_PREFIX = "dependabot/github_actions/format/setup-formatter"
@@ -319,6 +331,25 @@ def main() -> int:
     page_capped = [r["full_name"] for r in results
                    if (r.get("runs_collected") or 0) >= args.max_pages * 100]
 
+    # Runs come back NEWEST first, so hitting the page cap truncates the OLD end - the end
+    # the worm window is at. A capped repository whose oldest collected run is still newer
+    # than the window never looked at the window at all, and its `in_window_runs: 0` is a
+    # measurement artifact, not a result. This is §0.4's ordering trap wearing a different
+    # hat: nothing here says `asc`, but the pagination is descending and the cap cuts the
+    # side that matters. Caught in r5, where SleepNumberInc/SBLDevOps-CCPA collected 300 of
+    # 497 runs reaching back only to 2026-08-05, a day AFTER the window closed, and still
+    # reported zero.
+    window_end = WINDOW_END
+    capped_missing_window = [
+        {"repo": r["full_name"],
+         "oldest_collected": r.get("first_run_created_at"),
+         "runs_collected": r.get("runs_collected"),
+         "runs_total_count": r.get("runs_total_count")}
+        for r in results
+        if r["full_name"] in page_capped
+        and (r.get("first_run_created_at") or "") > window_end
+    ]
+
     flagged = [{"repo": r["full_name"], **run}
                for r in results for run in (r.get("flagged_runs") or [])]
     in_window = [{"repo": r["full_name"], **run}
@@ -330,7 +361,10 @@ def main() -> int:
     # across the whole estate would mean the query never worked, and every negative
     # below would be a measurement artifact rather than a finding.
     query_proven = bool(total_runs)
-    coverage_ok = query_proven and not throttled and not other_errors
+    # A repository that never read the window cannot support a negative about the window,
+    # so it invalidates the estate-level negative exactly as a 403 would.
+    coverage_ok = (query_proven and not throttled and not other_errors
+                   and not capped_missing_window)
 
     coverage = {
         "repos_queried": queried,
@@ -341,6 +375,10 @@ def main() -> int:
         "repos_actions_absent_http_404": len(actions_absent),
         "repos_other_errors": other_errors,
         "repos_hitting_page_cap": page_capped,
+        # Capped is a disclosed bound; capped AND never reaching the window is a coverage
+        # failure. Kept as two separate keys because collapsing them would let the second
+        # hide inside the first.
+        "repos_capped_before_reaching_window": capped_missing_window,
         "window": {"start": WINDOW_START, "end": WINDOW_END},
         "baseline_since": args.since,
         "query_demonstrably_works": query_proven,
@@ -365,7 +403,12 @@ def main() -> int:
             "covered here.",
             f"At most {args.max_pages} pages ({args.max_pages * 100} runs) per repository. "
             "Repositories that hit the cap are listed; their oldest baseline runs were "
-            "not read.",
+            "not read. Because runs paginate newest-first, the cap truncates the OLD end "
+            "- the end the window is at - so any capped repository whose oldest collected "
+            "run is newer than the window end never examined the window and is listed "
+            "separately under repos_capped_before_reaching_window. Re-run those with "
+            "--only <repo> --max-pages N until the oldest collected run predates the "
+            "window.",
             "Deployments have no created-at filter in the API, so only the first 100 per "
             "repository were read and filtered.",
             "The artifact name is checked against run records only for flagged runs; "
@@ -382,6 +425,16 @@ def main() -> int:
     if throttled:
         print(f"*** COVERAGE FAILURE: {len(throttled)} repositories throttled; a negative "
               f"finding is not supported for them. ***", file=sys.stderr)
+    if capped_missing_window:
+        print(f"*** COVERAGE FAILURE: {len(capped_missing_window)} repositories hit the "
+              f"page cap before reaching the window; their in-window zeros are artifacts, "
+              f"not results. Re-run each with --only and a higher --max-pages: ***",
+              file=sys.stderr)
+        for entry in capped_missing_window:
+            print(f"      {entry['repo']}: oldest collected "
+                  f"{entry['oldest_collected']} > window end {window_end} "
+                  f"({entry['runs_collected']} of {entry['runs_total_count']} runs)",
+                  file=sys.stderr)
     return 0 if coverage_ok else 3
 
 

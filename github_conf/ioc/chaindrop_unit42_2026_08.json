@@ -1,0 +1,307 @@
+{
+  "schema_version": 1,
+  "campaign": "shai-hulud-here-we-go-again",
+  "source_name": "Unit 42 (Palo Alto Networks)",
+  "source_url": "https://unit42.paloaltonetworks.com/chaindrop-npm-worm-analysis/",
+  "compiled_at": "2026-08-10",
+  "_why_a_separate_file": [
+    "One source, one file, per the rule established in chaindrop_elastic_2026_08.json.",
+    "Unit 42 is the only source so far for three things this estate can act on: a third",
+    "dropped file name (router_runtime.js), the dead-drop and commit-marker strings the",
+    "worm itself searches for, and a second propagation path that does not depend on a",
+    "stolen npm token at all - repository-gated OIDC trusted publishing.",
+    "Ingested 2026-08-10. Ingestion is not coverage; see _diff_against_corpus."
+  ],
+  "_relationship_to_shai_hulud_2026_08": {
+    "confirms": [
+      "both setup.mjs variants by hash, including the second variant fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+      "stage-2 payload 9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc under both filenames",
+      "awqhnjewqjkl.icu as a live C2 domain, and js-mirror.com and pypi-get.com as historical ones",
+      "the Ethereum resolver contract and its getter selector",
+      "codeql_analysis.yml serializing ${{ toJSON(secrets) }} as an Actions artifact",
+      "the gh-token-monitor watchdog file set",
+      "the Russian-locale kill switch",
+      "GitHub Actions Runner.Worker memory scraping via /proc/<pid>/maps and /proc/<pid>/mem",
+      "the 'Shai-Hulud: Here We Go Again' repository description on exfil staging repositories"
+    ],
+    "does_not_mention": [
+      "the 11,017-byte size for the second setup.mjs variant",
+      "any per-package safe rollback version",
+      "the propagation-close time claimed by StepSecurity"
+    ],
+    "contradicts": [
+      {
+        "claim": "The C2 domain was rotated on chain on 2026-08-04 at 15:15:26 UTC, transaction 0xc55920f1bd0531b6738153068a666c080ddded47e6256f1fd980d51c0b507c91.",
+        "conflicts_with": "The interim hunt rule 'hunt to 13:20Z' recorded in all four corpus documents, and WINDOW_END = 2026-08-04T13:18:42Z in scripts/hunt/collect_ci_telemetry.py.",
+        "status": "RESOLVED IN FAVOUR OF WIDENING. Not an averaging: the rotation is a signed on-chain transaction with a timestamp, which is a harder artifact than either the 13:20Z close or the 12:11:19.909Z publish bound.",
+        "what_it_does_and_does_not_show": [
+          "It shows the operator was acting at 15:15:26Z, which is 1h56m after the window this estate hunted to.",
+          "It does NOT show a malicious package was published after 12:11:19.909Z. Rotating a C2 address is operator activity, not propagation.",
+          "So it widens the HUNT window without moving the REPORTED last-publish bound. Those are separate numbers and stay separate."
+        ],
+        "action_taken": "WINDOW_END widened to 2026-08-04T16:00:00Z for the 2026-08-10 run. The reported last malicious publish remains 12:11:19.909Z."
+      },
+      {
+        "claim": "453 public repositories across five accounts carried the exfiltration marker, earliest 2026-05-11, newest about 25 minutes before the query on 2026-08-04.",
+        "conflicts_with": "The corpus treats 2026-08-04T09:35:00Z as the window start for every vector.",
+        "status": "OPEN, and it matters for one vector only.",
+        "why": [
+          "A dead-drop repository dated 2026-05-11 predates the keyv compromise by almost three",
+          "months. Either the marker is reused from earlier activity by the same operator, or",
+          "the account was staging infrastructure long before propagation.",
+          "Consequence for this estate: the marker and dead-drop searches must NOT be bounded",
+          "by the August window. Code and commit search have no window, so this costs nothing;",
+          "the branch and CI-telemetry vectors are legitimately window-bounded because they",
+          "hunt what the worm did during propagation."
+        ]
+      },
+      {
+        "claim": "'Over 400 packages' infected.",
+        "conflicts_with": "Cycode's '2,000-plus versions' and StepSecurity's totals_claimed.",
+        "status": "OPEN. Different units and different as-of times. Recorded, not reconciled; no estate decision depends on the total."
+      }
+    ],
+    "note": "Unit 42 is the deepest reverse-engineering account of the payload published so far and the only source for the second propagation path."
+  },
+  "aliases_added": [],
+
+  "hashes": {
+    "setup.mjs_v1": {
+      "sha256": "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668",
+      "filenames": ["setup.mjs"]
+    },
+    "setup.mjs_v2": {
+      "sha256": "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+      "filenames": ["setup.mjs"]
+    },
+    "stage2": {
+      "sha256": "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc",
+      "bytes": 727680,
+      "filenames": ["Math_Symbol.js", "math_init.js"]
+    }
+  },
+
+  "dropped_files": [
+    "router_runtime.js",
+    "setup.mjs",
+    "math_init.js",
+    "Math_Symbol.js",
+    ".vscode/tasks.json",
+    ".vscode/setup.mjs",
+    ".claude/settings.json",
+    ".claude/setup.mjs",
+    ".claude/math_init.js"
+  ],
+  "_router_runtime_note": [
+    "router_runtime.js is new to the corpus as of 2026-08-10 and was therefore absent from",
+    "every tree sweep run before that date. Unit 42 names it without a hash, so it can only",
+    "be hunted by name. Unlike Math_Symbol.js it has no known legitimate namesake in the",
+    "npm ecosystem, but a name-only indicator is a lead, not a finding: any hit needs the",
+    "file contents read before it is called a detection."
+  ],
+
+  "persistence": {
+    "repository_scoped": [
+      ".vscode/tasks.json",
+      ".vscode/setup.mjs",
+      ".claude/settings.json",
+      ".claude/setup.mjs",
+      ".claude/math_init.js"
+    ],
+    "triggers": {
+      "vscode_task_label": "Environment Setup",
+      "claude_hook": "SessionStart"
+    },
+    "host_scoped_latent": [
+      "~/.local/bin/gh-token-monitor.sh",
+      "~/.config/systemd/user/gh-token-monitor.service",
+      "~/Library/LaunchAgents/com.user.gh-token-monitor.plist",
+      "~/.config/gh-token-monitor/"
+    ],
+    "_latency_caveat": [
+      "Unit 42 states the OS-level watchdog is embedded in the sample but was NOT invoked in",
+      "the variant they analysed. StepSecurity describes it as active. Both can be true of",
+      "different builds. Consequence: absence of the watchdog on a host does not clear that",
+      "host, and its presence is not required for compromise."
+    ]
+  },
+
+  "c2": {
+    "domains_active_at_analysis": ["npm-cache.com", "awqhnjewqjkl.icu"],
+    "domains_historical": ["pypi-get.com", "js-mirror.com"],
+    "endpoint": "https://npm-cache.com:443/router",
+    "fronting": "npm-cache.com proxied via Cloudflare",
+    "ethereum": {
+      "contract": "0xE1f2395ee43e45A1556EC6438a88c31B83493103",
+      "contract_type": "StringListStore",
+      "getter_selector": "0x53ed5143",
+      "setter_selector": "0xd3c159e5",
+      "rotation_transaction": "0xc55920f1bd0531b6738153068a666c080ddded47e6256f1fd980d51c0b507c91",
+      "rotation_at_utc": "2026-08-04T15:15:26Z",
+      "operator_wallet": "0x55f9780e1492344b7417fa723aedc4d0b97f31cd",
+      "exchange_pivot": "0x35477b7b2df3174B9FE8A681750A7E3fbA20F39B",
+      "_pivot_caveat": "The Binance deposit address is attribution material for a law-enforcement referral. It is not a detection: nothing in this estate talks to it."
+    },
+    "envelope": {
+      "chain": "JSON -> gzip -> AES-256-GCM, session key wrapped with RSA-OAEP-SHA256"
+    }
+  },
+
+  "github_markers": {
+    "workflow_file": "codeql_analysis.yml",
+    "workflow_behaviour": "serializes ${{ toJSON(secrets) }} and uploads it as an Actions artifact",
+    "commit_message_prefix": "IfYouBlockThisAPIKeyItWillCrashTheLiveProductionServersOfAllThirdPartyClients",
+    "commit_payload_encoding": "stolen tokens base64-double-encoded into public commit messages",
+    "credential_reuse_marker": "thebeautifulmarchoftime",
+    "dead_drop_prefix": "thebeautifulsnadsoftime",
+    "repo_description": "Shai-Hulud: Here We Go Again",
+    "exfil_repo_name_words": [
+      "sardaukar", "mentat", "fremen", "atreides", "harkonnen", "futar", "ghola"
+    ],
+    "exfil_repo_name_examples": ["sardaukar-futar-421", "harkonnen-ghola-669"],
+    "_marker_search_is_the_cheap_win": [
+      "The worm searches the GitHub commit API for thebeautifulmarchoftime to find and reuse",
+      "credentials other infections published. The same search run against this estate's own",
+      "repositories answers a question no file sweep can: did anything here publish a stolen",
+      "token into a public commit. It is a search, not a sweep, so it is not window-bounded",
+      "and per the 453-repo claim above it must not be."
+    ],
+    "_name_word_caveat": [
+      "The Dune words are ordinary fiction vocabulary and will match unrelated code. The",
+      "same caveat already recorded in chaindrop_elastic_2026_08.json applies: these are",
+      "useful for spotting dead-drop repository NAMES, which is a small namespace, and are",
+      "not usable as content indicators."
+    ]
+  },
+
+  "second_propagation_path": {
+    "name": "repository-gated OIDC trusted publishing",
+    "_why_this_is_the_most_important_new_TTP": [
+      "Every control the corpus recommends against the primary path assumes a stolen npm",
+      "token: rotate npm credentials, gate on release age, block install scripts. This path",
+      "uses no npm token at all. It mints a real publish credential from a GitHub Actions",
+      "OIDC token, then signs the result with genuine Sigstore provenance. Provenance",
+      "verification passes because the provenance is real - which is the third time in this",
+      "campaign that attestation has proved who built an artifact rather than that it is safe."
+    ],
+    "gating_conditions": {
+      "GITHUB_ACTIONS": "must be set",
+      "GITHUB_REPOSITORY": "matched against /opensearch-js",
+      "GITHUB_WORKFLOW_REF": "matched against release-drafter.yml"
+    },
+    "steps": [
+      "request an OIDC token with audience npm:registry.npmjs.org",
+      "trade it at npm's trusted-publishing endpoint for a real publish credential",
+      "inject the typosquatted dependency @opensearch/setup, pinned to a commit",
+      "request a second OIDC token with audience sigstore",
+      "obtain a Fulcio certificate and build SLSA v1 in-toto provenance over SHA-512",
+      "DSSE-sign with an ephemeral P-256 key and upload to the public Rekor log",
+      "attach the bundle as <name>-<version>.sigstore",
+      "log a search.sigstore.dev URL during execution"
+    ],
+    "_estate_consequence": [
+      "The gating means the payload only takes this path inside one upstream repository, so",
+      "it will not fire in this estate. What transfers is the technique: any repository here",
+      "that combines id-token: write with a publish step can be driven the same way by any",
+      "code that reaches its runner. That is a posture question the r5 Actions sweep can",
+      "answer, and it is a question the corpus has never asked."
+    ]
+  },
+
+  "execution": {
+    "runtime": "Bun 1.3.13, downloaded from the official Oven GitHub releases if not already present",
+    "process_signature": "Bun spawns Math_Symbol.js or math_init.js out of node_modules as a detached background process; in CI it runs inline and produces chatty debug output in the workflow log",
+    "recursion_guard_env": "_NODE_RUNTIME_INIT=1",
+    "credential_command": "gh auth token",
+    "runner_memory_scrape": "reads /proc/<pid>/maps and /proc/<pid>/mem of Runner.Worker to lift OIDC tokens and runner secrets"
+  },
+
+  "evasion": {
+    "locale_kill_switch": {
+      "condition": "Russian-language locale detected",
+      "message": "Exiting as russian language detected!",
+      "_consequence": "Steals nothing and writes nothing, so such a host reads clean on every behavioral rule. A behavioral zero needs a control AND an evasion-condition check."
+    }
+  },
+
+  "obfuscation": {
+    "layer_1": "Base91 with 73 function-specific alphabets and a 14-position array rotation; 4,613 hidden strings recovered",
+    "layer_2": "custom byte-permutation cipher, PBKDF2-SHA256 at 200,000 iterations with Fisher-Yates shuffles; 727 further strings",
+    "layer_3": "AES-256-GCM plus gzip over 10 encrypted blobs holding bash and Python helpers, persistence installers, the Actions memory scraper, malicious workflows, the VS Code and Claude persistence files, and RSA public keys",
+    "_use": "Explains why a strings-based hunt on the payload returns nothing. It is not a detection."
+  },
+
+  "credential_targets_expanded": {
+    "classes": [
+      "cloud IAM temporary credentials from EC2 metadata and container tokens",
+      "npm and GitHub tokens including PATs",
+      "SSH keys",
+      "Docker and Helm configuration",
+      "git credentials, .netrc, mount listings",
+      "Poetry, PyPI and RubyGems tokens",
+      "Terraform state and Vault tokens",
+      ".env files and application configuration",
+      "Bitcoin and Electrum wallets",
+      "Jenkins encrypted credentials",
+      "Kubernetes service-account tokens and kubeconfigs",
+      "shell histories",
+      "AI tool configuration - VS Code, Claude Code, open-source assistants"
+    ]
+  },
+
+  "scope_claimed": {
+    "packages": "over 400",
+    "marker_repositories": 453,
+    "marker_accounts": 5,
+    "marker_earliest": "2026-05-11",
+    "marker_newest": "about 25 minutes before the query on 2026-08-04",
+    "environments_detected": 10,
+    "republish_lag_observed": ["6 minutes after the compromised version", "70 minutes after the compromised version"]
+  },
+
+  "detection_signatures_offered": [
+    "JavaScript runtime events showing Bun executing Math_Symbol.js or math_init.js",
+    "gh auth token invoked by a Bun process",
+    "HTTP GET or POST to /router on a C2 domain",
+    "Ethereum JSON-RPC eth_call to the resolver contract",
+    "GitHub commit API searches for the marker strings"
+  ],
+
+  "hunting_notes": [
+    "router_runtime.js is a name-only indicator. Add it to the tree sweep, then read any hit before calling it a detection.",
+    "Search the estate's own commit history for thebeautifulmarchoftime and thebeautifulsnadsoftime, unbounded by the August window. A hit means a token from this estate was published for reuse.",
+    "The OIDC trusted-publishing path is the reason to sweep for id-token: write combined with a publish step. That combination is not itself a finding - it is how trusted publishing is supposed to work - but it is the precondition the technique needs, and the sweep has never counted it.",
+    "_NODE_RUNTIME_INIT=1 is a process-environment indicator. It is only visible where process environment is captured, which endpoint file telemetry does not do. Do not present it as endpoint coverage.",
+    "The 15:15:26Z rotation widens the hunt window, not the reported publish bound. Keep the two numbers apart in the report."
+  ],
+
+  "_diff_against_corpus": {
+    "_process": "Section 7 step 2. Diffed on 2026-08-10 against github_conf/ioc/*, docs/playbooks/*, github_conf/detections/*.",
+    "absent_from_every_indicator_list_and_rule_before_this_file": [
+      "router_runtime.js",
+      "setter selector 0xd3c159e5",
+      "rotation transaction 0xc55920f1bd0531b6738153068a666c080ddded47e6256f1fd980d51c0b507c91 and its 15:15:26Z timestamp",
+      "operator wallet 0x55f9780e1492344b7417fa723aedc4d0b97f31cd and the exchange pivot address",
+      "the dead-drop prefix thebeautifulsnadsoftime as a searchable marker",
+      "harkonnen, atreides, futar and ghola as exfil repository name words",
+      "_NODE_RUNTIME_INIT",
+      "the GITHUB_REPOSITORY and GITHUB_WORKFLOW_REF gating conditions",
+      "the entire OIDC trusted-publishing propagation path, including the Sigstore signing chain",
+      "gh auth token as the PAT-capture command",
+      "the Base91 and PBKDF2 obfuscation layers",
+      ".netrc, Electrum wallets, kubeconfigs and shell histories as harvest targets"
+    ],
+    "already_present": [
+      "both setup.mjs hashes and the stage-2 hash",
+      "awqhnjewqjkl.icu, npm-cache.com, js-mirror.com, pypi-get.com and the /router path",
+      "the contract address and getter selector",
+      "codeql_analysis.yml and the toJSON(secrets) primitive",
+      "the commit-message prefix and the repository description",
+      "thebeautifulmarchoftime",
+      "sardaukar and mentat among the Dune strings",
+      "Runner.Worker /proc scraping",
+      "the Russian-locale kill switch"
+    ],
+    "rule_coverage_of_the_new_indicators": "NONE of the eleven new items above is covered by any rule in github_conf/detections/npm_supply_chain_rules.json. Two are not rule-shaped at all - the wallet addresses are attribution, the obfuscation layers are explanation. router_runtime.js is the one item that belongs in the existing file-indicator rule and is recorded here as an open gap rather than presented as coverage."
+  }
+}

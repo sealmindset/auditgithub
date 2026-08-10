@@ -52,17 +52,32 @@ INTERESTING_MEMBERS = (
     "package/.vscode/setup.mjs",
     "package/.claude/setup.mjs",
     "package/.claude/math_init.js",
+    # Unit 42 names router_runtime.js as a third dropped file and gives no hash for it,
+    # so it is hashed here rather than trusted by name: a member at this path in a live
+    # tarball is what would produce the first hash for it.
+    "package/router_runtime.js",
 )
 
 
 def load_known_hashes() -> Dict[str, str]:
     """Known campaign hashes, read from the IOC files so this cannot drift from them."""
     known: Dict[str, str] = {}
-    for name in ("shai_hulud_2026_08.json", "chaindrop_elastic_2026_08.json"):
-        path = IOC_DIR / name
-        if not path.exists():
-            continue
+    # Enumerated rather than named, for the reason recorded in collect_repo_trees.py:
+    # a named list means a newly ingested source is silently absent from the check.
+    # StepSecurity, Cycode and Unit 42 all state hashes under a `hashes` mapping rather
+    # than `file_hashes_sha256`, so both shapes are read here; Unit 42 is the only source
+    # for the second dropper variant.
+    for path in sorted(IOC_DIR.glob("*.json")):
+        name = path.name
         data = json.loads(path.read_text())
+        for meta in (data.get("hashes") or {}).values():
+            if not isinstance(meta, dict):
+                continue
+            digest = meta.get("sha256")
+            if digest:
+                filenames = meta.get("filenames") or []
+                label = f"{name}: {'/'.join(filenames) or 'unnamed member'}"
+                known.setdefault(digest.lower(), label)
         for entry in data.get("file_hashes_sha256") or []:
             if isinstance(entry, dict):
                 digest = entry.get("sha256") or entry.get("hash")
