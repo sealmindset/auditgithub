@@ -297,7 +297,12 @@ services:
   # =============================================================================
   mock-oidc:
     build:
-      context: ../mocksvcs/mock_oidc
+      context: ./mocksvcs/mock_oidc
+      # The corporate TLS-inspection root CA lives at the repo root, outside this
+      # service's build context. Pass it in as a named context rather than copying the
+      # cert into mocksvcs/ — one tracked copy, one place to rotate it.
+      additional_contexts:
+        corp_certs: ./certs
     container_name: auditgh_mock_oidc
     ports:
       - "${MOCK_OIDC_HOST_PORT:-3008}:10090"
