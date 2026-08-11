@@ -4,6 +4,22 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — the exposure report, separated from the hunt report (2026-08-11)
+
+`docs/playbooks/npm-supply-chain-exposure-report.md`. The hunt report answers "did this happen
+to us"; nothing in it answers "what would it cost us if it did." Those are different documents
+for different readers, and merging them lets a zero on the first be read as a zero on the
+second. This one is the door, measured: the whole secrets store handed to four shared build
+steps on moving tags (1,924 pipeline refs, 1,904 of them to one action), 46 of 95 reusable
+workflow definitions passing that context onward to 1,823 consumers with 37 of them deploying,
+94 repositories installing with lifecycle scripts enabled, and 9 `uses:` refs pointing at
+deleted branches — which is an org-member → CD escalation path rather than a broken build,
+because the caller inherits secrets and the branch names are readable from the callers.
+
+Every figure carries its denominator and names the artifact it came from, and the sweeps'
+coverage limits are stated at the bottom rather than left implied — the 193 repositories whose
+install may live inside an unread called action are not 193 clean repositories.
+
 ### Added — doctrine §0.8: the campaign is built to read clean on either axis (2026-08-11)
 
 The false positive below is an unintentional proof of something worth writing down. A `curl`
