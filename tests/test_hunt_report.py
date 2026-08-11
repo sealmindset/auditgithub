@@ -325,16 +325,41 @@ def test_the_first_run_of_the_register_does_not_invent_new_blind_spots():
     current = {"rag": "AMBER", "coverage": {"state": "PARTIAL", "gaps": ["g1", "g2"]},
                "vectors": {}}
     lines = " ".join(R.render_delta({"rag": "AMBER", "vectors": {}}, current, []))
-    assert "New blind spot" not in lines
+    assert "blind spot newly registered" not in lines.lower()
+    assert "newly measured blind spot" not in lines.lower()
     assert "own axis" in lines
 
 
 def test_a_blind_spot_that_genuinely_opens_is_reported():
+    """A gap named by a vector that also ran before, so neither reading is asserted."""
     previous = {"rag": "GREEN", "coverage": {"state": "COMPLETE", "gaps": []}, "vectors": {}}
     current = {"rag": "GREEN", "coverage": {"state": "PARTIAL", "gaps": ["g1"]},
                "vectors": {}}
     lines = " ".join(R.render_delta(previous, current, []))
-    assert "**New blind spot:** g1" in lines
+    assert "**Blind spot newly registered:** g1" in lines
+    # The report must not choose between "went dark" and "measured for the first time" when
+    # the state file records only that the gap exists.
+    assert "either a population that went dark or one this cycle measured" in lines
+
+
+def test_a_gap_from_a_first_run_vector_is_not_reported_as_lost_visibility():
+    """The hunt widening is not the estate going dark, and the two must not read alike.
+
+    `v-new` did not run on the previous cycle, so nothing in the corpus says its population
+    was observable then. Calling that a blind spot that opened would be a claim about the
+    previous run that no artifact supports.
+    """
+    previous = {"rag": "GREEN", "coverage": {"state": "COMPLETE", "gaps": []},
+                "vectors": {"v-old": {"status": "CLEAR"}}}
+    current = {"rag": "GREEN",
+               "coverage": {"state": "PARTIAL", "gaps": ["g1"],
+                            "gap_vectors": {"g1": "v-new"}},
+               "vectors": {"v-old": {"status": "CLEAR"}, "v-new": {"status": "INCOMPLETE"}}}
+    lines = " ".join(R.render_delta(previous, current, []))
+    assert "**Newly measured blind spot:** g1" in lines
+    assert "v-new" in lines
+    assert "this is the hunt widening, not the estate going dark" in lines
+    assert "Blind spot newly registered" not in lines
 
 
 def test_a_blind_spot_that_closes_is_reported():
@@ -479,7 +504,36 @@ def test_a_commit_carrying_bun_files_is_counted():
         {"sha": "bbb", "bun_artifacts_changed": [], "flags": ["campaign_file_written"]},
     ]))
     assert vector["counts"]["Bun-artifact commits"] == 1
-    assert vector["counts"]["Flagged commits"] == 2
+    # Split in two when adjudication landed: only open flags drive the status, and the
+    # cleared count is printed even at zero so a reviewed run cannot be mistaken for a
+    # quiet one.
+    assert vector["counts"]["Flagged commits - open"] == 2
+    assert vector["counts"]["Flagged commits - reviewed and cleared"] == 0
+
+
+def test_a_cleared_flag_moves_to_the_cleared_count_and_off_the_status():
+    """A flag reviewed against the campaign's indicators and found benign is not an incident."""
+    commits = [
+        {"sha": "aaa", "repo": "org/a", "bun_artifacts_changed": [],
+         "flags": ["campaign_file_written"]},
+        {"sha": "bbb", "repo": "org/b", "bun_artifacts_changed": [],
+         "flags": ["campaign_file_written"]},
+    ]
+    dispositions = {"aaa": {"disposition": "cleared", "reason": "Vendored fixture.",
+                            "evidence": "Present before the window opened."}}
+    vector = R.vector_branches(_branches(commits), dispositions)
+    assert vector["counts"]["Flagged commits - open"] == 1
+    assert vector["counts"]["Flagged commits - reviewed and cleared"] == 1
+    assert vector["status"] == R.FINDINGS          # one flag is still open
+    # The adjudication is coverage a reader can disagree with, not a footnote that vanishes.
+    assert any("Flag reviewed and cleared: org/a" in line for line in vector["coverage"])
+
+    both_cleared = dict(dispositions)
+    both_cleared["bbb"] = {"disposition": "cleared", "reason": "Same fixture.",
+                           "evidence": "Same commit range."}
+    vector = R.vector_branches(_branches(commits), both_cleared)
+    assert vector["counts"]["Flagged commits - open"] == 0
+    assert vector["status"] == R.CLEAR
 
 
 def test_the_bun_count_is_not_read_from_the_top_level_dict():

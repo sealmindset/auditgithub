@@ -4,6 +4,62 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — five hunt vectors that ask what the earlier rounds never asked (2026-08-11)
+
+Rounds r2, r3, r5 and r9 measured whether the campaign *arrived*: a malicious tarball fetched,
+a payload behaving, a file on disk under a campaign name. Five questions the published
+advisories make answerable were never put, and each has its own collector rather than a flag
+on an existing one, because the populations do not overlap.
+
+- **`scripts/hunt/hunt_advisory_iocs.py`** — the campaign's own infrastructure and file
+  hashes. Earlier rounds matched dropped files by NAME (`setup.mjs`, `Math_Symbol.js`) and
+  never queried a single campaign domain. A name match is a lead; a hash match is a verdict.
+  Runs a `RemoteUrl` coverage control per platform first, because a domain zero is worthless
+  where the column is empty — `install_activity_r2.json` had already measured macOS at 83
+  devices, 687,005 network rows and zero carrying a URL.
+- **`scripts/hunt/hunt_antiremediation.py`** — is anything here waiting for us to revoke a
+  token. The `gh-token-monitor` watchdog polls `api.github.com/user` every 60 s for 24 h and
+  fires when the credential stops authenticating, so revocation is its trigger rather than its
+  remedy, and it survives cleanup of `setup.mjs`, `math_init.js`, `.claude/` and `.vscode/`.
+  Swept twice — by name across the file, process and event tables, and by shape, because a
+  renamed watchdog answers no name query.
+- **`scripts/hunt/hunt_commit_messages.py`** — Unit 42's extortion string across all three
+  organizations in one request per org via `GET /search/commits`. The index limit that decides
+  whether its zero means anything is **measured, not cited**: candidate non-default-ref commits
+  from `branches_r5.json` are put back through commit search to establish what it indexes. The
+  same marker was added to `hunt_branches.py`, which reaches every ref, so the two cover each
+  other's blind side.
+- **`scripts/hunt/hunt_install_prevention.py`** — the control half of T03. Install activity
+  measured the primitive firing (2,670 lifecycle executions on 101 devices in the window) and
+  said nothing about whether anything stands in the way. This reads `.npmrc` and every
+  dependency-installing workflow for `ignore-scripts`. It states its own limit twice: it sees
+  CI and repository configuration, never a developer's `~/.npmrc`, and the 101 devices are
+  workstations, not runners.
+- **`scripts/hunt/build_advisory_coverage.py`** — advisory-TTP coverage, kept as three
+  separate axes because one percentage destroys the distinction: **named** (a citation),
+  **measured** (an artifact carries the number), **controlled** (something is in the way,
+  derived by a rule declared next to the TTP rather than typed as a conclusion). A mapping
+  pointing at a path no artifact has lands in `not_measured` with the reason, so a wrong
+  mapping surfaces as a gap instead of a false green.
+
+`render_hunt_report.py` gains the four vectors, the advisory-coverage section, and
+`latest_round()` defaults for the new artifacts. The delta's new-blind-spot line was split in
+two: a gap named by a vector running for the first time reads as **"Newly measured blind
+spot"** — the hunt widening — while a gap from a vector that also ran before reads as **"Blind
+spot newly registered"** and deliberately asserts neither reading, because the state file
+records which gaps existed and not why.
+
+Verified: the report renders clean on the round's own artifacts — exit 0, **AMBER**, 15
+vectors (5 CLEAR / 5 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING), 13 actions. `tests/
+test_hunt_report.py` 49/49; two assertions had been left behind by the changes they cover
+(the blind-spot wording above, and `Flagged commits` splitting into `- open` and `- reviewed
+and cleared` when adjudication landed) and were corrected against the rendered strings, with
+probes added for the branch each change created.
+
+Not done, and not claimed: the five collectors have no unit tests of their own. Their output
+is exercised only through the renderer's vector functions, so a change to a collector's
+artifact shape is caught at render time, not at commit time.
+
 ### Fixed — the clone URL and the credential came from different columns (2026-08-07)
 
 "Generate System Architecture" failed on `web-webadmin` with `remote: Repository not found.`

@@ -67,7 +67,19 @@ CAMPAIGN_BRANCH_PREFIX = "dependabot/github_actions/format/setup-formatter"
 CAMPAIGN_BRANCH_TOKEN = "setup-formatter"
 FORGED_EMAILS = {"claude@users.noreply.github.com"}
 FORGED_LOGINS = {"github-advanced-security[bot]", "claude"}
-CAMPAIGN_COMMIT_MESSAGES = ("chore: update config", "add codeql analysis")
+# Lowercase, because inspect_commit() matches these against a lowercased message. Every entry
+# raises a flag on its own; what differs is what a flag is worth at triage. The first two are
+# plausible human commit messages and need corroboration - a campaign file in the same commit,
+# or the forged author. The third, Unit 42's published extortion string, needs none: nothing
+# legitimate carries that sentence, which exists to make a responder hesitate before revoking
+# the credential. It is checked here as well as in hunt_commit_messages.py because commit search
+# was MEASURED not to index commits living only on a non-default branch, and this collector
+# enumerates every ref.
+CAMPAIGN_COMMIT_MESSAGES = (
+    "chore: update config",
+    "add codeql analysis",
+    "ifyoublockthisapikeyitwillcrashtheliveproductionserversofallthirdpartyclients",
+)
 
 # The decisive signal for an in-window push: what it changed. A campaign push writes the
 # loader, the payload or an autostart hook; no legitimate feature branch does.

@@ -107,12 +107,49 @@ The reference run's chain, which is the reusable skeleton for any registry-borne
 | # | The step | Reference-run state |
 |---|---|---|
 | 1 | Getting a poisoned version into one of our builds | PARTLY CONTROLLED — pinning is real; 36 repos have no lockfile |
-| 2 | Running its code during the install | UNMEASURED — 2,670 lifecycle-script executions on 101 devices, none attributable |
+| 2 | Running its code during the install | PARTLY CONTROLLED — 2,670 lifecycle-script executions on 101 devices, none attributable, and 9 of 187 CI install commands refuse scripts |
 | 3 | Fetching a separate runtime to hide the payload | DETECTION ONLY |
 | 4 | Reaching our credentials once it is running | OPEN — the numbers *are* the finding |
 | 5 | Getting the credentials out | DETECTION ONLY |
 | 6 | Using our credentials to infect others | CONTROLLED — because a precondition is absent, not because a control was built |
 | 7 | Staying after we clean up | DETECTION ONLY |
+
+### 3.0 Check the chain against somebody else's reading of the campaign
+
+The chain above is *our* reading. A step the campaign performs that nobody here thought to ask about
+does not appear in it as a gap — it appears as nothing, which is the one failure mode a
+self-authored chain cannot detect on its own.
+
+So the chain is scored against a denominator we did not choose: the published advisories' own TTP
+lists. `scripts/hunt/build_advisory_coverage.py` holds one register entry per advisory-named
+attacker step, each binding that step to an artifact path and a rule that derives its control state
+from the measured value. Three rules make the resulting percentage worth printing:
+
+1. **The mapping is judgment and is visible.** The TTP list and the TTP→artifact binding are the
+   only judgment in the file. Everything downstream is read from artifacts at build time.
+2. **A probe that does not resolve becomes a gap, never a pass.** A mapping pointing at a path an
+   artifact does not carry lands in `not_measured` with the reason. This is what makes the
+   percentage trustworthy as the artifacts drift: a rotted mapping shows up as a visible hole
+   rather than as a silent COVERED.
+3. **Observation and control are counted separately.** A vector can read four numbers out of an
+   artifact and still be UNMEASURED on control — thousands of unattributable install scripts measure
+   arrival and say nothing about defense. `vectors_we_never_looked_at` is the observation axis;
+   `vectors_with_no_established_control_state` is the control axis. Fusing them either claims a
+   control nobody established or discards evidence we hold. That split is also the work list: the
+   reference run's install-script vector moved off UNMEASURED only when a second collector measured
+   the *obstacle* — `ignore-scripts` across the repositories — rather than the event. A vector
+   stranded on the control axis names the collector somebody still has to write.
+
+Report at least three percentages, never one: the share with a measured answer, the share with
+anything in the way (prevention **or** detection), and the share we would *prevent*. The third is
+always the smallest and is the honest ceiling on how much of the campaign we would stop rather than
+watch. Print the per-vector table directly beneath, because §3.2 rule 4 applies to the percentage
+too — the vectors are not equally weighted and they do not sum.
+
+Where the advisories publish campaign totals, reconcile them against our own derivation and print
+the delta rather than a reconciled number. A package-name delta bounds every dependency result in
+the report: a clean comparison against a short list of names is a different claim from a clean
+comparison.
 
 ### 3.1 The five states, and why there are five
 
@@ -197,8 +234,11 @@ The validator is the reason this template survives contact with a deadline. All 
 | A finding, action or gap with no enumerable resources | §0.6 — prove it or do not report it |
 | A chain link missing any of `link`, `worm_needs`, `state`, `closed_by`, `owner` | §3.2 |
 | A chain link in any state but UNMEASURED with no `evidence` | §3.2 rule 1 |
-| A cleared disposition with no `reason` and `evidence` | a judgement is not a measurement; see `exports/hunt/dispositions.json` |
+| A cleared disposition with no `reason` and `evidence` | a judgment is not a measurement; see `exports/hunt/dispositions.json` |
 | An access gap that does not name the exact privilege and endpoint | so an access request can be filed from the report alone |
+| An advisory vector missing any of `id`, `chain_link`, `ttp`, `state`, `named_by`, `closed_by`, `owner` | §3.0 |
+| An advisory vector in any state but UNMEASURED with no `evidence`, or UNMEASURED with neither `evidence` nor `why_not_measured` | §3.0 rule 1 — an unmeasured vector must say what would measure it |
+| An advisory-coverage artifact naming no artifacts it read | §3.0 — then every state in it is an assertion |
 
 **Collector-side corollary.** A collector that emits a gap must emit all six fields. When an
 artifact predates the contract, patch that artifact in place and stamp the patch with a
@@ -208,7 +248,7 @@ only the artifact means the next run breaks the render again.
 
 **Adjudications live in their own file.** `exports/hunt/dispositions.json` records what a human
 *concluded*; the coverage artifacts record what a collector *observed*. They are separate files so
-a judgement can never be mistaken for a measurement, and a cleared item is still printed with its
+a judgment can never be mistaken for a measurement, and a cleared item is still printed with its
 reason — a disposition changes whether an item counts as evidence, it never hides the item.
 
 > **Operational trap, learned the hard way.** `exports/` is gitignored (`.gitignore:93`).
@@ -219,10 +259,33 @@ reason — a disposition changes whether an item counts as evidence, it never hi
 
 ## 6. Rendering a cycle
 
+The advisory-coverage register is built first, because the renderer reads it:
+
+```bash
+python3 scripts/hunt/build_advisory_coverage.py \
+  --exports exports/hunt --out exports/hunt/advisory_coverage.json
+```
+
+Collectors whose artifact the register reads must run before it — the watchdog sweep, the
+commit-message sweep and the install-prevention sweep all feed advisory vectors, and a register built
+without them reports those vectors as never looked at:
+
+```bash
+docker exec auditgh_api python3 /app/scripts/hunt/hunt_antiremediation.py \
+  --out /app/exports/hunt/antiremediation_r1.json   # reads the DB, so it runs in the container
+python3 scripts/hunt/hunt_commit_messages.py         # -> exports/hunt/commit_messages_r1.json
+python3 scripts/hunt/hunt_install_prevention.py      # -> exports/hunt/install_prevention_r1.json
+```
+
+`hunt_install_prevention.py` spends roughly 2,150 core GitHub requests — about 45% of the shared
+5,000/hour budget — so it is the one collector not to run twice in an hour beside anything else that
+reads repository contents. `--limit N` smoke-tests it for a few requests and stamps `limited_run:
+true` on the artifact so a partial run can never be read as an estate answer.
+
 ```bash
 python3 scripts/hunt/render_hunt_report.py \
   --branches   exports/hunt/branches_r5_coverage.json \
-  --code-search exports/hunt/code_search_r5.json \
+  --code-search exports/hunt/code_search_r6.json \
   --ioc        exports/hunt/ioc_match_r5.json \
   --posture    exports/hunt/actions_posture_r5_coverage.json \
   --registry   exports/hunt/rederive_window_0000z_aug5.json \
@@ -241,9 +304,24 @@ on the run that ships, or the next cycle's "what changed" compares against the w
 
 Document conversion, for the executive audience:
 
+`render_file(source, output, *, fmt=...)` — the output path and the format are both required, and
+one call renders one format:
+
 ```bash
-docker exec auditgh_api python3 -c "from src.reporting.md_to_pdf import render_file; \
-  render_file('/app/exports/hunt-report-2026-08-10.md')"
+docker exec auditgh_api python3 -c "
+from src.reporting.md_to_pdf import render_file
+for fmt in ('docx', 'pdf'):
+    render_file('/app/exports/hunt-report-2026-08-10.md',
+                f'/app/exports/hunt-report-2026-08-10.{fmt}', fmt=fmt)"
+```
+
+The collectors that read the database — the endpoint sweeps and `hunt_antiremediation.py` — run
+**inside the container**, not on the host: `psycopg2` is not installed in the host interpreter, so
+`GraphClient.from_db(SessionLocal())` fails at import there.
+
+```bash
+docker exec auditgh_api python3 /app/scripts/hunt/hunt_antiremediation.py \
+  --out /app/exports/hunt/antiremediation_r1.json
 ```
 
 ---

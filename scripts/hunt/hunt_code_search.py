@@ -105,6 +105,17 @@ QUERIES: List[Dict[str, str]] = [
      "means": "campaign self-identifier, used in repo descriptions and commit text"},
     {"key": "bypass_2fa", "q": "\"bypass_2fa\"",
      "means": "npm token setting the worm requires to republish"},
+    # Unit 42's extortion string. Searched in FILE CONTENT here, which is a different question
+    # from hunt_commit_messages.py searching it in commit messages: in a file it means the
+    # payload's own strings are committed to one of our repositories, not that a campaign commit
+    # landed. Either is decisive; they are separate surfaces and neither covers the other.
+    {"key": "extortion_string", "q": "\"IfYouBlockThisAPIKeyItWillCrash\"",
+     "means": "the campaign's coercion text, in a tracked file. Its presence means payload "
+              "source is committed here"},
+    {"key": "token_watchdog_name", "q": "\"gh-token-monitor\"",
+     "means": "the anti-remediation watchdog that fires when a stolen token stops "
+              "authenticating. In a tracked file it means the persistence component is "
+              "committed, not merely running"},
     # --- hook wiring ---------------------------------------------------------
     {"key": "sessionstart_node", "q": "\"SessionStart\" \"setup.mjs\"",
      "means": "Claude SessionStart hook wired to the dropper"},

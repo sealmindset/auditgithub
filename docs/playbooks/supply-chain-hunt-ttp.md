@@ -136,7 +136,7 @@ keeping:
 
 - **Observation and adjudication live in separate files.** Coverage artifacts record what a collector
   *saw* and are written by the collector. The disposition file records what a human *concluded* and
-  why. Merging them lets a judgement be read as a measurement.
+  why. Merging them lets a judgment be read as a measurement.
 - **A disposition needs `reason` *and* `evidence`, or the renderer ignores it and the flag stays
   open.** Clearing a flag by naming its sha with no stated basis is precisely the unprovable claim
   §0.6 forbids. `evidence` must say what was checked and what was found, repeatably — not the
@@ -1319,11 +1319,42 @@ the rotation scope is everything reachable from that host, not a list of file pa
 > exfiltrate from — but **the dead-drop sweep is cheap, decisive, and must run.** It is now
 > mandatory in this playbook.
 >
-> **Checks 7–9 and §6.1–§6.2 were added on 2026-08-06** from the CHAINDROP round-2 arbitration and
-> have never been performed either. The same reasoning covers them — no execution means nothing to
-> persist — but note that §6.1's token monitor and §6.2's runner-memory scrape would have been
-> invisible to every surface the reference run examined, and the non-default-branch sweep (check 7)
-> is a gap in the dead-drop hunt as originally written, not just an unperformed step.
+> **Checks 7–9 and §6.1–§6.2 were added on 2026-08-06** from the CHAINDROP round-2 arbitration.
+> §6.1's token monitor **was swept on 2026-08-10** — `scripts/hunt/hunt_antiremediation.py` →
+> `exports/hunt/antiremediation_r1.json`, and the result is in §6.3 below. §6.2's runner-memory
+> scrape has still never been hunted, and would have been invisible to every surface the reference
+> run examined. The non-default-branch sweep (check 7) is a gap in the dead-drop hunt as originally
+> written, not just an unperformed step.
+
+---
+
+### 6.3 Remediation order — the sequence, which holds whatever the sweep returns
+
+The sweep in §6.1 tells you whether the monitor is here. It does not make the order of remediation
+safe, because **the order is what the campaign attacks.** So the sequence below is doctrine, not a
+response to a finding: run it the same way after a clean sweep as after a dirty one.
+
+| # | Step | Why it is here and not later |
+|---|---|---|
+| 1 | **Freeze the credential's blast radius without revoking it** — remove the token's org/repo access, disable the affected npm publish rights, suspend the runner. | Removal of *access* is not the trigger; revocation is. This buys time without firing the payload. |
+| 2 | **Sweep for the monitor across every affected host** — by name and by shape, per §6.1. | A host you did not sweep is a host you cannot order. |
+| 3 | **Remove the monitor, and verify on the host** — `pgrep -af gh-token-monitor` returns nothing, the launchd label and systemd user unit are gone, `~/.config/gh-token-monitor/` is gone. | Never from an alert. See §6.1: quarantine silently no-ops where `SHA1` is empty while the alert still fires, and it never removes the registration. |
+| 4 | **Only now, revoke and rotate** — GitHub, npm, and everything in §6.2's scope. | This is the step the monitor waits for. Steps 1–3 exist to make it inert. |
+| 5 | **Then eradicate the rest** — `setup.mjs`, `math_init.js`, `.claude/`, `.vscode/`, the campaign branches. | These are the paths a normal cleanup already touches, and none of them contain the monitor. |
+| 6 | **Re-sweep after rotation.** | If the monitor fired between steps 3 and 4 on a host the sweep missed, the second collection is the evidence, and it is the only chance to catch it. |
+
+Two things this order deliberately does not do:
+
+- **It does not rotate first.** That is a carve-out to the usual "rotate before you eradicate", scoped
+  to this campaign and justified by one measured fact — the monitor's trigger is revocation. The
+  payload still exfiltrates first, so the carve-out buys nothing on a host where execution already
+  completed; it only prevents a *second* collection.
+- **It does not treat a clean sweep as permission to skip steps 1–3.** The 2026-08-10 sweep found
+  zero watchdog-capable processes against a 386,555-row positive control, and zero device/process
+  pairs polling `api.github.com` at the published cadence against a control of 6,717 connections
+  from 132 devices — but it is blind to a *renamed* monitor on macOS and Linux, where
+  `DeviceNetworkEvents.RemoteUrl` is empty because Network Protection is not enabled. A clean sweep
+  over a surface with a named hole in it does not license a faster order.
 
 ---
 
@@ -1408,7 +1439,7 @@ delivery, because a report that leaves that unsaid gets the cautious reading inf
 | `lockfiles_r5.json` + `_coverage.json` | 236,703 installed pairs; 328 of 364 npm repos parsed |
 | `declared_ranges_r5.json` + `declared_parse_control_r5.json` | 688 manifests, 2,622 declarations, with its parse control |
 | `ioc_match_r5.json` / `.md` | DB inventory axis: 75,963 rows / 720 repos, 0 exact matches |
-| `code_search_r5.json` | Corroborating only; every zero labeled `weak_zero_partial_index` |
+| `code_search_r6.json` | Corroborating only; every zero labeled `weak_zero_partial_index`. r6 adds the extortion string and `gh-token-monitor` as content queries |
 | `rederive_window_0000z_aug5.json` | Registry ground truth, 2,208 specs, set-identical to the 18:00Z bracket |
 | `ci_telemetry_r5.jsonl` + `_coverage.json` | 8,591 runs, 0 campaign-flagged, 91 in-window |
 | `repo_owners_r5.json` | 182 finding repos attributed; 36 unowned, 0 lookup errors |
@@ -1418,20 +1449,81 @@ delivery, because a report that leaves that unsaid gets the cautious reading inf
 | `azure_artifacts_feeds.json` | 5 internal feeds, 3 with npmjs upstream, 0 npm packages enumerated — `coverage_supports_negative_finding: false` |
 | `dispositions.json` | The one flag, adjudicated with reason and evidence |
 | `curlpipe_workflows_r5.json`, `pr_target_workflow_r5.yml` | Source text of the workflows read by hand |
+| `advisory_iocs_r3.json` | The published indicators swept against Defender: 6 domains, 4 addresses, 5 hashes, 11 queries, 0 matches, both positive controls non-zero |
+| `antiremediation_r1.json` | The `gh-token-monitor` watchdog swept by name and by shape: 13 queries, 0 watchdog-capable rows against a 386,555-row name control, 0 device/process pairs at the published cadence against a 6,717-connection control. Two coverage gaps |
+| `commit_messages_r1.json` | The extortion string and forged authorship across all three orgs: 6 indicators, 0 decisive hits, each org's index proved live first — and the commit-search index measured NOT to reach non-default branches (0 of 5 proved off-default commits returned, 3 of 3 on-default) |
+| `install_prevention_r1.json` + `_rows.jsonl` | Whether an install is *allowed* to run scripts: 364 npm-relevant repos, one recursive tree each, 1,745 workflow files and 39 package-manager config files read. 9 of 187 install commands carry `--ignore-scripts`; 94 repos install with scripts enabled; 5 prevent. Four coverage gaps, the first of which is developer workstations |
+| `advisory_coverage.json` | The advisory-TTP register: 20 attacker vectors, 90% with a measured answer, 35% prevented rather than watched |
 
 **Run r5 control posture (the CONTROL axis, §7.1).** Seven links, every state read from the
-artifacts above. Two links have a measured obstacle, three would be detected after the fact without
-being prevented, one has nothing in the way, and one is unmeasured:
+artifacts above. Three links have a measured obstacle with a counted hole, three would be detected
+after the fact without being prevented, one has nothing in the way, and — since 2026-08-10 — none is
+unmeasured:
 
 | # | The step the worm has to complete | State | Why |
 |---|---|---|---|
 | 1 | Get a poisoned version resolved into one of our builds | PARTLY CONTROLLED | 47,758 of 47,821 npm rows pinned (99.9%); hole is 36 repos with a manifest and no lockfile, plus 3 feeds with npmjs upstream and no established quarantine |
-| 2 | Run its code during the install | UNMEASURED | 2,670 install-time script executions on 101 devices inside the window, none attributable to a package — the primitive is enabled and firing; whether it *may* run is not established |
+| 2 | Run its code during the install | PARTLY CONTROLLED | Arrival: 2,670 install-time script executions on 101 devices inside the window, none attributable to a package. Prevention, measured 2026-08-10: 9 of 187 CI install commands carry `--ignore-scripts`; 5 of 364 npm-relevant repos prevent scripts, 94 install with them enabled, 265 install nothing in CI so their installs happen only on machines this cannot read |
 | 3 | Fetch Bun to hide the payload | DETECTION ONLY | 7 of 7 Bun questions answered with a control; 0 rows, 0 workflows. Nothing prevents a runner downloading a runtime |
 | 4 | Reach our credentials once running | **OPEN** | 119 workflows pass the whole secrets context, 838 interpolate secrets into `run:`, 4,933 of 5,077 declare no `permissions:` block, 1,823 consumer repos behind the shared definitions |
 | 5 | Get the credentials out | DETECTION ONLY | 0 marker repos across 2,811 examined, controls pass. Egress from a runner is not established |
 | 6 | Use our credentials to infect others | CONTROLLED | 0 of 5,077 workflows combine an OIDC token with a publish step — **a precondition absent, not a control built**, so it is re-checked every cycle |
 | 7 | Stay after we clean up | DETECTION ONLY | Persistence sweep, 0 rows over 30 days. Prevention exists in exactly one repository's agent settings, which is an example rather than an estate default |
+
+**Run r5 measured against the published advisories (`build_advisory_coverage.py`).** The chain above
+is our reading of the campaign. Checking it against somebody else's reading — the Integrity360 and
+Snyk TTP lists as the denominator — is what turns "we looked at a lot" into a number, and it found
+four steps this hunt had never asked about:
+
+| Of the 20 attacker vectors the two advisories describe | Share |
+|---|---|
+| we can return a measured number for | 90% |
+| have something in the way, prevention **or** detection | 80% |
+| we would **prevent** rather than watch | 35% |
+| we have never looked at | 10% |
+
+Five of those vectors are answerable *only* because the advisories published indicators — before this
+cycle no round of this hunt had queried a single campaign domain, address or file hash; r9's only
+network question was about Bun release URLs.
+
+**Two of the four never-looked-at vectors were closed on 2026-08-10** and the percentages above are
+after that. The `gh-token-monitor` watchdog (T18) is now swept by name and by cadence —
+`hunt_antiremediation.py` — and the extortion commit string (T19) is now searched across all three
+organizations plus carried in the branch collector's marker set — `hunt_commit_messages.py`. Both
+are **DETECTION ONLY** or better, never CONTROLLED: they establish the campaign is not here, not
+that anything would stop it arriving.
+
+The two that remain are the two that were never cheap: trusted-publisher / provenance abuse on our
+own npm org (§6 check 4 — blocked on an npm registry token with org read, a rights request, not
+engineering time), and the `Bun/1.3.13` User-Agent, which Defender's `DeviceNetworkEvents` cannot
+answer at any price because the table carries no User-Agent column.
+
+**T03 was the third gap and it was a different kind.** It had never been *never looked at* — four
+numbers came out of `install_activity_r2.json` — yet it sat UNMEASURED on control, because thousands
+of lifecycle-script executions measure ARRIVAL and say nothing about what is in the way. Closing it
+took a collector that measures the obstacle instead of the event: `hunt_install_prevention.py` reads
+`ignore-scripts` out of every `.npmrc` and every workflow install command in the npm-relevant
+population, one recursive git tree per repository so that discovery is exact rather than guessed at
+one request per candidate path. It cost about 2,150 core requests in a single pass and moved chain
+link 2 from UNMEASURED to PARTLY CONTROLLED.
+
+Two rules that run made explicit, both worth reusing:
+
+- **Match the control per command, never per file.** A file-wide search for `--ignore-scripts` would
+  have credited one hardened step to every other install beside it. Per-command, the estate answer is
+  9 of 187.
+- **A CI answer is not an estate answer, and the artifact says so twice.** `~/.npmrc` is in no
+  repository, so the 101 devices seen running lifecycle scripts stay uncovered — and the 265 repos
+  that install nothing in CI are installed on those same machines. The ceiling for this measurement
+  is PARTLY CONTROLLED however clean CI gets; only MDM-delivered npm config could raise it.
+
+**A count that does not reconcile, and why it is in the report rather than in a footnote.** The
+advisory publishes 2,251 poisoned versions across 452 package names; the registry oracle derived
+2,208 confirmed specs plus 111 suspected across 443 names queried. The version delta (+43) sits
+inside our own confirmed/suspected bracket and is a snapshot-timing artifact. The name delta (+9) is
+the one that matters: if those names were never in our seed list, every dependency comparison in this
+hunt ran against a short denominator. It cannot be settled from our side — the advisory publishes the
+total and not the list — so the open item is to obtain their list and re-run against the union.
 
 **The decisive fact of run r5, stated as §7 requires:** the clean result came from *which packages
 the attacker chose* — the estate does not depend on them. Version pinning is structural and worth
