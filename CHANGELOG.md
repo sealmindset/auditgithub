@@ -4,6 +4,21 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — the same exposure, for readers who do not build software (2026-08-11)
+
+`docs/playbooks/npm-supply-chain-exposure-plain-language.md`. The technical report is correct
+and unreadable to the people who fund the work; a briefing they cannot follow gets approved on
+trust or not at all, and neither is a decision. Same five problems, same numbers, no jargon
+that a definition could not replace — the keyring handed to a contractor who needed one door,
+the instruction we run before reading it, the vacant address anyone inside can move into.
+
+Two things kept it honest rather than merely simple. Benefits beyond security are stated
+because several of these fixes pay for themselves unattacked — nine broken automations get
+repaired, builds stop changing underneath us, and we get a list of what our software is made
+of. And the limits are their own section: 193 projects not checked, developer laptops thin, one
+feed unreadable, and "no evidence of a break-in" written out as not the same claim as "no
+break-in." A briefing that overstates its confidence is worth less than one that does not.
+
 ### Added — the exposure report, separated from the hunt report (2026-08-11)
 
 `docs/playbooks/npm-supply-chain-exposure-report.md`. The hunt report answers "did this happen
