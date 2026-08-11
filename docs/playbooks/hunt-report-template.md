@@ -10,6 +10,9 @@ script enforces it
 `exports/hunt-report-2026-08-10.{md,docx,pdf}`
 **Companion:** [`supply-chain-hunt-ttp.md`](supply-chain-hunt-ttp.md) — that playbook says how to
 *run* the hunt; this one says how to *report* it
+**Governed by:** [`report-doctrine.md`](report-doctrine.md) — the report this template renders is
+the **technical half of a pair**. A leadership briefing assuming no technical background ships
+with every run; that document says how to write it
 **Owner:** Security Engineering
 
 ---
@@ -28,6 +31,14 @@ Two consequences worth stating plainly, because they are the whole design:
 2. **The renderer refuses to produce a report that breaks the contract.** A missing coverage-gap
    field or an evidence-free control claim is a non-zero exit and no output file — not a warning
    in a log nobody reads. See §5.
+
+A third consequence sits outside the renderer, and is stated here so it is not forgotten: **this
+document is the technical half of a pair.** Everything below is written for a reader who wants the
+measurements. The people who fund the remediation are not that reader, and a report they cannot
+follow gets approved on trust or not at all — neither of which is a decision. Each run therefore
+also produces a leadership briefing per [`report-doctrine.md`](report-doctrine.md), carrying the
+same figures with the same denominators, including the coverage limits, in language that assumes
+no technical background. The renderer does not enforce that one; the reviewer does.
 
 ---
 

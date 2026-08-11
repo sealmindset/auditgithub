@@ -4,6 +4,35 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — a report is two documents, and that is now doctrine (2026-08-11)
+
+`docs/playbooks/report-doctrine.md`. Every report this program publishes ships as a pair: a
+leadership briefing that assumes no technical background, and a comprehensive technical
+companion. Publishing one without the other is an incomplete deliverable, not a first draft.
+
+The reasoning cuts both ways, which is why it is a rule rather than a preference. A technical
+report is correct and unreadable to the people who fund the work — and a briefing they cannot
+follow gets approved on trust or not at all, neither of which is a decision. A briefing with no
+companion cannot be checked, and "nine open doors" is a slogan until somebody can name the nine.
+The pair is what makes the work fundable and verifiable at the same time.
+
+The document fixes the structure of each half (five questions for the briefing, what/where/how
+for the companion), and five rules that bind both: one set of figures with the same denominators,
+the briefing names the companion file, coverage limits are a section of the briefing rather than
+a footnote in the companion, prove-it-or-do-not-report-it governs both equally, and — the rule
+that cost the most here — write them together rather than in sequence. Names go in a generated
+appendix that states what it omits, never dropped for readability.
+
+The worked example is our own mistake: the npm exposure set was written technical-first, and
+carried three wrong figures and one entirely unnamed mechanism into a document that had already
+been reviewed. Rereading the prose caught none of them; regenerating from the artifacts caught
+all of them.
+
+Cross-referenced from `supply-chain-hunt-ttp.md` as doctrine §0.9 — a hunt that only the hunters
+can read has not finished — and from `hunt-report-template.md`, which now states that the report
+it renders is the technical half of a pair. The renderer does not enforce the briefing; the
+reviewer does.
+
 ### Added — every count in the briefing, resolved to names (2026-08-11)
 
 `scripts/report/build_appendix.py` generates `npm-supply-chain-exposure-appendix.md`, which is

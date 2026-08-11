@@ -14,7 +14,8 @@ endpoints & identity via Microsoft Graph / Defender XDR · attacker infrastructu
 
 ## 0. Doctrine — read this before running anything
 
-Seven rules that determine whether the output is evidence or theater.
+Nine rules that determine whether the output is evidence or theater — and, in §0.9, whether it
+reaches the people who can act on it.
 
 ### 0.1 A zero is only meaningful if the query could have found the thing
 
@@ -257,6 +258,25 @@ Enforced in code: `build_axis_pairing()` in `scripts/hunt/render_hunt_report.py`
 halves from the collectors' own evidence rows — never from this text — and renders them into
 Section 1 directly beneath the coverage table, because a caveat nobody reaches is a caveat
 nobody applied. A missing artifact yields a missing half rather than a confident one.
+
+### 0.9 A hunt that only the hunters can read has not finished
+
+Every report this program publishes ships as **two documents**: a leadership briefing that assumes
+no technical background, and this technical companion. The full standard — audience, structure,
+the rules that bind both, and the generated-appendix requirement — is
+[`report-doctrine.md`](report-doctrine.md). It is not optional, and it is not a summary bolted on
+afterward.
+
+The reason it belongs in the doctrine section rather than in the reporting phase: §0.6 and §0.7
+make the output *defensible*, and defensible is not the same as *actionable*. A verdict nobody
+outside Security can parse converts into no funded work, which is indistinguishable in outcome
+from never having run the hunt. Phase 7 assembles the verdict; the pair is what makes it land.
+
+The rule that costs the most to skip is writing both together rather than in sequence. The
+`npm-supply-chain-exposure-*` set was written technical-first, and carried three wrong figures and
+one entirely unnamed mechanism into a document that had already been reviewed. Regenerating the
+named appendix from the collector artifacts is what caught them — the same instinct as §0.6(a),
+applied to our own prose: read the artifact, not the recollection.
 
 ---
 
