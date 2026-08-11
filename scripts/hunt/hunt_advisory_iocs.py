@@ -357,23 +357,63 @@ _EGRESS_MATCHERS = [_tool_matcher(t) for t in EGRESS_TOOLS]
 _SEARCH_MATCHERS = [_tool_matcher(t) for t in SEARCH_TOOLS]
 
 
+# Ported verbatim from `hunt_antiremediation.py`, where this problem was already solved and
+# reviewed. Keeping two divergent copies of the same judgement is how one collector reports a
+# finding the other correctly demotes - which is exactly what happened on 2026-08-11, when
+# this collector reported FINDINGS on five rows that were this hunt's own test commands and
+# `hunt_antiremediation.py` demoted 247 rows of the same kind on the same estate.
+ANALYSIS_MARKERS = ("auditgithub", "auditgh", "sec-diligence", "github_conf",
+                    "docs/playbooks", "shell-snapshots",
+                    "/.local/share/claude/versions/", "/.claude/projects/")
+
+EGRESS = "egress_capable"
+TEXT = "text_reference"
+ANALYSIS = "analysis_corpus_reference"
+
+
 def classify_command_line(row: dict) -> str:
-    """`egress_capable` or `text_reference`, from the command line itself.
+    """`egress_capable`, `text_reference` or `analysis_corpus_reference`.
 
     The indicator strings are removed from the text before the tool scan, because
     `npm-cache.com` contains `npm` and would otherwise classify every mention of the C2
     domain as an npm invocation - which is how a grep for the IOC becomes an IOC.
+
+    ORDER MATTERS, and getting it wrong is what made this vector read FINDINGS on
+    2026-08-11. The decisive evidence is the PATH the command is working in, not the tool
+    doing the work: a `python3 - <<PY` heredoc that imports `scripts.hunt.hunt_advisory_iocs`
+    to test this very classifier is a python invocation, and python is egress-capable, so a
+    tool-first order reports the security team testing its own detection as a C2 contact.
+    Five such rows on one analyst workstation drove this vector to FINDINGS with a critical
+    severity, and every one of them was us.
+
+    Why this is a demotion and not a suppression, which is the line that matters:
+      * The class is NAMED, counted in `counts`, and every row is written to the artifact
+        verbatim under `command_line_analysis_references`. Nothing is deleted. A reader who
+        disagrees with the call can see exactly what was demoted and re-read it.
+      * Anything unrecognised still defaults to `egress_capable`, so a shape this classifier
+        has never seen is reported rather than silently cleared.
+      * The markers are paths belonging to this repository and to the analyst tooling that
+        reads it. They are not a device allowlist: the same command line on any device is
+        demoted, and a genuine `curl https://npm-cache.com` on an analyst's laptop still
+        classifies as egress, because no marker appears in it.
+
+    The residual risk is stated rather than hidden: an attacker who ran their fetch from
+    inside a path named `auditgithub` would be demoted too. That is accepted because the
+    alternative - reporting the hunt's own instrumentation as critical findings every cycle -
+    trains the reader to ignore this vector, and a vector nobody reads detects nothing.
     """
     text = " ".join(str(row.get(field) or "").lower()
                     for field in ("ProcessCommandLine", "InitiatingProcessCommandLine",
-                                  "FileName"))
+                                  "FileName", "FolderPath"))
     for indicator in _INDICATOR_FORMS:
         text = text.replace(indicator, " <indicator> ")
+    if any(marker in text for marker in ANALYSIS_MARKERS):
+        return ANALYSIS
     if any(match(text) for match in _EGRESS_MATCHERS):
-        return "egress_capable"
+        return EGRESS
     if any(match(text) for match in _SEARCH_MATCHERS):
-        return "text_reference"
-    return "egress_capable"
+        return TEXT
+    return EGRESS
 
 
 def rows(ev: Dict[str, Any], key: str) -> List[dict]:
@@ -500,9 +540,15 @@ def build(raw: Dict[str, Any]) -> Dict[str, Any]:
             "severity": "critical",
             "evidence": row,
         })
-    cmdline_egress = [r for r in cmdline_hits
-                      if classify_command_line(r) == "egress_capable"]
-    cmdline_text = [r for r in cmdline_hits if classify_command_line(r) == "text_reference"]
+    # One pass, so the three buckets provably sum to the population and a row cannot be
+    # counted twice by two calls that disagree.
+    cmdline_by_class: Dict[str, List[dict]] = {EGRESS: [], TEXT: [], ANALYSIS: []}
+    for row in cmdline_hits:
+        verdict = classify_command_line(row)
+        cmdline_by_class[verdict].append({**row, "classification": verdict})
+    cmdline_egress = cmdline_by_class[EGRESS]
+    cmdline_text = cmdline_by_class[TEXT]
+    cmdline_analysis = cmdline_by_class[ANALYSIS]
     for row in cmdline_egress:
         findings.append({
             "id": f"c2-cmdline-{row.get('DeviceName')}-{row.get('Timestamp')}",
@@ -561,6 +607,22 @@ def build(raw: Dict[str, Any]) -> Dict[str, Any]:
             f"filtered, and each is listed verbatim in this artifact under "
             f"`command_line_text_references`, because a rule that deleted them would "
             f"eventually delete a real request that happened to mention a search tool.")
+
+    if cmdline_analysis:
+        coverage.append(
+            f"{len(cmdline_analysis)} command line(s) carrying a campaign hostname are this "
+            f"hunt reading or testing its OWN corpus, on "
+            f"{len({r.get('DeviceName') for r in cmdline_analysis})} device(s) - the decisive "
+            f"evidence is the PATH being worked in, this repository and the analyst tooling "
+            f"that reads it, not the tool doing the working. Until 2026-08-11 this collector "
+            f"classified on the tool first, so a `python3` heredoc importing this module to "
+            f"test this very classifier was reported as a critical C2 contact. That is what "
+            f"drove this vector to FINDINGS, and every row was us. Demoted rather than "
+            f"deleted: each is written verbatim under `command_line_analysis_references`, the "
+            f"class is counted above, and anything unrecognised still defaults to "
+            f"egress-capable. Same judgement and same marker list as "
+            f"`hunt_antiremediation.py`, which had already demoted 247 rows of this kind on "
+            f"the same estate while this collector was reporting five of them as critical.")
 
     coverage.append(
         f"Campaign infrastructure swept: {len(IOC_DOMAINS)} domain(s) and {len(IOC_IPS)} "
@@ -668,9 +730,11 @@ def build(raw: Dict[str, Any]) -> Dict[str, Any]:
             "Campaign file hashes swept": len(IOC_HASHES),
             "Domains matched on the network table": len(domain_hits),
             "Command lines carrying a campaign hostname": len(cmdline_hits),
+            # These three sum to the line above them. They are printed even at zero, because
+            # the reader has to be able to see that the split was made at all.
             "Of those, on a process that can make a request": len(cmdline_egress),
-            "Of those, a search or read command (this hunt looking at itself)":
-                len(cmdline_text),
+            "Of those, a search or read command": len(cmdline_text),
+            "Of those, this hunt reading or testing its own corpus": len(cmdline_analysis),
             "IP addresses matched": len(ip_hits),
             "IP matches that are shared infrastructure (leads, not findings)": len(ip_leads),
             "File-hash matches": len(hash_hits),
@@ -683,6 +747,9 @@ def build(raw: Dict[str, Any]) -> Dict[str, Any]:
         "findings": findings,
         "ip_leads_requiring_hostname_resolution": ip_leads,
         "command_line_text_references": cmdline_text,
+        # Verbatim, not counted-and-discarded. This is the artifact a reader opens to
+        # disagree with the demotion, so it has to hold the whole row.
+        "command_line_analysis_references": cmdline_analysis,
         "indicators": {"domains": IOC_DOMAINS, "ips": IOC_IPS, "hashes": IOC_HASHES,
                        "bun_version": BUN_VERSION},
         "identity": raw.get("identity"),

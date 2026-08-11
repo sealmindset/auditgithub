@@ -29,14 +29,14 @@ Two rules that govern everything written here:
 
 ## 2. Current State
 
-Branch `deployment-topology-p1-p2`, tip `cd623dc`. Rounds 6 and 7 of the hunt are
-**committed**.
+Branch `deployment-topology-p1-p2`, tip `83595fa` (the Kodem ingestion). Rounds 6 and 7 of the
+hunt are **committed**.
 
 Working tree at the time of writing:
 ```
- M scripts/hunt/check_azure_artifacts.py    <- this session, described in section 4
- M scripts/hunt/render_hunt_report.py       <- this session
-?? tests/test_check_azure_artifacts.py      <- this session
+ M scripts/hunt/hunt_advisory_iocs.py       <- this session, section 4
+ M CHANGELOG.md / TODO.md / handoff.md      <- this session
+?? tests/test_hunt_advisory_iocs.py         <- this session
 ?? github_conf/IOC_KQL.zip                  <- another session's; leave it
 ?? nmptemp                                  <- another session's; leave it
 ```
@@ -45,19 +45,26 @@ worktree `../auditgithub-deps` (branch `deps-webui-safety`) belongs to another s
 do not remove it.
 
 Tests, run on the host as `python3 -m pytest --noconftest` (the repo conftest imports
-`src/api/main.py`, which needs `loguru`):
-- `tests/test_hunt_report.py` -- **49 passed**
-- `tests/test_hunt_commit_messages.py` -- **11 passed**
-- `tests/test_check_azure_artifacts.py` -- **10 passed** (new this session)
+`src/api/main.py`, which needs `loguru`) -- **82 passed** across the four hunt files:
+- `tests/test_hunt_report.py` -- **50**
+- `tests/test_hunt_commit_messages.py` -- **13**
+- `tests/test_check_azure_artifacts.py` -- **10**
+- `tests/test_hunt_advisory_iocs.py` -- **9** (new this session)
 - Deployment topology 74/74; budget governor 7 of 12 on the host; detection rules 9/9
-  validate with nothing sent; 30 KQL queries lint clean and **none executed**; NeMo 26/26.
+  validate with nothing sent; 30 KQL queries lint clean; NeMo 26/26.
 
-Docker Desktop is **down** -- `Cannot connect to the Docker daemon at
-unix:///Users/rob.vance@sleepnumber.com/.docker/run/docker.sock`. Third session running.
-It blocks migration 021, the 86-test container run, and every P2 verification step.
+**Docker is up as of 2026-08-11** -- all eight containers running (`auditgh_api`, `auditgh_db`,
+`auditgh_ui`, `auditgh-redis`, `auditgh_minio`, `auditgh_mailpit`, `auditgh_mock_oidc`,
+`auditgh_session_cleanup`). That unblocked the Defender half of the hunt, which ran, and it
+also unblocks migration 021 and every P2 verification step -- **none of the P2 work has been
+done yet.** Run the Defender collectors from inside the container, not the host: the host
+python has no `psycopg2` and cannot reach the credential store, so
+`docker exec -w /app auditgh_api python scripts/hunt/<collector>.py` is the invocation.
 
-Report renders exit 0, **AMBER**, 14 vectors, 13 actions, to
-`exports/hunt/reports/hunt-report-2026-08-11.md`.
+Report renders exit 0, **AMBER**, 14 vectors, **14 actions**, to
+`exports/hunt/reports/hunt-report-2026-08-11.md`. Estate-wide unread residue 9 -> 5,
+unobservable populations 11 -> 15 -- both moved because four endpoint items changed axis, not
+because coverage changed. See section 4.
 
 ## 3. Vector status -- what is closed and what each open one waits on
 
@@ -107,7 +114,11 @@ that distinction.
 3. **Advisory IOC sweep -- campaign infrastructure and file hashes** -- section 4.18. Eleven
    hunting queries, none failed. The residue is one indicator that cannot be matched at all:
    the advisories name a User-Agent, `Bun/1.3.13`, and `DeviceNetworkEvents` carries no
-   User-Agent column.
+   User-Agent column. Re-run 2026-08-11 against live Defender: it first returned **FINDINGS at
+   critical severity on five rows that were this hunt testing this collector** -- see section 4.
+   After the classifier fix the command-line population is 0 egress / 0 text / 5 ours, every one
+   of the five written verbatim to `command_line_analysis_references`, and the vector is back to
+   `INCOMPLETE` on the User-Agent.
    *Waiting on:* the same proxy or web-gateway source as item 1 -- and stated in the artifact
    in exactly those terms, that this indicator "cannot be matched on endpoint telemetry by
    anyone with any permission." Requesting a Defender role would not close it. The two
@@ -147,6 +158,63 @@ public registry -- which is the question the vector asks and answers. What it le
 a package *published directly* into that feed. Different question, still open, named.
 
 ## 4. Changes Made This Session
+
+### The Defender half ran, and the first thing it found was us (2026-08-11)
+
+Docker came back up, so the four Defender collectors ran for the first time in four days --
+from inside `auditgh_api` (`docker exec -w /app auditgh_api python scripts/hunt/…`), which has
+`psycopg2` and reaches the encrypted credential store. The host interpreter still cannot; treat
+the container form as the invocation, not a workaround for one afternoon. The repo is mounted
+rw at `/app`, so the artifacts land on the host where the renderer reads them.
+
+**`hunt_advisory_iocs.py` returned FINDINGS, severity critical.** Five rows, one device,
+`usffhg6x7jh4` -- Rob's workstation. Every one was a Claude Code shell invocation from
+2026-08-07 or 2026-08-10 running a `python3` heredoc that imports this very module to exercise
+`classify_command_line`, and the heredoc carries `curl -s https://npm-cache.com/x` as a **test
+fixture**. `curl` is an egress tool, the scan is over the whole command line as flat text, and
+the classifier checked the tool before the path. A quoted string inside a test for this
+detection was promoted into a critical finding by the detection it was testing.
+
+Worth being precise about the mechanism, because the obvious reading is wrong: it is *not*
+that python is egress-capable. `python3 -c` classifies as a read tool. The tool that matched
+was `curl`, and it really was in the text -- which is exactly why the tool cannot be the
+discriminator and the path can.
+
+The defect underneath is duplication, not classification. `hunt_antiremediation.py` had already
+solved this and, in the same cycle on the same estate, correctly demoted **247** rows of this
+exact kind while this collector was calling five of them critical. Two divergent copies of one
+judgement. `ANALYSIS_MARKERS` and the path-before-tool ordering are now ported across verbatim.
+
+It **demotes, it does not delete** -- the line that keeps this from being suppression:
+
+- the class is named `analysis_corpus_reference` and counted, and the three buckets provably
+  sum to the population (0 + 0 + 5 = 5);
+- all five rows are written verbatim to `command_line_analysis_references`, so a reader who
+  disagrees can re-read exactly what was demoted;
+- an unrecognized shape still defaults to `egress_capable` -- unseen means reported, not clean;
+- the markers are **paths, not a device allowlist**. A bare `curl https://npm-cache.com` on
+  that same laptop is still a finding, and `tests/test_hunt_advisory_iocs.py` pins it.
+
+Residual risk, stated rather than buried: an attacker running their fetch from inside a
+directory named `auditgithub` is demoted too. Accepted -- the alternative is reporting our own
+instrumentation as critical every cycle, and a vector nobody reads detects nothing. The two
+copies of this judgement can still drift; lifting them into one shared module is in TODO.
+
+**Endpoint collector: 6 queries -> 16.** Two ran for the first time. The `ir/52` persistence
+sweep returned 0 rows over 30 days across `DeviceFileEvents` and `DeviceRegistryEvents`, with
+each half separately controlled as non-empty -- so that zero survives §0.1. And `coverage/07`
+answered the `token-monitor` arming blocker in the negative: `SHA1` is not populated
+estate-wide (Windows10 **81.7%**), so `stopAndQuarantineFiles` no-ops silently while the alert
+fires. Detail and the resulting decision are in section 8, item 5.
+
+**The four "blind spot newly registered" lines in the delta are a reclassification, not a
+regression** -- and the report demands by name that whoever changed the collector say which.
+This is that line. The three Defender onboarding states and the Linux `SHA256` absence were
+sitting in `unresolved_items`, which means *items we have the access to read and have not*,
+when in fact no privilege reaches them at all. They are coverage. Estate-wide residue falls
+9 -> 5 and unobservable populations rise 11 -> 15 because the same four items moved axis.
+Nothing went dark and nothing was measured for the first time. Report stays **AMBER**, 14
+actions.
 
 ### Kodem ingested, and the failure mode it exposed (2026-08-11)
 
@@ -311,6 +379,15 @@ stays unread.
 - **Attaching a new coverage caveat to a vector's `NOT RUN` fallback only.** The first
   `vector_endpoint()` edit put the IMDS line in the fallback, and the artifact existed -- so the
   line never rendered. If the caveat is a property of the *query set*, it belongs on every path.
+- **Classifying a command line on the tool before the path.** `hunt_advisory_iocs.py` scans the
+  whole command line as flat text, so a `curl` quoted inside a heredoc counts as a `curl`. The
+  hunt's own test fixtures came back as five critical C2 contacts. The path being worked in is
+  the discriminator; the tool never is. Sibling collectors already knew this, which is the
+  second lesson -- **when a judgement exists in one collector, port it rather than re-derive
+  it.** Two copies drifted, and the drift is what shipped a critical false positive.
+- **Reading `python3 -c` as egress-capable.** It classifies as a read tool and that is correct.
+  Chasing that premise cost a wrong test and a wrong docstring before the actual match -- a
+  quoted `curl` -- turned up. Read the row that fired before theorizing about why it fired.
 
 **From the CHAINDROP session (2026-08-06), all still binding:**
 
@@ -408,7 +485,8 @@ stays unread.
 
    4a. **Promote `backlog/23-imds-contact-from-install-lineage.kql`, or leave it in backlog
    deliberately.** Three preconditions, in order, none of them a permission: (a) Defender
-   reachable from the collector at all -- today it is not, see section 4; (b) two assumptions
+   reachable from the collector at all -- **met as of 2026-08-11**, via `docker exec` into
+   `auditgh_api`; (b) two assumptions
    *measured* rather than assumed -- that `InitiatingProcessParentFileName` is populated for
    lifecycle scripts on the runners, and that `DeviceNetworkEvents` records link-local traffic
    in this tenant at all. The second is the same failure class as rule 14's `RemoteUrl`
@@ -418,14 +496,23 @@ stays unread.
    `169.254.169.254` correctly and constantly, so an address-keyed rule fires estate-wide on
    day one and is disarmed within a day -- and a disarmed rule is worse than no rule, because
    the shelf it sits on reads like coverage.
-5. **Run `coverage/07` to confirm `SHA1` is populated** on `DeviceFileEvents` for
-   `gh-token-monitor.*`. `stopAndQuarantineFiles` alerts without quarantining if it is empty.
-   Sole blocker on arming `token-monitor`, the new rule most worth arming -- an alert does not
-   disarm a watchdog.
+5. **Decide `token-monitor`'s arming.** `coverage/07` ran 2026-08-11 and answered the blocker
+   in the negative rather than clearing it: `SHA1` is **not** populated estate-wide --
+   Windows11 97.5% of 1,767,800 rows, **Windows10 81.7%**, WindowsServer2025 95.7%, macOS the
+   only platform at 100%. So `stopAndQuarantineFiles` silently no-ops on roughly one Windows10
+   row in five *while the alert still fires*, which is the worst combination available: an
+   operator reads a quarantine action on an alert that quarantined nothing. Arm it for the
+   alert, not for the action. Two facts must travel with that decision -- quarantining the
+   binary would not remove its systemd unit or launchd plist in any case, and §7 step 1.5
+   already requires removal be confirmed on the host with `pgrep -af gh-token-monitor`. Put
+   both in the rule's own comment or the next reader re-derives them.
 6. **Run the never-executed hunt checks**: §6 checks 7-9 and §6.1-§6.2 of
    `supply-chain-hunt-ttp.md` -- all branches (up to 50/repo), the `${{ toJSON(secrets) }}`
    primitive rather than the workflow filename, npm publisher-side abuse (`bypass_2fa: true`
-   tokens, self-minted attestations), the persistence sweep, the wide rotation scope.
+   tokens, self-minted attestations), the wide rotation scope. **The persistence sweep is off
+   this list**: `ir/52` ran 2026-08-11 for the first time -- 0 rows over 30 days across
+   `DeviceFileEvents` and `DeviceRegistryEvents`, each half separately controlled as non-empty,
+   so that zero is a zero rather than an empty table.
 7. **Audit the other `--*` renderer defaults** for the staleness class that bit `--trees`:
    `--branches`, `--code-search`, `--ioc` and `--posture` are pinned to `_r3` filenames.
    Nothing is wrong today; the failure mode is silent and the next re-run creates it. It

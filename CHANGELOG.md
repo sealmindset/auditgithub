@@ -4,6 +4,77 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — the hunt reported itself as a critical C2 contact (2026-08-11)
+
+With Docker back up, the four Defender collectors ran for the first time in four days. The
+advisory IOC sweep came back **FINDINGS**, severity critical: *"A campaign hostname appears on
+the command line of a process that can make a network request, on `usffhg6x7jh4`."*
+
+Five rows, one device, and every one of them was us — Claude Code shell invocations from
+2026-08-07 and 2026-08-10 running a `python3` heredoc that imports
+`scripts.hunt.hunt_advisory_iocs` to exercise `classify_command_line`. The heredoc carries
+`curl -s https://npm-cache.com/x` as a **test fixture**. `curl` is an egress tool, the scan is
+over the whole command line as flat text, and the classifier checked the tool before the path.
+So a quoted string inside a test for this detection was promoted into a critical finding by the
+detection it was testing.
+
+The subtlety worth keeping: the naive reading is "python is egress-capable". It is not —
+`python3 -c` classifies as a read tool. The tool that matched was `curl`, and it was genuinely
+present in the text. **That is precisely why the tool cannot be the discriminator.**
+
+`hunt_antiremediation.py` had already solved this and, in the same cycle on the same estate,
+correctly demoted **247** rows of exactly this kind while this collector was reporting five of
+them as critical. Two divergent copies of one judgement is the actual defect. `ANALYSIS_MARKERS`
+and the path-before-tool ordering are now ported across verbatim, with the sibling collector's
+own docstring reasoning: *the decisive evidence is the path being read, not the tool doing the
+reading.*
+
+Demoted, not deleted — the line this has to hold:
+
+- the class is named `analysis_corpus_reference`, counted in `counts`, and the three buckets
+  provably sum to the population (0 egress + 0 text + 5 ours = 5);
+- every row is written verbatim to `command_line_analysis_references`, so a reader who
+  disagrees can re-read exactly what was demoted;
+- anything unrecognised still defaults to `egress_capable`, so an unseen shape is reported
+  rather than cleared;
+- the markers are **paths, not a device allowlist** — a bare `curl https://npm-cache.com` on
+  the same analyst laptop still classifies as egress, and there is a test pinning that.
+
+Residual risk stated rather than hidden: an attacker running their fetch from inside a
+directory named `auditgithub` would be demoted too. Accepted, because the alternative is
+reporting our own instrumentation as critical every cycle, and a vector nobody reads detects
+nothing.
+
+Vector goes **FINDINGS → INCOMPLETE**. New `tests/test_hunt_advisory_iocs.py`, 9 probes, half
+of them pinning that the demotion did not swallow anything real.
+
+### Changed — the Defender half ran, and four residue items moved to the axis they belong on (2026-08-11)
+
+Docker up, so the collectors ran from inside `auditgh_api` (which has `psycopg2` and the
+credential store) rather than from the host interpreter, which still lacks the driver.
+
+`hunt_endpoint_defender.py` executed **16** queries, up from 6, including two that had never
+run before: the `ir/52` persistence sweep (0 rows over 30 days across `DeviceFileEvents` and
+`DeviceRegistryEvents`, both halves separately controlled as non-empty) and `coverage/07`.
+
+**`coverage/07` answers the question that was the sole blocker on arming `token-monitor`, and
+the answer is no.** SHA1 coverage is not 100%: Windows11 97.5% of 1,767,800 rows, Windows10
+**81.7%**, WindowsServer2025 95.7%, macOS the only platform at 100%. `stopAndQuarantineFiles`
+silently no-ops on rows with no SHA1 **while the alert still fires**, so on this campaign an
+operator can believe the watchdog was quarantined when it was not — and quarantine would not
+have removed its systemd unit or launchd plist in any case. Arming decision changes shape: the
+rule is worth arming for the alert, not for the action, and §7 step 1.5 must say that removal
+is confirmed with `pgrep -af gh-token-monitor` on the host and never from an alert.
+
+The endpoint vector's unresolved items went 5 → 1, and the delta narrator flagged four
+"blind spot newly registered" lines demanding that whoever changed the collector explain them.
+This is that line: the three Defender onboarding states and the Linux SHA256 absence were not
+new, and nothing went dark. They were sitting in `unresolved_items` — which means *items we
+have the access to read and have not* — when no privilege reaches them at all. They are
+coverage, and they now sit on the coverage axis. Estate-wide residue drops 9 → 5 while
+unobservable populations rise 11 → 15; both numbers moved because the same four items were
+being counted on the wrong axis, not because coverage changed.
+
 ### Added — a source that was cited for a week and never read (2026-08-11)
 
 Kodem has been in the source table of `docs/playbooks/supply-chain-hunt-ttp.md` since the
