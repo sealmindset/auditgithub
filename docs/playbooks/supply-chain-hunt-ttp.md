@@ -251,7 +251,7 @@ Sources are tiered by evidentiary weight. **Tier 0 decides**; tiers 1–3 genera
 | JFrog | `https://research.jfrog.com/post/shai-hulud-is-back-august/` | 428 packages / 1,700+ versions; **npm ≥ 12 does not run `preinstall` by default** — a material mitigating factor |
 | Snyk | `https://snyk.io/blog/inside-keyv-npm-compromise-preinstall-malware-trusted-provenance-ide-hooks/` | Exploit-maturity rating; provenance analysis |
 | Cloudsmith | `https://cloudsmith.com/blog/keyv-and-cacheable-npm-packages-compromised-in-active-supply-chain-attack` | ~444 packages / ~2,236 malicious versions; registry-operator view |
-| Kodem | `https://www.kodemsecurity.com/resources/keyv-supply-chain-attack-shai-hulud-npm-worm-affected-versions-iocs-and-first-hour-response-runbook` | Consolidated IoC list + first-hour runbook |
+| Kodem | `https://www.kodemsecurity.com/resources/keyv-supply-chain-attack-shai-hulud-npm-worm-affected-versions-iocs-and-first-hour-response-runbook` | Consolidated IoC list + first-hour runbook. Ingested 2026-08-11 as `kodem_2026_08.json`. Sole source for two indicators: **instance-metadata contact at `169.254.169.254`** from build agents, and the **source-side commit message** `add setup.mjs and Math_Symbol.js to all @keyv/* packages` — the operator's own message on the poisoned repository, a different class from every marker the worm writes on a victim. Its runbook **conflicts** with §6.3 by rotating tokens at step 1 and hunting persistence at step 7; see `_CONFLICT_WITH_THIS_ESTATE_S_RUNBOOK` in the IoC file. Its Socket 14:05 / 15:39–15:44Z timeline is refuted by our own bracket-independence proof (§1.5) and does **not** reopen the window closed 2026-08-10 |
 | **Elastic Security Labs** | `https://www.elastic.co/security-labs/shai-hulud-chaindrop-npm-supply-chain` | Named the campaign **CHAINDROP**; C2 domain `awqhnjewqjkl.icu`; the `node  setup.mjs` double-space execution variant; 50-branches-per-repository propagation via stolen GitHub App tokens; Dune-fiction payload strings; AI-tooling credential targets |
 | **Cycode** | `https://cycode.com/blog/keyv-cacheable-npm-worm-ai-coding-agents/` | Per-package **safe rollback versions** (a superset of Chainguard's four); the injected dependency name `@opensearch/setup`; `StringListStore`, the `Bun/1.3.13` user agent, and Jenkins `master.key` / Argo CD / Harbor secrets as harvest targets; and the only **explicit denial** of the transitive-`keyv`-reach narrative |
 | **Unit 42 (Palo Alto Networks)** | `https://unit42.paloaltonetworks.com/chaindrop-npm-worm-analysis/` | Sole source for the **second propagation path — repository-gated OIDC trusted publishing with genuine Sigstore provenance**, which defeats provenance verification with no stolen credential; the third dropped file `router_runtime.js`; the on-chain C2 rotation transaction and its 15:15:26Z timestamp; the dead-drop and commit-marker strings the worm itself searches for; `gh auth token` as the PAT-capture command |
@@ -263,6 +263,15 @@ Sources are tiered by evidentiary weight. **Tier 0 decides**; tiers 1–3 genera
 > under-reported the sources the hunt was actually running on. **One source, one file, and a row in
 > this table** — a source in `github_conf/ioc/` but not in §1.1 has no tier, and an untiered source
 > cannot be arbitrated.
+>
+> **The same desynchronization runs in the other direction, and it is the more dangerous one.**
+> Kodem sat in this table from the reference run until **2026-08-11** with no file in
+> `github_conf/ioc/`. A row here reads as a source that was consumed; it was only a source that was
+> *seen*. Reading it against the whole corpus on 2026-08-11 found two indicators present in it and
+> absent from every rule, IoC file and collector we hold — including the one instance of a
+> **source-side** commit message, which we had no marker for at all. A citation is not coverage.
+> When adding a row, add the file in the same change; when auditing this table, check both
+> directions.
 
 #### Tier 3 — press (timeline only, never IoCs)
 

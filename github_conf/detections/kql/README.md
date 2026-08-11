@@ -50,6 +50,8 @@ covers the existing 30-day window.
 |---|---|
 | `20-backlog-sweep-all-signals.kql` | All six detection signals, 30 days, one result set |
 | `21-adjacent-package-hosts.kql` | Which *devices* hold the affected package trees on disk — the endpoint-level view of the 81 repos Layer 1 flagged as adjacent. Exposure surface, not compromise. |
+| `22-bun-windows-artifact-sweep.kql` | The Bun runtime as an **artifact on disk** (`DeviceFileEvents`) as well as a process, including `bun.exe`. Every other Bun query requires a `node`/`npm` parent or a populated `RemoteUrl`; this one drops both constraints, so it sees a Bun binary dropped by `cmd.exe`, an installer, or an extraction helper. |
+| `23-imds-contact-from-install-lineage.kql` | Contact with `169.254.169.254` **joined to an install lineage**. Kodem is the only source naming metadata contact from build agents; before this the estate had IMDS in its rotation scope but in no detection input. **Never executed** — do not quote a shape from it, and read its header before promoting it: keyed on the address alone it would fire on every cloud host in the estate. |
 
 Run `20` **before** deploying the rules. Once a rule is armed, a three-week-old artifact
 can isolate a machine that has been clean for weeks.

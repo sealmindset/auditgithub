@@ -11,6 +11,7 @@ would have caught it.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -72,10 +73,52 @@ def test_the_endpoint_fallback_makes_no_claim_about_credentials():
     assert "blocked_by" not in R.vector_endpoint(None)
 
 
-def test_a_supplied_endpoint_artifact_is_passed_through_untouched():
+def test_a_supplied_endpoint_artifact_keeps_every_field_it_arrived_with():
+    """Pass-through, except for coverage, which gains the questions the collector never asks.
+
+    This used to assert object identity. It cannot any more, and the reason is the point:
+    the instance-metadata question is a property of the QUERY SET, not of a given run, so a
+    successful run does not answer it either. Identity pass-through would mean a clean
+    artifact silently dropped a known-unswept question - "the artifact exists, therefore the
+    vector is covered", which is the failure this whole renderer exists to prevent.
+
+    So the contract is narrower than identity and stricter than "returns a dict": nothing
+    the collector wrote may be altered, and coverage may only grow.
+    """
     supplied = _vector("Endpoint / identity (Microsoft Defender)", R.CLEAR,
                        counts={"Hunting queries executed": 6})
-    assert R.vector_endpoint(supplied) is supplied
+    supplied["coverage"] = ["a line the collector wrote"]
+    before = json.loads(json.dumps(supplied))
+
+    out = R.vector_endpoint(supplied)
+
+    for key, value in before.items():
+        if key != "coverage":
+            assert out[key] == value, f"{key} was altered on the way through"
+    assert out["coverage"][:1] == before["coverage"], "collector's own coverage was reordered"
+    assert len(out["coverage"]) > len(before["coverage"])
+    assert supplied["coverage"] == before["coverage"], "the caller's artifact was mutated"
+
+
+def test_the_imds_question_is_named_whether_or_not_the_collector_ran():
+    """The one caveat that must survive a clean run.
+
+    169.254.169.254 is named by exactly one source (Kodem) and asked by none of this
+    collector's queries. Before this, the address appeared in four IoC files and two
+    playbooks - all of it in the ROTATION scope, none of it a detection input - so a keyword
+    audit read as covered while nothing could surface the contact. Both the artifact-present
+    and artifact-absent paths must say so.
+    """
+    ran = _vector("Endpoint / identity (Microsoft Defender)", R.CLEAR,
+                  counts={"Hunting queries executed": 6})
+    for vector in (R.vector_endpoint(ran), R.vector_endpoint(None)):
+        prose = " ".join(vector["coverage"])
+        assert "169.254.169.254" in prose
+        assert "UNSWEPT" in prose
+        # Named as a backlog question, never as an armed rule: keyed on the address alone it
+        # would fire on every cloud host in the estate.
+        assert "23-imds-contact-from-install-lineage.kql" in prose
+        assert "NOT an armed rule" in prose
 
 
 # ----------------------------------------------------------------------------------

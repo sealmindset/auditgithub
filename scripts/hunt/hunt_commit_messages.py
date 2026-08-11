@@ -97,6 +97,23 @@ QUERIES: List[Dict[str, str]] = [
     {"key": "dead_drop_marker", "q": '"thebeautifulmarchoftime"',
      "means": "fallback-exfiltration marker; in a commit message it means the payload's "
               "strings were committed"},
+    # Kodem, 2026-08-11. Every query above searches for text the WORM writes on a VICTIM.
+    # This one searches for text the OPERATOR wrote on the repository being poisoned, and a
+    # hit therefore means something categorically worse: a repository here was used as a
+    # source, not caught as a victim. It is a different question, so it gets its own row
+    # rather than being folded into the marker set the offline sweep already carries.
+    #
+    # Only the payload-file half is queried org-wide. The scope half of the observed message -
+    # `to all @keyv/* packages` - is deliberately left to the offline sweep: as a standalone
+    # search phrase it is a term a keyv maintainer could legitimately write, and against an
+    # index that answers for an entire organization that produces noise no positive control
+    # can clean up.
+    {"key": "source_side_plant_message", "q": '"add setup.mjs and Math_Symbol.js"',
+     "means": "the operator's own commit message when planting the payload on the source "
+              "repository. No legitimate commit names both dropped files in one sentence, so "
+              "this is a finding rather than a lead - and it is a finding of a different "
+              "class from the rest of this collector: not that we were infected, but that we "
+              "were the source"},
 ]
 
 # This hunt's own repositories hold the indicator files, so a commit that ADDS an indicator to
@@ -115,6 +132,13 @@ MESSAGE_MARKERS: Tuple[str, ...] = (
     "add codeql analysis",
     "shai-hulud",
     "thebeautifulmarchoftime",
+    # Kodem, 2026-08-11. The message the operator used on the SOURCE repository when it
+    # planted the payload, as distinct from the messages the worm writes on a victim. Held
+    # as two fragments rather than the full sentence because the scope glob differs per
+    # namespace - `to all @keyv/* packages` was the observed instance, and matching only
+    # that instance would miss the same act performed against a different scope.
+    "add setup.mjs and math_symbol.js",
+    "to all @keyv/* packages",
 )
 
 
@@ -650,7 +674,11 @@ def main() -> int:
     # Claude Code is in normal use here, and hunt_branches.py already measured that flagging
     # the trailer alone produced five commits by named engineers on ticket branches.
     decisive = {"extortion_string_full", "extortion_prefix",
-                "campaign_message_and_forged_author", "dead_drop_marker"}
+                "campaign_message_and_forged_author", "dead_drop_marker",
+                # Names both dropped payload files in one sentence. Decisive for the same
+                # reason as the extortion string - no legitimate commit says it - though what
+                # it would prove is the opposite direction of infection.
+                "source_side_plant_message"}
     decisive_hits = [h for h in hits if h["key"] in decisive]
     lead_hits = [h for h in hits if h["key"] not in decisive]
 
@@ -759,6 +787,17 @@ def main() -> int:
             f"is proven on that text, not assumed: the control token "
             f"`{sweep['matcher_control_token']}` matched {sweep['matcher_control_matches']} "
             f"message(s).")
+        coverage.append(
+            "One of those markers asks a different question from the rest of this vector, and "
+            "the count above would hide that. Every other marker is text the worm writes ON a "
+            "victim; `add setup.mjs and Math_Symbol.js` (with its weaker sibling `to all "
+            "@keyv/* packages`) is the message the OPERATOR wrote on the repository being "
+            "poisoned. A hit would not mean this estate was infected - it would mean a "
+            "repository here was used as the source. Added 2026-08-11 from "
+            "github_conf/ioc/kodem_2026_08.json, which is the only source in the corpus that "
+            "carries it. The payload-file half is also queried org-wide as "
+            "`source_side_plant_message`; the scope half is not, because as a standalone "
+            "search phrase a keyv maintainer could write it about anything.")
     if sweep and sweep["ranges_read"]:
         coverage.append(
             f"Whole pushed ranges, not head commits: {sweep['ranges_read']} of "
@@ -825,7 +864,11 @@ def main() -> int:
     # self-name and the dead-drop marker are decisive on their own; "chore: update config" is
     # a message a human writes every day, so on its own it is a lead.
     decisive_markers = {EXTORTION_STRING.lower(), EXTORTION_PREFIX.lower(),
-                        "shai-hulud", "thebeautifulmarchoftime"}
+                        "shai-hulud", "thebeautifulmarchoftime",
+                        # Names both payload files in one sentence. No legitimate commit does
+                        # that. Its sibling marker `to all @keyv/* packages` is deliberately
+                        # NOT decisive - a keyv maintainer could write it about anything.
+                        "add setup.mjs and math_symbol.js"}
     sweep_decisive = [h for h in sweep_hits
                       if set(h["markers"]) & decisive_markers
                       and str(h["repo"]).lower() not in SELF_REPOS]

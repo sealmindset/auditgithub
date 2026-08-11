@@ -1035,8 +1035,32 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
     `scripts/hunt/hunt_endpoint_defender.py` is entitled to answer, because it is the only
     thing here that actually asks the tenant.
     """
+    # Appended on BOTH paths below, and that is the point of it being a separate constant.
+    # The instance-metadata question is unanswered whether or not the collector ran, because
+    # the collector does not ask it - it is a property of the query set, not of this cycle.
+    # Attaching it only to the NOT RUN fallback would mean a successful run silently dropped
+    # it, which is the exact shape of "the artifact exists, so the vector is covered".
+    imds_unswept = (
+        "UNSWEPT, and named rather than carried: contact with the instance metadata service, "
+        "169.254.169.254, from a process in a package-install lineage. Kodem "
+        "(github_conf/ioc/kodem_2026_08.json, 2026-08-11) is the only source naming it as a "
+        "campaign behavior, and no query in this collector's set asks it - so a clean run of "
+        "this vector does not answer it. Note what a keyword audit would have concluded: "
+        "IMDSv2 and cloud instance metadata already appear in StepSecurity's, Elastic's and "
+        "Cycode's IoC files and in the playbook's rotation scope. All of those are on the "
+        "RESPONSE side - what to reissue once a host is already known to be hit. The address "
+        "was in no detection input at all, so nothing here could have surfaced the contact. "
+        "kql/backlog/23-imds-contact-from-install-lineage.kql now carries the query, "
+        "deliberately as a backlog question and NOT an armed rule: keyed on the address alone "
+        "it would fire on every cloud host in the estate, because kubelet, cloud-init and "
+        "every SDK credential chain contact it correctly and constantly. It has never been "
+        "executed, so no shape is claimed from it and no zero should be read from it."
+    )
+
     if endpoint:
-        return endpoint
+        merged = dict(endpoint)
+        merged["coverage"] = list(endpoint.get("coverage") or []) + [imds_unswept]
+        return merged
     return {
         "name": "Endpoint / identity (Microsoft Defender)",
         "status": NOT_RUN,
@@ -1051,6 +1075,7 @@ def vector_endpoint(endpoint: Optional[dict]) -> dict:
             "kql/coverage/08-bun-exe-telemetry-shape.kql (the control that makes a zero "
             "readable) and kql/backlog/22-bun-windows-artifact-sweep.kql (the bun.exe "
             "artifact question).",
+            imds_unswept,
         ],
         "findings": [],
     }

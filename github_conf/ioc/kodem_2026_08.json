@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "campaign": "shai-hulud-here-we-go-again",
+  "source_name": "Kodem Security",
+  "source_url": "https://www.kodemsecurity.com/resources/keyv-supply-chain-attack-shai-hulud-npm-worm-affected-versions-iocs-and-first-hour-response-runbook",
+  "compiled_at": "2026-08-11",
+  "_why_a_separate_file": [
+    "This URL was already listed in the source table of docs/playbooks/supply-chain-hunt-ttp.md",
+    "(row 254) and cited once in the consensus matrix (row 308) as corroborating the",
+    "Math_Symbol.js hash. It had never been ingested. That is the same failure this corpus",
+    "already recorded once - awqhnjewqjkl.icu sat in an ingested source file while every rule",
+    "omitted it - running in the opposite direction: a source CITED in a table looks like a",
+    "source READ. Reviewing it on 2026-08-11 against the whole corpus found four indicators",
+    "present in it and absent everywhere else.",
+    "One source per file so a claim can be attributed and a contradiction recorded rather than",
+    "averaged."
+  ],
+  "_relationship_to_existing_corpus": {
+    "confirms": [
+      "setup.mjs wave-one hash 54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668",
+      "setup.mjs later-wave hash fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb",
+      "Math_Symbol.js / math_init.js hash 9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc at 727,680 bytes",
+      "C2 npm-cache[.]com at 104.21.35[.]216:443 path /router",
+      "User-Agent Bun/1.3.13 from hosts with no Bun dependency",
+      "npm OIDC exchange endpoint registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/",
+      "dropped files setup.mjs, Math_Symbol.js, math_init.js, router_runtime.js",
+      "persistence gh-token-monitor.sh / .service / com.user.gh-token-monitor.plist",
+      "persistence .claude/settings.json SessionStart hook and .vscode/tasks.json folderOpen task",
+      "bun-dl-* staging directories",
+      "exfiltration repository description 'Shai-Hulud: Here We Go Again'",
+      "the extortion string, and the finding that it carries no technical weight",
+      "manifest indicator \"preinstall\": \"node setup.mjs\"",
+      "second-wave scopes @servicetitan, @or-sdk, @onereach, @ornikar, @qlik, @nebula.js, @hubsync",
+      "the eleven first-wave package names and their malicious versions"
+    ],
+    "adds_not_present_anywhere_else_in_this_corpus": [
+      "the literal address 169.254.169.254 as a HUNTABLE network indicator - see the qualification in new_indicators.instance_metadata_service, because the instance metadata service itself is NOT new to this corpus",
+      "source-side commit message 'add setup.mjs and Math_Symbol.js to all @keyv/* packages'",
+      "Snyk-attributed Claude-hook commit d8c850c7"
+    ],
+    "contradicts": [
+      {
+        "claim": "Kodem attributes to Socket a first malicious publish at 14:05 UTC with the cacheable family at 15:39-15:44 UTC, offered alongside the Endor Labs / Snyk 09:30-09:35 UTC figure without resolving between them.",
+        "corpus_position": "supply-chain-hunt-ttp.md row 315 records Socket as implying ~10:14Z, not 14:05Z. The two attributions of the same vendor cannot both be right.",
+        "resolution": "REFUTED BY OUR OWN EVIDENCE, at Tier 0, without needing to decide what Socket said. Round 4 proved the malicious set is bracket-independent: re-deriving against the live npm registry with brackets at 18:00Z and at 2026-08-05T00:00Z returns the IDENTICAL 2,208 specs across 442 names, with the same latest publish at 13:18:41.376Z. A malicious version published at 15:39-15:44Z would have been inside both brackets and would have appeared. It did not. The registry is a harder oracle than a vendor timeline.",
+        "consequence_for_hunting": "None. The estate's collectors already run past this claim - the branch window closes 16:00Z and the endpoint window 2026-08-05T00:00Z, both later than 15:44Z. Recorded so the next reader does not re-open a settled window on Kodem's authority.",
+        "do_not": "Do not average 09:30 and 14:05, and do not widen the publish window on this claim. The Tier 0 escalation this corpus once carried was closed on 2026-08-10 in StepSecurity's favor; this does not re-open it."
+      },
+      {
+        "claim": "Blast radius: Kodem relays Endor Labs 373 packages / 1,006 versions, SafeDep 353 versions / 79 names, Wiz and OX 400-440+, Aikido 868 packages / 1,381 versions.",
+        "corpus_position": "This estate does not use a vendor count. It derives the set directly from the npm registry: 2,208 malicious specs across 442 names, plus 24 suspected-uncleaned specs still live.",
+        "resolution": "No action. A vendor count is a snapshot of a spreading worm taken at an unstated moment; the derived set is reproducible and is what the collectors match against. The spread of vendor figures - 353 to 868 - is itself the argument for deriving rather than citing.",
+        "do_not": "Do not reconcile these numbers with ours or report a range."
+      }
+    ],
+    "note": "Silence is not denial. An indicator absent from this file is unclaimed by Kodem, not denied by it."
+  },
+  "new_indicators": {
+    "instance_metadata_service": {
+      "indicator": "169.254.169.254",
+      "what": "The cloud instance metadata service link-local address. Kodem lists contact with it from build agents as a campaign behavior.",
+      "why_it_matters": "This is how a payload running on a cloud build agent turns local execution into cloud credentials without touching a credential file. It reaches the instance role directly, so every control this estate has measured on the file side - ~/.aws/credentials, KUBECONFIG, VAULT_TOKEN - is bypassed rather than defeated. It is also the one credential-theft path that leaves no artifact on disk at all.",
+      "coverage_in_this_corpus_before_2026_08_11": {
+        "what_was_already_present": "The instance metadata service is NOT new to this corpus, and saying so would be false. StepSecurity's file lists 'IMDSv2' among credential targets; Elastic's lists 'cloud instance metadata service endpoints'; Cycode's names Alibaba and Tencent metadata; supply-chain-hunt-ttp.md rows 1294 and 1304 and npm_supply_chain_rules.json row 570 all put IMDSv2 and ECS task metadata inside the ROTATION SCOPE.",
+        "what_was_missing": "Every one of those appearances is on the RESPONSE side - what to rotate once you already know a host was hit. None of them is a detection input. The literal string 169.254.169.254 appears in no rule, no KQL file, no collector and no other IoC file, so nothing in this estate could have SURFACED metadata contact; it could only have told you to rotate afterward.",
+        "why_the_distinction_is_not_pedantic": "A corpus that lists IMDS in a rotation checklist reads, on a keyword audit, as a corpus that covers IMDS. It does not. The gap is between knowing the technique and being able to see it happen."
+      },
+      "where_it_would_be_answered": "Microsoft Defender DeviceNetworkEvents, RemoteIP == '169.254.169.254', restricted to devices in the CI runner population, over the campaign window.",
+      "status_on_this_estate": "UNSWEPT. Not blocked by permission - blocked by the same Defender access outage that blocks the four endpoint collectors. Recorded as unswept rather than as clean.",
+      "caution": "A non-zero result is NOT by itself a finding. Legitimate agents on cloud instances poll this address constantly - kubelet, the AWS and Azure agents, cloud-init. The signal is metadata contact by a process in an npm install tree, or in the same process lineage as a lifecycle script, not metadata contact as such. A rule written without that join would fire on every cloud host in the estate and would be disarmed within a day."
+    },
+    "source_side_commit_message": {
+      "indicator": "add setup.mjs and Math_Symbol.js to all @keyv/* packages",
+      "what": "The commit message on the SOURCE repository when the operator planted the payload, as distinct from the messages the worm writes on a victim.",
+      "why_it_is_a_different_class": "Every commit-message marker this corpus held until now - 'chore: update config', 'add codeql analysis', 'Shai-Hulud', the extortion string - is written BY the worm ON a victim. This one is written by a human operator on the repository being poisoned. Finding it on this estate would mean a repository here was used as a source, which is a materially worse finding than being a victim.",
+      "coverage_in_this_corpus_before_2026_08_11": "none",
+      "added_to": "MESSAGE_MARKERS in scripts/hunt/hunt_commit_messages.py, as two fragments - 'add setup.mjs and math_symbol.js' (decisive: no legitimate commit names both payload files in one sentence) and 'to all @keyv/* packages' (a lead only, because a keyv maintainer could write it about anything). Split because the scope glob differs per namespace and matching the observed instance alone would miss the same act against a different scope."
+    },
+    "claude_hook_commit": {
+      "indicator": "d8c850c7",
+      "what": "The commit Snyk identified as adding the Claude hook, per Kodem's relay.",
+      "why_it_is_recorded_but_not_hunted": "It is a commit SHA in the upstream compromised project, not in this estate. A SHA from another repository's history cannot appear in ours, so sweeping for it would be theater. It is kept for attribution and for triage of any upstream fork this estate might hold.",
+      "attribution": "Kodem relaying Snyk. Not independently confirmed here."
+    }
+  },
+  "first_hour_runbook_ordering": {
+    "as_published": [
+      "1. Revoke npm automation tokens and disable trusted publishing",
+      "2. Enumerate with npm ls across the eleven first-wave packages, --all",
+      "3. Pin all eleven to safe versions via overrides, then npm install --package-lock-only --ignore-scripts",
+      "4. Remove node_modules, npm cache clean --force, then npm ci --ignore-scripts",
+      "5. Rotate GitHub tokens, cloud keys, Kubernetes tokens, Vault tokens, database strings, SSH keys",
+      "6. Search the organization for repositories described 'Shai-Hulud: Here We Go Again'; review force pushes and tag deletions",
+      "7. Hunt persistence for setup.mjs, Math_Symbol.js, gh-token-monitor.*, modified .claude/settings.json or .vscode/tasks.json",
+      "8. Rebuild compromised CI runners and developer machines rather than remediate in place"
+    ],
+    "_CONFLICT_WITH_THIS_ESTATE_S_RUNBOOK": [
+      "Kodem revokes npm tokens at step 1 and hunts persistence at step 7. This corpus deliberately",
+      "inverts that, and the reason is in the payload: the gh-token-monitor watchdog polls",
+      "api.github.com/user every 60 s for 24 h and fires WHEN THE TOKEN STOPS AUTHENTICATING.",
+      "Revocation is its trigger. Rotating before removing persistence is not a slower recovery,",
+      "it is the detonator.",
+      "docs/playbooks/supply-chain-hunt-ttp.md §6.3 therefore requires watchdog removal on every",
+      "affected host, verified on the host with `pgrep -af gh-token-monitor` rather than from an",
+      "alert, BEFORE the first credential is rotated. npm-supply-chain-ids-ips.md §7 step 1.5",
+      "matches it.",
+      "The carve-out is narrow and stays narrow: the payload still exfiltrates before it can be",
+      "removed, so this is an ordering change, not a reason to delay rotation. Rotate everything,",
+      "just not first.",
+      "Kodem's step 8 - rebuild rather than remediate in place - is the same instinct reached from",
+      "the other direction and is not in conflict."
+    ]
+  },
+  "affected_packages_first_wave": [
+    {"name": "keyv", "malicious": "6.0.0", "safe": "5.6.0", "weekly_downloads": "604M"},
+    {"name": "flat-cache", "malicious": "6.1.24", "safe": "6.1.23", "weekly_downloads": "580M"},
+    {"name": "file-entry-cache", "malicious": "11.1.6", "safe": "11.1.5", "weekly_downloads": "571M"},
+    {"name": "cacheable-request", "malicious": "13.0.20", "safe": "13.0.19", "weekly_downloads": "137M"},
+    {"name": "@cacheable/utils", "malicious": "2.5.1", "safe": "2.5.0", "weekly_downloads": "34M"},
+    {"name": "cacheable", "malicious": "2.5.1", "safe": "2.5.0", "weekly_downloads": "30M"},
+    {"name": "@cacheable/memory", "malicious": "2.2.1", "safe": "2.2.0", "weekly_downloads": "28M"},
+    {"name": "cache-manager", "malicious": "7.2.10", "safe": "7.2.9", "weekly_downloads": "16M"},
+    {"name": "@cacheable/node-cache", "malicious": "3.1.2", "safe": "3.1.1", "weekly_downloads": "6M"},
+    {"name": "@cacheable/net", "malicious": "2.1.1", "safe": "2.1.0", "weekly_downloads": "3.7K"},
+    {"name": "ecto", "malicious": "5.0.1", "safe": "5.0.0", "weekly_downloads": "4.5K"}
+  ],
+  "_affected_packages_are_not_the_matching_set": [
+    "This list is recorded for attribution and for the safe-version column, which is the one",
+    "thing here the derived set does not carry. It is NOT what the collectors match against.",
+    "They match 2,208 specs across 442 names derived from the live npm registry, which is a",
+    "superset of every vendor list including this one."
+  ],
+  "hunting_notes": [
+    "Three of the four new items are unhuntable on this estate today for reasons that are not permissions: 169.254.169.254 needs Defender, which is down; d8c850c7 is in another repository's history and always will be.",
+    "The one that is huntable - the source-side commit message - was added to the collector in the same change that created this file, and swept the same day. Ingesting a source without wiring it into a collector is the failure this corpus has already made once.",
+    "Kodem is a consolidator, not a primary source. Every hash and network indicator in it was already held here from Unit 42, StepSecurity, Elastic, Cycode or Wiz. Its value was the two items no primary source in this corpus carried, and the runbook conflict."
+  ]
+}

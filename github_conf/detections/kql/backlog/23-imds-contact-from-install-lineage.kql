@@ -1,0 +1,90 @@
+// 23 — Instance metadata contact (169.254.169.254) from a package-install process
+//
+// Purpose      Kodem (github_conf/ioc/kodem_2026_08.json, 2026-08-11) is the only source
+//              in the corpus that names contact with the cloud instance metadata service
+//              from build agents as a campaign behavior. Everything else this estate
+//              holds — StepSecurity's "IMDSv2", Elastic's "cloud instance metadata
+//              service endpoints", Cycode's Alibaba/Tencent metadata, playbook rows 1294
+//              and 1304, rule npm-shaihulud-* recommendedActions — puts IMDS in the
+//              ROTATION SCOPE. None of it is a detection input. Before this file the
+//              estate knew the technique and could not see it happen.
+// Table        DeviceNetworkEvents
+// Permission   ThreatHunting.Read.All
+// Expected     UNKNOWN. Never executed — the Defender collector cannot run (see below),
+//              so no shape is claimed here and none should be quoted from it.
+//
+// !! BACKLOG, NOT A RULE. Deliberately not deployed, and not deployable as written.
+//    This is a question, not a detection, and the reason is in the next paragraph.
+//
+// Why it must not be armed on the address alone
+// ---------------------------------------------
+// 169.254.169.254 is the single most-contacted address on any cloud instance in the
+// estate. kubelet, the AWS/Azure/GCP guest agents, cloud-init, the ECS agent and every
+// SDK credential chain poll it continuously and correctly. A rule keyed on the address
+// would fire on every cloud host in the estate on day one and would be disarmed within a
+// day — and a disarmed rule is worse than no rule, because the shelf it sits on reads
+// like coverage.
+//
+// The signal is not metadata contact. It is metadata contact BY A PROCESS IN AN INSTALL
+// LINEAGE: the payload runs from a lifecycle script, so the interesting contact is the
+// one whose initiating process is node/bun/npm and whose parent is a package manager,
+// not the one from the guest agent that is supposed to be asking.
+//
+// What is unproven, stated so a zero from this is not overread
+// -----------------------------------------------------------
+//   * The join below assumes InitiatingProcessParentFileName is populated for lifecycle
+//     scripts on the runners. That is ASSUMED, not measured — the same class of mistake
+//     as rule 14's RemoteUrl prerequisite, which deploys cleanly and can never fire.
+//     coverage/06 is the nearest existing evidence and does not settle it.
+//   * Whether DeviceNetworkEvents records link-local traffic at all in this tenant is
+//     likewise unmeasured. Some sensor configurations drop it.
+//   Both must be answered by a coverage query before this is promoted out of backlog.
+//   Until then a zero from this file means nothing and must be reported as UNSWEPT.
+//
+// Blocked by    The Defender half of the hunt cannot execute at all as of 2026-08-11:
+//               hunt_endpoint_defender.py imports src.api.database, psycopg2 is absent
+//               from the host interpreter, and the Postgres it needs is in Docker, which
+//               is down. This is an environment outage, NOT a permission gap — the app
+//               registration in the encrypted credential store carries
+//               ThreatHunting.Read.All. Do not file an access request for this.
+// Promote when  (a) Defender is reachable, (b) the two unproven assumptions above are
+//               measured by a coverage query, (c) a poc/ shape proof exists showing the
+//               baseline volume of the JOINED condition — not the raw address.
+
+let InstallProcs  = dynamic(["node","node.exe","bun","bun.exe","bunx",
+                             "npm","npm.exe","npm-cli.js","pnpm","pnpm.exe",
+                             "yarn","yarn.exe","npx","npx.exe"]);
+let PkgMgrParents = dynamic(["npm","npm.exe","npm-cli.js","pnpm","pnpm.exe","yarn",
+                             "yarn.exe","npx","npx.exe","node","node.exe",
+                             "sh","bash","cmd.exe","powershell.exe","pwsh.exe"]);
+DeviceNetworkEvents
+| where Timestamp > ago(30d)
+| where RemoteIP in ("169.254.169.254", "fd00:ec2::254")
+| where InitiatingProcessFileName in~ (InstallProcs)
+// Kept as a reported column rather than a filter: narrowing on the parent here would
+// hide the case where the lineage is not recorded, and that absence is itself the
+// coverage answer this backlog item needs.
+| extend ParentIsPackageManager = InitiatingProcessParentFileName in~ (PkgMgrParents),
+         ParentRecorded         = isnotempty(InitiatingProcessParentFileName),
+         LooksLikeLifecycle     = InitiatingProcessCommandLine has_any (
+                                      "preinstall","postinstall","setup.mjs",
+                                      "math_init.js","Math_Symbol.js","router_runtime.js",
+                                      "lifecycle","run-script")
+| summarize Contacts      = count(),
+            FirstSeen     = min(Timestamp),
+            LastSeen      = max(Timestamp),
+            Parents       = make_set(InitiatingProcessParentFileName, 10),
+            CommandLines  = make_set(InitiatingProcessCommandLine, 5),
+            AnyLifecycle  = max(LooksLikeLifecycle),
+            AnyPkgMgr     = max(ParentIsPackageManager),
+            LineageKnown  = max(ParentRecorded)
+    by DeviceName, DeviceId, InitiatingProcessFileName, InitiatingProcessAccountName
+// Triage order, and the only ordering that makes this readable: a lifecycle-script
+// command line reaching metadata is the finding; a bare node process reaching it is a
+// lead; everything else is the baseline this query exists to measure.
+| extend Triage = case(AnyLifecycle,           "1-investigate: lifecycle script reached IMDS",
+                       AnyPkgMgr,              "2-lead: package-manager parent",
+                       not(LineageKnown),      "3-lineage not recorded — coverage gap, not clean",
+                       "4-baseline")
+| order by Triage asc, Contacts desc
+| limit 1000

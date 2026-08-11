@@ -4,6 +4,65 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — a source that was cited for a week and never read (2026-08-11)
+
+Kodem has been in the source table of `docs/playbooks/supply-chain-hunt-ttp.md` since the
+reference run, and is credited there for corroborating the `Math_Symbol.js` hash. There was no
+`kodem_*.json` in `github_conf/ioc/`. The row made it look consumed; it had only been seen.
+
+This corpus already recorded the failure running the other way — Elastic and StepSecurity were
+ingested as files before they had rows, so the registry under-reported its own sources. That
+direction is embarrassing. This direction is dangerous: **a citation reads as coverage.**
+
+Reading Kodem against the whole corpus with a fixed-string diff found most of it already held
+from primary sources — the three hashes, `npm-cache[.]com` / `104.21.35`, `router_runtime.js`,
+`bun-dl-*`, the OIDC exchange endpoint, `Bun/1.3.13`, the persistence set, all seven
+second-wave scopes. Three things were not.
+
+**1. `169.254.169.254`, and the difference between knowing a technique and seeing it.**
+Kodem is the only source naming instance-metadata contact from build agents as a campaign
+behavior. A keyword audit would have said this was covered: StepSecurity's file lists `IMDSv2`,
+Elastic's lists "cloud instance metadata service endpoints", Cycode's names Alibaba and Tencent
+metadata, and the playbook and `npm_supply_chain_rules.json` both put IMDSv2 in the rotation
+scope. Every one of those is on the **response** side — what to reissue once you already know a
+host was hit. The literal address appeared in no rule, no KQL file and no collector, so nothing
+in this estate could have *surfaced* metadata contact. It could only have told you to rotate
+afterward.
+
+Landed as `kql/backlog/23-imds-contact-from-install-lineage.kql`, deliberately as a **backlog
+question and not an armed rule**. Keyed on the address alone it would fire on every cloud host
+in the estate on day one — kubelet, cloud-init, the guest agents and every SDK credential chain
+contact it correctly and constantly — and would be disarmed within a day. A disarmed rule is
+worse than no rule, because the shelf it sits on reads like coverage. The query joins the
+address to a package-install lineage instead, and states the two assumptions it has not
+measured (that parent-process lineage is populated for lifecycle scripts, and that the sensor
+records link-local traffic at all). It has never been executed and no shape is claimed from it.
+It reports UNSWEPT, not clean.
+
+**2. The first commit-message marker for the wrong direction of infection.** Every marker
+`hunt_commit_messages.py` held was text the worm writes **on a victim**. `add setup.mjs and
+Math_Symbol.js to all @keyv/* packages` is the message the **operator** wrote on the repository
+being poisoned. A hit would not mean this estate was infected; it would mean a repository here
+was used as the source, which is materially worse. Added as two fragments rather than the
+sentence, because the scope glob differs per namespace and matching the observed instance alone
+would miss the same act against a different scope — the payload-file half is decisive and is
+now also queried org-wide as `source_side_plant_message`, the scope half is a lead only and
+stays out of the org-wide search, because as a standalone phrase a keyv maintainer could write
+it about anything.
+
+**3. A runbook that would detonate the watchdog.** Kodem revokes npm tokens at step 1 and hunts
+persistence at step 7. §6.3 here inverts that deliberately, and the reason is in the payload:
+`gh-token-monitor` polls every 60 s for 24 h and fires **when the token stops authenticating**.
+Revocation is its trigger. Recorded in the IoC file as an explicit conflict rather than
+silently not-adopted, so the next reader who finds Kodem's runbook does not follow it.
+
+Its Socket 14:05 / 15:39–15:44Z timeline is **refuted by our own evidence** and does not reopen
+the window closed on 2026-08-10: Round 4 proved bracket-independence, and an 18:00Z bracket
+returns the identical 2,208 specs. A version published at 15:39Z would have been inside it. The
+registry is a harder oracle than a vendor timeline. Its blast-radius counts (353 to 868,
+depending on vendor) are not reconciled with ours for the same reason — we derive the set, we
+do not cite it.
+
 ### Fixed — a vector that was blocked by its own verdict expression, not by missing data (2026-08-11)
 
 The internal package registry vector had read `INCOMPLETE` for two rounds, and both the report

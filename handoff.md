@@ -148,6 +148,65 @@ a package *published directly* into that feed. Different question, still open, n
 
 ## 4. Changes Made This Session
 
+### Kodem ingested, and the failure mode it exposed (2026-08-11)
+
+**`github_conf/ioc/kodem_2026_08.json`** -- new. Kodem had been in the §1.1 source table since
+the reference run and credited in the consensus matrix for the `Math_Symbol.js` hash, with **no
+file in `github_conf/ioc/`**. This corpus already recorded the inverse desync -- Elastic and
+StepSecurity ingested as files before they had rows -- and treated it as the embarrassing one.
+It is the harmless one. **A citation reads as coverage**, and this direction leaves a source
+looking consumed when it was only seen.
+
+Fixed-string diff against the whole corpus. Most of Kodem is relay: three hashes, `npm-cache`,
+`104.21.35`, `router_runtime.js`, `bun-dl-*`, the OIDC exchange endpoint, `Bun/1.3.13`, the
+persistence set, all seven second-wave scopes -- all already held from primary sources. Three
+things were not:
+
+1. **`169.254.169.254`.** A keyword audit would have called this covered: `IMDSv2` is in
+   StepSecurity's file, "cloud instance metadata service endpoints" in Elastic's, Alibaba and
+   Tencent metadata in Cycode's, IMDSv2 in the playbook and in `npm_supply_chain_rules.json`.
+   **Every one of those is on the response side** -- what to reissue once you already know a
+   host was hit. The address was in no rule, no KQL file and no collector, so nothing here
+   could have *surfaced* the contact. New `kql/backlog/23-imds-contact-from-install-lineage.kql`,
+   deliberately a backlog **question** and not an armed rule -- see section 6 item 4a for the
+   three preconditions on promoting it, and why arming on the address alone kills the rule.
+2. **The first marker for the wrong direction of infection.** Every marker
+   `hunt_commit_messages.py` held is text the worm writes *on a victim*. `add setup.mjs and
+   Math_Symbol.js to all @keyv/* packages` is what the **operator** wrote on the repository
+   being poisoned. A hit means a repository here was used as the *source*. Held as two
+   fragments, because the scope glob differs per namespace: the payload-file half is decisive
+   and is now also an org-wide query (`source_side_plant_message`); the scope half is a lead
+   only and stays out of the org-wide search, because a keyv maintainer could write it about
+   anything.
+3. **A runbook that would detonate the watchdog.** Kodem rotates at step 1 and hunts
+   persistence at step 7. §6.3 inverts that on purpose -- `gh-token-monitor` fires *when the
+   token stops authenticating*, so revocation is its trigger. Recorded in the file as an
+   explicit conflict rather than silently not adopted.
+
+Its Socket 14:05 / 15:39-15:44Z timeline is refuted by our own bracket-independence proof and
+does not reopen the window closed on 2026-08-10. Its blast-radius counts (353 to 868 depending
+on vendor) are not reconciled with ours: we derive the set, we do not cite it.
+
+**Hunt re-run, same day.** `commit_messages_r5.json`: 3 orgs x **7** indicators (was 6), 0
+decisive hits, 0 leads, positive controls 16,998 / 44,206 / 7,430. Offline sweep unchanged at
+112 stored messages (75 off-default) and 118 of 141 ranges / 786 commits, now matched against
+8 markers. Vector stays `CLEAR`; report stays **AMBER**. The 23 unreadable ranges are the
+deleted-ref coverage gap, unchanged and still named.
+
+**The Defender half did not run, and it is not an access gap.** Measured:
+`hunt_endpoint_defender.py:209` -> `src/api/database.py:22` -> `ModuleNotFoundError: No module
+named 'psycopg2'`, and the Postgres holding the encrypted credential store is in Docker, which
+is down. Two independent blockers. **Do not file an access request** -- the registration in the
+store carries `ThreatHunting.Read.All` and the 2026-08-07 run proved it. `endpoint_hunt.json`
+is four days stale and the report's own "re-run 8 stale collectors" action already carries it.
+
+`vector_endpoint()` now appends the IMDS line on **both** paths -- artifact present and
+artifact absent -- because the collector does not ask that question either way. Attaching it
+only to the `NOT RUN` fallback would have let a successful run silently drop it, which is the
+same shape as "the artifact exists, so the vector is covered".
+
+### Earlier this session
+
 **`scripts/hunt/hunt_commit_messages.py`** -- new `sweep_side_branch_messages()` and
 `read_range_commits()`, plus `MESSAGE_MARKERS`, wired into `main()` behind
 `--skip-side-branch-sweep` and `--max-ranges`.
@@ -236,6 +295,23 @@ stays unread.
 
 ## 5. Failed Approaches -- DO NOT RETRY
 
+**From 2026-08-11:**
+
+- **Reading the §1.1 source table as an inventory of what was ingested.** It is an inventory of
+  what was *cited*. Kodem had a row for a week and no file. When auditing that table, check
+  **both** directions -- a file with no row has no tier and cannot be arbitrated; a row with no
+  file is a source nobody read while the table said otherwise.
+- **Treating a technique's presence in the rotation scope as detection coverage.** `IMDSv2`
+  appeared in four IoC files and two playbooks, and the estate still could not see a single
+  metadata contact. Response-side text and detection inputs are different corpora; grep does
+  not distinguish them.
+- **Widening a hunt window on a vendor timeline when a registry oracle already answered.**
+  Kodem relays a Socket 15:39-15:44Z publish. Round 4's brackets at 18:00Z and 2026-08-05T00:00Z
+  return the identical 2,208 specs, so nothing published at 15:39Z exists. Derive, do not cite.
+- **Attaching a new coverage caveat to a vector's `NOT RUN` fallback only.** The first
+  `vector_endpoint()` edit put the IMDS line in the fallback, and the artifact existed -- so the
+  line never rendered. If the caveat is a property of the *query set*, it belongs on every path.
+
 **From the CHAINDROP session (2026-08-06), all still binding:**
 
 - **The worktree instinct.** Standard discipline says branch/worktree for new work. When the
@@ -313,15 +389,35 @@ stays unread.
    in the advisory IOC sweep), and `AuditLog.Read.All` on Microsoft Graph. A third is filed
    against a vector that reads `CLEAR`: `ReadPackages` on `SleepNumberIndigo/k8s-manifests`.
    All three are six-field in the report's access table.
-3. **Resolve the open Tier 0 escalation.** StepSecurity puts the propagation close at
-   13:20 UTC; the Tier 0 registry oracle bounds the last malicious publish at
-   `@thiennq/docs-viewer@1.6.4`, 12:11:19.909Z. **Do not average them.** Re-run
-   `derive_malicious_set` across the second-wave namespaces with a bracket past 14:00Z.
-   Interim rule in force in all four docs: **hunt to 13:20Z, report 12:11:19.909Z.**
+3. ~~**Resolve the open Tier 0 escalation.**~~ **CLOSED 2026-08-10, in StepSecurity's favor.**
+   This entry stayed open here and in `TODO.md` for a day after `supply-chain-hunt-ttp.md`
+   row 315 recorded the resolution, which is its own lesson: the doc that carries the
+   decision and the doc that carries the work list drifted. Round 4 re-derived against the
+   live registry with brackets at 18:00Z and at 2026-08-05T00:00Z and got the **identical**
+   2,208 specs across 442 names, latest publish 13:18:41.376Z -- 79 seconds from 13:20Z.
+   **Bracket-independence is the result**, not the 79 seconds: widening the window does not
+   move the set. The interim "hunt to 13:20Z, report 12:11:19.909Z" rule is **withdrawn**;
+   scope runs to 13:30:46.398Z. Kodem relays a Socket 15:39-15:44Z publish claim, which the
+   same proof refutes -- a version published then would have been inside both brackets and
+   would have appeared. Do not reopen this on a vendor timeline.
 4. **Write shape proofs for A7/A8/A9.** The KQL library covers 6 of 9 rules -- the watchdog,
    the Bun fetch and the memory scrape have no `detections/`, `backlog/` or `poc/` file, so
-   their 30-day history is *unexamined*, not clean. `github_conf/detections/kql/` is the other
-   session's uncommitted directory; coordinate before adding to it.
+   their 30-day history is *unexamined*, not clean. The "other session's uncommitted
+   directory, coordinate first" caveat is **withdrawn**: `github_conf/detections/kql/` is
+   tracked and clean as of 2026-08-11, and `backlog/23` was added to it directly.
+
+   4a. **Promote `backlog/23-imds-contact-from-install-lineage.kql`, or leave it in backlog
+   deliberately.** Three preconditions, in order, none of them a permission: (a) Defender
+   reachable from the collector at all -- today it is not, see section 4; (b) two assumptions
+   *measured* rather than assumed -- that `InitiatingProcessParentFileName` is populated for
+   lifecycle scripts on the runners, and that `DeviceNetworkEvents` records link-local traffic
+   in this tenant at all. The second is the same failure class as rule 14's `RemoteUrl`
+   prerequisite, which deploys cleanly, validates cleanly and can never fire; (c) a `poc/`
+   shape proof of the **joined** condition, not of the raw address. **Do not arm on the
+   address.** kubelet, cloud-init, the guest agents and every SDK credential chain contact
+   `169.254.169.254` correctly and constantly, so an address-keyed rule fires estate-wide on
+   day one and is disarmed within a day -- and a disarmed rule is worse than no rule, because
+   the shelf it sits on reads like coverage.
 5. **Run `coverage/07` to confirm `SHA1` is populated** on `DeviceFileEvents` for
    `gh-token-monitor.*`. `stopAndQuarantineFiles` alerts without quarantining if it is empty.
    Sole blocker on arming `token-monitor`, the new rule most worth arming -- an alert does not

@@ -56,6 +56,39 @@ def test_a_benign_message_matches_nothing():
     assert H.match_markers("fix(auth): correct the token expiry comparison") == []
 
 
+def test_the_operators_own_plant_message_is_matched_as_two_fragments():
+    """Kodem, 2026-08-11. The only marker here for the OTHER direction of infection.
+
+    Every other marker is text the worm writes on a victim. This is what the operator wrote
+    on the repository being poisoned, so a hit would mean a repository here was the SOURCE.
+    Held as two fragments rather than the observed sentence because the scope glob differs
+    per namespace - matching only `@keyv/*` would miss the same act against another scope.
+    """
+    markers = H.match_markers("add setup.mjs and Math_Symbol.js to all @keyv/* packages")
+    assert "add setup.mjs and math_symbol.js" in markers
+    assert "to all @keyv/* packages" in markers
+    # The scope half must stand alone, or the same act against @acme/* is invisible.
+    assert H.match_markers("add setup.mjs and Math_Symbol.js to all @acme/* packages") == [
+        "add setup.mjs and math_symbol.js"]
+
+
+def test_only_the_payload_file_half_of_the_plant_message_is_decisive():
+    """The two fragments are not equally strong and the collector must not treat them so.
+
+    Naming both dropped files in one sentence is something no legitimate commit does. Saying
+    `to all @keyv/* packages` is something a keyv maintainer could write about anything, so
+    it is a lead. Collapsing them would either lose the decisive one or make a maintainer's
+    ordinary commit read as a compromised repository.
+    """
+    org_wide = {q["key"] for q in H.QUERIES}
+    assert "source_side_plant_message" in org_wide
+    plant = next(q for q in H.QUERIES if q["key"] == "source_side_plant_message")
+    assert "Math_Symbol.js" in plant["q"]
+    # The scope half is deliberately absent from the org-wide search, where an index that
+    # answers for a whole organization would turn it into noise no control can clean up.
+    assert not any("@keyv/*" in q["q"] for q in H.QUERIES)
+
+
 def test_commits_on_a_non_default_ref_are_counted_as_the_population_search_misses(tmp_path):
     path = _branches(tmp_path, [_record(commits_inspected=[
         _commit("feat: add thing", ref="refs/heads/feature/x"),
