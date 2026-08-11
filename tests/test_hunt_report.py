@@ -655,3 +655,90 @@ def test_a_repository_with_no_commits_is_resolved_not_unread():
     assert vector["unresolved_items"] == []
     assert vector["counts"]["Resolved - repository holds no files at all"] == 50
     assert vector["counts"]["UNRESOLVED - enumerated but not read"] == 0
+
+
+# ----------------------------------------------------------------------------------
+# The behavior/artifact axis pairing (doctrine 0.8, added 2026-08-11).
+# ----------------------------------------------------------------------------------
+
+def _install(**overrides):
+    payload = {"evidence": {"lifecycle_hook_control": {
+        "rows": [{"Rows": 2670, "Devices": 101, "IocRows": 0}]}},
+        "unresolved_items": ["None can be attributed to a package: DeviceProcessEvents "
+                             "records the command line 'node install.cjs'"]}
+    payload.update(overrides)
+    return payload
+
+
+def _endpoint(**overrides):
+    payload = {"evidence": {
+        "file_hash_column_coverage": {"rows": [
+            {"Platform": "Windows11", "Devices": 2812, "Rows": 1767800,
+             "Sha1CoveragePct": 97.5},
+            {"Platform": "Windows10", "Devices": 2, "Rows": 120, "Sha1CoveragePct": 81.7},
+            {"Platform": "macOS", "Devices": 38, "Rows": 2354, "Sha1CoveragePct": 100.0}]},
+        "toolchain_visibility": {"rows": [
+            {"SourceTable": "DeviceFileEvents", "OSPlatform": "Linux", "Events": 30,
+             "WithHash": 0},
+            {"SourceTable": "DeviceFileEvents", "OSPlatform": "macOS", "Events": 326,
+             "WithHash": 326}]}}}
+    payload.update(overrides)
+    return payload
+
+
+def test_both_axes_are_measured_from_evidence_rows_rather_than_asserted():
+    """Every number in the pairing has to come out of a collector, or it is opinion."""
+    axes = R.build_axis_pairing(_install(), _endpoint())
+    behavior = " ".join(axes["behavior"])
+    artifact = " ".join(axes["artifact"])
+    assert "2,670" in behavior and "101 devices" in behavior
+    assert "81.7% of 120 rows on Windows10" in artifact
+    assert "Linux on `DeviceFileEvents` (0 of 30)" in artifact
+    # macOS is at 100% and fully hashed, so it must appear in neither blind list.
+    assert "macOS" not in artifact
+
+
+def test_the_worst_platform_is_reported_and_not_the_largest():
+    """Windows11 carries 1,767,800 of the rows. Ranking by volume would hide the gap."""
+    axes = R.build_axis_pairing(None, _endpoint())
+    assert "Windows10" in axes["artifact"][0]
+    assert "Windows11" not in axes["artifact"][0]
+
+
+def test_a_hash_axis_with_nothing_missing_makes_no_claim():
+    endpoint = _endpoint(evidence={"file_hash_column_coverage": {"rows": [
+        {"Platform": "macOS", "Devices": 38, "Rows": 2354, "Sha1CoveragePct": 100.0}]}})
+    axes = R.build_axis_pairing(_install(), endpoint)
+    assert axes["artifact"] == []
+
+
+def test_the_attribution_claim_is_only_made_where_the_collector_made_it():
+    """The gap belongs to the install collector. This renderer must not invent it."""
+    axes = R.build_axis_pairing(_install(unresolved_items=[]), None)
+    assert "attributed to a package" not in " ".join(axes["behavior"])
+    assert "2,670" in axes["behavior"][0]
+
+
+def test_the_locale_population_is_named_as_unswept_rather_than_counted():
+    """The payload skips Russian-locale hosts, so behavioral rules read clean there by
+    design. Nothing has enumerated LANG, so the size is unknown - never zero."""
+    axes = R.build_axis_pairing(_install(), _endpoint())
+    assert "UNSWEPT" in axes["unmeasured"]
+    assert "unknown rather than zero" in axes["unmeasured"]
+    assert "not by a permission" in axes["unmeasured"]
+
+
+def test_a_missing_artifact_yields_a_missing_half_not_a_confident_one():
+    assert R.build_axis_pairing(None, None) is None
+    behavior_only = R.build_axis_pairing(_install(), None)
+    assert behavior_only["behavior"] and behavior_only["artifact"] == []
+    artifact_only = R.build_axis_pairing(None, _endpoint())
+    assert artifact_only["artifact"] and artifact_only["behavior"] == []
+
+
+def test_the_pairing_renders_where_the_verdict_is_read_and_vanishes_when_unmeasured():
+    lines = R.render_axis_pairing(R.build_axis_pairing(_install(), _endpoint()))
+    body = "\n".join(lines)
+    assert "Why one clean axis is not a clean hunt" in body
+    assert "tell for the **act**" in body and "tell for the **residue**" in body
+    assert R.render_axis_pairing(None) == []

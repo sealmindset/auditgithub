@@ -207,6 +207,57 @@ Enforced in code: `COVERAGE_GAP_FIELDS` in `scripts/hunt/render_hunt_report.py` 
 if any is blank. `compute_coverage()` is separate from `compute_verdict()`, and no coverage gap can
 reach the RAG letter.
 
+### 0.8 Behavior and artifacts are two axes too, and this campaign is built to read clean on either
+
+Added 2026-08-11, after a false positive proved the first half and the estate's own telemetry
+proved the second.
+
+**The mechanism is entirely legitimate.** npm lifecycle scripts run because that is what they
+are for. A CI runner's `GITHUB_TOKEN` is used because it was provisioned to be used. The SDK
+credential chain reads `169.254.169.254` because that is the credential chain. Nothing here
+exploits anything, and our own numbers say so plainly: **2,670 lifecycle-script executions on
+101 devices** in the reference window, and **not one attributable to a package**, because
+`DeviceProcessEvents` records `node install.cjs` and the parent shell without the working
+directory that would name the `node_modules` path. The act is visible; the actor is not.
+
+The IMDS case is the purest form. Kubelet, cloud-init, the guest agents and every SDK
+credential chain contact that address correctly and constantly. The malicious call and the
+correct call are **byte-identical**. Only the lineage separates them — which is exactly why
+`backlog/23-imds-contact-from-install-lineage.kql` joins on install parentage and is never
+armed on the address, and why an address-keyed rule would fire estate-wide on day one and be
+disarmed within a day.
+
+The classifier false positive on 2026-08-11 is an unintentional proof of the same point. A
+`curl` inside a heredoc and a `curl` making a C2 request are the same text. Content could not
+tell them apart. The **path being worked in** could. Content is not behavior; lineage is.
+
+**But behavior-only is its own trap, and this campaign sets it deliberately.**
+
+- **It does drop files.** `setup.mjs`, `Math_Symbol.js`, the Bun binary, and the
+  `gh-token-monitor` watchdog with its systemd unit or launchd plist — the one artifact that
+  survives deleting everything else. These are hashable, nameable things. There *is* a static
+  tell; it is simply not where you look first.
+- **The payload declines to run under a Russian locale.** On those hosts every behavioral rule
+  in this hunt reads clean *by design*, and the file and hash rules are the only thing that can
+  fire. We have never enumerated `LANG` or the system locale, so that population is **unknown
+  rather than zero** — §0.1 applied to ourselves.
+- **The hash axis is blind in the complementary places.** Measured 2026-08-11: `SHA256` on
+  **0 of 110,842** Linux `DeviceProcessEvents` rows and **0 of 30** Linux `DeviceFileEvents`
+  toolchain rows; `SHA1` on **81.7% of 120** Windows10 rows matching the drop rules' file
+  shapes (macOS is the only platform at 100%). A row with no hash cannot be compared to a
+  published one, and `stopAndQuarantineFiles` no-ops on it silently while the alert fires.
+
+**The rule.** Behavior is the tell for the **act**; artifacts are the tell for the **residue**.
+Each axis alone reads clean somewhere, and the two are blind in complementary places — which is
+the actual reason this hunt runs both and why neither zero means much alone. A vector that
+rests on one axis states which one, and states where that axis is blind, or its zero is
+untested rather than clean.
+
+Enforced in code: `build_axis_pairing()` in `scripts/hunt/render_hunt_report.py` measures both
+halves from the collectors' own evidence rows — never from this text — and renders them into
+Section 1 directly beneath the coverage table, because a caveat nobody reaches is a caveat
+nobody applied. A missing artifact yields a missing half rather than a confident one.
+
 ---
 
 ## 1. Phase 1 — Intel acquisition and cross-source arbitration

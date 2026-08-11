@@ -45,8 +45,8 @@ worktree `../auditgithub-deps` (branch `deps-webui-safety`) belongs to another s
 do not remove it.
 
 Tests, run on the host as `python3 -m pytest --noconftest` (the repo conftest imports
-`src/api/main.py`, which needs `loguru`) -- **82 passed** across the four hunt files:
-- `tests/test_hunt_report.py` -- **50**
+`src/api/main.py`, which needs `loguru`) -- **89 passed** across the four hunt files:
+- `tests/test_hunt_report.py` -- **57**
 - `tests/test_hunt_commit_messages.py` -- **13**
 - `tests/test_check_azure_artifacts.py` -- **10**
 - `tests/test_hunt_advisory_iocs.py` -- **9** (new this session)
@@ -159,6 +159,43 @@ a package *published directly* into that feed. Different question, still open, n
 
 ## 4. Changes Made This Session
 
+### Doctrine 0.8 -- neither axis is clean, and the campaign knows it (2026-08-11)
+
+The false positive below generalizes, and the generalization is now doctrine rather than a
+lesson living in one commit message.
+
+**The mechanism is legitimate.** Lifecycle scripts run because that is what they are for; a
+runner's `GITHUB_TOKEN` is used because it was provisioned to be; the SDK credential chain
+reads `169.254.169.254` because that is the credential chain. Our own numbers: 2,670
+lifecycle-script executions on 101 devices, **not one attributable to a package**. The act is
+visible and the actor is not. IMDS is the purest case -- the malicious call and the correct
+call are byte-identical and only lineage separates them, which is why `backlog/23` joins on
+install parentage and must never be armed on the address.
+
+**Behavior-only is the symmetric trap.** It does drop files -- `setup.mjs`, `Math_Symbol.js`,
+the Bun binary, the watchdog with its systemd unit or launchd plist, which is the one thing
+that survives deleting everything else. And the payload declines to run under a Russian
+locale, so on those hosts every behavioral rule reads clean *by design* and only the file and
+hash rules can fire. Meanwhile the hash axis is blind in the complementary places: `SHA256` on
+0 of 110,842 Linux `DeviceProcessEvents` rows and 0 of 30 Linux `DeviceFileEvents` toolchain
+rows, `SHA1` on 81.7% of 120 Windows10 rows matching the drop shapes.
+
+**Behavior is the tell for the act; artifacts are the tell for the residue; each alone reads
+clean somewhere.** Written as §0.8 in `supply-chain-hunt-ttp.md`, and enforced by
+`build_axis_pairing()` / `render_axis_pairing()` in the renderer, which measure both halves
+from the collectors' `evidence` rows and print them in Section 1 beneath the coverage table --
+not in an appendix, because a caveat nobody reaches is a caveat nobody applied.
+
+Three things the tests hold, each a way this could rot into decoration: the **worst** platform
+is reported rather than the largest (Windows11's 1,767,800 rows would bury a 120-row gap); the
+attribution claim is made only where the install collector made it, never inferred here; and
+the locale population is **UNSWEPT**, not counted -- no query has looked, so a number would
+invent coverage. A missing artifact yields a missing half rather than a confident one.
+
+The one open action this creates: **enumerate `LANG` across the estate.** It is the single
+measurement that decides which axis we are relying on, it is not a permission, and nothing has
+ever run it.
+
 ### The Defender half ran, and the first thing it found was us (2026-08-11)
 
 Docker came back up, so the four Defender collectors ran for the first time in four days --
@@ -204,7 +241,7 @@ copies of this judgement can still drift; lifting them into one shared module is
 sweep returned 0 rows over 30 days across `DeviceFileEvents` and `DeviceRegistryEvents`, with
 each half separately controlled as non-empty -- so that zero survives §0.1. And `coverage/07`
 answered the `token-monitor` arming blocker in the negative: `SHA1` is not populated
-estate-wide (Windows10 **81.7%**), so `stopAndQuarantineFiles` no-ops silently while the alert
+estate-wide (Windows10 **81.7% of 120 rows**), so `stopAndQuarantineFiles` no-ops silently while the alert
 fires. Detail and the resulting decision are in section 8, item 5.
 
 **The four "blind spot newly registered" lines in the delta are a reclassification, not a
@@ -498,7 +535,8 @@ stays unread.
    the shelf it sits on reads like coverage.
 5. **Decide `token-monitor`'s arming.** `coverage/07` ran 2026-08-11 and answered the blocker
    in the negative rather than clearing it: `SHA1` is **not** populated estate-wide --
-   Windows11 97.5% of 1,767,800 rows, **Windows10 81.7%**, WindowsServer2025 95.7%, macOS the
+   Windows11 97.5% of 1,767,800 rows, **Windows10 81.7% of 120**, WindowsServer2025 95.7% of
+   2,295, macOS the
    only platform at 100%. So `stopAndQuarantineFiles` silently no-ops on roughly one Windows10
    row in five *while the alert still fires*, which is the worst combination available: an
    operator reads a quarantine action on an alert that quarantined nothing. Arm it for the

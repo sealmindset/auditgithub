@@ -4,6 +4,53 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — doctrine §0.8: the campaign is built to read clean on either axis (2026-08-11)
+
+The false positive below is an unintentional proof of something worth writing down. A `curl`
+inside a heredoc and a `curl` making a C2 request are the same text; content could not tell
+them apart, and the path being worked in could. **Content is not behavior. Lineage is.**
+
+That generalizes, because the mechanism this campaign uses is entirely legitimate. npm
+lifecycle scripts run because that is what they are for; a runner's `GITHUB_TOKEN` is used
+because it was provisioned to be used; the SDK credential chain reads `169.254.169.254`
+because that is the credential chain. Our own numbers say it plainly — **2,670
+lifecycle-script executions on 101 devices** in the window, and **not one attributable to a
+package**, because `DeviceProcessEvents` records `node install.cjs` and the parent shell
+without the working directory that would name it. The act is visible; the actor is not. The
+IMDS case is the purest form: kubelet, cloud-init and every SDK contact that address correctly
+and constantly, so the malicious call and the correct call are byte-identical and only lineage
+separates them. That is why `backlog/23` joins on install parentage and is never armed on the
+address.
+
+**But behavior-only is its own trap, and this campaign sets it deliberately.** It does drop
+files — `setup.mjs`, `Math_Symbol.js`, the Bun binary, and the `gh-token-monitor` watchdog with
+its systemd unit or launchd plist, the one artifact that survives deleting everything else. So
+there is a static tell; it is just not where you look first. And the payload declines to run
+under a Russian locale, so on those hosts every behavioral rule reads clean by design and the
+file and hash rules are the only thing that can fire.
+
+Meanwhile the hash axis is blind in the complementary places, measured today: `SHA256` on
+**0 of 110,842** Linux `DeviceProcessEvents` rows and **0 of 30** Linux `DeviceFileEvents`
+toolchain rows; `SHA1` on **81.7% of 120** Windows10 rows matching the drop rules' file shapes
+(macOS the only platform at 100%).
+
+So: **behavior is the tell for the act, artifacts are the tell for the residue, and each one
+alone reads clean somewhere.** That is the actual reason this hunt runs both, and why neither
+zero means much alone.
+
+Written as §0.8 in `docs/playbooks/supply-chain-hunt-ttp.md` and enforced in code.
+`build_axis_pairing()` measures both halves from the collectors' own `evidence` rows — never
+from the prose — and `render_axis_pairing()` puts them in Section 1 directly beneath the
+coverage table, where the reader decides what the zeros above mean. A caveat in an appendix is
+a caveat nobody applied.
+
+Three properties the tests pin, because each is a way this could quietly become decoration:
+the worst platform is reported rather than the largest (Windows11 carries 1,767,800 of the rows
+and would hide a 120-row gap); the attribution claim is made only where the install collector
+itself made it, never inferred by the renderer; and the locale population is named **UNSWEPT**
+rather than counted, since no query has looked and a number here would invent coverage. A
+missing artifact yields a missing half rather than a confident one.
+
 ### Fixed — the hunt reported itself as a critical C2 contact (2026-08-11)
 
 With Docker back up, the four Defender collectors ran for the first time in four days. The
@@ -59,7 +106,9 @@ run before: the `ir/52` persistence sweep (0 rows over 30 days across `DeviceFil
 
 **`coverage/07` answers the question that was the sole blocker on arming `token-monitor`, and
 the answer is no.** SHA1 coverage is not 100%: Windows11 97.5% of 1,767,800 rows, Windows10
-**81.7%**, WindowsServer2025 95.7%, macOS the only platform at 100%. `stopAndQuarantineFiles`
+**81.7% of 120**, WindowsServer2025 95.7% of 2,295, macOS the only platform at 100%. The
+Windows10 rate is the worst measured and sits on the smallest population — a rate, not a
+headcount. `stopAndQuarantineFiles`
 silently no-ops on rows with no SHA1 **while the alert still fires**, so on this campaign an
 operator can believe the watchdog was quarantined when it was not — and quarantine would not
 have removed its systemd unit or launchd plist in any case. Arming decision changes shape: the

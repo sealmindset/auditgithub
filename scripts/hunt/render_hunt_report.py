@@ -1424,6 +1424,133 @@ def compute_coverage(vectors: List[dict]) -> dict:
     }
 
 
+# The one thing this campaign is engineered against, and the reason the hunt runs two
+# families of check that look redundant from outside. Kept as a constant because it is a
+# claim about the adversary, not about our estate, and it must read identically wherever
+# it appears.
+AXIS_DOCTRINE = (
+    "Behavior is the tell for the **act**; artifacts are the tell for the **residue**. "
+    "This campaign is built so that each one alone reads clean somewhere - which is why "
+    "a zero on either axis is a zero on that axis and not a clean hunt."
+)
+
+
+def build_axis_pairing(install: Optional[dict], endpoint: Optional[dict]) -> Optional[dict]:
+    """Measure where each detection axis is blind, from the artifacts rather than from belief.
+
+    The mechanism this campaign uses is entirely legitimate: npm lifecycle scripts, a runner's
+    own `GITHUB_TOKEN` doing what it is provisioned to do, the SDK credential chain reading
+    169.254.169.254. The malicious call and the correct call are byte-identical, and only the
+    lineage separates them - which is why `backlog/23` joins on install parentage rather than
+    matching the address, and why the false positive this collector produced on its own test
+    fixtures was a `curl` in a heredoc that no amount of content inspection could distinguish
+    from a `curl` making a request.
+
+    That argues for behavior. It does not argue for behavior ALONE, and the trap is symmetric:
+
+    - The payload declines to run under a Russian locale. On those hosts every behavioral
+      rule reads clean and only the file and hash rules can fire. The campaign does drop
+      files - `setup.mjs`, `Math_Symbol.js`, the Bun binary, and the `gh-token-monitor`
+      watchdog with its systemd unit or launchd plist, which is the one thing that survives
+      deleting everything else. There is a static tell; it is just not where you look first.
+    - Our hash axis is blind in the other direction, on the platforms measured below.
+
+    So the two axes are blind in complementary places, and that is the actual reason this
+    hunt runs both. Every number here is read from an evidence row; nothing is asserted that
+    an artifact did not measure, and a missing artifact yields a missing half rather than a
+    confident one.
+    """
+    behavior: List[str] = []
+    artifact: List[str] = []
+
+    lifecycle = (((install or {}).get("evidence") or {})
+                 .get("lifecycle_hook_control") or {})
+    rows = lifecycle.get("rows") or []
+    if rows:
+        row = rows[0]
+        executions, devices = row.get("Rows", 0), row.get("Devices", 0)
+        sentence = (f"{executions:,} lifecycle-script "
+                    f"{'execution' if executions == 1 else 'executions'} ran on "
+                    f"{plural(devices, 'device')} in the window, "
+                    f"{row.get('IocRows', 0)} of them carrying a campaign artifact name.")
+        # The attribution gap is the point, but it is the install collector's finding, not
+        # ours to assert. Say it only where that collector said it.
+        unresolved = " ".join(str(item) for item in ((install or {}).get("unresolved_items") or []))
+        if "attributed to a package" in unresolved:
+            sentence += (" **Not one of them can be attributed to a package** - "
+                         "`DeviceProcessEvents` records `node install.cjs` without the package "
+                         "that owns it, so the act is visible and the actor is not.")
+        behavior.append(sentence)
+
+    evidence = (endpoint or {}).get("evidence") or {}
+    hash_rows = [row for row in ((evidence.get("file_hash_column_coverage") or {}).get("rows") or [])
+                 if isinstance(row.get("Sha1CoveragePct"), (int, float))]
+    if hash_rows:
+        worst = min(hash_rows, key=lambda row: row["Sha1CoveragePct"])
+        if worst["Sha1CoveragePct"] < 100:
+            artifact.append(
+                f"On the file shapes the drop rules match, SHA1 is populated on "
+                f"{worst['Sha1CoveragePct']}% of {worst.get('Rows', 0):,} "
+                f"{'row' if worst.get('Rows') == 1 else 'rows'} on "
+                f"{worst.get('Platform', 'unknown')} "
+                f"({plural(worst.get('Devices', 0), 'device')}) - the worst of "
+                f"{plural(len(hash_rows), 'platform')} measured. A row with no hash cannot be "
+                f"matched against a published one, and `stopAndQuarantineFiles` no-ops on it "
+                f"silently while the alert still fires.")
+
+    blind = [row for row in ((evidence.get("toolchain_visibility") or {}).get("rows") or [])
+             if row.get("Events") and not row.get("WithHash")]
+    if blind:
+        named = ", ".join(f"{row.get('OSPlatform', 'unknown')} on "
+                          f"`{row.get('SourceTable', 'unknown')}` "
+                          f"(0 of {row.get('Events', 0):,})" for row in blind[:4])
+        artifact.append(
+            f"On the toolchain events that would name a dropped binary at all, "
+            f"{plural(len(blind), 'population')} carry no hash on any row: {named}. "
+            f"Provenance triage there is a hash comparison with nothing to compare.")
+
+    if not behavior and not artifact:
+        return None
+    return {
+        "doctrine": AXIS_DOCTRINE,
+        "behavior": behavior,
+        "artifact": artifact,
+        # Named rather than counted, for the same reason the IMDS question is: no query in
+        # this hunt has looked, so reporting a number here would invent coverage. It is on
+        # the coverage axis the moment somebody enumerates it.
+        "unmeasured": (
+            "UNSWEPT: the locale distribution of the estate. The payload declines to run "
+            "under a Russian locale, so on any such host every behavioral rule in this hunt "
+            "reads clean by design and the file and hash rules above are the only thing that "
+            "could fire. We have not enumerated `LANG` or the system locale anywhere, so the "
+            "size of that population is unknown rather than zero. Closed by an inventory "
+            "query against Defender's device data or the endpoint management source - not by "
+            "a permission, and not by anything this hunt currently runs."),
+    }
+
+
+def render_axis_pairing(axes: Optional[dict]) -> List[str]:
+    """The pairing, rendered where the verdict is read rather than in an appendix."""
+    if not axes:
+        return []
+    out = ["**Why one clean axis is not a clean hunt.** " + axes["doctrine"], ""]
+    if axes["behavior"]:
+        out.append("*Where behavior is blind - the act is legitimate and looks it:*")
+        out.append("")
+        out.extend(f"- {line}" for line in axes["behavior"])
+        out.append("")
+    if axes["artifact"]:
+        out.append("*Where artifacts are blind - the residue exists and we cannot hash it:*")
+        out.append("")
+        out.extend(f"- {line}" for line in axes["artifact"])
+        out.append("")
+    out.append("*What decides which axis we are relying on, and has never been measured:*")
+    out.append("")
+    out.append(f"- {axes['unmeasured']}")
+    out.append("")
+    return out
+
+
 def compute_verdict(vectors: List[dict]) -> dict:
     compromise_vectors = [v for v in vectors if v["status"] == FINDINGS
                           and v.get("is_compromise_evidence")]
@@ -2696,7 +2823,8 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
            coverage: Optional[dict] = None,
            chain: Optional[List[dict]] = None,
            gate: Optional[List[dict]] = None,
-           advisory: Optional[dict] = None) -> str:
+           advisory: Optional[dict] = None,
+           axes: Optional[dict] = None) -> str:
     out: List[str] = []
     w = out.append
     coverage = coverage or compute_coverage(vectors)
@@ -2762,6 +2890,12 @@ def render(vectors: List[dict], verdict: dict, delta: List[str], actions: List[d
           "listed device by device - Section 4 carries the query that produces each list, so "
           "the owner above can be handed the actual members rather than a number.")
         w("")
+    # Immediately after the coverage table, because this is the sentence that decides how a
+    # reader should weigh the zeros above it. Held here rather than in an appendix for the
+    # same reason the coverage state sits beside the color: a caveat nobody reaches is a
+    # caveat nobody applied.
+    for line in render_axis_pairing(axes):
+        w(line)
     w("**In one paragraph.** A worm has been spreading through the public library of "
       "open-source building blocks that most modern software is assembled from. It steals "
       "credentials from whoever installs an infected block and uses them to infect more. "
@@ -3738,8 +3872,14 @@ def main() -> int:
     ci = vector_ci(posture_payload, owners)
     reusable = vector_reusable(read_json(args.reusable))
     registry = vector_registry(read_json(args.registry))
-    endpoint = vector_endpoint(read_json(args.endpoint))
-    install = vector_install_activity(read_json(args.install_activity))
+    # Both raw artifacts are kept, not just their vector forms. The axis pairing is measured
+    # from `evidence` rows that the vector functions do not carry forward, and re-reading the
+    # file later would let the two halves of the report describe different runs.
+    endpoint_raw = read_json(args.endpoint)
+    install_raw = read_json(args.install_activity)
+    endpoint = vector_endpoint(endpoint_raw)
+    install = vector_install_activity(install_raw)
+    axes = build_axis_pairing(install_raw, endpoint_raw)
     prevention = vector_install_prevention(read_json(args.install_prevention))
     proxy = vector_registry_proxy(read_json(args.registry_proxy))
     dead_drops = read_json(args.dead_drops)
@@ -3862,7 +4002,7 @@ def main() -> int:
 
     document = render(vectors, verdict, delta, actions, ioc, ci, registry, owners,
                       reusable, as_of, campaign, sources=sources, coverage=coverage,
-                      chain=chain, gate=gate, advisory=advisory)
+                      chain=chain, gate=gate, advisory=advisory, axes=axes)
 
     out_path = args.out or (HUNT / "reports" / f"hunt-report-{as_of}.md")
     out_path.parent.mkdir(parents=True, exist_ok=True)
