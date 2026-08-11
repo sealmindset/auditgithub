@@ -24,7 +24,7 @@ are the structural fixes that stop us having to do the first three again.
 
 1. **Stop handing over the whole keyring.** Our build systems will pass only the one credential
    each job needs, instead of all of them. A configuration change to a small number of shared
-   components — four build steps and forty-six shared workflows, which is why it reaches
+   components — eighteen shared build steps and forty-six shared workflows, which is why it reaches
    thousands of pipelines without thousands of edits. *(§1, §2)*
 
 2. **Stop running supplier code on sight.** Every project will be told not to execute code that
@@ -63,31 +63,47 @@ Four links. We are exposed on all four.
 
 ## 1. The whole secrets store is handed to a handful of shared build steps — P1
 
-**What.** Four shared steps receive `toJSON(secrets)`: the complete secrets object, not the
-one credential the job needs.
+**What.** The whole secrets object reaches a shared build step by **three distinct mechanisms**,
+which are counted separately here because they are three different edits.
 
-**Where.** 1,924 pipeline references, concentrated almost entirely in one action:
+**1a — a composite action handed `toJSON(secrets)` explicitly.** 5 actions, 1,929 pipeline refs.
+4 of the 5 are on a moving ref, covering 1,924 of them:
 
 | Sink | Pipeline refs | Via shared workflows | Deploys |
 |---|---:|---:|---|
 | `SleepNumberInc/terraform-setup-composite-action@v2` | **1,904** | 40 | yes |
 | `SleepNumberInc/terraform-setup-composite-action@v1` | 18 | 8 | yes |
-| `SleepNumberInc/secrets-to-tfvars-file-creator@v1` | 1 | 1 | yes |
+| `Firenza/secrets-to-env@7da604dc…` (SHA-pinned) | 5 | 1 | — |
 | `Firenza/secrets-to-env@v1.3.0` | 1 | 1 | — |
+| `SleepNumberInc/secrets-to-tfvars-file-creator@v1` | 1 | 1 | yes |
+
+**1b — a called workflow handed everything implicitly with `secrets: inherit`.** 11 targets,
+1,363 pipeline refs, 8 of the 11 deploying. Largest: `terraform-format-gha-workflow` (278),
+`terraform-security-gha-workflow` (275), `check-destroy-workflow` (252),
+`semantic-release-deployment-workflow` (246), `promote-release-and-deployment-workflow` (245).
+
+**1c — an inline `run:` step expanding the object into the runner's shell.** 2 steps, 214 refs
+— `verify-secrets-dev` and `verify-secrets-all-env`, both at 107, both reading secret *names*
+off a fully expanded secrets object.
 
 **How it is exploited.** `@v2` is a tag, not a commit SHA. Moving the tag changes what runs in
 1,904 pipelines simultaneously — and that code already holds every secret those pipelines use.
 This is precisely the mechanism the worm used against npm, applied to our own internal registry
 of build steps. No poisoned package is required; write access to one repository's tags is
-enough.
+enough. `secrets: inherit` (1b) is the same exposure without even an expression to grep for.
 
-**Mitigate.**
-1. Pin each of the four sinks to a commit SHA at every call site.
-2. Replace `toJSON(secrets)` with an explicit list of the secrets the step actually consumes.
-3. Protect the tag — branch and tag protection on `terraform-setup-composite-action` so moving
-   `v2` requires review.
+**Mitigate.** One fix per mechanism; do not treat them as one ticket.
 
-Effort: days. Four files own the mechanism; the call sites are mechanical.
+| | Look for | Replace with |
+|---|---|---|
+| **1a** | `${{ toJSON(secrets) }}` in a `with:` block | the secrets that step actually reads, named |
+| **1b** | `secrets: inherit` under a `uses:` call | a `secrets:` block naming only what the callee needs |
+| **1c** | `toJSON(secrets)` inside a `run:` script | an approach that enumerates names without expanding values |
+
+Then, for 1a and 1b: pin the target to a commit SHA and enable tag protection on the target
+repository so `v2` cannot be moved without review.
+
+Effort: days. A small number of files own all three mechanisms; the call sites are mechanical.
 Owner: the platform team that owns `terraform-setup-composite-action`.
 
 ---
@@ -129,10 +145,10 @@ those secrets reach production.
 fixing one shared workflow fixes every repository behind it. Order: the four production-confirmed
 repositories first, then the four 246-consumer terraform workflows.
 
-Separately, three shared steps *serialize* the secrets context into the build shell in order to
-read names off it (219 references; `verify-secrets-dev` and `verify-secrets-all-env` at 107 each).
-Reading secret **names** never requires handling their **values** — rewrite these to enumerate
-names without expanding the object into the shell.
+Separately, two shared steps *serialize* the secrets context into the build shell in order to
+read names off it — `verify-secrets-dev` and `verify-secrets-all-env`, 107 references each, 214
+in total (mechanism 1c above). Reading secret **names** never requires handling their
+**values** — rewrite these to enumerate names without expanding the object into the shell.
 
 ---
 
@@ -257,9 +273,9 @@ minutes. Nothing durable is left on the runner for a poisoned install script to 
 
 **Where we already stand.** The capability is present and effectively unused. **6** workflows
 request `id-token: write` — the permission that mints these tokens — and none of them have a
-publish step, so the capability is provisioned and idle. Against that, **1,924** pipeline
-references hand over a stored secrets object, and **838** workflows interpolate stored secret
-values into a shell.
+publish step, so the capability is provisioned and idle. Against that, **3,506** pipeline
+references hand over a stored secrets object across the three mechanisms in §1 (1,929 + 1,363 +
+214), and **838** workflows interpolate stored secret values into a shell.
 
 **How it changes the attack.** With a stored credential, a payload that runs for one second
 takes something that is valid for months and usable from anywhere. With a per-job token, it

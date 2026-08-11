@@ -19,11 +19,16 @@ for tool in pandoc weasyprint; do
   command -v "$tool" >/dev/null || { echo "missing: $tool (brew install $tool)" >&2; exit 1; }
 done
 
+# The named appendix is generated from the collector artifacts, never edited by hand, and
+# concatenated onto both deliverables. It carries no YAML front matter for that reason.
+python3 "$CSS/build_appendix.py"
+APPENDIX="$DOCS/npm-supply-chain-exposure-appendix.md"
+
 # The briefing. -f gfm because the markdown is written to read well on GitHub too.
 # pagetitle rather than title: the document already carries its own H1, and setting
 # `title` would render it a second time above that.
 echo "briefing -> pdf"
-pandoc "$DOCS/npm-supply-chain-exposure-plain-language.md" \
+pandoc "$DOCS/npm-supply-chain-exposure-plain-language.md" "$APPENDIX" \
   -f gfm -t pdf \
   --pdf-engine=weasyprint \
   --css="$CSS/briefing.css" \
@@ -34,7 +39,7 @@ pandoc "$DOCS/npm-supply-chain-exposure-plain-language.md" \
 # Keep any trailing prose ABOVE a table on a slide - pandoc gives a table its own
 # pptx slide and pushes whatever follows onto an untitled orphan slide.
 echo "slides -> pptx"
-pandoc "$DOCS/npm-supply-chain-exposure-slides.md" \
+pandoc "$DOCS/npm-supply-chain-exposure-slides.md" "$APPENDIX" \
   -f markdown -t pptx --slide-level=2 \
   -o "$DOCS/npm-supply-chain-exposure-slides.pptx"
 
@@ -42,7 +47,7 @@ pandoc "$DOCS/npm-supply-chain-exposure-slides.md" \
 # forwarded to people who were not in the room, and the notes are what make the
 # slides stand on their own.
 echo "slides -> pdf"
-pandoc "$DOCS/npm-supply-chain-exposure-slides.md" \
+pandoc "$DOCS/npm-supply-chain-exposure-slides.md" "$APPENDIX" \
   -f markdown -t pdf --standalone \
   --pdf-engine=weasyprint \
   --css="$CSS/slides.css" \

@@ -65,25 +65,44 @@ em { color: #333; }
 ul, ol { margin: 0 0 11pt 0; padding-left: 22pt; }
 li { margin-bottom: 8pt; }
 
+/* Tables are allowed to break across pages, but never mid-row, and the header row
+   repeats on the continuation. Forbidding the break outright is worse: a table taller
+   than one page does not scroll, it silently clips whatever did not fit. */
 table {
   border-collapse: collapse;
   margin: 14pt 0;
-  font-size: 14pt;
-  min-width: 60%;
-  break-inside: avoid;
+  font-size: 13.5pt;
+  width: 100%;
+  table-layout: fixed;
 }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+/* pandoc emits <col style="width: N%"> derived from how wide the cell was in the
+   markdown source, which has nothing to do with how wide the text renders. Ignore it
+   and let the browser size columns to their content. */
+col { width: auto !important; }  /* inline style, so !important is the only lever */
+/* With that gone, fixed layout would split the columns evenly, which starves the name
+   column - and the name is the reason the table exists. */
+th:first-child, td:first-child { width: 52%; }
 th {
   text-align: left;
   background: #1a1a1a;
   color: #fff;
-  padding: 7pt 12pt;
+  padding: 6pt 10pt;
   font-weight: 600;
 }
 td {
-  padding: 6pt 12pt;
+  padding: 5pt 10pt;
   border-bottom: 0.5pt solid #d8d8d8;
+  font-variant-numeric: tabular-nums;
 }
-td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+/* Repository and file names are long, have no spaces, and would otherwise push the
+   table past the page edge rather than wrapping. */
+td code, th code {
+  font-size: 0.82em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 /* Speaker notes, printed rather than hidden. This PDF gets forwarded to people who
    were not in the room, and the notes are what make the slides make sense alone. */

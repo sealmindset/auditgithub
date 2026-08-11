@@ -74,17 +74,28 @@ We give them the master key to **every door in the building.**
 
 | | |
 |---|---|
-| Places this happens | **1,924** |
+| Places this happens | **3,506** |
+| Shared components responsible | **18** |
 | Through one single component | **1,904** |
-| Projects reached by shared building blocks | **1,823** |
-| …that deploy to production | **37** |
+| Projects reached, that deploy to production | **37** |
 
 ::: notes
-The concentration is the good news. 1,904 of 1,924 go through one shared component, so this is
-a handful of things to fix, not thousands.
+The concentration is the good news. 1,904 of 3,506 go through one component, and all 3,506 go
+through just 18, so this is a handful of things to fix rather than thousands.
 
-If someone asks why it was built this way: it was convenient, and it worked. Nobody did
-anything reckless. It just was never revisited.
+**If asked which component:** `terraform-setup-composite-action`, on tags `v2` (1,904
+references) and `v1` (18). The others are `secrets-to-tfvars-file-creator@v1` and
+`Firenza/secrets-to-env`.
+
+**If asked how, precisely:** three different routes, three different fixes — an expression
+called `toJSON(secrets)` handed to a build step (1,929 references), a setting called
+`secrets: inherit` on a shared process (1,363), and two steps that print the whole set into the
+build log's shell to read the names off it (214).
+
+**If asked why it was built this way:** it was convenient, and it worked. Nobody did anything
+reckless. It was never revisited.
+
+Full named list: appendix, "Problem 1a / 1b / 1c".
 :::
 
 ## 2. We run supplier code on sight
@@ -94,14 +105,25 @@ Components arrive with a note attached:
 
 **We run it. Automatically. Before anyone reads it.**
 
-- Only **6** of our projects refuse
-- **94** run whatever arrives
+- **94** projects run whatever arrives
+- **5** refuse
 
 ::: notes
 This is the front door of the attack — where these campaigns begin, every time.
 
 There is a single setting that says "download the component, but do not run its instructions."
 Almost nothing of ours sets it. That is the cheapest fix in the entire deck.
+
+**If asked who already does it right:** `sn-identity`, `snint-ds-e2e-testcases`,
+`snint-marketing-campaign-e2e-testcases` and `snip-auth-service-e2e-testcases` set it in every
+build; `chads-github-actions-playground` does it the better way, with one file at the top of
+the repository that covers every build including a developer's laptop. The change is already
+written and reviewed inside our own estate — the other 94 copy it.
+
+**If asked where the change goes:** either the build file at `.github/workflows/`, or a
+one-line file called `.npmrc` at the top of the project. The second is preferred.
+
+Full list of all 94: appendix, "Problem 2".
 :::
 
 ## 3. Nine open doors
@@ -121,7 +143,19 @@ Right now these nine are simply broken. That is the mild version.
 The serious version: the addresses are not secret — anyone can read our own project files and
 see which ones we are calling. Somebody inside with ordinary access could claim one.
 
-This is the sharpest thing we found, and it is hours of work to fix.
+**The names, if asked:** `initi`, `use-environment`, `add-copilot-blocker`,
+`feat/extra-node-ca-cert`, `update-to-node-24-actions`, `multipe-primary-image-versions`,
+`update-provider-inputs`, `dependabot-fixes`. They were deleted; the repositories that held
+them still exist.
+
+**Who is calling them:** most are sandbox and proof-of-concept projects. The three that are
+not — and so the ones that matter — are `snip-iics-mft-ops`, `dot-env-to-env-var-action` and
+`eslint-config-azure-integrations`.
+
+**Both halves of the fix:** repoint them, *and* reserve the names so they cannot be re-created.
+Repointing alone leaves the door shut but unlocked.
+
+This is the sharpest thing we found, and it is hours of work. Appendix, "Problem 3".
 :::
 
 ## 4. We track moving targets
@@ -138,6 +172,15 @@ today.
 
 Worth noting this is also a reliability problem, not only a security one — see the benefits
 slide.
+
+**The biggest ones, if asked:** `github-env-vars-action` (233 references),
+`setup-terraform` (162), `action-dotenv-to-setenv` (111), `deployment-action` (92). Those four
+alone are where fixing this buys the most.
+
+**Related, and worth naming:** four of our builds download code from the internet and run it
+immediately without checking it — in `sleep-number-claude-code-plugins`,
+`sdna-new-databricks` and `sdp-databricks-pytest-poc`. Each is deliberate, but it is the same
+primitive the attack relies on. Appendix, "Problem 4".
 :::
 
 ## What happens if we do not fix it
@@ -188,8 +231,15 @@ Order matters. A first — it is the sharpest risk and the least effort.
 
 On A: both halves. Repointing without locking the name leaves the door shut but unlocked.
 
-On C: it sounds enormous and it is not, because the exposure is concentrated in a few shared
-components.
+On C: it sounds enormous and it is not, because the exposure is concentrated — 18 shared
+components, and one of them accounts for 1,904 of the 3,506 places.
+
+**Which teams this lands on:** the platform team that owns
+`terraform-setup-composite-action` carries most of C. B is spread across 94 project teams, but
+each one is a single line — it batches. A is a handful of central workflow repositories.
+
+**Every name behind every number is in the appendix**, organized by problem, generated from the
+scan data rather than typed. If anyone wants their own repository's status, it is in there.
 :::
 
 ## Next — a quarter each
@@ -224,6 +274,14 @@ it was simply never pointed at this category of software.
 This is the strongest slide in the deck for anyone worried about cost. We are not proposing to
 build something. It exists, it is connected, and one category of software already flows through
 it successfully.
+
+**The feeds, if asked:** five of them, across two Azure DevOps organizations — `sn-tim`,
+`sn-tim-packages`, `sn-tim-invision-packages`, `SleepNumberIndigo`, and `k8s-manifests`. Three
+already have the connection to the public catalog configured and unused.
+
+**One caveat to state rather than skip:** we could not read `k8s-manifests` — we lack the
+permission. A request naming exactly what is needed is filed. So the zero on this slide covers
+four feeds of five, not five of five. Appendix, "Fix E".
 :::
 
 ## Why a waiting period works

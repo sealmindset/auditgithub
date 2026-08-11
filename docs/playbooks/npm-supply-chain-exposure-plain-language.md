@@ -59,10 +59,10 @@ starts up, we do not hand it the one key it needs. **We hand it every key we hav
 Think of a contractor arriving to fix a supply closet, and being given the master key to every
 door in the building, including the ones they have no business opening.
 
-**How widespread:** this happens in **1,924** places across our build systems. Almost all of
-them — **1,904** — go through a single shared component. That is bad news and good news at the
-same time: it is a lot of exposure, but it is concentrated, so fixing a handful of things fixes
-nearly all of it.
+**How widespread:** this happens in **3,506** places across our build systems, by three
+different routes. More than half of them — **1,904** — go through a single shared component.
+That is bad news and good news at the same time: it is a lot of exposure, but it is
+concentrated in **18** shared components, so fixing those fixes nearly all of it.
 
 Separately, **46** of our shared building blocks pass the whole keyring onward to whatever
 called them, reaching **1,823** projects. **37** of those go on to deploy to production.
@@ -77,8 +77,9 @@ This is the front door of the attack. It is where these attacks begin, every tim
 a single setting that says "download the component, but do not run its instructions." Almost
 nothing of ours sets it.
 
-**How widespread:** of the projects that download components during an automated build, only
-**6** refuse to run the instructions. **94** projects run them.
+**How widespread:** **94** projects run whatever arrives. **5** refuse — four of them by
+changing every automated build they have, and one by adding a single file that covers
+everything, which is the pattern the other 94 should copy.
 
 ### 3. Nine of our automated processes are calling a vacant address
 

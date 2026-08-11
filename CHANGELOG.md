@@ -4,6 +4,36 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — every count in the briefing, resolved to names (2026-08-11)
+
+`scripts/report/build_appendix.py` generates `npm-supply-chain-exposure-appendix.md`, which is
+concatenated onto both the briefing PDF and the deck. "94 projects" is unactionable to the
+person who has to go and fix 94 projects and unverifiable to anyone who wants to check us; the
+appendix names all 94, both sides of every mechanism, all eight vacant branch names, the four
+curl-to-shell workflows and the five feeds.
+
+It is generated rather than typed, and that is the point twice over. A hand-copied list of 94
+repositories is wrong within a month. And generating it caught three errors in documents that
+had already been written from recollection: §1 counted four bulk-secret sinks where the
+artifacts show five, §2 counted three steps where there are two, and an entire mechanism —
+`secrets: inherit` on a called workflow, 11 targets and 1,363 pipeline references — was never
+named at all. The total moved from "1,924 places" to **3,506 across 18 shared components**. The
+plain-language documents separately conflated workflows with repositories on the install-script
+count. All corrected.
+
+Deliberately absent: the 838 workflows that put secret values on a command line. The collector
+records the first 200, and a truncated list printed under a complete-sounding heading is worse
+than no list.
+
+Layout is load-bearing here, not decoration. Long lists are chunked into one heading per page
+because pandoc gives a table its own pptx slide, and pagination is balanced rather than
+straight-chunked — twelve rows at eleven per page yields a page of eleven and a page of one,
+which reads as an error. Two rendering traps are now recorded in the stylesheets: a table with
+`break-inside: avoid` that is taller than the page does not scroll, it silently clips, so
+tables break with `thead` repeated instead; and pandoc emits `<col style="width: N%">` derived
+from the *markdown source* column widths, which has nothing to do with rendered text and needs
+`!important` to override.
+
 ### Added — the briefing in formats the audience actually opens (2026-08-11)
 
 `scripts/report/build_briefing.sh` renders the plain-language briefing to PDF and the deck to

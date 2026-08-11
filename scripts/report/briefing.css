@@ -80,8 +80,20 @@ table {
   margin: 10pt 0 12pt 0;
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 9.4pt;
-  break-inside: avoid;
+  table-layout: fixed;
 }
+/* The appendix tables are longer than a page. Let them break, but never mid-row, and
+   repeat the header on the continuation so a stray page of names still says what it is. */
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+td code { overflow-wrap: anywhere; }
+/* pandoc emits <col style="width: N%"> derived from how wide the cell was in the
+   markdown source, which has nothing to do with how wide the text renders. Ignore it
+   and let the browser size columns to their content. */
+col { width: auto !important; }  /* inline style, so !important is the only lever */
+/* With that gone, fixed layout would split the columns evenly, which starves the name
+   column - and the name is the reason the table exists. */
+th:first-child, td:first-child { width: 50%; }
 th {
   text-align: left;
   background: #1a1a1a;
