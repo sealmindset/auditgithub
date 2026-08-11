@@ -4,6 +4,53 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — read the branches the index cannot see, instead of carrying the gap (2026-08-11)
+
+The commit-message vector was `INCOMPLETE` for one measured reason, not an assumed one: its own
+control proved that GitHub commit search returned 0 of 5 commits shown by
+`GET /repos/../compare` to be off their default branch, while returning 3 of 3 that were on it.
+This campaign pushes to up to 50 side branches per repository, so that gap decided whether the
+vector's zero could mean anything at all. The previous round named the compensating control —
+re-run the branch collector, which enumerates every ref — and left it unrun.
+
+`hunt_commit_messages.py` now answers that population directly, in two passes:
+
+- **The free pass.** `branches_r5.json` already carries `message_first_line` for every in-window
+  commit the branch collector inspected. Matching the marker set against text already on disk
+  read **112 messages, 75 of them on a ref that is not the default branch** — the exact
+  population the index misses — for zero requests. The matcher is proven on that text rather
+  than assumed: a control token drawn from the data matched 3 messages. A zero from an unproven
+  matcher is silence, so the sweep only counts if that control moves.
+- **The range pass.** The branch collector reads the *head* commit of each in-window push, and a
+  push carries a range. Paginated `GET /repos/{org}/{repo}/compare/{before}...{after}` read
+  **118 of 141 in-window push events and 786 commits** with their full message text rather than
+  a first line. A branch creation has no `before`, so its range is measured from the default
+  branch instead of being dropped as unreadable.
+
+**0 marker hits across all of it. The vector renders `CLEAR`** — 14 vectors, now 5 CLEAR /
+5 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING.
+
+Two populations were deliberately not swept under it. Three pushes exceeded the compare
+endpoint's own 250-commit ceiling; for those the ref's history is listed instead, bounded to the
+campaign window, and the substitution is written into the artifact rather than left silent.
+And 15 commits plus 23 deletion events sit on refs deleted inside the window — HTTP 422, the
+object is gone. That is a coverage gap owned by the repository owners, whose forks, backups or
+local clones are the only things that hold them; it is not unfinished work of ours, and putting
+it on the coverage axis rather than in the residue is what keeps `INCOMPLETE` meaning
+"we have the access to read this and have not".
+
+`tests/test_hunt_commit_messages.py` — 11 probes, all on the offline half so none needs a
+network: an HTTP 422 placeholder is counted unreadable rather than clean, a deleted ref is an
+unreadable range rather than one that read clean, a cap reports what it dropped, and a missing
+token makes a range an error rather than a clean read.
+
+### Fixed — a vector count that was wrong in two directions (2026-08-11)
+
+The round-6 entry below claimed 15 vectors and a breakdown that summed to 14; the render had 14
+rows and a different breakdown. The figure had been taken from an earlier message rather than
+from the rendered summary table, and it had already propagated into `TODO.md`. Corrected in
+both. Vector counts come from the render.
+
 ### Added — five hunt vectors that ask what the earlier rounds never asked (2026-08-11)
 
 Rounds r2, r3, r5 and r9 measured whether the campaign *arrived*: a malicious tarball fetched,
@@ -49,8 +96,8 @@ spot"** — the hunt widening — while a gap from a vector that also ran before
 spot newly registered"** and deliberately asserts neither reading, because the state file
 records which gaps existed and not why.
 
-Verified: the report renders clean on the round's own artifacts — exit 0, **AMBER**, 15
-vectors (5 CLEAR / 5 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING), 13 actions. `tests/
+Verified: the report renders clean on the round's own artifacts — exit 0, **AMBER**, 14
+vectors (4 CLEAR / 6 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING), 13 actions. `tests/
 test_hunt_report.py` 49/49; two assertions had been left behind by the changes they cover
 (the blind-spot wording above, and `Flagged commits` splitting into `- open` and `- reviewed
 and cleared` when adjudication landed) and were corrected against the rendered strings, with

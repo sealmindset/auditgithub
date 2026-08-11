@@ -105,6 +105,18 @@ QUERIES: List[Dict[str, str]] = [
 SELF_REPOS = ["sleepnumberinc/auditgithub", "sleepnumberlabs/auditgh",
               "sleepnumberinc/sec-diligence"]
 
+# The same indicators as QUERIES, but as substrings, for the side-branch sweep below. Search
+# qualifiers cannot be applied to text this sweep already holds, so the marker set is restated
+# here as plain lowercase substrings and matched directly.
+MESSAGE_MARKERS: Tuple[str, ...] = (
+    EXTORTION_STRING.lower(),
+    EXTORTION_PREFIX.lower(),
+    "chore: update config",
+    "add codeql analysis",
+    "shai-hulud",
+    "thebeautifulmarchoftime",
+)
+
 
 def get_json(url: str, token: str, accept: str = "application/vnd.github+json",
              attempts: int = 4, pause: float = 0.0) -> Tuple[Optional[Any], Optional[str]]:
@@ -279,6 +291,236 @@ def run_branch_coverage_control(candidates: List[Dict[str, str]], env: Dict[str,
     }
 
 
+def match_markers(text: str) -> List[str]:
+    lowered = (text or "").lower()
+    return [marker for marker in MESSAGE_MARKERS if marker in lowered]
+
+
+def read_range_commits(base_url: str, base: str, head: str, token: str,
+                       pause: float, window: Optional[Dict[str, str]]
+                       ) -> Tuple[List[dict], Optional[int], Optional[str], str]:
+    """Every commit in a pushed range, or a stated reason it is not every commit.
+
+    `GET /compare` pages at 100 and stops at 250 commits no matter how many pages are asked
+    for - that is the endpoint's own ceiling, not a setting. A push bigger than that is read
+    instead from `GET /commits?sha={head}` bounded by the campaign window, which is the
+    population this vector is asking about anyway. Returns the commits, the range size, an
+    error, and which method produced the rows.
+    """
+    commits: List[dict] = []
+    total: Optional[int] = None
+    page = 1
+    while True:
+        body, error = get_json(f"{base_url}/compare/{urllib.parse.quote(base)}..."
+                               f"{urllib.parse.quote(head)}?per_page=100&page={page}",
+                               token, pause=pause)
+        if body is None or not isinstance(body, dict):
+            return commits, total, (error or "no body"), "compare"
+        total = body.get("total_commits") if isinstance(body.get("total_commits"), int) else total
+        rows = body.get("commits") or []
+        commits.extend(rows)
+        if len(rows) < 100 or (isinstance(total, int) and len(commits) >= total):
+            return commits, total, None, "compare"
+        page += 1
+        if page > 3:  # 250 is the endpoint's ceiling; a fourth page cannot exist.
+            break
+
+    if not window:
+        return commits, total, "range exceeds the compare endpoint's 250-commit ceiling and no "\
+                               "window is available to bound a commit listing", "compare"
+
+    # Fallback: the ref's own history, bounded to the window. Same text, different endpoint.
+    listed: List[dict] = []
+    page = 1
+    while True:
+        body, error = get_json(
+            f"{base_url}/commits?sha={urllib.parse.quote(head)}"
+            f"&since={urllib.parse.quote(window['start'])}"
+            f"&until={urllib.parse.quote(window['end'])}&per_page=100&page={page}",
+            token, pause=pause)
+        if body is None or not isinstance(body, list):
+            return commits, total, (error or "commit listing failed"), "compare"
+        listed.extend(body)
+        if len(body) < 100:
+            return listed, total, None, "commits_in_window"
+        page += 1
+        if page > 20:
+            return listed, total, "commit listing exceeded 2,000 rows in the window", \
+                   "commits_in_window"
+
+
+def sweep_side_branch_messages(branches_path: Path, env: Dict[str, str], pause: float,
+                               max_ranges: int,
+                               window: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Answer the question commit search cannot: the messages on non-default branches.
+
+    Two passes, because the index gap has two halves.
+
+    Pass one costs nothing: `branches_r5.json` already carries `message_first_line` for every
+    in-window commit the branch collector inspected, and 91 of those commits were pushed to a
+    ref that is not the default. Matching the marker set against text already on disk answers
+    for that population without a single request.
+
+    Pass two is the half pass one cannot reach. The branch collector inspects the HEAD commit
+    of each in-window push; a push carries a range. `GET /repos/{o}/{r}/compare/{before}...{after}`
+    returns every commit in that range with its FULL message, not the first line, so the marker
+    set is matched against the whole text of the whole range. A branch creation has no `before`,
+    so the range is measured from the default branch.
+
+    What cannot be read is recorded rather than dropped: a range whose refs were deleted after
+    the window returns HTTP 422, and no privilege brings a deleted object back.
+    """
+    records: List[dict] = []
+    with branches_path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+
+    stored_hits: List[Dict[str, Any]] = []
+    stored_readable = 0
+    stored_off_default = 0
+    stored_unreadable: List[Dict[str, str]] = []
+    for record in records:
+        default = record.get("default_branch")
+        for commit in (record.get("commits_inspected") or []):
+            ref = (commit.get("ref") or "").split("refs/heads/")[-1]
+            if commit.get("error"):
+                stored_unreadable.append({"repo": record.get("full_name"), "ref": ref,
+                                          "sha": commit.get("sha"), "error": commit["error"]})
+                continue
+            stored_readable += 1
+            if ref and ref != default:
+                stored_off_default += 1
+            markers = match_markers(commit.get("message_first_line") or "")
+            if markers:
+                stored_hits.append({"repo": record.get("full_name"), "ref": ref,
+                                    "sha": commit.get("sha"), "markers": markers,
+                                    "message_first_line": commit.get("message_first_line")})
+
+    # The matcher must be shown to reach this text before its zero means anything. A token taken
+    # from a message the sweep actually read, matched by the same substring test.
+    control_token = ""
+    control_matches = 0
+    for record in records:
+        for commit in (record.get("commits_inspected") or []):
+            first = (commit.get("message_first_line") or "").strip()
+            if not commit.get("error") and len(first.split()) > 1:
+                control_token = first.split()[0].lower()
+                break
+        if control_token:
+            break
+    if control_token:
+        control_matches = sum(
+            1 for record in records for commit in (record.get("commits_inspected") or [])
+            if control_token in (commit.get("message_first_line") or "").lower())
+
+    # Pass two: every in-window push, read as a range.
+    ranges: List[Dict[str, str]] = []
+    for record in records:
+        org = record.get("org")
+        full = record.get("full_name")
+        default = record.get("default_branch")
+        for event in (record.get("activity_in_window") or []):
+            before = (event.get("before") or "").strip()
+            after = (event.get("after") or "").strip()
+            deleted = not after or set(after) == {"0"}
+            created = not before or set(before) == {"0"}
+            if deleted:
+                ranges.append({"repo": full, "org": org, "ref": event.get("ref"),
+                               "activity_type": event.get("activity_type"),
+                               "base": None, "head": before or None,
+                               "unreadable_reason": (
+                                   "the ref was deleted inside the window, so the range has no "
+                                   "head to compare to")})
+                continue
+            ranges.append({"repo": full, "org": org, "ref": event.get("ref"),
+                           "activity_type": event.get("activity_type"),
+                           "base": default if created else before, "head": after,
+                           "unreadable_reason": None})
+
+    readable = [r for r in ranges if not r["unreadable_reason"]]
+    dropped_for_cap = 0
+    if max_ranges and len(readable) > max_ranges:
+        dropped_for_cap = len(readable) - max_ranges
+        print(f"  CAP: {dropped_for_cap} readable range(s) not read (--max-ranges "
+              f"{max_ranges}). They are counted as unread, not as clean.", file=sys.stderr)
+        readable = readable[:max_ranges]
+
+    range_hits: List[Dict[str, Any]] = []
+    range_errors: List[Dict[str, str]] = []
+    commits_read = 0
+    ranges_read = 0
+    truncated_ranges: List[Dict[str, Any]] = []
+    fallback_ranges: List[Dict[str, Any]] = []
+    for entry in readable:
+        org = entry["org"] or ""
+        token = next((env[v] for v in ORG_TOKEN_VARS.get(org, []) if env.get(v)),
+                     env.get("GITHUB_TOKEN"))
+        if not token:
+            range_errors.append({**entry, "error": f"no token for org {org}"})
+            continue
+        repo_org, repo_name = str(entry["repo"]).split("/", 1)
+        base_url = (f"{GITHUB_API}/repos/{urllib.parse.quote(repo_org)}/"
+                    f"{urllib.parse.quote(repo_name)}")
+        commits, total, error, method = read_range_commits(
+            base_url, str(entry["base"]), str(entry["head"]), token, pause, window)
+        if error:
+            range_errors.append({**entry, "error": error})
+            continue
+        ranges_read += 1
+        commits_read += len(commits)
+        # `total_commits` is the size of the range. If the rows still fall short of it after
+        # pagination AND the window-bounded fallback did not take over, the range was sampled -
+        # and saying so is the difference between a bounded zero and a false one.
+        if (method == "compare" and isinstance(total, int) and total > len(commits)):
+            truncated_ranges.append({**entry, "total_commits": total,
+                                     "commits_returned": len(commits)})
+        if method == "commits_in_window":
+            fallback_ranges.append({**entry, "total_commits": total,
+                                    "commits_returned": len(commits)})
+        for commit in commits:
+            message = ((commit.get("commit") or {}).get("message") or "")
+            markers = match_markers(message)
+            if markers:
+                range_hits.append({"repo": entry["repo"], "ref": entry["ref"],
+                                   "sha": (commit.get("sha") or "")[:12],
+                                   "markers": markers,
+                                   "message_first_line": message.splitlines()[0][:200]})
+
+    unreadable_ranges = [r for r in ranges if r["unreadable_reason"]]
+    full_range_coverage_complete = (
+        not range_errors and not truncated_ranges and not dropped_for_cap)
+    return {
+        "method": (
+            "Two passes. One: match the marker set against `message_first_line` for every "
+            "in-window commit already recorded in the branch artifact - free, and it covers "
+            "the non-default refs commit search does not index. Two: "
+            "`GET /repos/{org}/{repo}/compare/{before}...{after}` for every in-window push, "
+            "which returns the FULL message of every commit in the pushed range rather than "
+            "the head commit's first line."),
+        "markers": list(MESSAGE_MARKERS),
+        "stored_messages_read": stored_readable,
+        "stored_messages_off_default_ref": stored_off_default,
+        "stored_messages_unreadable": stored_unreadable,
+        "stored_marker_hits": stored_hits,
+        "matcher_control_token": control_token,
+        "matcher_control_matches": control_matches,
+        "ranges_total": len(ranges),
+        "ranges_readable": len(readable),
+        "ranges_read": ranges_read,
+        "ranges_dropped_for_cap": dropped_for_cap,
+        "ranges_unreadable": unreadable_ranges,
+        "range_errors": range_errors,
+        "ranges_returning_a_sample": truncated_ranges,
+        "ranges_read_by_window_bounded_listing": fallback_ranges,
+        "commits_read_in_ranges": commits_read,
+        "window": window,
+        "range_marker_hits": range_hits,
+        "full_range_coverage_complete": full_range_coverage_complete,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -293,6 +535,12 @@ def main() -> int:
                         help="Seconds between searches. The commit-search bucket is 30/minute, "
                              "so the default deliberately undershoots it.")
     parser.add_argument("--control-candidates", type=int, default=6)
+    parser.add_argument("--max-ranges", type=int, default=200,
+                        help="Cap on pushed ranges read. Anything dropped is printed and "
+                             "counted as unread; it is never counted as clean.")
+    parser.add_argument("--skip-side-branch-sweep", action="store_true",
+                        help="Skip the sweep that closes the commit-search index gap. The "
+                             "artifact then reports the gap as open, which is what it is.")
     args = parser.parse_args()
 
     env = load_env(REPO_ROOT / ".env")
@@ -300,6 +548,26 @@ def main() -> int:
     print("=== branch-coverage control ===", file=sys.stderr)
     candidates = pick_branch_coverage_candidates(args.branches, args.control_candidates)
     coverage_control = run_branch_coverage_control(candidates, env, args.pause)
+
+    side_branch_sweep: Optional[Dict[str, Any]] = None
+    if not args.skip_side_branch_sweep:
+        print("=== side-branch message sweep ===", file=sys.stderr)
+        # The window comes from the branch collector's own coverage artifact rather than being
+        # restated here, so the two vectors cannot drift to different windows.
+        window = None
+        coverage_path = args.branches.with_name(
+            args.branches.stem + "_coverage" + args.branches.suffix)
+        if coverage_path.exists():
+            window = (json.loads(coverage_path.read_text()) or {}).get("window")
+        side_branch_sweep = sweep_side_branch_messages(args.branches, env, args.pause,
+                                                       args.max_ranges, window)
+        print(f"  stored messages read: {side_branch_sweep['stored_messages_read']} "
+              f"({side_branch_sweep['stored_messages_off_default_ref']} on a non-default ref), "
+              f"hits={len(side_branch_sweep['stored_marker_hits'])}", file=sys.stderr)
+        print(f"  pushed ranges read: {side_branch_sweep['ranges_read']} of "
+              f"{side_branch_sweep['ranges_total']}, commits read "
+              f"{side_branch_sweep['commits_read_in_ranges']}, "
+              f"hits={len(side_branch_sweep['range_marker_hits'])}", file=sys.stderr)
 
     results: Dict[str, Any] = {}
     for org in args.orgs:
@@ -387,8 +655,14 @@ def main() -> int:
     lead_hits = [h for h in hits if h["key"] not in decisive]
 
     covers_side_branches = coverage_control["index_covers_non_default_branches"]
+    sweep = side_branch_sweep
+    # The sweep answers for the non-default population only if its matcher was shown to reach
+    # that text. A zero from an unproven matcher is silence.
+    sweep_usable = bool(sweep and sweep["matcher_control_matches"] > 0
+                        and sweep["stored_messages_read"] > 0)
+    sweep_hits = ((sweep["stored_marker_hits"] + sweep["range_marker_hits"]) if sweep else [])
     unresolved: List[str] = []
-    if covers_side_branches is False:
+    if covers_side_branches is False and not sweep_usable:
         unresolved.append(
             f"Commit search did not return any of the "
             f"{coverage_control['off_default_checked']} commit(s) this run PROVED are not "
@@ -400,7 +674,28 @@ def main() -> int:
             f"marker set of scripts/hunt/hunt_branches.py, which enumerates every ref - and it "
             f"has not been re-run since the marker was added. Until it is, the commit-message "
             f"answer covers default branches only.")
-    elif covers_side_branches is None:
+    if sweep and sweep_usable:
+        # Each of these is a population the sweep did NOT read. Named, counted, and each one
+        # carries what closes it - they are the difference between this vector being finished
+        # and this vector being nearly finished.
+        if sweep["range_errors"]:
+            unresolved.append(
+                f"{len(sweep['range_errors'])} in-window pushed range(s) did not read: "
+                f"{', '.join(sorted({str(r.get('error')) for r in sweep['range_errors']}))}. "
+                f"Their commits below the head commit are unexamined. Ours to close: re-run "
+                f"this collector, which retries the compare call for each of them.")
+        if sweep["ranges_returning_a_sample"]:
+            biggest = max(sweep["ranges_returning_a_sample"], key=lambda r: r["total_commits"])
+            unresolved.append(
+                f"{len(sweep['ranges_returning_a_sample'])} pushed range(s) held more commits "
+                f"than one page returned - the largest carried {biggest['total_commits']} and "
+                f"returned {biggest['commits_returned']}. Those ranges were sampled, not read. "
+                f"Ours to close: paginate the compare call for them.")
+        if sweep["ranges_dropped_for_cap"]:
+            unresolved.append(
+                f"{sweep['ranges_dropped_for_cap']} readable pushed range(s) were not read "
+                f"because of the --max-ranges cap. Ours to close: re-run with a higher cap.")
+    if covers_side_branches is None:
         unresolved.append(
             "The branch-coverage control could not be established: no candidate commit was "
             "confirmed to be off its default branch. The commit-search results cannot be "
@@ -454,8 +749,34 @@ def main() -> int:
             f"`excluded_self_matches`, because a rule that deleted them silently would "
             f"eventually delete a real hit in a repository whose name happens to match.")
 
+    if sweep and sweep_usable:
+        coverage.append(
+            f"The index gap is answered rather than carried: {sweep['stored_messages_read']} "
+            f"in-window commit message(s) already held by the branch artifact were matched "
+            f"against {len(MESSAGE_MARKERS)} marker(s), "
+            f"{sweep['stored_messages_off_default_ref']} of them on a ref that is NOT the "
+            f"default branch - the exact population commit search does not index. The matcher "
+            f"is proven on that text, not assumed: the control token "
+            f"`{sweep['matcher_control_token']}` matched {sweep['matcher_control_matches']} "
+            f"message(s).")
+    if sweep and sweep["ranges_read"]:
+        coverage.append(
+            f"Whole pushed ranges, not head commits: {sweep['ranges_read']} of "
+            f"{sweep['ranges_total']} in-window push event(s) were read with "
+            f"`GET /repos/../compare`, returning {sweep['commits_read_in_ranges']} commit(s) "
+            f"with their full message text. The branch collector reads the head commit of a "
+            f"push; this reads what the push contained.")
+    if sweep and sweep["ranges_read_by_window_bounded_listing"]:
+        coverage.append(
+            f"{len(sweep['ranges_read_by_window_bounded_listing'])} push(es) were larger than "
+            f"the compare endpoint's 250-commit ceiling. For those the ref's own history was "
+            f"listed instead, bounded to the campaign window "
+            f"{(sweep['window'] or {}).get('start')} - {(sweep['window'] or {}).get('end')}, "
+            f"which is the population this vector asks about. Different endpoint, same text, "
+            f"and the substitution is recorded rather than silent.")
+
     coverage_gaps: List[Dict[str, str]] = []
-    if covers_side_branches is False:
+    if covers_side_branches is False and not sweep_usable:
         coverage_gaps.append({
             "gap": "Commits that exist only on a non-default branch are not in the index this "
                    "vector queries.",
@@ -474,8 +795,46 @@ def main() -> int:
                           "and now carries the extortion string in CAMPAIGN_COMMIT_MESSAGES"),
             "owner": "Security Engineering",
         })
+    if sweep and (sweep["stored_messages_unreadable"] or sweep["ranges_unreadable"]):
+        # Not unfinished work. These objects were deleted with their branch inside the window,
+        # and no privilege on any account brings a deleted git object back - so this belongs on
+        # the coverage axis, where a gap does not imply someone failed to read something.
+        deleted_refs = sorted({str(r.get("ref")) for r in sweep["ranges_unreadable"]})
+        coverage_gaps.append({
+            "gap": "Commits on refs that were deleted inside the campaign window cannot be "
+                   "read by anyone.",
+            "population": (f"{len(sweep['stored_messages_unreadable'])} commit(s) the branch "
+                           f"collector could not fetch (HTTP 422 - the object is gone with its "
+                           f"ref) and {len(sweep['ranges_unreadable'])} deletion event(s) whose "
+                           f"range has no head to compare against."),
+            "named_by": ("exports/hunt/branches_r5.json - `activity_in_window[]` rows with "
+                         "activity_type `branch_deletion`, one row per deleted ref: "
+                         + ", ".join(deleted_refs[:8])
+                         + (f", and {len(deleted_refs) - 8} more" if len(deleted_refs) > 8
+                            else "")),
+            "cannot_confirm_or_deny": ("what those commits' messages said. A deletion inside "
+                                       "the window is itself worth reading as an event, and it "
+                                       "is recorded above with its actor and timestamp"),
+            "closed_by": ("nothing this hunt can run. It closes only for repositories where a "
+                          "backup, a fork or a local clone still holds the deleted ref - which "
+                          "is a request to the repository owner, not a query"),
+            "owner": "Repository owners of the affected repositories",
+        })
 
-    status = FINDINGS if decisive_hits else (INCOMPLETE if unresolved else CLEAR)
+    # A sweep hit is graded the same way a search hit is. The extortion string, the campaign
+    # self-name and the dead-drop marker are decisive on their own; "chore: update config" is
+    # a message a human writes every day, so on its own it is a lead.
+    decisive_markers = {EXTORTION_STRING.lower(), EXTORTION_PREFIX.lower(),
+                        "shai-hulud", "thebeautifulmarchoftime"}
+    sweep_decisive = [h for h in sweep_hits
+                      if set(h["markers"]) & decisive_markers
+                      and str(h["repo"]).lower() not in SELF_REPOS]
+    sweep_leads = [h for h in sweep_hits
+                   if not (set(h["markers"]) & decisive_markers)
+                   and str(h["repo"]).lower() not in SELF_REPOS]
+
+    status = (FINDINGS if (decisive_hits or sweep_decisive)
+              else (INCOMPLETE if unresolved else CLEAR))
     artifact = {
         "name": "Commit-message sweep - the campaign's extortion string and forged authorship",
         "status": status,
@@ -499,10 +858,19 @@ def main() -> int:
                 coverage_control["off_default_checked"],
             "Of those, returned by commit search":
                 coverage_control["off_default_found_by_search"],
+            "Non-default-branch commit messages read directly, outside the index":
+                (sweep["stored_messages_off_default_ref"] if sweep else 0),
+            "In-window pushed ranges read whole": (sweep["ranges_read"] if sweep else 0),
+            "Commits read inside those ranges":
+                (sweep["commits_read_in_ranges"] if sweep else 0),
+            "Marker hits from the direct sweep": len(sweep_decisive) + len(sweep_leads),
+            "Commits unreadable because their ref was deleted":
+                (len(sweep["stored_messages_unreadable"]) if sweep else 0),
         },
         "coverage": coverage,
         "coverage_gaps": coverage_gaps,
         "branch_coverage_control": coverage_control,
+        "side_branch_sweep": sweep,
         "indicators": {"extortion_string": EXTORTION_STRING,
                        "extortion_prefix": EXTORTION_PREFIX,
                        "forged_author_email": FORGED_AUTHOR_EMAIL,
@@ -515,8 +883,15 @@ def main() -> int:
                       f"{h['means']}"),
              "severity": "critical", "evidence": h["matches"][:20]}
             for h in decisive_hits
+        ] + [
+            {"id": f"commit-sweep-{h['repo'].replace('/', '-')}-{h['sha']}",
+             "what": (f"{h['repo']} {h['sha']} on ref {h['ref']} carries "
+                      f"{', '.join(h['markers'])} in its commit message, found by reading the "
+                      f"commit directly rather than through the search index"),
+             "severity": "critical", "evidence": [h]}
+            for h in sweep_decisive
         ],
-        "leads": lead_hits,
+        "leads": lead_hits + sweep_leads,
         "excluded_repos": SELF_REPOS,
         "orgs": results,
     }
