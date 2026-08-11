@@ -4,6 +4,69 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — a vector that was blocked by its own verdict expression, not by missing data (2026-08-11)
+
+The internal package registry vector had read `INCOMPLETE` for two rounds, and both the report
+and the handoff said it was waiting on an Entra ID token for the Azure DevOps resource. The
+token was acquired. The re-run returned the same five feeds, the same zeros, and the same
+`coverage_supports_negative_finding: false`.
+
+The flag was computed by:
+
+```python
+bool(proved_rows) and not feeds_with_errors and not unmeasured_and_upstream_enabled
+```
+
+Three paragraphs above it, in the same file, `check_azure_artifacts.py` states the rule this is
+supposed to implement: an unreadable feed matters *where it could have cached a withdrawn
+version*, which requires a `registry.npmjs.org` upstream. `unmeasured_and_upstream_enabled` is
+that rule. The blanket `not feeds_with_errors` term beside it is not, and it won. This estate
+has exactly one 403 — `SleepNumberIndigo/k8s-manifests` — and that feed has no npmjs upstream,
+so a feed structurally incapable of holding a cached withdrawn version was voiding the reading
+of the other four.
+
+A second claim was wrong in the same place, and had been repeated into `handoff.md` and
+`TODO.md` as the work a token would enable: that the zero meant "the listing did not enumerate
+npm". `list_packages()` sends `protocolType=npm` and always has. The listing enumerated npm and
+returned nothing.
+
+The coverage verdict is now decided per feed, with three states, because these zeros are not
+equally strong:
+
+- `measured_with_positive_control` — this identity holds `ReadPackages` and the packages
+  endpoint returned a row, from this feed or from a sibling feed in the same organization under
+  the same token. A same-organization row is a real control: same endpoint, same host, same
+  credential, differing only in feed id. It is what makes `sn-tim/sn-tim`'s empty list an
+  answer — `sn-tim/sn-tim-packages` returned 520 rows on the same call shape moments earlier.
+- `measured_by_permission_probe_only` — `ReadPackages` is proven by the retention endpoint,
+  which returns 403 without it, but no feed in that organization returned any row. The proof is
+  a permission fact rather than an observed row, so `SleepNumberIndigo/SleepNumberIndigo` is
+  named in the report on that basis instead of being folded into the good case.
+- `unmeasured_no_read_packages` — the denial. Emitted six-field into the artifact's
+  `access_required` and carried onto the vector by the renderer **even though the vector now
+  reads `CLEAR`**, because what it leaves unread — a package published *directly* into that
+  feed — is a different question from the cached-upstream one the vector answers.
+
+An empty feed is deliberately **not** treated as a failed control. It cannot produce a row, and
+the only act that would make one appear is publishing into production infrastructure, which
+this collector's own limits forbid.
+
+**0 malicious versions, 0 campaign package names at any version, across 5 feeds in 2
+organizations. The vector renders `CLEAR`** — 14 vectors, now 6 CLEAR / 4 INCOMPLETE /
+3 FINDINGS / 1 CORROBORATING. Nothing left on the `INCOMPLETE` list can be closed by running
+anything: three wait on a log source or permission from outside this work, one waits on an
+incident-response process decision.
+
+`--registry-proxy` was pinned to `azure_artifacts_feeds.json` and now resolves through
+`latest_round()`. Pinned, it would have rendered the previous artifact while the re-run's sat
+beside it — the same silent staleness class that had already been caught on `--trees`.
+
+New `tests/test_check_azure_artifacts.py`: 10 probes over pure functions, no Azure DevOps calls.
+A sibling feed is a control and a cross-organization feed is not; a denial is unmeasured rather
+than weakly measured; an unreadable feed without the upstream does not block while one with it
+does; a readable feed that errored still blocks; an empty feed is not a failed control; and each
+access request names the endpoint that was denied and states what stays unread.
+
 ### Changed — read the branches the index cannot see, instead of carrying the gap (2026-08-11)
 
 The commit-message vector was `INCOMPLETE` for one measured reason, not an assumed one: its own
@@ -27,8 +90,8 @@ re-run the branch collector, which enumerates every ref — and left it unrun.
   a first line. A branch creation has no `before`, so its range is measured from the default
   branch instead of being dropped as unreadable.
 
-**0 marker hits across all of it. The vector renders `CLEAR`** — 14 vectors, now 5 CLEAR /
-5 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING.
+**0 marker hits across all of it. The vector renders `CLEAR`** — 14 vectors, 5 CLEAR /
+5 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING at the time of this entry.
 
 Two populations were deliberately not swept under it. Three pushes exceeded the compare
 endpoint's own 250-commit ceiling; for those the ref's history is listed instead, bounded to the

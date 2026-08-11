@@ -29,12 +29,14 @@ Two rules that govern everything written here:
 
 ## 2. Current State
 
-Branch `deployment-topology-p1-p2`, tip `9dc46dc`. Round 6 of the hunt is **committed**.
+Branch `deployment-topology-p1-p2`, tip `cd623dc`. Rounds 6 and 7 of the hunt are
+**committed**.
 
 Working tree at the time of writing:
 ```
- M scripts/hunt/hunt_commit_messages.py     <- this session, described in section 4
-?? tests/test_hunt_commit_messages.py       <- this session
+ M scripts/hunt/check_azure_artifacts.py    <- this session, described in section 4
+ M scripts/hunt/render_hunt_report.py       <- this session
+?? tests/test_check_azure_artifacts.py      <- this session
 ?? github_conf/IOC_KQL.zip                  <- another session's; leave it
 ?? nmptemp                                  <- another session's; leave it
 ```
@@ -45,7 +47,8 @@ do not remove it.
 Tests, run on the host as `python3 -m pytest --noconftest` (the repo conftest imports
 `src/api/main.py`, which needs `loguru`):
 - `tests/test_hunt_report.py` -- **49 passed**
-- `tests/test_hunt_commit_messages.py` -- **11 passed** (new this session)
+- `tests/test_hunt_commit_messages.py` -- **11 passed**
+- `tests/test_check_azure_artifacts.py` -- **10 passed** (new this session)
 - Deployment topology 74/74; budget governor 7 of 12 on the host; detection rules 9/9
   validate with nothing sent; 30 KQL queries lint clean and **none executed**; NeMo 26/26.
 
@@ -58,7 +61,7 @@ Report renders exit 0, **AMBER**, 14 vectors, 13 actions, to
 
 ## 3. Vector status -- what is closed and what each open one waits on
 
-Fourteen vectors: **5 CLEAR / 5 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING.** Taken from the
+Fourteen vectors: **6 CLEAR / 4 INCOMPLETE / 3 FINDINGS / 1 CORROBORATING.** Taken from the
 rendered summary table, row by row -- see the last entry in section 5 for why that sentence is
 in this document.
 
@@ -68,31 +71,12 @@ have not.* It is unfinished work, not a blind spot. Anything that no privilege a
 can reach belongs on the coverage axis instead, and the four below are each written against
 that distinction.
 
-**Closed this session.** *Commit-message sweep* (report section 4.8) moved `INCOMPLETE` ->
-`CLEAR`. See section 4.
+**Closed this session.** Two vectors moved `INCOMPLETE` -> `CLEAR`: the *commit-message sweep*
+(report section 4.8) and the *internal package registry* (section 4.11). See section 4.
 
 **Open, with what each is waiting on:**
 
-1. **Internal package registry (proxy of npmjs)** -- section 4.11. The feed listing returned
-   0 npm packages across 5 feeds, 3 of which proxy `registry.npmjs.org`, so the zero against
-   the campaign set is not a measured absence: the listing did not enumerate npm, so it could
-   not have matched. The artifact says so itself -- `coverage_supports_negative_finding:
-   false`.
-   *Waiting on:* an Entra ID access token for the Azure DevOps resource at `/tmp/.ado_tok`.
-   There is none on disk and `.env` holds no Azure DevOps credential. Rob acquires it
-   interactively -- in this session, `! az account get-access-token --resource
-   499b84ac-1321-427f-aa17-267ca6975798 --query accessToken -o tsv > /tmp/.ado_tok` -- then
-   re-run `scripts/hunt/check_azure_artifacts.py` listing npm specifically per feed. Feeds
-   needing it: `sn-tim/sn-tim`, `sn-tim/sn-tim-packages`,
-   `SleepNumberIndigo/SleepNumberIndigo`.
-   *Plus one true access gap*, six-field: api `Azure DevOps REST`, endpoint
-   `GET /_apis/packaging/Feeds/{feedId}/packages`, permission `ReadPackages` on feed
-   `SleepNumberIndigo/k8s-manifests`, grant_type feed-level permission on the existing
-   identity, granted_by the feed's Azure DevOps administrator, proves whether that feed
-   carries any campaign package. It has no npmjs upstream configured, which bounds the
-   consequence but does not close it.
-
-2. **Endpoint install activity (Microsoft Defender)** -- section 4.12. A contradiction, not a
+1. **Endpoint install activity (Microsoft Defender)** -- section 4.12. A contradiction, not a
    clean result: 69 package-manager install command lines ran in the window while
    `DeviceNetworkEvents` recorded 0 tarball fetches, so package downloads are not observable
    on that table and matching against 2,208 specs could not happen. Separately, 2,670
@@ -104,7 +88,7 @@ that distinction.
    role changes the answer. Identify the egress proxy's log owner and file for read access
    there; until that exists this vector cannot answer and must not be read as though it does.
 
-3. **Endpoint / identity (Microsoft Defender)** -- section 4.17. Five named residue items:
+2. **Endpoint / identity (Microsoft Defender)** -- section 4.17. Five named residue items:
    571 devices in onboarding state `Can be onboarded`, 554 `Unsupported`, 254 `Insufficient
    info` -- none reporting, so none can produce a hit; `SHA256` empty on every Linux
    `DeviceProcessEvents` row, so hash-based provenance triage is blind there; sign-in history
@@ -120,17 +104,17 @@ that distinction.
    Administrator. The Linux `SHA256` emptiness is a vendor telemetry gap -- no permission
    fills that column.
 
-4. **Advisory IOC sweep -- campaign infrastructure and file hashes** -- section 4.18. Eleven
+3. **Advisory IOC sweep -- campaign infrastructure and file hashes** -- section 4.18. Eleven
    hunting queries, none failed. The residue is one indicator that cannot be matched at all:
    the advisories name a User-Agent, `Bun/1.3.13`, and `DeviceNetworkEvents` carries no
    User-Agent column.
-   *Waiting on:* the same proxy or web-gateway source as item 2 -- and stated in the artifact
+   *Waiting on:* the same proxy or web-gateway source as item 1 -- and stated in the artifact
    in exactly those terms, that this indicator "cannot be matched on endpoint telemetry by
    anyone with any permission." Requesting a Defender role would not close it. The two
    coverage gaps beneath it (macOS `RemoteUrl`, Linux hashes) are the population bounds on the
    domain and hash sweeps, not residue.
 
-5. **Anti-remediation watchdog sweep** -- section 4.19. The sweep itself is clean: the
+4. **Anti-remediation watchdog sweep** -- section 4.19. The sweep itself is clean: the
    `gh-token-monitor` watchdog was swept by name and independently by shape, 13 queries, none
    failed. The residue is not unread data -- *a clean watchdog sweep does not make the
    remediation ORDER safe.* The watchdog is triggered by revocation, so the control is a
@@ -148,12 +132,19 @@ Two coverage gaps that are correctly *not* residue, because no privilege reaches
 macOS devices populate no `RemoteUrl` at all over 30 days (2,965,542 rows), and 311 Linux
 devices carry neither `SHA1` nor `SHA256` on effectively any `DeviceFileEvents` row.
 
-**The shape of what is left.** Of the five open vectors, exactly one -- the registry proxy --
-closes with a credential we already hold the right to. Three (endpoint install activity,
-advisory IOC sweep, and the sign-in half of endpoint/identity) wait on a log source or a
-permission that has to be requested from someone outside this work. One (anti-remediation)
-waits on a human process gate and no query will ever move it. That is worth saying plainly to
-anyone who reads the report as a to-do list: the remaining work is mostly not hunting.
+**The shape of what is left.** Nothing among the four open vectors can be closed by running
+anything. Three (endpoint install activity, advisory IOC sweep, and the sign-in half of
+endpoint/identity) wait on a log source or a permission that has to be requested from someone
+outside this work; one (anti-remediation) waits on a human process gate and no query will ever
+move it. The two that *were* ours -- the commit-message sweep and the registry proxy -- are
+both closed. That is worth saying plainly to anyone who reads the report as a to-do list: the
+remaining work is not hunting.
+
+One access request still stands even though its vector reads `CLEAR`, and it is in the
+report's access table for that reason: `ReadPackages` on `SleepNumberIndigo/k8s-manifests`.
+The feed has no `registry.npmjs.org` upstream, so it cannot hold a version *cached* from the
+public registry -- which is the question the vector asks and answers. What it leaves unread is
+a package *published directly* into that feed. Different question, still open, named.
 
 ## 4. Changes Made This Session
 
@@ -196,6 +187,52 @@ a range an error rather than a clean read.
 
 Artifact is now `exports/hunt/commit_messages_r3.json`; the renderer's `latest_round()` picks
 it up with no flag change.
+
+**`scripts/hunt/check_azure_artifacts.py`** -- new `classify_feed_coverage()`,
+`blocking_feeds()` and `access_required_for()`; `coverage_supports_negative_finding` is now
+`bool(proved_rows) and not blocking_feeds(...)`.
+
+This vector was not waiting on data. It was waiting on its own verdict expression, which
+carried a blanket `not feeds_with_errors` term beside the narrower rule stated three
+paragraphs above it in the same file -- *an unreadable feed matters only where it has an
+npmjs upstream to cache from*. The one 403 on this estate is
+`SleepNumberIndigo/k8s-manifests`, which has no such upstream, so a feed that structurally
+cannot hold a cached withdrawn version was voiding the reading of the other four. The token
+was needed to re-run, and Rob acquired it, but the token was never what stood in the way.
+
+Also wrong, and repeated in the renderer's docstring: the claim that "the listing did not
+enumerate npm". `list_packages()` has always sent `protocolType=npm`. The listing enumerated
+npm and returned nothing.
+
+The coverage verdict is now per feed and has three states, because these zeros are not
+equally strong:
+- `measured_with_positive_control` -- ReadPackages held and a row came back from the same
+  endpoint, host and token, either from this feed or from a sibling in the same organization.
+  That is what makes `sn-tim/sn-tim`'s empty list an answer: `sn-tim/sn-tim-packages`
+  returned 520 rows on the same call shape moments earlier.
+- `measured_by_permission_probe_only` -- ReadPackages proven by the retention endpoint (it
+  403s without it), but no feed in that organization returned any row.
+  `SleepNumberIndigo/SleepNumberIndigo` is the only one, and it is named in the report rather
+  than folded into the good case.
+- `unmeasured_no_read_packages` -- the 403. Emitted six-field into the artifact's
+  `access_required`, which the renderer now carries onto the vector *even though it reads
+  `CLEAR`*.
+
+An empty feed is deliberately **not** treated as a failed control. It cannot produce a row,
+and the only act that would make one appear is publishing into production infrastructure --
+which this collector's own limits forbid.
+
+Renderer: `--registry-proxy` now defaults through `latest_round()` instead of the pinned
+`azure_artifacts_feeds.json`, which is the staleness class already flagged for `--branches`,
+`--code-search`, `--ioc` and `--posture`. Without it the re-run's artifact
+(`azure_artifacts_feeds_r2.json`) would have sat on disk unread.
+
+**`tests/test_check_azure_artifacts.py`** -- 10 probes, all pure functions over records, no
+Azure DevOps calls: a sibling feed is a control and a cross-organization feed is not, a denial
+is unmeasured rather than weakly measured, an unreadable feed without the upstream does not
+block while one with it does, a readable feed that errored still blocks, an empty feed is not
+a failed control, and each access request names the endpoint that was denied and says what
+stays unread.
 
 ## 5. Failed Approaches -- DO NOT RETRY
 
@@ -249,6 +286,17 @@ it up with no flag change.
   it into `CHANGELOG.md`; the render listed six. Rob then repeated my number back to me, which
   is exactly how a wrong figure becomes load-bearing. **Take vector counts from the rendered
   report, never from an earlier message.**
+- **Believing a collector's residue text over its code.** The registry-proxy vector said for
+  two rounds that "the listing did not enumerate npm", and I repeated it into `handoff.md` and
+  `TODO.md` as the thing a token would fix. `list_packages()` sends `protocolType=npm` and
+  always did. The residue sentence was written from a plausible theory about why the number
+  was zero, and once written it was quoted rather than checked. **A collector's own prose
+  about why it failed is a claim like any other -- read the function before repeating it.**
+- **Treating a coverage flag as ground truth because a collector set it.**
+  `coverage_supports_negative_finding: false` was correct output from an expression that
+  contradicted the rule stated in the same file. The flag was not lying about what it computed;
+  it was computing the wrong thing. **A self-reported coverage flag still has to be read
+  against the doctrine it claims to implement.**
 - **Assuming an artifact reflects the current source.** `antiremediation_r1.json` still carries
   `behaviour` in its scope string; `hunt_antiremediation.py:780` says `behavior`. The artifact
   predates the spelling pass and the report renders the artifact. A stored artifact is a
@@ -258,10 +306,13 @@ it up with no flag change.
 ## 6. Next Steps
 
 1. **Decide the anti-remediation vector's shape** (section 3 item 4). Its residue is an IR
-   process gate, not unread data, so as written it can never reach `CLEAR`.
-2. **Get an Azure DevOps token and finish the registry proxy** (section 3 item 1). One
-   interactive `az` command from Rob, then a re-run. This is the only open vector whose
-   closure is entirely in our hands today.
+   process gate, not unread data, so as written it can never reach `CLEAR`. This is now the
+   only open vector where a decision -- rather than somebody else's grant -- changes anything.
+2. **File the two access requests** the other three open vectors depend on: read access to the
+   egress proxy / web-gateway logs (endpoint install activity, and the `Bun/1.3.13` User-Agent
+   in the advisory IOC sweep), and `AuditLog.Read.All` on Microsoft Graph. A third is filed
+   against a vector that reads `CLEAR`: `ReadPackages` on `SleepNumberIndigo/k8s-manifests`.
+   All three are six-field in the report's access table.
 3. **Resolve the open Tier 0 escalation.** StepSecurity puts the propagation close at
    13:20 UTC; the Tier 0 registry oracle bounds the last malicious publish at
    `@thiennq/docs-viewer@1.6.4`, 12:11:19.909Z. **Do not average them.** Re-run
@@ -281,7 +332,10 @@ it up with no flag change.
    tokens, self-minted attestations), the persistence sweep, the wide rotation scope.
 7. **Audit the other `--*` renderer defaults** for the staleness class that bit `--trees`:
    `--branches`, `--code-search`, `--ioc` and `--posture` are pinned to `_r3` filenames.
-   Nothing is wrong today; the failure mode is silent and the next re-run creates it.
+   Nothing is wrong today; the failure mode is silent and the next re-run creates it. It
+   very nearly created it this session -- `--registry-proxy` was pinned to
+   `azure_artifacts_feeds.json` and would have rendered the old artifact while the re-run's
+   sat beside it. That one is now on `latest_round()`; these four are not.
 8. **Deployment topology P2**, blocked on Docker: apply
    `migrations/021_deployment_observation.sql` (P2 writes fail without
    `uq_deployments_repo_external_id`), verify the container (86 tests, two `/cicd/topology/*`

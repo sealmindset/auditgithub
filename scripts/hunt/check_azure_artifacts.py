@@ -223,6 +223,101 @@ def list_packages(org: str, feed: dict, config: Path, page_size: int,
             return packages, "pagination guard hit at 20000 packages"
 
 
+MEASURED_WITH_CONTROL = "measured_with_positive_control"
+MEASURED_BY_PERMISSION_PROBE = "measured_by_permission_probe_only"
+UNMEASURED = "unmeasured_no_read_packages"
+
+
+def classify_feed_coverage(results: List[dict]) -> None:
+    """Decide, per feed, whether that feed's npm zero is an answer. Writes into each record.
+
+    A single estate-wide boolean cannot carry this, because the five feeds fail in three
+    different ways and only one of them is fatal:
+
+      - `measured_with_positive_control`: this identity holds ReadPackages, and the packages
+        endpoint returned at least one row either for this feed or for another feed in the
+        same organization under the same identity. A same-organization row is a real control
+        because it is the same endpoint, the same host and the same token proving they
+        return data; what differs is only the feed id. `sn-tim/sn-tim` is empty, and
+        `sn-tim/sn-tim-packages` returned 520 rows a moment earlier on the same call shape.
+      - `measured_by_permission_probe_only`: ReadPackages is held — proven by the retention
+        endpoint, which 403s without it — but no feed in that organization ever returned a
+        row, so nothing distinguishes an empty response from a silent one except that
+        permission proof. Weaker, and named rather than folded into the good case.
+      - `unmeasured_no_read_packages`: the denial itself. Not clean, unread.
+
+    This deliberately does NOT treat an empty feed as a failed control. An empty feed can
+    never produce a row, and the only way to make one appear is to publish into production
+    infrastructure, which this check refuses to do.
+    """
+    orgs_with_rows = {r["org"] for r in results if r.get("control_endpoint_returns_rows")}
+    controls = {r["org"]: f"{r['org']}/{r['feed']}" for r in reversed(results)
+                if r.get("control_endpoint_returns_rows")}
+    for record in results:
+        if not record.get("identity_has_read_packages"):
+            record["coverage_verdict"] = UNMEASURED
+            record["positive_control_source"] = None
+        elif record["org"] in orgs_with_rows:
+            record["coverage_verdict"] = MEASURED_WITH_CONTROL
+            record["positive_control_source"] = controls[record["org"]]
+        else:
+            record["coverage_verdict"] = MEASURED_BY_PERMISSION_PROBE
+            record["positive_control_source"] = None
+        # A zero is only an answer if this identity could have seen a non-zero.
+        record["npm_zero_is_measured"] = record["coverage_verdict"] != UNMEASURED
+
+
+def blocking_feeds(results: List[dict]) -> List[dict]:
+    """Feeds whose gap actually voids the estate-wide negative finding.
+
+    The rule is the one already written into this file's interpretation and then contradicted
+    by its own verdict expression: an unreadable feed matters where it *could have cached a
+    withdrawn version*, which requires a registry.npmjs.org upstream. Without that upstream
+    the feed cannot hold a tarball pulled from the public registry, and its gap is a named
+    access request rather than a hole in this vector's answer.
+
+    What that forgiveness does not cover, and what therefore still travels with the result:
+    a package published directly into such a feed under a campaign name. That is a different
+    question from the one this vector asks, and it is stated rather than absorbed.
+    """
+    blocking = []
+    for record in results:
+        error = (record.get("listing_error") or record.get("control_error")
+                 or record.get("error"))
+        unread = record.get("coverage_verdict") == UNMEASURED or bool(error)
+        if unread and record.get("npmjs_upstream_configured"):
+            blocking.append({
+                "feed": f"{record['org']}/{record['feed']}",
+                "reason": error or record.get("read_packages_probe_detail")
+                or "no ReadPackages on this feed",
+                "why_it_blocks": "carries a registry.npmjs.org upstream, so it is capable "
+                                 "of holding a version cached before the withdrawal",
+            })
+    return blocking
+
+
+def access_required_for(record: dict) -> dict:
+    """The six-field access request for one unreadable feed."""
+    feed = f"{record['org']}/{record['feed']}"
+    upstream = record.get("npmjs_upstream_configured")
+    return {
+        "api": "Azure DevOps REST",
+        "endpoint": f"GET https://feeds.dev.azure.com/{record['org']}/_apis/packaging/"
+                    f"Feeds/{record.get('feed_id') or record['feed']}/packages",
+        "permission": f"ReadPackages on feed {feed}",
+        "grant_type": "feed-level permission on the identity already in use",
+        "granted_by": "the Azure DevOps administrator of that feed",
+        "proves": (
+            "whether the feed holds any campaign package name at any version. It carries a "
+            "registry.npmjs.org upstream, so it could have cached a version before the "
+            "withdrawal and this gap bounds the vector's answer."
+            if upstream else
+            "whether the feed holds any campaign package name at any version. It has no "
+            "registry.npmjs.org upstream, so it cannot hold a version cached from the "
+            "public registry; what stays unread is a package published directly into it."),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -358,8 +453,10 @@ def run(args: argparse.Namespace, config: Path) -> int:
                 "packages_by_protocol": dict(by_protocol.most_common()),
                 "control_endpoint_returns_rows": endpoint_returns_rows,
                 "control_error": control_error,
-                # A zero is only an answer if this identity could have seen a non-zero.
-                "npm_zero_is_measured": can_read,
+                # Set by classify_feed_coverage() once every feed is in, because whether
+                # this feed's zero is an answer can depend on a sibling feed's rows.
+                "coverage_verdict": None,
+                "npm_zero_is_measured": None,
                 # If the affected NAMES are absent, this feed never proxied these packages,
                 # and the absence of the malicious versions is structural.
                 "affected_names_present": names_present,
@@ -372,6 +469,9 @@ def run(args: argparse.Namespace, config: Path) -> int:
                   f"npmjs_upstream={record['npmjs_upstream_configured']} "
                   f"read_packages={can_read} "
                   f"malicious={len(exact_hits)}{flag}", file=sys.stderr)
+
+    classify_feed_coverage(results)
+    blocking = blocking_feeds(results)
 
     hits = [{"org": r["org"], "feed": r["feed"], **h}
             for r in results for h in (r.get("MALICIOUS_VERSIONS_PRESENT") or [])]
@@ -413,6 +513,12 @@ def run(args: argparse.Namespace, config: Path) -> int:
                  for r in results if r.get("retention_policy")}
     proved_rows = [f"{r['org']}/{r['feed']}" for r in feeds_ok
                    if r.get("control_endpoint_returns_rows")]
+    by_verdict = {
+        verdict: [f"{r['org']}/{r['feed']}" for r in results
+                  if r.get("coverage_verdict") == verdict]
+        for verdict in (MEASURED_WITH_CONTROL, MEASURED_BY_PERMISSION_PROBE, UNMEASURED)}
+    access_required = [access_required_for(r) for r in results
+                       if r.get("coverage_verdict") == UNMEASURED]
 
     payload = {
         "identity": "Entra ID access token for the Azure DevOps resource",
@@ -427,6 +533,9 @@ def run(args: argparse.Namespace, config: Path) -> int:
         "feeds_measured_identity_has_read_packages": measured,
         "feeds_UNMEASURED_no_read_packages": unmeasured,
         "unmeasured_feeds_with_npmjs_upstream": unmeasured_and_upstream_enabled,
+        "feeds_by_coverage_verdict": by_verdict,
+        "feeds_blocking_the_negative_finding": blocking,
+        "access_required": access_required,
         "retention_policies": retention,
         "affected_names_found_in_any_feed": names_anywhere,
         "MALICIOUS_VERSIONS_FOUND": hits,
@@ -440,10 +549,14 @@ def run(args: argparse.Namespace, config: Path) -> int:
         # zero here is a measurement artifact rather than a finding.
         "control_passed_endpoint_returns_rows_somewhere": bool(proved_rows),
         # A negative finding stands only for feeds this identity could actually read, and
-        # only matters as a gap where an unreadable feed also has an npmjs upstream.
-        "coverage_supports_negative_finding": (
-            bool(proved_rows) and not feeds_with_errors
-            and not unmeasured_and_upstream_enabled),
+        # only matters as a gap where an unreadable feed also has an npmjs upstream. An
+        # unreadable feed WITHOUT that upstream cannot hold a version cached from the public
+        # registry, so it is an access request (see access_required) rather than a hole in
+        # this answer. That rule is stated in `interpretation` below and this expression is
+        # the implementation of it — earlier it also carried a blanket `not feeds_with_errors`
+        # term, which contradicted the same rule and let one 403 on an upstream-less feed
+        # void the reading of the other four.
+        "coverage_supports_negative_finding": bool(proved_rows) and not blocking,
         "feeds": results,
         "interpretation": [
             "A feed with an npmjs upstream caches a tarball on first request and keeps the "
@@ -461,6 +574,17 @@ def run(args: argparse.Namespace, config: Path) -> int:
             "not clean, they are unread. The gap only matters where such a feed also has "
             "an npmjs upstream, because without the upstream it could not have cached a "
             "withdrawn version in the first place.",
+            "feeds_by_coverage_verdict splits the readable feeds in two, because their "
+            "zeros are not equally strong. A feed marked measured_with_positive_control has "
+            "a row returned by the same endpoint, host and token — from itself or from a "
+            "sibling feed in the same organization — so an empty npm list is that feed's "
+            "state. A feed marked measured_by_permission_probe_only rests on the retention "
+            "probe alone: ReadPackages is proven, but no feed in its organization returned "
+            "any row, so the proof that the endpoint answers for that identity is a "
+            "permission fact rather than an observed row.",
+            "An empty feed is not a failed control. It cannot produce a row, and the only "
+            "action that would make one appear is publishing into production infrastructure, "
+            "which this check does not do.",
             "Retention policies bound how long a cached tarball remains observable. A feed "
             "that deletes versions after N days can erase this evidence, so the policies "
             "are recorded alongside the result.",
@@ -488,9 +612,16 @@ def run(args: argparse.Namespace, config: Path) -> int:
     if unmeasured:
         print(f"UNMEASURED ({len(unmeasured)} feeds, no ReadPackages): "
               f"{[u['feed'] for u in unmeasured]}", file=sys.stderr)
-    if unmeasured_and_upstream_enabled:
-        print(f"*** COVERAGE GAP: unmeasured feed WITH npmjs upstream: "
-              f"{unmeasured_and_upstream_enabled} ***", file=sys.stderr)
+    for verdict, feeds_in in by_verdict.items():
+        if feeds_in:
+            print(f"{verdict}: {feeds_in}", file=sys.stderr)
+    if blocking:
+        print(f"*** COVERAGE GAP, blocks the negative finding: "
+              f"{[b['feed'] for b in blocking]} ***", file=sys.stderr)
+    elif unmeasured:
+        print(f"access request filed in the artifact for "
+              f"{[a['permission'] for a in access_required]} - does not block, no npmjs "
+              f"upstream on those feeds", file=sys.stderr)
     if hits:
         print("*** MALICIOUS VERSIONS PRESENT IN A FEED ***", file=sys.stderr)
         for hit in hits:

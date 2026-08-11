@@ -1231,11 +1231,17 @@ def vector_registry_proxy(feeds: Optional[dict]) -> dict:
         entire class of worm.
 
     The artifact sets `coverage_supports_negative_finding` itself, and this function refuses
-    to promote its verdict past what that flag allows. On the run this was written against
-    the flag is false: four feeds were readable, three carry an npmjs upstream, and the npm
-    package listing returned zero packages across all of them. Zero listed packages is not
-    evidence that nothing was proxied - it is evidence that the listing did not enumerate
-    npm, which is a different sentence with a different conclusion.
+    to promote its verdict past what that flag allows.
+
+    The first version of this docstring said the flag was false because "the listing did not
+    enumerate npm". That was wrong about the collector: `list_packages` has always sent
+    `protocolType=npm`, so the listing did enumerate npm and returned nothing. What was
+    actually false was the flag's own expression, which carried a blanket "no feed returned
+    an error" term alongside the narrower rule stated in the same file - that an unreadable
+    feed only matters where it has an npmjs upstream to cache from. One 403 on
+    `SleepNumberIndigo/k8s-manifests`, a feed with no such upstream, therefore voided the
+    reading of the other four. The collector now decides per feed, and this function reads
+    `feeds_blocking_the_negative_finding` to say which feed is responsible when it is false.
     """
     if not feeds:
         return {"name": "Internal package registry (proxy of npmjs)", "status": NOT_RUN,
@@ -1253,6 +1259,12 @@ def vector_registry_proxy(feeds: Optional[dict]) -> dict:
     # A malicious version found is a finding. A clean result the coverage supports is CLEAR.
     # A clean result the coverage does NOT support is neither - it is unfinished work, and it
     # is reported as the named item that would finish it.
+    blocking = feeds.get("feeds_blocking_the_negative_finding", []) or []
+    verdicts = feeds.get("feeds_by_coverage_verdict", {}) or {}
+    probe_only = verdicts.get("measured_by_permission_probe_only", []) or []
+    named_blockers = "; ".join(
+        f"{b.get('feed')} ({b.get('reason')})" for b in blocking) or "none named"
+
     unresolved: List[str] = []
     if malicious:
         status = FINDINGS
@@ -1261,21 +1273,21 @@ def vector_registry_proxy(feeds: Optional[dict]) -> dict:
     else:
         status = INCOMPLETE
         unresolved.append(
-            f"The feed listing returned {listed} npm package(s) across "
+            f"The npm listing returned {listed} package(s) across "
             f"{feeds.get('feeds_checked', 0)} feed(s), of which {len(upstream)} proxy "
-            f"registry.npmjs.org. A zero match against the campaign set is therefore not a "
-            f"measured absence - the listing did not enumerate npm, so it could not have "
-            f"matched. Ours to close: list each npmjs-upstream feed's npm packages "
-            f"specifically (the artifact's own `coverage_supports_negative_finding` is "
-            f"false, which is the flag saying so), then re-run the comparison against the "
-            f"campaign specs. Feeds needing it: "
-            f"{', '.join(upstream) if upstream else 'none recorded'}.")
-    for feed in unmeasured:
-        unresolved.append(
-            f"Feed {feed.get('feed')} was not measured: {feed.get('reason')}. "
-            f"npmjs upstream configured: {feed.get('npmjs_upstream_configured')}. "
-            f"Ours to close only if the grant is ours to make - otherwise this becomes an "
-            f"access request naming ReadPackages on that feed.")
+            f"registry.npmjs.org - and {plural(len(blocking), 'feed')} carrying that "
+            f"upstream could not be read: {named_blockers}. A feed with an npmjs upstream "
+            f"is the one thing on this estate that can still be serving a version the "
+            f"public registry has withdrawn, so until those are read the zero against the "
+            f"campaign set is bounded by them rather than measured across the estate.")
+
+    # An unreadable feed is a permission this identity does not hold, so it belongs on the
+    # access axis rather than in residue - INCOMPLETE means we can read it and have not. The
+    # artifact already writes each one six-field, so it is carried through rather than
+    # rephrased here. It travels with the vector even when the vector reads CLEAR: what it
+    # leaves unread is a package published DIRECTLY into that feed, which is a real question
+    # that the no-upstream argument does not answer.
+    access = list(feeds.get("access_required", []) or [])
 
     return {
         "name": "Internal package registry (proxy of npmjs)",
@@ -1290,11 +1302,24 @@ def vector_registry_proxy(feeds: Optional[dict]) -> dict:
             "Malicious versions found in a feed": len(malicious),
             "Campaign package names present at any version": len(affected),
             "Feeds unmeasured (no ReadPackages)": len(unmeasured),
+            "Feeds whose gap bounds this result": len(blocking),
         },
         "coverage": [
             f"Identity: {feeds.get('identity', 'unrecorded')}. "
             f"{feeds.get('feeds_readable', 0)} of {feeds.get('feeds_checked', 0)} feed(s) "
             f"readable, {len(errors)} returning an error.",
+            f"Per-feed coverage verdict, because these zeros are not equally strong: "
+            f"{plural(len(verdicts.get('measured_with_positive_control') or []), 'feed')} "
+            f"measured with a positive control (a row returned by the same endpoint, host "
+            f"and token, from the feed itself or a sibling in the same organization); "
+            f"{plural(len(probe_only), 'feed')} measured by permission probe only"
+            f"{' (' + ', '.join(probe_only) + ')' if probe_only else ''} - ReadPackages "
+            f"proven by an endpoint that 403s without it, but no feed in that organization "
+            f"returned any row, so the proof is a permission fact rather than an observed "
+            f"row; {plural(len(unmeasured), 'feed')} unread for want of ReadPackages.",
+            f"An empty feed is not a failed control. It cannot produce a row, and the only "
+            f"act that would make one appear is publishing into production infrastructure, "
+            f"which this check does not do.",
             f"Listing endpoint proved it returns rows on "
             f"{plural(len(feeds.get('feeds_where_endpoint_proved_it_returns_rows') or []), 'feed')}"
             f", so the endpoint itself works. Protocol breakdown across all feeds: "
@@ -1306,7 +1331,11 @@ def vector_registry_proxy(feeds: Optional[dict]) -> dict:
             f"only watches registry.npmjs.org would not see the fetch.",
             f"The artifact's own coverage flag: coverage_supports_negative_finding="
             f"{supported}. This vector's status is bounded by that flag and does not "
-            f"outrun it.",
+            f"outrun it. The flag counts a feed against the result only where that feed is "
+            f"both unread and carrying an npmjs upstream - an unread feed with no upstream "
+            f"cannot hold a version cached from the public registry, so it is an access "
+            f"request below rather than a hole in this answer. Feeds bounding it: "
+            f"{named_blockers}.",
         ],
         "limits": [
             "Covers Azure Artifacts feeds reachable by this identity. A registry proxy "
@@ -1315,7 +1344,11 @@ def vector_registry_proxy(feeds: Optional[dict]) -> dict:
             "Retention policies can remove a cached version before this check runs, so a "
             "clean result is a statement about the cache as it stands, not about every "
             "version the feed ever served.",
+            "Feed-level listing only. A clean feed does not prove no build ever resolved a "
+            "malicious version through it, and it says nothing about an npm cache baked "
+            "into a container image, which no registry API can see.",
         ],
+        "access_required": access,
         "unresolved_items": unresolved,
         "evidence_for_status": [
             f"{m}" for m in malicious
@@ -3611,7 +3644,8 @@ def main() -> int:
                              "the npm-relevant population. The control half of the same "
                              "question --install-activity answers on the arrival side.")
     parser.add_argument("--registry-proxy", type=Path,
-                        default=HUNT / "azure_artifacts_feeds.json",
+                        default=latest_round("azure_artifacts_feeds*.json",
+                                             "azure_artifacts_feeds.json"),
                         help="Internal package feeds and their upstreams. A feed proxying "
                              "npmjs serves the identical malicious tarball under its own "
                              "hostname, so this is both a result and the strongest available "
