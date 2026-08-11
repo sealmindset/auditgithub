@@ -1,7 +1,7 @@
 # Software Supply Chain — A Plain-Language Briefing
 
-**Date:** 2026-08-11
-**Audience:** anyone who needs to understand and fund this. No technical background assumed.
+**Date:** 2026-08-11  
+**Audience:** anyone who needs to understand and fund this. No technical background assumed.  
 **Companion document:** the detailed version with all the measurements is
 `npm-supply-chain-exposure-report.md`. Everything here comes from there. Nothing here is
 rounded up or dramatized.

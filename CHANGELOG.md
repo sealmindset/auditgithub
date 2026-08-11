@@ -4,6 +4,22 @@ All notable changes to the AuditGitHub project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — the briefing in formats the audience actually opens (2026-08-11)
+
+`scripts/report/build_briefing.sh` renders the plain-language briefing to PDF and the deck to
+both PowerPoint and PDF. Markdown stays the source of truth; the build products are committed
+because the readers who need them have no toolchain and should not need one.
+
+Two decisions are worth knowing. The deck's PDF **prints the speaker notes under each slide**,
+because a deck that gets forwarded to people who were not in the room is otherwise a set of
+assertions with the reasoning removed. And weasyprint is the PDF engine rather than LaTeX,
+which is why styling lives in CSS — no LaTeX is installed and requiring it would mean nobody
+else could regenerate these.
+
+One pandoc trap is recorded in the script rather than rediscovered: a table gets its own pptx
+slide, and any prose *after* it lands on an untitled orphan slide. Keep trailing prose above
+the table. That silently produced two extra slides on the first build.
+
 ### Added — the same exposure, for readers who do not build software (2026-08-11)
 
 `docs/playbooks/npm-supply-chain-exposure-plain-language.md`. The technical report is correct
