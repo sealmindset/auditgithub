@@ -15,6 +15,38 @@ population could not be measured, it is named as unmeasured rather than reported
 
 ---
 
+## In plain language
+
+Five things. The first three are configuration changes we can start this quarter. The last two
+are the structural fixes that stop us having to do the first three again.
+
+**Now — weeks, not quarters, and nothing to purchase:**
+
+1. **Stop handing over the whole keyring.** Our build systems will pass only the one credential
+   each job needs, instead of all of them. A configuration change to a small number of shared
+   components — four build steps and forty-six shared workflows, which is why it reaches
+   thousands of pipelines without thousands of edits. *(§1, §2)*
+
+2. **Stop running supplier code on sight.** Every project will be told not to execute code that
+   arrives with a software package unless we have approved it. A one-line change per project,
+   and the cheapest protection in this entire report. *(§3)*
+
+3. **Close the nine open doors.** Nine of our automated processes point at names anyone inside
+   the company could claim; we repoint them and lock the names so they cannot be taken. Hours
+   of work, and the sharpest risk we found. *(§4)*
+
+**Next — the structural fixes:**
+
+4. **Move to badges instead of keys.** Replace stored credentials with short-lived passes issued
+   per job and expiring in minutes, so there is nothing durable left to steal. This is what makes
+   item 1 permanent rather than a setting someone can undo. *(§6)*
+
+5. **One front door for supplier software.** A managed internal library lets us block a bad
+   package everywhere at once, and hold new versions for a few days before builds can use them.
+   We already own the front door; almost nothing walks through it. *(§7)*
+
+---
+
 ## The chain, in one paragraph
 
 An attacker poisons a public package. Someone's build installs it. The install script runs —
@@ -181,12 +213,19 @@ The remaining two dangling targets are ordinary breakage: `snip-iics-mft-ops` ca
 `iics_cd_workflow.yaml@main` where the file is now `iics_cd.yaml`, and one reference uses
 `pr_lint.yml` where the file is `pr_lint.yaml`.
 
-**Mitigate.**
-1. Fix the nine dangling references first. It is the cheapest item in this report and carries
-   the worst upside for an attacker.
-2. Pin the top-referenced third-party actions to SHAs, starting with the six above (741 refs).
-3. Add `fetch_status = 'not_found'` as a recurring check after each topology sync, so a
+**Mitigate.** Repointing alone is not enough — the name has to be taken off the board as well,
+or it stays claimable by the next person who reads the callers.
+
+1. **Repoint** the nine dangling references at a commit SHA on a branch that exists.
+2. **Lock the names.** In each central workflow repository, add branch protection rules matching
+   the nine deleted branch names so they cannot be re-created by an ordinary org member, and
+   restrict branch creation to the repository's maintainers. Steps 1 and 2 are one change; doing
+   only the first leaves the door shut but unlocked.
+3. Pin the top-referenced third-party actions to SHAs, starting with the six above (741 refs).
+4. Add `fetch_status = 'not_found'` as a recurring check after each topology sync, so a
    reference to a deleted branch is caught when it appears rather than at the next hunt.
+
+Hours of work, and the sharpest risk in this report for the least effort.
 
 ---
 
@@ -209,6 +248,88 @@ The four workflows piping remote code to a shell:
 
 ---
 
+## 6. Badges instead of keys — the structural fix behind §1 and §2
+
+**What.** Narrowing `toJSON(secrets)` to named values (§1, §2) is a configuration change, and
+configuration changes get undone. The durable version is to stop storing the credential at all:
+each job asks our identity provider for a short-lived token, scoped to that job, expiring in
+minutes. Nothing durable is left on the runner for a poisoned install script to read.
+
+**Where we already stand.** The capability is present and effectively unused. **6** workflows
+request `id-token: write` — the permission that mints these tokens — and none of them have a
+publish step, so the capability is provisioned and idle. Against that, **1,924** pipeline
+references hand over a stored secrets object, and **838** workflows interpolate stored secret
+values into a shell.
+
+**How it changes the attack.** With a stored credential, a payload that runs for one second
+takes something that is valid for months and usable from anywhere. With a per-job token, it
+takes something that expires before the incident call starts and is scoped to one repository's
+one job. It does not prevent the install script from running — §3 does that — it removes the
+prize.
+
+**Mitigate.** Migrate the deploy path first, since that is where §2's 37 deploying definitions
+concentrate: configure OIDC federation between GitHub Actions and the cloud tenant, convert the
+four production-confirmed repositories, then the shared workflow definitions. Delete the stored
+secrets as each path is converted — an unrotated leftover is the same exposure with a longer
+lifetime. Retire the 6 idle `id-token: write` grants if they are not folded into this work.
+
+Effort: a quarter, phased. No purchase required; this is federation configuration, not a product.
+
+---
+
+## 7. One front door for supplier software
+
+**What.** Today, builds resolve packages straight from the public registry. That means there is
+no single place to block a known-bad package, and no delay between a version being published and
+a build consuming it. A managed internal feed that proxies the public registry gives us both: one
+blocklist that applies everywhere at once, and a hold-back window so a new version must sit
+unused for a few days before any build can pull it.
+
+**Where we already stand — we own the front door and almost nothing walks through it.** Across
+the two Azure DevOps organizations swept (`sn-tim`, `SleepNumberIndigo`), 5 feeds checked and 4
+readable:
+
+| Measure | Value |
+|---|---|
+| Feeds with a `registry.npmjs.org` upstream configured | 3 |
+| **npm packages listed across all feeds** | **0** |
+| Packages present, all protocols | 523, all NuGet |
+| Retention on the one feed that has a policy | 20 versions, 30 days for recently downloaded |
+
+The npm proxy exists and is wired up. Nothing is using it. NuGet, by contrast, does flow
+through it — so the pattern is proven inside our own estate; it simply was never applied to npm.
+
+**Why the hold-back window is worth having, measured rather than asserted.** Of **2,208**
+malicious version specs from this campaign, **2,097 were no longer resolvable on npm** when we
+swept on 2026-08-10 — the ecosystem withdrew roughly 95% of them. A hold-back window converts
+that takedown latency into protection: if a build cannot touch a version until it is several
+days old, most of these versions are already gone before they are reachable. The remaining
+**111 suspected not yet withdrawn** are the residue the window does not catch, which is what the
+blocklist half is for.
+
+**Mitigate.**
+1. Point CI npm installs at the existing Azure Artifacts feeds rather than `registry.npmjs.org`.
+2. Enable an upstream hold-back window on those feeds; start at 3 days and tune on friction.
+3. Wire the campaign's package list into the feed blocklist, so a known-bad name is refused
+   estate-wide from one place.
+4. Request `ReadPackages` on `SleepNumberIndigo/k8s-manifests` — the one feed we could not read
+   (see access gap below), so this section's zero covers every feed rather than four of five.
+
+Effort: a quarter. The feeds, the licences and the upstream configuration already exist.
+
+**Access gap blocking full coverage of §7:**
+
+| Field | Value |
+|---|---|
+| `api` | Azure DevOps REST |
+| `endpoint` | `GET https://feeds.dev.azure.com/SleepNumberIndigo/_apis/packaging/Feeds/aa276ed1-83f6-4194-8f07-bebc80762c75/packages` |
+| `permission` | `ReadPackages` on feed `SleepNumberIndigo/k8s-manifests` |
+| `grant_type` | feed-level permission on the identity already in use |
+| `granted_by` | the Azure DevOps administrator of that feed |
+| `proves` | whether the feed holds any campaign package name at any version. It has no `registry.npmjs.org` upstream, so it cannot hold a version cached from the public registry; what stays unread is a package published directly into it. |
+
+---
+
 ## Order of work
 
 | # | Action | Scope | Effort |
@@ -219,6 +340,11 @@ The four workflows piping remote code to a shell:
 | 4 | Add `--ignore-scripts` across the 94 repos | cheapest control in this report | hours each, batched |
 | 5 | Read the 193 called-action definitions | converts an unknown into an answer | one read per distinct action |
 | 6 | Estate-wide pinning program | 8,115 references | a program, not a ticket |
+| 7 | Per-job short-lived credentials (§6) | removes the prize rather than the access | a quarter, phased |
+| 8 | Route npm through the internal feed, with hold-back (§7) | one blocklist, one delay, estate-wide | a quarter |
+
+Items 1–6 reduce what an attacker reaches. Items 7 and 8 change what there is to reach, and are
+what stop items 1–4 from being work we repeat after the next campaign.
 
 Two prevention items need no Microsoft or GitHub approval and are not in the table above:
 
@@ -238,8 +364,10 @@ Every figure in this report is read from a collector artifact under `exports/hun
 | §1, §2 | `reusable_workflow_targets.json` | 2026-08-07 |
 | §2 (dangling refs), §4 | `docs/playbooks/deployment-topology.md` §"Dangling references" | 2026-08-07 |
 | §3 | `install_prevention_r1.json` | 2026-08-10 |
-| §4, §5 | `actions_posture_r5_coverage.json` (read rate 1.0, no truncation) | 2026-08-10 |
+| §4, §5, §6 | `actions_posture_r5_coverage.json` (read rate 1.0, no truncation) | 2026-08-10 |
 | §5 (owners) | `repo_owners_r5.json` | 2026-08-10 |
+| §7 (feeds) | `azure_artifacts_feeds_r2.json` | 2026-08-11 |
+| §7 (withdrawal rate) | `advisory_coverage.json` | 2026-08-10 |
 | hunt result | `exports/hunt/reports/hunt-report-2026-08-11.md` | 2026-08-11 |
 
 **Known coverage limits of the sweeps behind this report:** default branch only; two repository
