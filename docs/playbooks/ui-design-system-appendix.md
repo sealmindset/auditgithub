@@ -27,6 +27,7 @@ a list below is not proof of correctness for those cases.
   ok   raw-palette-class                 0
   ok   literal-color-in-source           0
   ok   hsl-wrapping-oklch                0
+  ok   canvas-color-without-resolver     0
   ok   emoji-in-source                   0
   ok   absolute-white-or-black           0
   ok   clickable-without-pointer-cursor  0
@@ -45,7 +46,7 @@ Context (not findings):
   deliberate-light-mat: 3
   icon-only-button: 70
   image: 4
-  literal-color-exempt: 108
+  literal-color-exempt: 109
   text-field: 114
   vendor-brand-hex: 14
   z-index values: z-10, z-20, z-30, z-50
@@ -67,6 +68,10 @@ None found.
 None found.
 
 ### hsl-wrapping-oklch — 0
+
+None found.
+
+### canvas-color-without-resolver — 0
 
 None found.
 
@@ -250,7 +255,7 @@ DARK  (51 pairs)
 
 ---
 
-## C. Where the findings were — the tree at `HEAD`
+## C. Where the findings were — the tree at `e8b2899`
 
 The same auditor, same thresholds, run against the tree this work started from.
 This is the actionable half of the appendix: every location below is a place a
@@ -263,6 +268,7 @@ are pre-change and will not line up with the current files.
   FAIL raw-palette-class                 1912
   FAIL literal-color-in-source           115
   FAIL hsl-wrapping-oklch                36
+  FAIL canvas-color-without-resolver     27
   FAIL emoji-in-source                   17
   FAIL absolute-white-or-black           56
   FAIL clickable-without-pointer-cursor  2
@@ -273,7 +279,7 @@ are pre-change and will not line up with the current files.
   FAIL multi-col-grid-no-breakpoint      13
   FAIL transition-outside-150-300ms      1
 
-2257 findings
+2284 findings
 
 Context (not findings):
   click-suppressor: 2
@@ -2365,6 +2371,36 @@ This appendix lists locations the script can see in source text. It deliberately
 - `components/dashboard/FindingTrendsWidget.tsx:161`
 - `components/ui/sidebar.tsx:483`
 - `components/ui/sidebar.tsx:483`
+
+### canvas-color-without-resolver — 27
+
+- `components/dashboard/ThreatRadar.tsx:184  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:206  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:220  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:246  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:258  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:364  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:379  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:470  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:485  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:531  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:539  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:621  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:632  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:641  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:661  addColorStop`
+- `components/dashboard/ThreatRadar.tsx:662  addColorStop`
+- `components/dashboard/ThreatRadar.tsx:672  addColorStop`
+- `components/dashboard/ThreatRadar.tsx:673  addColorStop`
+- `components/dashboard/ThreatRadar.tsx:688  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:698  strokeStyle`
+- `components/dashboard/ThreatRadar.tsx:706  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:713  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:719  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:727  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:730  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:737  fillStyle`
+- `components/dashboard/ThreatRadar.tsx:744  fillStyle`
 
 ### emoji-in-source — 17
 

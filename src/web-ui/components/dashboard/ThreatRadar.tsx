@@ -13,11 +13,16 @@
  *     backgrounds and the cyan tracer are the instrument's own palette, fixed
  *     in both themes on purpose.
  *  2. Everything here is drawn into a `<canvas>` with `ctx.fillStyle`, which
- *     takes a resolved colour string. A `var()` does not resolve there without
- *     a `getComputedStyle` round trip on every frame.
+ *     takes a resolved colour string. A `var()` does not resolve there.
  *
  * The chrome around the scope — borders and labels — does use tokens, so the
  * card still belongs to the page it sits on.
+ *
+ * Severity colours are the exception to the exception. They are tokens, because
+ * the same blip colour is rendered twice: into the canvas, and into the DOM
+ * legend below it, where `var()` is the correct thing to emit. They are resolved
+ * at the canvas boundary by `resolveCanvasColor` rather than being duplicated as
+ * literals that could drift from the palette.
  */
 
 import React, { useEffect, useRef, useCallback, useState } from "react"
@@ -25,6 +30,54 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { Eye, Shield, Crosshair } from "lucide-react"
+
+/**
+ * Resolve a CSS colour for canvas use.
+ *
+ * Assigning a `var()` token to `ctx.fillStyle` is *silently ignored* — the context
+ * keeps whatever colour it had — and `addColorStop` with the same string throws
+ * `SyntaxError: The string did not match the expected pattern`. Both failures
+ * are invisible until the frame is drawn, so tokens are converted here.
+ *
+ * The browser does the conversion: set the value as `color` on a detached probe
+ * and read it back normalised to `rgb(r, g, b)`. Results are cached per theme,
+ * because the same token resolves to different values in light and dark and the
+ * draw loop runs at 60fps.
+ */
+const canvasColorCache = new Map<string, string>()
+
+function resolveCanvasColor(value: string): string {
+    if (!value || !value.includes("var(")) return value
+    const theme = document.documentElement.classList.contains("dark") ? "dark" : "light"
+    const key = `${theme}|${value}`
+    const cached = canvasColorCache.get(key)
+    if (cached) return cached
+
+    const probe = document.createElement("span")
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none"
+    probe.style.color = value
+    document.body.appendChild(probe)
+    const resolved = getComputedStyle(probe).color || "#ffffff"
+    probe.remove()
+
+    canvasColorCache.set(key, resolved)
+    return resolved
+}
+
+/**
+ * Same resolution, then applied at a given alpha.
+ *
+ * Replaces the old `` `${color}${hexAlpha}` `` concatenation, which only worked
+ * while every colour was a six-digit hex literal.
+ */
+function withCanvasAlpha(value: string, alpha: number): string {
+    const resolved = resolveCanvasColor(value)
+    const channels = resolved.match(/-?[\d.]+/g)
+    if (!channels || channels.length < 3) return resolved
+    const [r, g, b] = channels
+    const a = Math.min(1, Math.max(0, alpha))
+    return `rgba(${r}, ${g}, ${b}, ${a})`
+}
 
 interface ThreatData {
     critical: number
@@ -201,7 +254,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             defense: "#0a0a12",
             attack: "#140a0a"
         }
-        ctx.fillStyle = bgColors[viewMode]
+        ctx.fillStyle = resolveCanvasColor(bgColors[viewMode])
         ctx.fillRect(0, 0, rect.width, rect.height)
 
         // Draw radar grid (concentric circles)
@@ -223,7 +276,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             const radius = (maxRadius / rings) * i
             ctx.beginPath()
             ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
-            ctx.strokeStyle = gridColor
+            ctx.strokeStyle = resolveCanvasColor(gridColor)
             ctx.lineWidth = 1
             ctx.stroke()
         }
@@ -237,7 +290,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 centerX + Math.cos(angle) * maxRadius,
                 centerY + Math.sin(angle) * maxRadius
             )
-            ctx.strokeStyle = gridColorFaint
+            ctx.strokeStyle = resolveCanvasColor(gridColorFaint)
             ctx.lineWidth = 1
             ctx.stroke()
         }
@@ -263,7 +316,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 centerX + Math.cos(trailAngle) * maxRadius,
                 centerY + Math.sin(trailAngle) * maxRadius
             )
-            ctx.strokeStyle = `rgba(${sweepColor[0]}, ${sweepColor[1]}, ${sweepColor[2]}, ${alpha})`
+            ctx.strokeStyle = resolveCanvasColor(`rgba(${sweepColor[0]}, ${sweepColor[1]}, ${sweepColor[2]}, ${alpha})`)
             ctx.lineWidth = 1.5
             ctx.stroke()
         }
@@ -275,7 +328,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             centerX + Math.cos(sweepAngle) * maxRadius,
             centerY + Math.sin(sweepAngle) * maxRadius
         )
-        ctx.strokeStyle = `rgba(${sweepColor[0]}, ${sweepColor[1]}, ${sweepColor[2]}, 0.7)`
+        ctx.strokeStyle = resolveCanvasColor(`rgba(${sweepColor[0]}, ${sweepColor[1]}, ${sweepColor[2]}, 0.7)`)
         ctx.lineWidth = 2
         ctx.stroke()
 
@@ -381,7 +434,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 missileX + Math.cos(missileAngle) * missileLength / 2,
                 missileY + Math.sin(missileAngle) * missileLength / 2
             )
-            ctx.strokeStyle = missile.color
+            ctx.strokeStyle = resolveCanvasColor(missile.color)
             ctx.lineWidth = 3
             ctx.lineCap = "round"
             ctx.stroke()
@@ -396,7 +449,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 missileX - Math.cos(missileAngle) * missileLength * 2,
                 missileY - Math.sin(missileAngle) * missileLength * 2
             )
-            ctx.strokeStyle = "rgba(34, 211, 238, 0.3)"
+            ctx.strokeStyle = resolveCanvasColor("rgba(34, 211, 238, 0.3)")
             ctx.lineWidth = 2
             ctx.stroke()
 
@@ -487,7 +540,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 missileX + Math.cos(missileAngle) * missileLength / 2,
                 missileY + Math.sin(missileAngle) * missileLength / 2
             )
-            ctx.strokeStyle = missile.color
+            ctx.strokeStyle = resolveCanvasColor(missile.color)
             ctx.lineWidth = 3
             ctx.lineCap = "round"
             ctx.stroke()
@@ -502,7 +555,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 missileX + Math.cos(missileAngle) * missileLength * 2,
                 missileY + Math.sin(missileAngle) * missileLength * 2
             )
-            ctx.strokeStyle = `${missile.color}50`
+            ctx.strokeStyle = withCanvasAlpha(missile.color, 0x50 / 255)
             ctx.lineWidth = 2
             ctx.stroke()
 
@@ -548,7 +601,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             // Draw explosion ring
             ctx.beginPath()
             ctx.arc(explosion.x, explosion.y, explosion.radius, 0, Math.PI * 2)
-            ctx.strokeStyle = `${explosion.color}${Math.floor(explosion.alpha * 255).toString(16).padStart(2, '0')}`
+            ctx.strokeStyle = withCanvasAlpha(explosion.color, explosion.alpha)
             ctx.lineWidth = 3
             ctx.stroke()
 
@@ -556,7 +609,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             if (explosion.radius < 15) {
                 ctx.beginPath()
                 ctx.arc(explosion.x, explosion.y, explosion.radius * 0.5, 0, Math.PI * 2)
-                ctx.fillStyle = `rgba(255, 255, 255, ${explosion.alpha * 0.5})`
+                ctx.fillStyle = resolveCanvasColor(`rgba(255, 255, 255, ${explosion.alpha * 0.5})`)
                 ctx.fill()
             }
 
@@ -638,7 +691,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                 blipY + Math.sin(pointAngle - 2.4) * triangleSize
             )
             ctx.closePath()
-            ctx.fillStyle = blip.color
+            ctx.fillStyle = resolveCanvasColor(blip.color)
             ctx.fill()
 
             // Draw label below blip
@@ -649,7 +702,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             const textWidth = ctx.measureText(blip.label).width
 
             // Label background
-            ctx.fillStyle = "rgba(10, 15, 20, 0.9)"
+            ctx.fillStyle = resolveCanvasColor("rgba(10, 15, 20, 0.9)")
             ctx.fillRect(
                 blipX + labelOffsetX - textWidth / 2 - 3,
                 blipY + labelOffsetY - 6,
@@ -658,7 +711,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             )
 
             // Label text
-            ctx.fillStyle = blip.color
+            ctx.fillStyle = resolveCanvasColor(blip.color)
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText(blip.label, blipX + labelOffsetX, blipY + labelOffsetY)
@@ -678,8 +731,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         }
         const glowColor = glowColors[viewMode]
         const centerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 45)
-        centerGlow.addColorStop(0, `${glowColor}${Math.floor(centerAlpha * 21).toString(16).padStart(2, '0')}`)
-        centerGlow.addColorStop(1, "transparent")
+        centerGlow.addColorStop(0, withCanvasAlpha(glowColor, Math.floor(centerAlpha * 21) / 255))
+        centerGlow.addColorStop(1, resolveCanvasColor("transparent"))
         ctx.beginPath()
         ctx.arc(centerX, centerY, 45, 0, Math.PI * 2)
         ctx.fillStyle = centerGlow
@@ -689,8 +742,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         if (viewMode === "attack" && centerImpactRef.current.recovering) {
             const damageGlow = ctx.createRadialGradient(centerX, centerY, 25, centerX, centerY, 50)
             const damageAlpha = (1 - centerImpactRef.current.recoveryProgress) * 0.5
-            damageGlow.addColorStop(0, `${centerImpactRef.current.color}${Math.floor(damageAlpha * 255).toString(16).padStart(2, '0')}`)
-            damageGlow.addColorStop(1, "transparent")
+            damageGlow.addColorStop(0, withCanvasAlpha(centerImpactRef.current.color, damageAlpha))
+            damageGlow.addColorStop(1, resolveCanvasColor("transparent"))
             ctx.beginPath()
             ctx.arc(centerX, centerY, 50, 0, Math.PI * 2)
             ctx.fillStyle = damageGlow
@@ -705,7 +758,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         }
         ctx.beginPath()
         ctx.arc(centerX, centerY, 30, 0, Math.PI * 2)
-        ctx.fillStyle = bgColorsCenter[viewMode]
+        ctx.fillStyle = resolveCanvasColor(bgColorsCenter[viewMode])
         ctx.fill()
 
         // Center circle border with alpha
@@ -715,7 +768,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             attack: "var(--sev-critical)"
         }
         ctx.globalAlpha = centerAlpha
-        ctx.strokeStyle = strokeColors[viewMode]
+        ctx.strokeStyle = resolveCanvasColor(strokeColors[viewMode])
         ctx.lineWidth = 2
         ctx.stroke()
         ctx.globalAlpha = 1
@@ -723,20 +776,20 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         if (viewMode === "defense") {
             // Defense mode: Show shield icon representation
             ctx.font = "bold 16px monospace"
-            ctx.fillStyle = "var(--sev-low)"
+            ctx.fillStyle = resolveCanvasColor("var(--sev-low)")
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText("DEF", centerX, centerY - 2)
 
             // Active investigations count
             ctx.font = "8px monospace"
-            ctx.fillStyle = "#22d3ee"
+            ctx.fillStyle = resolveCanvasColor("#22d3ee")
             ctx.fillText(`${investigationCount} ACTIVE`, centerX, centerY + 12)
         } else if (viewMode === "attack") {
             // Attack mode: Show grade with impact effects
             ctx.globalAlpha = centerAlpha
             ctx.font = "bold 20px monospace"
-            ctx.fillStyle = "var(--sev-critical)"
+            ctx.fillStyle = resolveCanvasColor("var(--sev-critical)")
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText(grade.letter, centerX, centerY - 2)
@@ -744,24 +797,24 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             // Score below with damage indicator
             ctx.font = "8px monospace"
             if (centerImpactRef.current.recovering) {
-                ctx.fillStyle = centerImpactRef.current.color
+                ctx.fillStyle = resolveCanvasColor(centerImpactRef.current.color)
                 ctx.fillText("IMPACT!", centerX, centerY + 12)
             } else {
-                ctx.fillStyle = "rgba(239, 68, 68, 0.7)"
+                ctx.fillStyle = resolveCanvasColor("rgba(239, 68, 68, 0.7)")
                 ctx.fillText(`${data.overallScore}%`, centerX, centerY + 12)
             }
             ctx.globalAlpha = 1
         } else {
             // Radar mode: Grade letter
             ctx.font = "bold 20px monospace"
-            ctx.fillStyle = grade.color
+            ctx.fillStyle = resolveCanvasColor(grade.color)
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText(grade.letter, centerX, centerY - 2)
 
             // Score below
             ctx.font = "8px monospace"
-            ctx.fillStyle = "rgba(148, 163, 184, 0.7)"
+            ctx.fillStyle = resolveCanvasColor("rgba(148, 163, 184, 0.7)")
             ctx.fillText(`${data.overallScore}%`, centerX, centerY + 12)
         }
 

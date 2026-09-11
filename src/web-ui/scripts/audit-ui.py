@@ -92,6 +92,26 @@ PALETTE_RE = re.compile(
     r"-(?:50|100|200|300|400|500|600|700|800|900|950)\b"
 )
 HSL_VAR_RE = re.compile(r"hsl\(\s*var\(")
+
+# A `var()` handed to a canvas 2D context does not resolve. `ctx.fillStyle` and
+# `ctx.strokeStyle` swallow it silently and keep the previous colour, while
+# `addColorStop` throws "The string did not match the expected pattern" at the
+# first frame. Neither failure is visible to a type check or a production build,
+# which is why this is a check rather than a convention.
+#
+# Matching "a token reached the canvas" directly is not possible line-by-line,
+# because the token usually arrives through a variable (`blip.color`) declared
+# somewhere else. So the invariant is inverted and made absolute: every colour
+# handed to a canvas goes through `resolveCanvasColor`, which returns non-token
+# values unchanged. That leaves nothing to infer -- a bare colour at a canvas
+# call site is a finding whether or not this line can see where it came from.
+#
+# CanvasGradient objects are the one exemption: they are not colour strings.
+# They are recognised by having no quote, no "color" and no "var(" on the line.
+CANVAS_COLOR_RE = re.compile(r"\b(fillStyle|strokeStyle|shadowColor|addColorStop)\b")
+CANVAS_RESOLVER_RE = re.compile(r"resolveCanvasColor|withCanvasAlpha")
+CANVAS_COLOR_VALUE_RE = re.compile(r"[\"'`]|olor|var\(")
+COMMENT_LINE_RE = re.compile(r"\s*(//|/\*|\*)")
 EMOJI_RE = re.compile(
     "[" "\U0001f300-\U0001faff" "☀-➿" "\U0001f000-\U0001f2ff" "]"
 )
@@ -269,6 +289,16 @@ def main() -> int:
                 findings["literal-color-in-source"].append(f"{r}:{n}  {lit}")
             for _ in HSL_VAR_RE.finditer(line):
                 findings["hsl-wrapping-oklch"].append(f"{r}:{n}")
+            # Comments are skipped: documenting this rule means naming the API
+            # it governs, and prose about `fillStyle` is not a call to it.
+            cm = CANVAS_COLOR_RE.search(line)
+            if (
+                cm
+                and not COMMENT_LINE_RE.match(line)
+                and not CANVAS_RESOLVER_RE.search(line)
+                and CANVAS_COLOR_VALUE_RE.search(line)
+            ):
+                findings["canvas-color-without-resolver"].append(f"{r}:{n}  {cm.group(1)}")
             for m in EMOJI_RE.finditer(line):
                 findings["emoji-in-source"].append(f"{r}:{n}  {m.group(0)}")
             for m in FIXED_WIDTH_RE.finditer(line):
@@ -368,6 +398,7 @@ def main() -> int:
         "raw-palette-class",
         "literal-color-in-source",
         "hsl-wrapping-oklch",
+        "canvas-color-without-resolver",
         "emoji-in-source",
         "absolute-white-or-black",
         "clickable-without-pointer-cursor",

@@ -126,7 +126,7 @@ job on this screen.
 | Emoji used as icons | 17 | 0 |
 | Controls with no name | 103 | 0 |
 | Layouts that cannot fit a phone | 15 | 0 |
-| **Total findings** | **2,257** | **0** |
+| **Total findings** | **2,284** | **0** |
 | Colour pairs testable | 34 of 102 | 102 of 102 |
 | Colour pairs below standard | 5 | 0 |
 
@@ -180,9 +180,32 @@ spreadsheets, which carry their own appearance when they leave the product. It d
 project. It needs somebody to choose.
 :::
 
+## Then we opened it, and it broke twice
+
+Our checks said zero. A browser said otherwise, in under a minute.
+
+- **Navigation menu** — three groups accidentally sharing one internal name
+- **Dashboard radar graphic** — 4 places stopped with an error, **9 more silently painted the
+  wrong colour**
+
+Both fixed. The second is now covered by a **13th automatic check** — 27 problems against the
+broken version, 0 against the fixed one.
+
+::: notes
+Do not skip this slide because it is unflattering. It is the most persuasive slide in the deck
+for the ask on the previous one.
+
+The nine silent ones are the point worth making aloud. An error that stops is cheap — you see
+it. A wrong colour that carries on is the expensive kind, and it is exactly the kind our static
+checks are worst at finding.
+
+If someone asks why we did not catch it: a type check and a production build both passed too.
+This class of fault only exists at the moment the page runs.
+:::
+
 ## What we are not claiming
 
-**No browser was opened.**
+**The measurement work was done without a browser.**
 
 Everything was measured by reading the source code, not by running the application.
 

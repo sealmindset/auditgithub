@@ -13,7 +13,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
-REF="${1:-HEAD}"
+# Pinned, not HEAD: once the work is committed, HEAD is the fixed tree and the
+# "before" column quietly becomes a second copy of "after".
+REF="${1:-e8b2899}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 

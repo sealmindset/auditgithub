@@ -182,7 +182,7 @@ is a change in one place that flows everywhere. Before, the same change was 1,91
 edits and would never have been done.
 
 **We can now prove the claim rather than assert it.** Three scripts are committed alongside the
-code. One measures every colour pair against the standard. One checks twelve rules about the
+code. One measures every colour pair against the standard. One checks thirteen rules about the
 interface. One is the tool that performed the conversion, kept so the mapping can be inspected.
 They can be wired into the automatic checks that run on every change, which means this cannot
 quietly come undone. That is the difference between "we tidied it up" and "it stays tidy".
@@ -246,9 +246,40 @@ What remains:
 
 ---
 
+## What happened when we did open it in a browser
+
+After all of the above was finished and our checks reported nothing left to find, the product
+was opened in a browser. It immediately showed two faults on the main dashboard. Both were
+caused by this work. Neither could have been caught by any of the checks we had.
+
+**The first** was in the left-hand navigation. The three menu groups are told apart internally
+by a label, and all three had accidentally been given the same one. The software cannot keep
+track of three things with the same name, so it warned that the menu might display items twice
+or drop them entirely.
+
+**The second** was the radar-style graphic on the dashboard. That graphic is *drawn* rather
+than laid out, like a picture painted onto a panel rather than text placed on a page. Drawing
+works differently: it cannot look up a colour by name from our new single file. It needs the
+colour handed to it already worked out. We had given it names. In four places the graphic
+stopped with an error; in nine more it carried on, silently painting the wrong colour, which
+is the worse of the two outcomes because nothing reports it.
+
+Both are fixed. The second one is now prevented from recurring by a thirteenth automatic check,
+which requires every colour used for drawing to be worked out first. Run against the version
+with the fault, it reports 27 problems. Run against the fixed version, none.
+
+**Why this is in the briefing rather than buried.** It is the clearest possible evidence for
+the limit described next, and for why the follow-on item we are asking for matters. Twelve
+automatic checks, plus two other forms of verification, all reported the product clean. A
+person opening it found two real faults in minutes.
+
+---
+
 ## What we are not claiming
 
-**No browser was opened.** This is the important limit, and it shapes everything above.
+**No browser was opened** *during the measurement work*. This is the important limit, and it
+shapes everything above. The browser session described in the previous section came afterwards,
+found two faults, and did not change how anything else in this briefing was measured.
 
 Every measurement in this briefing and in the companion document was taken by reading the
 source code and the colour file — not by running the application and looking at it. That was a
@@ -290,5 +321,7 @@ set, 36 colour instructions the browser was silently discarding, 103 controls a 
 could not identify, 5 source files that were never backed up in version control, and 5 colour
 combinations too faint to meet the international readability standard. All of it is now fixed
 and, more importantly, now measured by scripts that run on every change so it cannot come back.
-The one thing left is to open the product in a browser at four screen widths and confirm with
-our eyes what we have so far only confirmed by reading the code.
+Then we opened it in a browser once and found two more faults our own checks could not see —
+both now fixed, one now checked for automatically. That is the argument for the one thing left:
+open the product at four screen widths and confirm with our eyes what we have so far mostly
+confirmed by reading the code.

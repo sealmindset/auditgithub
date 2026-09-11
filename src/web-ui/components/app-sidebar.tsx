@@ -271,8 +271,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarHeader>
 
             <SidebarContent className="gap-0">
+                {/* Keyed on title, not url: every group carries `url: "#"` as a
+                    placeholder, so url is not unique across groups. */}
                 {filteredGroups.map((group) => (
-                    <SidebarGroup key={group.url}>
+                    <SidebarGroup key={group.title}>
                         <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
                         <SidebarGroupContent>
                             <SidebarMenu>

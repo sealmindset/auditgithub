@@ -36,7 +36,14 @@ WEB_UI = ROOT / "src" / "web-ui"
 OUT = ROOT / "docs" / "playbooks" / "ui-design-system-appendix.md"
 
 # The tree this work started from. Section C is generated against it.
-BASELINE_REF = "HEAD"
+#
+# Pinned to a commit, deliberately. This was `HEAD` while the work was
+# uncommitted, which was correct then and silently wrong the moment the work
+# was committed: the "before" column started measuring the fixed tree and the
+# appendix shrank from 134,770 bytes to 17,786. A moving baseline makes the
+# before/after table converge on zero difference over time, which is the one
+# failure mode that looks like success.
+BASELINE_REF = "e8b2899"
 
 HEADER = """\
 # Appendix — generated, not typed

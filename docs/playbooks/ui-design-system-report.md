@@ -11,9 +11,11 @@ before and after, produced by `python3 scripts/report/build_ui_appendix.py`.
 
 > **This is a completion report, not a proposal.** The work described here has been done and
 > is in the working tree. Every figure below is emitted by a committed script and reproduces
-> on demand; none of it is typed from recollection. The one thing this report cannot claim is
-> stated in §8 and repeated in the briefing: **no browser was driven.** Layout behavior is
-> inferred from source constructs, not observed.
+> on demand; none of it is typed from recollection. The measurement work was done **without
+> driving a browser** — layout behavior is inferred from source constructs, not observed — and
+> §8 states what that does and does not license. The application was subsequently opened once,
+> which immediately produced two runtime defects that every static check had passed. Those are
+> §6a, and they are the evidence for §8 rather than an exception to it.
 
 ---
 
@@ -21,7 +23,7 @@ before and after, produced by `python3 scripts/report/build_ui_appendix.py`.
 
 ```bash
 cd src/web-ui
-python3 scripts/audit-ui.py            # checklist audit, 12 checks
+python3 scripts/audit-ui.py            # checklist audit, 13 checks
 python3 scripts/check-contrast.py      # WCAG contrast, both themes
 cd ../..
 ./scripts/report/ui-baseline-compare.sh    # before/after, one ruler, two trees
@@ -141,9 +143,15 @@ is motion, not layout, and is counted as its own check.
 
 ### 1.8 Five source modules were not in version control
 
-Found while measuring the baseline, not while looking for it. `git archive HEAD
-src/web-ui/lib` fails with `pathspec 'src/web-ui/lib' did not match any files`, and
-`git ls-files src/web-ui/lib` returns nothing.
+Found while measuring the baseline, not while looking for it. Against the baseline commit,
+`git archive e8b2899 src/web-ui/lib` fails with `pathspec 'src/web-ui/lib' did not match any
+files`, and `git ls-tree -r --name-only e8b2899 -- src/web-ui/lib` returns nothing. The same
+`ls-tree` against `HEAD` now returns all five paths, because the fix in §3 tracked them; the
+baseline ref is what reproduces the finding.
+
+> Use `git ls-tree`, not `git ls-files`, to ask this question. `git ls-files` reads the index
+> and ignores a commit argument, so `git ls-files e8b2899 -- src/web-ui/lib` reports five
+> files at the baseline too — a false negative for this finding.
 
 The cause is a Python packaging block in the repository root `.gitignore`:
 
@@ -191,6 +199,7 @@ both trees:
 | `raw-palette-class` | 1912 | 0 |
 | `literal-color-in-source` | 115 | 0 |
 | `hsl-wrapping-oklch` | 36 | 0 |
+| `canvas-color-without-resolver` | 27 | 0 |
 | `emoji-in-source` | 17 | 0 |
 | `absolute-white-or-black` | 56 | 0 |
 | `clickable-without-pointer-cursor` | 2 | 0 |
@@ -200,7 +209,14 @@ both trees:
 | `fixed-width-over-375px` | 2 | 0 |
 | `multi-col-grid-no-breakpoint` | 13 | 0 |
 | `transition-outside-150-300ms` | 1 | 0 |
-| **Total findings** | **2257** | **0** |
+| **Total findings** | **2284** | **0** |
+
+> **One row in that table is not a defect count, and is marked as such rather than quietly
+> included.** `canvas-color-without-resolver` is an invariant check, added after the browser
+> errors described in §6a. The 27 baseline rows are `ThreatRadar` canvas calls that used hex
+> literals — which *work* on a canvas. They are findings under the rule as it now stands, not
+> faults that were live in the baseline tree. The other twelve rows are counts of things that
+> were wrong at the time. Subtracting this row, the comparable baseline total is **2,257**.
 
 | Contrast | Before | After |
 |---|---|---|
@@ -338,13 +354,13 @@ so severity survives a greyscale print and a red/green color vision deficiency.
 ### 3.6 The documented exceptions — literal color that is allowed, and why
 
 A blanket "no literal color" rule would be false, so the auditor carries two allowlists and
-counts what they exempt. **108 literal-color occurrences are exempt across 5 files, plus 14
+counts what they exempt. **109 literal-color occurrences are exempt across 5 files, plus 14
 vendor brand hexes in 1 file. Everything else is 0.**
 
 | File | Occurrences | Why it is allowed |
 |---|---:|---|
 | `components/SecurityReportModal.tsx` | 61 | Builds a standalone HTML/PDF document that leaves the app. The export carries no stylesheet, so `var()` resolves to nothing. |
-| `components/dashboard/ThreatRadar.tsx` | 23 | A canvas-drawn instrument display. `ctx.fillStyle` takes a resolved string, and a radar scope that turns white in light mode stops reading as a radar scope. |
+| `components/dashboard/ThreatRadar.tsx` | 24 | A canvas-drawn instrument display. `ctx.fillStyle` takes a resolved string, and a radar scope that turns white in light mode stops reading as a radar scope. Severity colors are the exception to the exception: they stay tokens and are resolved at the canvas boundary by `resolveCanvasColor`, because the same value is also emitted into the DOM legend. |
 | `lib/chart.ts` | 20 | `CRITICAL_RANK_RAMP` — a ten-step rank ramp. Five severity tokens cannot express ten ranks, and the ramp must not flip lightness with the theme. |
 | `components/DownloadControl.tsx` | 2 | Exported spreadsheet/HTML template, same reason as the report modal. |
 | `app/layout.tsx` | 2 | `theme-color` meta. The browser paints it before any stylesheet loads. |
@@ -427,7 +443,7 @@ the dark block legitimately inherits reads as missing.
 
 | Gate | Result |
 |---|---|
-| `python3 scripts/audit-ui.py` | 148 files, 12 checks, **0 findings**, exit 0 |
+| `python3 scripts/audit-ui.py` | 148 files, 13 checks, **0 findings**, exit 0 |
 | `python3 scripts/check-contrast.py` | **102 pairs measured, 94 enforced, 0 below threshold**, exit 0, no missing tokens |
 | `npx tsc --noEmit` | clean |
 | `npx next build` | green, all routes compiled |
@@ -448,6 +464,61 @@ git has not seen before — 4 new UI primitives, 3 new audit scripts, and the 5 
   not overlooked — but they are also now the only place where an exported report's appearance
   can drift from the product's, which is a known and accepted seam.
 - **`ThreatRadar`'s palette.** Documented as an instrument display in the file header.
+
+---
+
+## 6a. Two defects the static checks missed, found by running the application
+
+This section exists because it is the counter-example to everything above. After the work in
+§1–§5 was complete and the auditor reported **0 findings**, the application was opened in a
+browser and threw two errors on the dashboard. Both were introduced by this change. Neither
+was visible to `tsc --noEmit`, to `next build`, or to any of the twelve checks in place at
+the time.
+
+**Defect 1 — duplicate React key in the sidebar.** `components/app-sidebar.tsx:277` keyed the
+navigation group map on `group.url`. All three groups carry `url: "#"` as a placeholder
+(lines 78, 126, 159), so all three keys were `#`:
+
+```
+Encountered two children with the same key, `#`.
+```
+
+Fixed by keying on `group.title`, which is unique across the three groups. Every other key in
+the file already used `title`; this one did not.
+
+**Defect 2 — CSS custom properties handed to a canvas.** `ThreatRadar` was tokenized along
+with everything else, but a canvas 2D context does not resolve `var()`. The symptom seen in
+the browser:
+
+```
+SyntaxError: The string did not match the expected pattern.
+    at addColorStop
+    at ThreatRadar.useCallback[draw] (components/dashboard/ThreatRadar.tsx:681)
+```
+
+The trace names one line. The actual scope was **thirteen call sites**: four threw, because
+they concatenated a hex alpha suffix onto the token string (`` `${glowColor}50` ``), and nine
+failed *silently*, because `ctx.fillStyle = "var(--sev-low)"` is ignored and the context keeps
+whatever color it last held. The tokens reached the canvas indirectly, through
+`THREAT_TYPES[].color` → blip → missile → explosion → center impact, which is why the count is
+larger than the trace suggests.
+
+Reverting to hex literals was rejected: the same values are also rendered into the DOM legend
+below the canvas, where `var()` is correct. Instead every canvas color now passes through
+`resolveCanvasColor`, which resolves a token via a detached probe element and caches per theme,
+and `withCanvasAlpha`, which replaces the hex-suffix concatenation with `rgba()`.
+
+**What now prevents recurrence.** A thirteenth check, `canvas-color-without-resolver`. It does
+not try to detect "a token reached a canvas" — that is not decidable line-by-line when the
+value arrives through a variable. It inverts the requirement instead: every color handed to
+`fillStyle`, `strokeStyle`, `shadowColor` or `addColorStop` must go through the resolver, which
+returns non-token values unchanged. Run against the tree as committed in `0d05aa6`, the check
+reports **27 findings**; against the current tree, **0**.
+
+**What this says about §8.** The coverage limit stated there was not a formality. Driving the
+application found two real defects in a tree that twelve static checks, a type check and a
+production build all called clean — within minutes of opening it. Residual item 1 below is the generalization of this paragraph, and the two errors here
+are the evidence for its priority.
 
 ---
 
