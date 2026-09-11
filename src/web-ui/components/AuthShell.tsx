@@ -8,9 +8,10 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ModeToggle } from "@/components/mode-toggle";
 import { OrganizationSelector } from "@/components/OrganizationSelector";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { QuickSearch } from "@/components/QuickSearch";
-import { Loader2 } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 /** Routes that render without the sidebar / auth gate. */
 const PUBLIC_PREFIXES = ["/login", "/invite"];
@@ -40,13 +41,9 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // ── Loading: show spinner while /auth/me resolves ────────────────
+  // ── Loading: branded hold, not a naked spinner ───────────────────
   if (status === "loading") {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <BootScreen />;
   }
 
   // ── Unauthenticated on a protected page: render nothing (redirect in flight)
@@ -58,21 +55,55 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <TenantProvider>
       <SidebarProvider>
-        <div className="flex min-h-screen w-full">
+        <div className="flex min-h-screen w-full bg-background">
           <AppSidebar />
-          <main className="flex-1 overflow-y-auto bg-background">
-            <div className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6">
-              <SidebarTrigger />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header
+              data-print-hide
+              className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/70 sm:px-4"
+            >
+              <SidebarTrigger className="-ml-1" />
+              <Separator
+                orientation="vertical"
+                className="mr-1 hidden h-5 sm:block"
+              />
               <OrganizationSelector />
-              <Breadcrumbs />
+              <Separator
+                orientation="vertical"
+                className="mx-1 hidden h-5 lg:block"
+              />
+              <div className="hidden min-w-0 lg:block">
+                <Breadcrumbs />
+              </div>
               <div className="flex-1" />
               <QuickSearch />
               <ModeToggle />
-            </div>
-            {children}
-          </main>
+            </header>
+
+            <main
+              id="main-content"
+              className="flex min-w-0 flex-1 flex-col overflow-x-hidden"
+            >
+              {children}
+            </main>
+          </div>
         </div>
       </SidebarProvider>
     </TenantProvider>
+  );
+}
+
+/** Shown while /auth/me resolves. Holds the layout so nothing flashes. */
+function BootScreen() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
+      <div className="relative flex size-12 items-center justify-center rounded-xl border border-primary-line bg-primary-soft text-primary-text">
+        <ShieldCheck className="size-6" aria-hidden="true" />
+        <span className="absolute inset-0 animate-ping rounded-xl border border-primary/30" />
+      </div>
+      <p className="text-sm text-muted-foreground" role="status">
+        Verifying your session…
+      </p>
+    </div>
   );
 }

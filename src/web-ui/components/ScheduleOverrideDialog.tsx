@@ -315,7 +315,7 @@ export function ScheduleOverrideDialog({
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         {schedule.repository_name}
-                        {isLocked && <Lock className="h-4 w-4 text-amber-500" />}
+                        {isLocked && <Lock className="h-4 w-4 text-warning-text" />}
                     </DialogTitle>
                     <DialogDescription>
                         View and manage schedule settings
@@ -323,7 +323,7 @@ export function ScheduleOverrideDialog({
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
                         <TabsTrigger value="details" className="flex items-center gap-1">
                             <Info className="h-4 w-4" />
                             Details
@@ -386,9 +386,9 @@ export function ScheduleOverrideDialog({
                             {/* AI Confidence */}
                             {isAI && schedule.ai_confidence !== null && (
                                 <div className="flex items-center gap-2">
-                                    <Bot className="h-4 w-4 text-blue-500" />
+                                    <Bot className="h-4 w-4 text-info-text" />
                                     <Label className="text-muted-foreground">AI Confidence:</Label>
-                                    <span className="text-blue-500 font-medium">
+                                    <span className="text-info-text font-medium">
                                         {Math.round(schedule.ai_confidence * 100)}%
                                     </span>
                                 </div>
@@ -409,8 +409,8 @@ export function ScheduleOverrideDialog({
 
                             {/* Locked Info */}
                             {isLocked && schedule.locked_by_email && (
-                                <div className="flex items-center gap-2 p-3 bg-amber-500/10 rounded-md border border-amber-500/20">
-                                    <Lock className="h-4 w-4 text-amber-500" />
+                                <div className="flex items-center gap-2 p-3 bg-warning/10 rounded-md border border-warning/20">
+                                    <Lock className="h-4 w-4 text-warning-text" />
                                     <div className="text-sm">
                                         <span className="text-muted-foreground">Locked by </span>
                                         <span className="font-medium">{schedule.locked_by_email}</span>
@@ -465,8 +465,8 @@ export function ScheduleOverrideDialog({
                         ) : (
                             /* Unlock Form */
                             <div className="space-y-4">
-                                <div className="p-4 bg-amber-500/10 rounded-md border border-amber-500/20">
-                                    <p className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-2">
+                                <div className="p-4 bg-warning/10 rounded-md border border-warning/20">
+                                    <p className="text-sm font-medium text-warning-text mb-2">
                                         This schedule is currently locked
                                     </p>
                                     {schedule.locked_by_email && (

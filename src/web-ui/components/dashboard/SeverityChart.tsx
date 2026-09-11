@@ -17,6 +17,7 @@ import {
 import { Shield, TrendingUp, TrendingDown, Calendar, GitBranch } from "lucide-react"
 import { FeedbackButton } from "./FeedbackButton"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { AXIS_PROPS, severityColor } from "@/lib/chart"
 
 interface SeverityDataPoint {
     name: string
@@ -34,12 +35,12 @@ interface RepoGrowthPoint {
 
 // Severity order and colors
 const SEVERITY_CONFIG: Record<string, { order: number; color: string; gradient: string }> = {
-    info: { order: 1, color: "#3b82f6", gradient: "url(#infoGradient)" },
-    low: { order: 2, color: "#22c55e", gradient: "url(#lowGradient)" },
-    warning: { order: 3, color: "#f59e0b", gradient: "url(#warningGradient)" },
-    medium: { order: 4, color: "#eab308", gradient: "url(#mediumGradient)" },
-    high: { order: 5, color: "#f97316", gradient: "url(#highGradient)" },
-    critical: { order: 6, color: "#ef4444", gradient: "url(#criticalGradient)" },
+    info: { order: 1, color: severityColor("info"), gradient: "url(#infoGradient)" },
+    low: { order: 2, color: severityColor("low"), gradient: "url(#lowGradient)" },
+    warning: { order: 3, color: severityColor("medium"), gradient: "url(#warningGradient)" },
+    medium: { order: 4, color: severityColor("medium"), gradient: "url(#mediumGradient)" },
+    high: { order: 5, color: severityColor("high"), gradient: "url(#highGradient)" },
+    critical: { order: 6, color: severityColor("critical"), gradient: "url(#criticalGradient)" },
 }
 
 const SeverityTooltip = ({ active, payload, label }: any) => {
@@ -56,13 +57,13 @@ const SeverityTooltip = ({ active, payload, label }: any) => {
                     {data.trend !== undefined && data.trend !== 0 && (
                         <p className="text-sm flex items-center gap-1">
                             <span className="text-muted-foreground">7-day trend: </span>
-                            <span className={data.trend >= 0 ? "text-red-500" : "text-green-500"}>
+                            <span className={data.trend >= 0 ? "text-danger-text" : "text-success-text"}>
                                 {data.trend >= 0 ? "+" : ""}{data.trend}%
                             </span>
                             {data.trend >= 0 ? (
-                                <TrendingUp className="h-3 w-3 text-red-500" />
+                                <TrendingUp className="h-3 w-3 text-danger-text" />
                             ) : (
-                                <TrendingDown className="h-3 w-3 text-green-500" />
+                                <TrendingDown className="h-3 w-3 text-success-text" />
                             )}
                         </p>
                     )}
@@ -161,7 +162,7 @@ export function SeverityChart() {
     return (
         <Card className="relative overflow-hidden">
             {/* Animated background gradient */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-red-500/5" />
+            <div className="absolute inset-0 bg-gradient-to-br from-info/5 via-transparent to-danger/5" />
 
             <div className="absolute top-2 right-2 z-10">
                 <FeedbackButton
@@ -174,7 +175,7 @@ export function SeverityChart() {
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle className="flex items-center gap-2">
-                            <Shield className="h-5 w-5 text-blue-500" />
+                            <Shield className="h-5 w-5 text-info-text" />
                             Severity Distribution
                         </CardTitle>
                         <CardDescription>Open findings by severity with repository growth</CardDescription>
@@ -203,28 +204,28 @@ export function SeverityChart() {
                                 <defs>
                                     {/* Gradients for bars */}
                                     <linearGradient id="infoGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={1} />
-                                        <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.8} />
+                                        <stop offset="0%" stopColor="var(--sev-low)" stopOpacity={1} />
+                                        <stop offset="100%" stopColor="var(--sev-low)" stopOpacity={0.8} />
                                     </linearGradient>
                                     <linearGradient id="lowGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#22c55e" stopOpacity={1} />
-                                        <stop offset="100%" stopColor="#16a34a" stopOpacity={0.8} />
+                                        <stop offset="0%" stopColor="var(--success)" stopOpacity={1} />
+                                        <stop offset="100%" stopColor="var(--success)" stopOpacity={0.8} />
                                     </linearGradient>
                                     <linearGradient id="warningGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={1} />
-                                        <stop offset="100%" stopColor="#d97706" stopOpacity={0.8} />
+                                        <stop offset="0%" stopColor="var(--sev-medium)" stopOpacity={1} />
+                                        <stop offset="100%" stopColor="var(--sev-medium)" stopOpacity={0.8} />
                                     </linearGradient>
                                     <linearGradient id="mediumGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#eab308" stopOpacity={1} />
-                                        <stop offset="100%" stopColor="#ca8a04" stopOpacity={0.8} />
+                                        <stop offset="0%" stopColor="var(--sev-medium)" stopOpacity={1} />
+                                        <stop offset="100%" stopColor="var(--sev-medium)" stopOpacity={0.8} />
                                     </linearGradient>
                                     <linearGradient id="highGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#f97316" stopOpacity={1} />
-                                        <stop offset="100%" stopColor="#ea580c" stopOpacity={0.8} />
+                                        <stop offset="0%" stopColor="var(--sev-high)" stopOpacity={1} />
+                                        <stop offset="100%" stopColor="var(--sev-high)" stopOpacity={0.8} />
                                     </linearGradient>
                                     <linearGradient id="criticalGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#ef4444" stopOpacity={1} />
-                                        <stop offset="100%" stopColor="#dc2626" stopOpacity={0.8} />
+                                        <stop offset="0%" stopColor="var(--sev-critical)" stopOpacity={1} />
+                                        <stop offset="100%" stopColor="var(--sev-critical)" stopOpacity={0.8} />
                                     </linearGradient>
                                     {/* Glow filter for bars */}
                                     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -236,21 +237,8 @@ export function SeverityChart() {
                                     </filter>
                                 </defs>
 
-                                <XAxis
-                                    dataKey="name"
-                                    stroke="#888888"
-                                    fontSize={11}
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tick={{ fill: '#888888' }}
-                                />
-                                <YAxis
-                                    stroke="#888888"
-                                    fontSize={11}
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tick={{ fill: '#888888' }}
-                                />
+                                <XAxis dataKey="name" {...AXIS_PROPS} tick={{ fill: "var(--muted-foreground)" }} />
+                                <YAxis {...AXIS_PROPS} tick={{ fill: "var(--muted-foreground)" }} />
                                 <Tooltip content={<SeverityTooltip />} />
 
                                 {/* Bars with dynamic colors - no barSize to let them fill available space */}
@@ -301,14 +289,14 @@ export function SeverityChart() {
                                     </h4>
                                     <div className="flex items-center gap-4 text-xs">
                                         <div className="flex items-center gap-1.5">
-                                            <div className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
+                                            <div className="w-2.5 h-2.5 rounded-full bg-info" />
                                             <span className="text-muted-foreground">Repos: </span>
                                             <span className="font-semibold">{repoInfo.totalRepos.toLocaleString()}</span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
-                                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                                            <div className="w-2.5 h-2.5 rounded-full bg-success" />
                                             <span className="text-muted-foreground">Avg/year: </span>
-                                            <span className="font-semibold text-emerald-500">{avgReposPerYear}</span>
+                                            <span className="font-semibold text-success-text">{avgReposPerYear}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -317,39 +305,39 @@ export function SeverityChart() {
                                     <ComposedChart data={repoGrowth} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="repoGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                                                <stop offset="5%" stopColor="var(--chart-6)" stopOpacity={0.4} />
+                                                <stop offset="95%" stopColor="var(--chart-6)" stopOpacity={0} />
                                             </linearGradient>
                                             <linearGradient id="newRepoGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
-                                                <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
+                                                <stop offset="0%" stopColor="var(--success)" stopOpacity={1} />
+                                                <stop offset="100%" stopColor="var(--success)" stopOpacity={0.55} />
                                             </linearGradient>
                                         </defs>
                                         <XAxis
                                             dataKey="year"
-                                            stroke="#888888"
+                                            stroke="var(--muted-foreground)"
                                             fontSize={10}
                                             tickLine={false}
                                             axisLine={false}
-                                            tick={{ fill: '#888888' }}
+                                            tick={{ fill: 'var(--muted-foreground)' }}
                                         />
                                         <YAxis
                                             yAxisId="left"
-                                            stroke="#888888"
+                                            stroke="var(--muted-foreground)"
                                             fontSize={10}
                                             tickLine={false}
                                             axisLine={false}
-                                            tick={{ fill: '#888888' }}
+                                            tick={{ fill: 'var(--muted-foreground)' }}
                                             tickFormatter={(value) => value >= 1000 ? `${(value/1000).toFixed(1)}k` : value}
                                         />
                                         <YAxis
                                             yAxisId="right"
                                             orientation="right"
-                                            stroke="#888888"
+                                            stroke="var(--muted-foreground)"
                                             fontSize={10}
                                             tickLine={false}
                                             axisLine={false}
-                                            tick={{ fill: '#10b981' }}
+                                            tick={{ fill: "var(--success-text)" }}
                                         />
                                         <Tooltip content={<RepoGrowthTooltip />} />
 
@@ -359,7 +347,7 @@ export function SeverityChart() {
                                             type="monotone"
                                             dataKey="repos"
                                             name="Total Repos"
-                                            stroke="#06b6d4"
+                                            stroke="var(--chart-6)"
                                             strokeWidth={2}
                                             fill="url(#repoGradient)"
                                         />
@@ -370,10 +358,10 @@ export function SeverityChart() {
                                             type="monotone"
                                             dataKey="repos"
                                             name="Repo Trend"
-                                            stroke="#06b6d4"
+                                            stroke="var(--chart-6)"
                                             strokeWidth={3}
-                                            dot={{ fill: '#06b6d4', strokeWidth: 2, r: 4 }}
-                                            activeDot={{ r: 6, strokeWidth: 2, fill: '#06b6d4' }}
+                                            dot={{ fill: 'var(--chart-6)', strokeWidth: 2, r: 4 }}
+                                            activeDot={{ r: 6, strokeWidth: 2, fill: 'var(--chart-6)' }}
                                         />
 
                                         {/* Bars for new repos per year */}
@@ -392,11 +380,11 @@ export function SeverityChart() {
                                 {/* Year Legend */}
                                 <div className="flex justify-center gap-6 mt-3 text-xs">
                                     <div className="flex items-center gap-1.5">
-                                        <div className="w-8 h-1 rounded bg-cyan-500" />
+                                        <div className="w-8 h-1 rounded bg-info" />
                                         <span className="text-muted-foreground">Cumulative Repos</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                        <div className="w-3 h-3 rounded-sm bg-emerald-500" />
+                                        <div className="w-3 h-3 rounded-sm bg-success" />
                                         <span className="text-muted-foreground">New Repos/Year</span>
                                     </div>
                                 </div>

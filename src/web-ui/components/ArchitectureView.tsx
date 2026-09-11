@@ -220,7 +220,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                             </DialogHeader>
                             <div className="flex-1 overflow-y-auto grid gap-4 py-4">
                                 <div className="flex gap-2">
-                                    <Input
+                                    <Input aria-label="Version description"
                                         placeholder="Version description..."
                                         value={newVersionDesc}
                                         onChange={(e) => setNewVersionDesc(e.target.value)}
@@ -229,7 +229,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                 </div>
                                 <div className="space-y-2">
                                     {versions.map((v) => (
-                                        <div key={v.id} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50 dark:hover:bg-slate-900">
+                                        <div key={v.id} className="flex items-center justify-between p-2 border rounded hover:bg-muted">
                                             <div>
                                                 <div className="font-medium">v{v.version_number}</div>
                                                 <div className="text-xs text-muted-foreground">{new Date(v.created_at).toLocaleString()}</div>
@@ -277,7 +277,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
             </div>
 
             {error && (
-                <div className="rounded-md bg-red-50 p-4 text-sm text-red-500">
+                <div className="rounded-md bg-danger-soft p-4 text-sm text-danger-text">
                     {error}
                 </div>
             )}
@@ -432,7 +432,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                             <CardTitle>Architecture Diagram</CardTitle>
                             <CardDescription>Generated from Python code</CardDescription>
                         </CardHeader>
-                        <CardContent className="flex justify-center bg-white p-4 rounded-md">
+                        <CardContent className="flex justify-center rounded-md bg-white p-4">
                             {diagramImage ? (
                                 <img
                                     src={`data:image/png;base64,${diagramImage}`}
@@ -443,9 +443,9 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                 <div className="text-muted-foreground italic p-8 text-center">
                                     {diagramCode ? (
                                         <div className="space-y-2">
-                                            <p className="text-red-500 font-semibold">Diagram generation failed.</p>
+                                            <p className="text-danger-text font-semibold">Diagram generation failed.</p>
                                             <p>Check the Python Code tab for errors (e.g., incorrect imports).</p>
-                                            <p className="text-xs text-slate-500">Common fix: Change <code>from diagrams.generic.network import Internet</code> to <code>from diagrams.onprem.network import Internet</code></p>
+                                            <p className="text-xs text-muted-foreground">Common fix: Change <code>from diagrams.generic.network import Internet</code> to <code>from diagrams.onprem.network import Internet</code></p>
                                         </div>
                                     ) : (
                                         "No diagram generated yet."
@@ -464,14 +464,14 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                         </CardHeader>
                         <CardContent>
                             {editMode ? (
-                                <Textarea
+                                <Textarea aria-label="Diagram code"
                                     value={diagramCode || ""}
                                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDiagramCode(e.target.value)}
                                     className="min-h-[400px] font-mono text-sm"
                                     placeholder="from diagrams import Diagram..."
                                 />
                             ) : (
-                                <pre className="bg-slate-950 text-slate-50 p-4 rounded-md overflow-x-auto text-sm">
+                                <pre className="bg-muted text-muted-foreground p-4 rounded-md overflow-x-auto text-sm">
                                     <code>{diagramCode}</code>
                                 </pre>
                             )}
@@ -492,7 +492,7 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                                         variant="default"
                                         size="sm"
                                         onClick={() => setAskAIOpen(true)}
-                                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                                        className="bg-gradient-to-r from-ai to-info hover:from-ai hover:to-info"
                                     >
                                         <Brain className="mr-2 h-4 w-4" />
                                         Ask AI Security Architect
@@ -502,13 +502,13 @@ export function ArchitectureView({ projectId, organization, repositoryName }: Ar
                         </CardHeader>
                         <CardContent>
                             {editMode ? (
-                                <Textarea
+                                <Textarea aria-label="Report content"
                                     value={report}
                                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setReport(e.target.value)}
                                     className="min-h-[600px] font-mono"
                                 />
                             ) : (
-                                <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:underline prose-pre:bg-slate-900 prose-pre:text-slate-50">
+                                <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-info-text hover:prose-a:underline prose-pre:bg-muted prose-pre:text-muted-foreground">
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                         {report}
                                     </ReactMarkdown>

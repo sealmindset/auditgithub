@@ -4,7 +4,7 @@ import { AlertTriangle, Shield } from "lucide-react"
 
 export default function BreakGlassBanner() {
   return (
-    <div className="bg-red-600 text-white px-4 py-3 shadow-lg">
+    <div className="bg-danger text-danger-foreground px-4 py-3 shadow-lg">
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 flex-shrink-0 animate-pulse" />

@@ -212,8 +212,8 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
                             <div className="flex items-center gap-2">
                                 <Badge variant="outline">{finding.scanner_name}</Badge>
                                 <Badge className={
-                                    finding.severity === "Critical" ? "bg-red-500" :
-                                    finding.severity === "High" ? "bg-orange-500" : "bg-blue-500"
+                                    finding.severity === "Critical" ? "bg-danger" :
+                                    finding.severity === "High" ? "bg-warning" : "bg-info"
                                 }>
                                     {finding.severity}
                                 </Badge>
@@ -288,13 +288,13 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
                                     <p className="text-sm text-muted-foreground">
                                         {exceptionRule.rule_type} for {exceptionRule.scanner_name}
                                         {exceptionRule.affected_count > 1 && (
-                                            <span className="ml-2 text-orange-500">
+                                            <span className="ml-2 text-warning-text">
                                                 ({exceptionRule.affected_count} findings affected)
                                             </span>
                                         )}
                                     </p>
                                 </div>
-                                <Button
+                                <Button aria-label="Copy rule"
                                     variant="outline"
                                     size="sm"
                                     onClick={() => copyToClipboard(exceptionRule.rule_content)}
@@ -302,7 +302,7 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
                                     {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                                 </Button>
                             </div>
-                            <pre className="overflow-x-auto rounded-md bg-slate-950 p-4 text-sm text-slate-50">
+                            <pre className="overflow-x-auto rounded-md bg-muted p-4 text-sm text-muted-foreground">
                                 <code>{exceptionRule.rule_content}</code>
                             </pre>
                             <Alert>

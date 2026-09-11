@@ -15,6 +15,7 @@ import {
 } from "recharts"
 import { TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AXIS_PROPS, GRID_PROPS, TOOLTIP_PROPS, severityColor } from "@/lib/chart"
 
 interface TimelinePoint {
   date: string
@@ -37,10 +38,10 @@ interface FindingTrendsData {
 }
 
 const SEVERITY_COLORS = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#22c55e"
+  critical: severityColor("critical"),
+  high: severityColor("high"),
+  medium: severityColor("medium"),
+  low: severityColor("low"),
 }
 
 function TrendIndicator({ current, previous }: { current: number; previous: number }) {
@@ -64,7 +65,7 @@ function TrendIndicator({ current, previous }: { current: number; previous: numb
   return (
     <span className={cn(
       "inline-flex items-center gap-0.5 text-xs font-medium",
-      isGood ? "text-green-600" : "text-red-600"
+      isGood ? "text-success-text" : "text-danger-text"
     )}>
       {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       {Math.abs(change).toFixed(0)}%
@@ -140,29 +141,10 @@ export function FindingTrendsWidget() {
                 data={timeline}
                 margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
               >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  className="text-muted-foreground"
-                />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  className="text-muted-foreground"
-                  width={30}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--background))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "6px",
-                    fontSize: "12px"
-                  }}
-                />
+                <CartesianGrid {...GRID_PROPS} />
+                <XAxis dataKey="date" {...AXIS_PROPS} />
+                <YAxis width={32} {...AXIS_PROPS} />
+                <Tooltip {...TOOLTIP_PROPS} />
                 <Area
                   type="monotone"
                   dataKey="critical"

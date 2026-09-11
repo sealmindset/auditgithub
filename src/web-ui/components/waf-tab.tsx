@@ -63,33 +63,33 @@ import { useToast } from "@/components/ui/use-toast"
 const WAF_SEVERITIES = {
     active_risk: {
         label: "Active Risk",
-        color: "#dc2626",
-        bgColor: "bg-red-100 dark:bg-red-950",
-        borderColor: "border-red-500",
+        color: "var(--danger)",
+        bgColor: "bg-danger-soft",
+        borderColor: "border-danger",
         icon: ShieldAlert,
         description: "Live misconfiguration, exploitable now",
     },
     code_risk: {
         label: "Code Risk",
-        color: "#ea580c",
-        bgColor: "bg-orange-100 dark:bg-orange-950",
-        borderColor: "border-orange-500",
+        color: "var(--sev-high)",
+        bgColor: "bg-warning-soft",
+        borderColor: "border-warning",
         icon: Code,
         description: "Deployable misconfiguration in Terraform",
     },
     drift_risk: {
         label: "Drift Risk",
-        color: "#d97706",
-        bgColor: "bg-amber-100 dark:bg-amber-950",
-        borderColor: "border-amber-500",
+        color: "var(--warning)",
+        bgColor: "bg-warning-soft",
+        borderColor: "border-warning",
         icon: GitCompare,
         description: "Code and live AWS config diverge",
     },
     informational: {
         label: "Informational",
-        color: "#2563eb",
-        bgColor: "bg-blue-100 dark:bg-blue-950",
-        borderColor: "border-blue-500",
+        color: "var(--info)",
+        bgColor: "bg-info-soft",
+        borderColor: "border-info",
         icon: Info,
         description: "Best practice recommendation",
     },
@@ -98,9 +98,9 @@ const WAF_SEVERITIES = {
 type WAFSeverity = keyof typeof WAF_SEVERITIES
 
 const SOURCE_BADGES = {
-    static: { label: "Static", className: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300 dark:border-purple-700" },
-    live: { label: "Live", className: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 border-green-300 dark:border-green-700" },
-    drift: { label: "Drift", className: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700" },
+    static: { label: "Static", className: "bg-ai-soft text-ai-text border-ai-line dark:border-ai" },
+    live: { label: "Live", className: "bg-success-soft text-success-text border-success-line dark:border-success" },
+    drift: { label: "Drift", className: "bg-warning-soft text-warning-text border-warning-line dark:border-warning" },
 } as const
 
 type FindingSource = keyof typeof SOURCE_BADGES
@@ -219,9 +219,9 @@ function CopyButton({ text }: { text: string }) {
     }, [text])
 
     return (
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCopy}>
+        <Button aria-label="Copy value" variant="ghost" size="icon" className="h-7 w-7" onClick={handleCopy}>
             {copied ? (
-                <Check className="h-3.5 w-3.5 text-green-500" />
+                <Check className="h-3.5 w-3.5 text-success-text" />
             ) : (
                 <Copy className="h-3.5 w-3.5 text-muted-foreground" />
             )}
@@ -288,10 +288,10 @@ function RuleTypeBadge({ ruleType }: { ruleType: string }) {
 
 function DriftStatusBadge({ status }: { status: WAFDriftItem["status"] }) {
     const styles: Record<WAFDriftItem["status"], string> = {
-        match: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 border-green-300 dark:border-green-700",
-        drift: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700",
-        code_only: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300 dark:border-purple-700",
-        live_only: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-300 dark:border-orange-700",
+        match: "bg-success-soft text-success-text border-success-line dark:border-success",
+        drift: "bg-warning-soft text-warning-text border-warning-line dark:border-warning",
+        code_only: "bg-ai-soft text-ai-text border-ai-line dark:border-ai",
+        live_only: "bg-warning-soft text-warning-text border-warning-line dark:border-warning",
     }
     const labels: Record<WAFDriftItem["status"], string> = {
         match: "Match",
@@ -631,8 +631,8 @@ function FindingsView({
                                         <div key={src} className="flex items-center gap-1.5">
                                             <div
                                                 className={`h-3 w-3 rounded-sm ${
-                                                    src === "static" ? "bg-purple-500" :
-                                                    src === "live" ? "bg-green-500" : "bg-amber-500"
+                                                    src === "static" ? "bg-ai" :
+                                                    src === "live" ? "bg-success" : "bg-warning"
                                                 }`}
                                             />
                                             <span className="text-sm">
@@ -649,7 +649,7 @@ function FindingsView({
                                         const count = summary.source_counts?.[src] ?? 0
                                         const pct = (count / summary.total) * 100
                                         if (pct === 0) return null
-                                        const colors = { static: "bg-purple-500", live: "bg-green-500", drift: "bg-amber-500" }
+                                        const colors = { static: "bg-ai", live: "bg-success", drift: "bg-warning" }
                                         return (
                                             <div
                                                 key={src}
@@ -748,7 +748,7 @@ function FindingsView({
 
                 <div className="relative flex-1 min-w-[200px] max-w-[320px]">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
+                    <Input aria-label="Search findings"
                         placeholder="Search findings..."
                         className="pl-8 h-9"
                         value={searchText}
@@ -772,7 +772,7 @@ function FindingsView({
             ) : findings.length === 0 ? (
                 <Card className="border-dashed">
                     <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                        <CheckCircle2 className="h-10 w-10 text-green-500 mb-3" />
+                        <CheckCircle2 className="h-10 w-10 text-success-text mb-3" />
                         <h3 className="font-semibold mb-1">No Findings Match</h3>
                         <p className="text-sm text-muted-foreground">
                             {hasActiveFilters
@@ -789,7 +789,7 @@ function FindingsView({
 
                         return (
                             <Collapsible key={finding.id} open={isExpanded} onOpenChange={() => toggleExpanded(finding.id)}>
-                                <Card className={`border-l-4 ${config?.borderColor ?? "border-gray-300"} transition-shadow hover:shadow-sm`}>
+                                <Card className={`border-l-4 ${config?.borderColor ??"border-border"} transition-shadow hover:shadow-sm`}>
                                     <CardContent className="p-0">
                                         {/* Collapsed header */}
                                         <CollapsibleTrigger asChild>
@@ -808,7 +808,7 @@ function FindingsView({
                                                         <SeverityBadge severity={finding.severity} />
                                                         <RuleTypeBadge ruleType={finding.rule_type} />
                                                         {finding.reviewed && (
-                                                            <Badge variant="outline" className="bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 gap-1">
+                                                            <Badge variant="outline" className="bg-success-soft text-success-text border-success-line dark:border-success gap-1">
                                                                 <Check className="h-3 w-3" />
                                                                 Reviewed
                                                             </Badge>
@@ -821,7 +821,7 @@ function FindingsView({
                                                     {/* Meta row */}
                                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                                                         {finding.source_repo_name && (
-                                                            <span className="flex items-center gap-1 font-medium text-violet-600 dark:text-violet-400">
+                                                            <span className="flex items-center gap-1 font-medium text-ai-text">
                                                                 <GitBranch className="h-3 w-3" />
                                                                 {finding.source_repo_name}
                                                             </span>
@@ -853,13 +853,13 @@ function FindingsView({
                                                 <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <Button
+                                                            <Button aria-label="Ask AI about this finding"
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 className="h-8 w-8"
                                                                 onClick={() => onSendToAI(finding)}
                                                             >
-                                                                <Sparkles className="h-4 w-4 text-purple-500" />
+                                                                <Sparkles className="h-4 w-4 text-ai-text" />
                                                             </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>Ask AI about this finding</TooltipContent>
@@ -903,7 +903,7 @@ function FindingsView({
                                                         <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                                                             Recommendation
                                                         </h5>
-                                                        <div className="rounded-md border bg-blue-50/50 dark:bg-blue-950/30 p-3">
+                                                        <div className="rounded-md border bg-info-soft/50 dark:bg-info-soft/30 p-3">
                                                             <p className="text-sm leading-relaxed">
                                                                 {finding.recommendation}
                                                             </p>
@@ -956,7 +956,7 @@ function FindingsView({
                                                         className="gap-1.5"
                                                         onClick={() => onSendToAI(finding)}
                                                     >
-                                                        <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                                                        <Sparkles className="h-3.5 w-3.5 text-ai-text" />
                                                         Ask AI
                                                     </Button>
                                                     {!finding.reviewed && (
@@ -1063,10 +1063,10 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
                     const data = await res.json()
                     const mapped: WAFDriftWebACL[] = (data.web_acls || []).map((acl: Record<string, unknown>) => {
                         const driftItems: WAFDriftItem[] = ((acl.drift_items as Record<string, unknown>[]) || []).map(d => ({
-                            rule_name: d.rule_name,
-                            attribute: d.attribute,
-                            code_value: d.code_value ?? null,
-                            live_value: d.live_value ?? null,
+                            rule_name: String(d.rule_name ?? ""),
+                            attribute: String(d.attribute ?? ""),
+                            code_value: d.code_value == null ? null : String(d.code_value),
+                            live_value: d.live_value == null ? null : String(d.live_value),
                             status: "drift" as const,
                             code_detail: d.code_value ? String(d.code_value) : null,
                             live_detail: d.live_value ? String(d.live_value) : null,
@@ -1115,9 +1115,9 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
     // No live audit data available
     if (hasLiveData === false || (driftData.length === 0 && hasLiveData !== true)) {
         return (
-            <Card className="border-dashed border-amber-300 dark:border-amber-700">
+            <Card className="border-dashed border-warning-line dark:border-warning">
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                    <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
+                    <AlertTriangle className="h-12 w-12 text-warning-text mb-4" />
                     <h3 className="text-lg font-semibold mb-2">Live Audit Data Unavailable</h3>
                     <p className="text-muted-foreground max-w-lg mb-4">
                         Drift comparison requires both static analysis (from Terraform code) and live audit data
@@ -1137,9 +1137,9 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
 
     if (driftData.length === 0) {
         return (
-            <Card className="border-dashed border-green-300 dark:border-green-700">
+            <Card className="border-dashed border-success-line dark:border-success">
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                    <CheckCircle2 className="h-12 w-12 text-green-500 mb-4" />
+                    <CheckCircle2 className="h-12 w-12 text-success-text mb-4" />
                     <h3 className="text-lg font-semibold mb-2">No Drift Detected</h3>
                     <p className="text-muted-foreground max-w-md">
                         All WAF configurations in Terraform match the live AWS environment.
@@ -1151,10 +1151,10 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
     }
 
     const statusRowColors: Record<WAFDriftItem["status"], string> = {
-        match: "bg-green-50/50 dark:bg-green-950/20",
-        drift: "bg-amber-50/50 dark:bg-amber-950/20",
-        code_only: "bg-purple-50/50 dark:bg-purple-950/20",
-        live_only: "bg-orange-50/50 dark:bg-orange-950/20",
+        match: "bg-success-soft/50 dark:bg-success-soft/20",
+        drift: "bg-warning-soft/50 dark:bg-warning-soft/20",
+        code_only: "bg-ai-soft/50 dark:bg-ai-soft/20",
+        live_only: "bg-warning-soft/50 dark:bg-warning-soft/20",
     }
 
     return (
@@ -1189,29 +1189,32 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
                                 <div className="flex items-center gap-3">
                                     <CardTitle className="text-base">{webAcl.web_acl_name}</CardTitle>
                                     {webAcl.in_code && (
-                                        <Badge variant="outline" className="bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 gap-1">
+                                        <Badge variant="outline" className="bg-success-soft text-success-text border-success-line dark:border-success gap-1">
                                             <CheckCircle2 className="h-3 w-3" />
                                             In Code
                                         </Badge>
                                     )}
                                     {webAcl.in_aws && (
-                                        <Badge variant="outline" className="bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 gap-1">
+                                        <Badge variant="outline" className="bg-success-soft text-success-text border-success-line dark:border-success gap-1">
                                             <CheckCircle2 className="h-3 w-3" />
                                             In AWS
                                         </Badge>
                                     )}
                                 </div>
                                 {driftCount > 0 && (
-                                    <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">
+                                    <Badge variant="outline" className="bg-warning-soft text-warning-text border-warning-line dark:border-warning">
                                         {driftCount} {driftCount === 1 ? "difference" : "differences"}
                                     </Badge>
                                 )}
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <div className="rounded-md border overflow-hidden">
+                            {/* Six columns of rule comparison do not compress below
+                                ~52rem without clipping, so the table scrolls inside
+                                its own card rather than pushing the page sideways. */}
+                            <div className="rounded-md border overflow-x-auto">
                                 {/* Table header */}
-                                <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                <div className="grid min-w-[52rem] grid-cols-12 gap-2 px-4 py-2.5 bg-muted/50 border-b text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                     <div className="col-span-1" />
                                     <div className="col-span-2">Rule Name</div>
                                     <div className="col-span-2">Attribute</div>
@@ -1232,7 +1235,7 @@ function DriftComparisonView({ projectId }: { projectId: string }) {
                                         return (
                                             <div key={rowKey}>
                                                 <div
-                                                    className={`grid grid-cols-12 gap-2 px-4 py-2.5 items-center text-sm border-b last:border-b-0 ${statusRowColors[item.status]} ${hasDetail ? "cursor-pointer hover:bg-muted/30" : ""}`}
+                                                    className={`grid min-w-[52rem] grid-cols-12 gap-2 px-4 py-2.5 items-center text-sm border-b last:border-b-0 ${statusRowColors[item.status]} ${hasDetail ? "cursor-pointer hover:bg-muted/30" : ""}`}
                                                     onClick={() => hasDetail && toggleRow(rowKey)}
                                                 >
                                                     <div className="col-span-1">
@@ -1404,7 +1407,7 @@ function AskAIView({
                 <CardHeader className="pb-3 border-b shrink-0">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-base flex items-center gap-2">
-                            <Sparkles className="h-4.5 w-4.5 text-purple-500" />
+                            <Sparkles className="h-4.5 w-4.5 text-ai-text" />
                             WAF Security Assistant
                         </CardTitle>
                         <span className="text-xs text-muted-foreground">
@@ -1417,8 +1420,8 @@ function AskAIView({
                         /* Empty state with suggested prompts */
                         <div className="flex flex-col items-center justify-center h-full gap-6">
                             <div className="text-center space-y-2">
-                                <div className="h-16 w-16 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center mx-auto mb-4">
-                                    <MessageSquare className="h-8 w-8 text-purple-500" />
+                                <div className="h-16 w-16 rounded-full bg-ai-soft flex items-center justify-center mx-auto mb-4">
+                                    <MessageSquare className="h-8 w-8 text-ai-text" />
                                 </div>
                                 <h3 className="text-lg font-semibold">WAF Security Assistant</h3>
                                 <p className="text-sm text-muted-foreground max-w-md">
@@ -1434,7 +1437,7 @@ function AskAIView({
                                         className="justify-start text-left h-auto py-3 px-4"
                                         onClick={() => sendMessage(prompt)}
                                     >
-                                        <Lightbulb className="h-4 w-4 text-amber-500 mr-2 shrink-0" />
+                                        <Lightbulb className="h-4 w-4 text-warning-text mr-2 shrink-0" />
                                         <span className="text-sm">{prompt}</span>
                                     </Button>
                                 ))}
@@ -1445,14 +1448,14 @@ function AskAIView({
                             {messages.map((msg, idx) => (
                                 <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                                     {msg.role === "assistant" && (
-                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                            <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ai-soft flex items-center justify-center">
+                                            <Bot className="h-4 w-4 text-ai-text" />
                                         </div>
                                     )}
                                     <div
                                         className={`max-w-[75%] rounded-lg p-3 ${
                                             msg.role === "user"
-                                                ? "bg-blue-500 text-white"
+                                                ? "bg-info text-info-foreground"
                                                 : "bg-muted"
                                         }`}
                                     >
@@ -1494,13 +1497,13 @@ function AskAIView({
                                                 </ReactMarkdown>
                                             </div>
                                         )}
-                                        <p className={`text-xs mt-2 ${msg.role === "user" ? "text-blue-100" : "text-muted-foreground"}`}>
+                                        <p className={`text-xs mt-2 ${msg.role ==="user" ? "text-info-text" : "text-muted-foreground"}`}>
                                             {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                         </p>
                                     </div>
                                     {msg.role === "user" && (
-                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                            <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-info-soft flex items-center justify-center">
+                                            <User className="h-4 w-4 text-info-text" />
                                         </div>
                                     )}
                                 </div>
@@ -1508,8 +1511,8 @@ function AskAIView({
                             {/* Loading indicator */}
                             {isLoading && (
                                 <div className="flex gap-3 justify-start">
-                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                        <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ai-soft flex items-center justify-center">
+                                        <Bot className="h-4 w-4 text-ai-text" />
                                     </div>
                                     <div className="bg-muted rounded-lg p-3 flex items-center gap-2">
                                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1524,7 +1527,7 @@ function AskAIView({
 
             {/* Input area */}
             <div className="pt-4 flex gap-2">
-                <Textarea
+                <Textarea aria-label="Message"
                     placeholder="Ask about your WAF configuration, request rule generation, or analyze security posture..."
                     value={input}
                     onChange={e => setInput(e.target.value)}
@@ -1537,7 +1540,7 @@ function AskAIView({
                         }
                     }}
                 />
-                <Button
+                <Button aria-label="Send message"
                     onClick={handleSubmit}
                     disabled={isLoading || !input.trim()}
                     className="h-auto px-4"

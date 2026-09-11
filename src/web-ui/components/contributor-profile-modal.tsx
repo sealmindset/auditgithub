@@ -98,15 +98,15 @@ interface ContributorProfileModalProps {
 function getEmploymentStatusIcon(status: string) {
     switch (status) {
         case 'active':
-            return <CheckCircle2 className="h-4 w-4 text-green-500" />
+            return <CheckCircle2 className="h-4 w-4 text-success-text" />
         case 'terminated':
-            return <XCircle className="h-4 w-4 text-red-500" />
+            return <XCircle className="h-4 w-4 text-danger-text" />
         case 'inactive':
-            return <Clock className="h-4 w-4 text-yellow-500" />
+            return <Clock className="h-4 w-4 text-warning-text" />
         case 'contractor':
-            return <Building2 className="h-4 w-4 text-blue-500" />
+            return <Building2 className="h-4 w-4 text-info-text" />
         default:
-            return <HelpCircle className="h-4 w-4 text-gray-500" />
+            return <HelpCircle className="h-4 w-4 text-muted-foreground" />
     }
 }
 
@@ -124,13 +124,13 @@ function getEmploymentStatusBadge(status: string) {
 function getAliasTypeIcon(type: string) {
     switch (type) {
         case 'email':
-            return <Mail className="h-4 w-4 text-blue-500" />
+            return <Mail className="h-4 w-4 text-info-text" />
         case 'github_username':
-            return <GitBranch className="h-4 w-4 text-purple-500" />
+            return <GitBranch className="h-4 w-4 text-ai-text" />
         case 'name':
-            return <User className="h-4 w-4 text-green-500" />
+            return <User className="h-4 w-4 text-success-text" />
         default:
-            return <HelpCircle className="h-4 w-4 text-gray-500" />
+            return <HelpCircle className="h-4 w-4 text-muted-foreground" />
     }
 }
 
@@ -195,7 +195,7 @@ export function ContributorProfileModal({
                         <DialogHeader>
                             <DialogTitle className="sr-only">Error loading profile</DialogTitle>
                         </DialogHeader>
-                        <AlertTriangle className="h-12 w-12 text-red-500" />
+                        <AlertTriangle className="h-12 w-12 text-danger-text" />
                         <p className="text-muted-foreground">Failed to load profile: {error}</p>
                     </div>
                 ) : notFound ? (
@@ -229,13 +229,13 @@ export function ContributorProfileModal({
                                     <DialogTitle className="text-2xl flex items-center gap-2">
                                         {profile.display_name}
                                         {profile.is_verified && (
-                                            <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                            <CheckCircle2 className="h-5 w-5 text-success-text" />
                                         )}
                                     </DialogTitle>
                                     <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-2 mt-1">
                                         <span>{profile.primary_email}</span>
                                         {profile.primary_github_username && (
-                                            <span className="text-blue-500">@{profile.primary_github_username}</span>
+                                            <span className="text-info-text">@{profile.primary_github_username}</span>
                                         )}
                                     </div>
                                 </div>
@@ -254,7 +254,7 @@ export function ContributorProfileModal({
                         </DialogHeader>
 
                         {/* Stats Cards */}
-                        <div className="grid grid-cols-5 gap-4 my-4">
+                        <div className="grid grid-cols-2 gap-4 my-4 sm:grid-cols-3 lg:grid-cols-5">
                             <Card>
                                 <CardContent className="pt-4">
                                     <div className="text-2xl font-bold">{profile.alias_count}</div>
@@ -275,13 +275,13 @@ export function ContributorProfileModal({
                             </Card>
                             <Card>
                                 <CardContent className="pt-4">
-                                    <div className="text-2xl font-bold text-red-600">{profile.critical_files_count}</div>
+                                    <div className="text-2xl font-bold text-danger-text">{profile.critical_files_count}</div>
                                     <div className="text-xs text-muted-foreground">Critical Files</div>
                                 </CardContent>
                             </Card>
                             <Card>
                                 <CardContent className="pt-4">
-                                    <div className="text-2xl font-bold text-orange-500">{profile.files_with_findings}</div>
+                                    <div className="text-2xl font-bold text-warning-text">{profile.files_with_findings}</div>
                                     <div className="text-xs text-muted-foreground">Files w/ Findings</div>
                                 </CardContent>
                             </Card>
@@ -289,7 +289,7 @@ export function ContributorProfileModal({
 
                         {/* AI Summary if available */}
                         {profile.ai_summary && (
-                            <Card className="mb-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950">
+                            <Card className="mb-4 bg-gradient-to-r from-ai-soft to-info-soft dark:from-ai dark:to-info">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm flex items-center gap-2">
                                         <Shield className="h-4 w-4" />
@@ -375,7 +375,7 @@ export function ContributorProfileModal({
                                                         >
                                                             <div className="flex items-center gap-2">
                                                                 {getAliasTypeIcon(alias.alias_type)}
-                                                                <span className="text-sm text-blue-500">@{alias.alias_value}</span>
+                                                                <span className="text-sm text-info-text">@{alias.alias_value}</span>
                                                                 {alias.is_primary && (
                                                                     <Badge variant="default" className="text-[10px]">Primary</Badge>
                                                                 )}
@@ -434,13 +434,13 @@ export function ContributorProfileModal({
 
                             <TabsContent value="repos" className="mt-4">
                                 <ScrollArea className="h-[300px] pr-4">
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                         {profile.repo_names.map((repo, idx) => (
                                             <div
                                                 key={idx}
                                                 className="flex items-center gap-2 p-3 rounded-lg bg-muted"
                                             >
-                                                <GitBranch className="h-5 w-5 text-blue-500" />
+                                                <GitBranch className="h-5 w-5 text-info-text" />
                                                 <span className="text-sm font-medium truncate">{repo}</span>
                                             </div>
                                         ))}

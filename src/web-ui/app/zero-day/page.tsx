@@ -1,10 +1,20 @@
+"use client"
+
+import { Crosshair } from "lucide-react"
+
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 import { ZeroDayView } from "@/components/ZeroDayView"
 
 export default function ZeroDayPage() {
     return (
-        <div className="container mx-auto py-6">
-            <h1 className="text-3xl font-bold mb-6">Zero Day Analysis</h1>
+        <PageShell>
+            <PageHeader
+                icon={Crosshair}
+                eyebrow="Research"
+                title="Zero day analysis"
+                description="Targeted analysis of code paths that no published advisory covers yet."
+            />
             <ZeroDayView />
-        </div>
+        </PageShell>
     )
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
+import { SeverityBadge, SeverityDot } from "@/components/ui/severity-badge"
 import { Button } from "@/components/ui/button"
 import {
     Dialog,
@@ -56,24 +56,23 @@ export function SeverityEditor({ findingId, currentSeverity, onUpdate }: Severit
         }
     }
 
-    const getSeverityColor = (sev: string) => {
-        const s = sev.toLowerCase()
-        if (s === "critical") return "bg-red-600 hover:bg-red-700"
-        if (s === "high") return "bg-orange-500 hover:bg-orange-600"
-        if (s === "medium") return "bg-yellow-500 hover:bg-yellow-600 text-black"
-        if (s === "low") return "bg-green-500 hover:bg-green-600"
-        return "bg-gray-400 hover:bg-gray-500"
-    }
-
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <div className="group cursor-pointer flex items-center gap-2">
-                    <Badge className={`${getSeverityColor(currentSeverity)} cursor-pointer transition-all hover:scale-105`}>
-                        {currentSeverity}
-                        <Pencil className="ml-1 h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </Badge>
-                </div>
+                <button
+                    type="button"
+                    className="group flex cursor-pointer items-center gap-2 rounded-md focus-visible:ring-[3px] focus-visible:ring-ring/45 focus-visible:outline-none"
+                    aria-label={`Severity ${currentSeverity}. Click to change.`}
+                >
+                    <SeverityBadge
+                        severity={currentSeverity}
+                        className="transition-colors group-hover:brightness-95"
+                    />
+                    <Pencil
+                        className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                        aria-hidden="true"
+                    />
+                </button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
@@ -93,7 +92,7 @@ export function SeverityEditor({ findingId, currentSeverity, onUpdate }: Severit
                                 {SEVERITIES.map((sev) => (
                                     <SelectItem key={sev} value={sev}>
                                         <div className="flex items-center gap-2">
-                                            <div className={`h-2 w-2 rounded-full ${getSeverityColor(sev).split(" ")[0]}`} />
+                                            <SeverityDot severity={sev} />
                                             {sev}
                                         </div>
                                     </SelectItem>

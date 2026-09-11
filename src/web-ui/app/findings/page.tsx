@@ -10,6 +10,7 @@ import { Loader2, LayoutGrid, List, Clock, FileCode, Archive, ShieldAlert } from
 import Link from "next/link"
 import { ProjectScorecard } from "@/components/project-scorecard"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface Finding {
     id: string
@@ -66,15 +67,15 @@ function getDaysSince(date: string | null): number | null {
 function getSeverityBadge(severity: string) {
     const severityLower = severity?.toLowerCase() || "unknown"
     const colorMap: Record<string, string> = {
-        critical: "bg-red-500 hover:bg-red-600",
-        high: "bg-orange-500 hover:bg-orange-600",
-        medium: "bg-yellow-500 hover:bg-yellow-600",
-        low: "bg-blue-500 hover:bg-blue-600",
-        info: "bg-gray-400 hover:bg-gray-500",
-        warning: "bg-amber-500 hover:bg-amber-600",
+        critical: "bg-danger hover:bg-danger",
+        high: "bg-warning hover:bg-warning",
+        medium: "bg-warning hover:bg-warning",
+        low: "bg-info hover:bg-info",
+        info: "bg-muted-foreground hover:bg-muted-foreground",
+        warning: "bg-warning hover:bg-warning",
     }
     return (
-        <Badge className={colorMap[severityLower] || "bg-gray-500"}>
+        <Badge className={colorMap[severityLower] || "bg-muted-foreground"}>
             {severity}
         </Badge>
     )
@@ -94,14 +95,14 @@ function getCommitAgeBadge(days: number | null, hasFileCommit: boolean, isArchiv
     if (hasFileCommit) {
         icons.push(
             <span key="file" title="File-level commit date">
-                <FileCode className="h-3 w-3 text-blue-500" />
+                <FileCode className="h-3 w-3 text-info-text" />
             </span>
         )
     }
     if (isArchived) {
         icons.push(
             <span key="archived" title="Archived repository">
-                <Archive className="h-3 w-3 text-amber-500" />
+                <Archive className="h-3 w-3 text-warning-text" />
             </span>
         )
     }
@@ -109,14 +110,14 @@ function getCommitAgeBadge(days: number | null, hasFileCommit: boolean, isArchiv
     let badge
     if (days < 31) {
         badge = (
-            <Badge className="bg-green-500 hover:bg-green-600">
+            <Badge className="bg-success hover:bg-success">
                 <Clock className="h-3 w-3 mr-1" />
                 {days}d ago
             </Badge>
         )
     } else if (days < 365) {
         badge = (
-            <Badge className="bg-yellow-500 hover:bg-yellow-600">
+            <Badge className="bg-warning hover:bg-warning">
                 <Clock className="h-3 w-3 mr-1" />
                 {days}d ago
             </Badge>
@@ -149,14 +150,14 @@ function getRiskBadge(riskScore: number | null, riskLevel: string | null) {
     }
 
     const colorMap: Record<string, string> = {
-        critical: "bg-red-500 hover:bg-red-600",
-        high: "bg-orange-500 hover:bg-orange-600",
-        medium: "bg-yellow-500 hover:bg-yellow-600",
-        low: "bg-blue-500 hover:bg-blue-600",
+        critical: "bg-danger hover:bg-danger",
+        high: "bg-warning hover:bg-warning",
+        medium: "bg-warning hover:bg-warning",
+        low: "bg-info hover:bg-info",
     }
 
     return (
-        <Badge className={colorMap[riskLevel?.toLowerCase() || ""] || "bg-gray-500"}>
+        <Badge className={colorMap[riskLevel?.toLowerCase() || ""] || "bg-muted-foreground"}>
             <ShieldAlert className="h-3 w-3 mr-1" />
             {riskScore}
         </Badge>
@@ -189,7 +190,7 @@ const columns: ColumnDef<Finding>[] = [
         cell: ({ row }) => (
             <Link
                 href={`/findings/${row.original.id}`}
-                className="font-medium text-blue-600 hover:underline max-w-md truncate block"
+                className="font-medium text-info-text hover:underline max-w-md truncate block"
                 title={row.getValue("title")}
             >
                 {row.getValue("title")}
@@ -207,7 +208,7 @@ const columns: ColumnDef<Finding>[] = [
                 return (
                     <Link
                         href={`/projects/${finding.repository_id}`}
-                        className="font-medium text-blue-600 hover:underline"
+                        className="font-medium text-info-text hover:underline"
                     >
                         {finding.repo_name}
                     </Link>
@@ -265,11 +266,11 @@ const columns: ColumnDef<Finding>[] = [
             const status = row.getValue("status") as string
             const statusLower = status?.toLowerCase()
             const colorMap: Record<string, string> = {
-                open: "border-red-500 text-red-600",
-                in_progress: "border-yellow-500 text-yellow-600",
-                resolved: "border-green-500 text-green-600",
-                false_positive: "border-gray-500 text-gray-600",
-                accepted_risk: "border-purple-500 text-purple-600",
+                open: "border-danger text-danger-text",
+                in_progress: "border-warning text-warning-text",
+                resolved: "border-success text-success-text",
+                false_positive: "border-border-strong text-muted-foreground",
+                accepted_risk: "border-ai text-ai-text",
             }
             return (
                 <Badge variant="outline" className={colorMap[statusLower] || ""}>
@@ -380,21 +381,24 @@ export default function FindingsPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">All Findings</h1>
-                    <p className="text-muted-foreground">
+        <PageShell>
+            <PageHeader
+                icon={ShieldAlert}
+                eyebrow="Security"
+                title="All findings"
+                description={
+                    <>
                         {total.toLocaleString()} security issues across all repositories.
                         {loading && findings.length > 0 && (
-                            <span className="ml-2 text-blue-500">
-                                <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
-                                Loading more...
+                            <span className="ml-2 inline-flex items-center gap-1 text-info-text">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                Loading more
                             </span>
                         )}
-                    </p>
-                </div>
-                <div className="flex items-center gap-2 rounded-lg border p-1 bg-muted">
+                    </>
+                }
+                actions={
+                <div className="flex items-center gap-1 rounded-lg border bg-muted p-1">
                     <Button
                         variant={viewMode === "scorecard" ? "secondary" : "ghost"}
                         size="sm"
@@ -414,7 +418,8 @@ export default function FindingsPage() {
                         <span className="hidden lg:inline">Table</span>
                     </Button>
                 </div>
-            </div>
+                }
+            />
 
             {viewMode === "table" ? (
                 <DataTable
@@ -429,6 +434,6 @@ export default function FindingsPage() {
             ) : (
                 <ProjectScorecard />
             )}
-        </div>
+        </PageShell>
     )
 }

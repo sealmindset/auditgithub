@@ -118,21 +118,21 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
     }
 
     const providerColors: Record<string, string> = {
-        aws: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
-        azure: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
-        gcp: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
-        saas: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
-        onprem: "bg-gray-100 text-gray-800 dark:bg-gray-950 dark:text-gray-300",
-        custom: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+        aws: "bg-warning-soft text-warning-text",
+        azure: "bg-info-soft text-info-text",
+        gcp: "bg-danger-soft text-danger-text",
+        saas: "bg-ai-soft text-ai-text",
+        onprem: "bg-muted text-foreground dark:text-muted-foreground",
+        custom: "bg-success-soft text-success-text",
     }
 
     return (
         <div className="space-y-4">
-            <Card className="border-violet-200 dark:border-violet-800">
+            <Card className="border-ai-line">
                 <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-base flex items-center gap-2">
-                            <Wand2 className="h-4 w-4 text-violet-500" />
+                            <Wand2 className="h-4 w-4 text-ai-text" />
                             Diagram Editor Agent
                         </CardTitle>
                         <div className="flex items-center gap-2">
@@ -147,7 +147,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                                 <Palette className="h-3.5 w-3.5 mr-1.5" />
                                 Browse Icons
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7">
+                            <Button aria-label="Close editor" variant="ghost" size="icon" onClick={onClose} className="h-7 w-7">
                                 <X className="h-4 w-4" />
                             </Button>
                         </div>
@@ -155,7 +155,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                 </CardHeader>
                 <CardContent className="space-y-3">
                     <div className="flex gap-2">
-                        <Input
+                        <Input aria-label="Diagram edit instruction"
                             value={instruction}
                             onChange={e => setInstruction(e.target.value)}
                             onKeyDown={e => e.key === "Enter" && !loading && submitEdit()}
@@ -163,7 +163,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                             disabled={loading}
                             className="flex-1"
                         />
-                        <Button onClick={submitEdit} disabled={loading || !instruction.trim()} size="sm">
+                        <Button aria-label="Submit edit" onClick={submitEdit} disabled={loading || !instruction.trim()} size="sm">
                             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                         </Button>
                     </div>
@@ -178,7 +178,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                             <Badge
                                 key={suggestion}
                                 variant="outline"
-                                className="cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-950 text-xs"
+                                className="cursor-pointer hover:bg-ai-soft text-xs"
                                 onClick={() => setInstruction(suggestion)}
                             >
                                 {suggestion}
@@ -191,7 +191,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                         <div className="space-y-3 border-t pt-3">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                                    <p className="text-sm font-medium text-success-text">
                                         Preview Ready
                                     </p>
                                     {changesSummary && (
@@ -213,7 +213,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                                     <Button
                                         size="sm"
                                         onClick={() => onApply(previewCode, previewImage)}
-                                        className="bg-green-600 hover:bg-green-700"
+                                        className="bg-success hover:bg-success"
                                     >
                                         <Check className="h-3.5 w-3.5 mr-1" />
                                         Accept
@@ -222,7 +222,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                             </div>
 
                             {previewImage && (
-                                <div className="bg-white rounded-md p-2 border">
+                                <div className="rounded-md border bg-white p-2">
                                     <img
                                         src={`data:image/png;base64,${previewImage}`}
                                         alt="Preview"
@@ -232,7 +232,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                             )}
 
                             {!previewImage && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                <p className="text-xs text-warning-text">
                                     Image generation failed — code changes are still valid. Accept and use &quot;Create Diagram&quot; to render.
                                 </p>
                             )}
@@ -254,7 +254,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
 
             {/* Icon Browser Sheet */}
             <Sheet open={iconBrowserOpen} onOpenChange={setIconBrowserOpen}>
-                <SheetContent className="w-[500px] sm:max-w-[500px]">
+                <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px]">
                     <SheetHeader>
                         <SheetTitle>Icon Catalog</SheetTitle>
                         <SheetDescription>
@@ -267,7 +267,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
+                                <Input aria-label="Search icons"
                                     value={iconSearch}
                                     onChange={e => setIconSearch(e.target.value)}
                                     onKeyDown={e => e.key === "Enter" && searchIcons(iconSearch)}
@@ -290,7 +290,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                                 <Badge
                                     key={prov}
                                     variant="outline"
-                                    className={`cursor-pointer text-xs ${providerColors[prov] || ""}`}
+                                    className={`cursor-pointer text-xs ${providerColors[prov] ||""}`}
                                     onClick={() => {
                                         setIconSearch(prov)
                                         searchIcons(prov)
@@ -318,7 +318,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                                                     {icon.provider}
                                                 </Badge>
                                                 {icon.is_custom && (
-                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-300">
+                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 bg-success-soft text-success-text border-success-line">
                                                         brand
                                                     </Badge>
                                                 )}
@@ -336,7 +336,7 @@ export function DiagramEditorPanel({ projectId, currentCode, onApply, onClose }:
                                                 title="Copy import"
                                             >
                                                 {copiedIcon === icon.name ? (
-                                                    <Check className="h-3.5 w-3.5 text-green-500" />
+                                                    <Check className="h-3.5 w-3.5 text-success-text" />
                                                 ) : (
                                                     <Copy className="h-3.5 w-3.5" />
                                                 )}

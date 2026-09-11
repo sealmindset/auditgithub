@@ -1,5 +1,25 @@
 "use client"
 
+/**
+ * Threat radar — a simulated instrument display, not a themed surface.
+ *
+ * This component is the design system's second documented exception to
+ * "no literal colours" (the first is `CRITICAL_RANK_RAMP` in `lib/chart.ts`).
+ * Two reasons, both specific to this widget:
+ *
+ *  1. The scope is always dark. A radar screen that turns white in light mode
+ *     stops reading as a radar screen — the sweep, the blips and the glow all
+ *     depend on emitting light against a dark ground. The three `#0a0f14`-class
+ *     backgrounds and the cyan tracer are the instrument's own palette, fixed
+ *     in both themes on purpose.
+ *  2. Everything here is drawn into a `<canvas>` with `ctx.fillStyle`, which
+ *     takes a resolved colour string. A `var()` does not resolve there without
+ *     a `getComputedStyle` round trip on every frame.
+ *
+ * The chrome around the scope — borders and labels — does use tokens, so the
+ * card still belongs to the page it sits on.
+ */
+
 import React, { useEffect, useRef, useCallback, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -24,21 +44,21 @@ interface ThreatRadarProps {
 
 // Calculate letter grade from score
 function getGrade(score: number): { letter: string; color: string } {
-    if (score >= 90) return { letter: "A", color: "#22c55e" }
-    if (score >= 80) return { letter: "B", color: "#84cc16" }
-    if (score >= 70) return { letter: "C", color: "#eab308" }
-    if (score >= 60) return { letter: "D", color: "#f97316" }
-    return { letter: "F", color: "#ef4444" }
+    if (score >= 90) return { letter: "A", color: "var(--success)" }
+    if (score >= 80) return { letter: "B", color: "var(--success)" }
+    if (score >= 70) return { letter: "C", color: "var(--sev-medium)" }
+    if (score >= 60) return { letter: "D", color: "var(--sev-high)" }
+    return { letter: "F", color: "var(--sev-critical)" }
 }
 
 // Threat configuration
 const THREATS = [
-    { key: "critical", label: "CRIT", fullLabel: "Critical", color: "#ef4444", link: "/findings?severity=critical" },
-    { key: "high", label: "HIGH", fullLabel: "High", color: "#f97316", link: "/findings?severity=high" },
-    { key: "secrets", label: "SECR", fullLabel: "Secrets", color: "#a855f7", link: "/attack-surface" },
-    { key: "staleContributors", label: "STAL", fullLabel: "Stale Users", color: "#3b82f6", link: "/attack-surface" },
-    { key: "abandoned", label: "ABAN", fullLabel: "Abandoned", color: "#6b7280", link: "/attack-surface" },
-    { key: "medium", label: "MED", fullLabel: "Medium", color: "#eab308", link: "/findings?severity=medium" },
+    { key: "critical", label: "CRIT", fullLabel: "Critical", color: "var(--sev-critical)", link: "/findings?severity=critical" },
+    { key: "high", label: "HIGH", fullLabel: "High", color: "var(--sev-high)", link: "/findings?severity=high" },
+    { key: "secrets", label: "SECR", fullLabel: "Secrets", color: "var(--ai)", link: "/attack-surface" },
+    { key: "staleContributors", label: "STAL", fullLabel: "Stale Users", color: "var(--sev-low)", link: "/attack-surface" },
+    { key: "abandoned", label: "ABAN", fullLabel: "Abandoned", color: "var(--muted-foreground)", link: "/attack-surface" },
+    { key: "medium", label: "MED", fullLabel: "Medium", color: "var(--sev-medium)", link: "/findings?severity=medium" },
 ]
 
 // Blip state for animation - exactly 6 blips, one per threat type
@@ -653,8 +673,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         // Center glow - color based on mode
         const glowColors: Record<ViewMode, string> = {
             radar: grade.color,
-            defense: "#3b82f6",
-            attack: "#ef4444"
+            defense: "var(--sev-low)",
+            attack: "var(--sev-critical)"
         }
         const glowColor = glowColors[viewMode]
         const centerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 45)
@@ -691,8 +711,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         // Center circle border with alpha
         const strokeColors: Record<ViewMode, string> = {
             radar: grade.color,
-            defense: "#3b82f6",
-            attack: "#ef4444"
+            defense: "var(--sev-low)",
+            attack: "var(--sev-critical)"
         }
         ctx.globalAlpha = centerAlpha
         ctx.strokeStyle = strokeColors[viewMode]
@@ -703,7 +723,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
         if (viewMode === "defense") {
             // Defense mode: Show shield icon representation
             ctx.font = "bold 16px monospace"
-            ctx.fillStyle = "#3b82f6"
+            ctx.fillStyle = "var(--sev-low)"
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText("DEF", centerX, centerY - 2)
@@ -716,7 +736,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
             // Attack mode: Show grade with impact effects
             ctx.globalAlpha = centerAlpha
             ctx.font = "bold 20px monospace"
-            ctx.fillStyle = "#ef4444"
+            ctx.fillStyle = "var(--sev-critical)"
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             ctx.fillText(grade.letter, centerX, centerY - 2)
@@ -774,24 +794,24 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
     const modeConfig: Record<ViewMode, { bg: string; border: string; text: string; icon: React.ReactNode; title: string; status: string }> = {
         radar: {
             bg: "bg-[#0a0f14]",
-            border: "border-green-900/30",
-            text: "text-green-500",
+            border: "border-success-line/30",
+            text: "text-success-text",
             icon: <Eye className="h-5 w-5" />,
             title: "Threat Visibility",
             status: "ACTIVE"
         },
         defense: {
             bg: "bg-[#0a0a12]",
-            border: "border-blue-900/30",
-            text: "text-blue-500",
+            border: "border-info-line/30",
+            text: "text-info-text",
             icon: <Shield className="h-5 w-5" />,
             title: "Defense Mode",
             status: "ARMED"
         },
         attack: {
             bg: "bg-[#140a0a]",
-            border: "border-red-900/30",
-            text: "text-red-500",
+            border: "border-danger-line/30",
+            text: "text-danger-text",
             icon: <Crosshair className="h-5 w-5" />,
             title: "Attack Simulation",
             status: "THREAT"
@@ -817,14 +837,14 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                     </CardTitle>
                     <div className="flex items-center gap-3">
                         {/* Three-way Mode Toggle */}
-                        <div className="flex items-center gap-1 bg-black/30 rounded-lg p-1">
+                        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
                             <button
                                 onClick={() => setViewMode("radar")}
                                 className={cn(
                                     "px-2 py-1 text-[9px] font-mono rounded transition-all",
                                     viewMode === "radar"
-                                        ? "bg-green-600 text-white"
-                                        : "text-muted-foreground hover:text-green-500"
+                                        ? "bg-success text-success-foreground"
+                                        : "text-muted-foreground hover:text-success-text"
                                 )}
                             >
                                 RADAR
@@ -834,8 +854,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                                 className={cn(
                                     "px-2 py-1 text-[9px] font-mono rounded transition-all",
                                     viewMode === "defense"
-                                        ? "bg-blue-600 text-white"
-                                        : "text-muted-foreground hover:text-blue-500"
+                                        ? "bg-info text-info-foreground"
+                                        : "text-muted-foreground hover:text-info-text"
                                 )}
                             >
                                 DEFENSE
@@ -845,8 +865,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                                 className={cn(
                                     "px-2 py-1 text-[9px] font-mono rounded transition-all",
                                     viewMode === "attack"
-                                        ? "bg-red-600 text-white"
-                                        : "text-muted-foreground hover:text-red-500"
+                                        ? "bg-danger text-danger-foreground"
+                                        : "text-muted-foreground hover:text-danger-text"
                                 )}
                             >
                                 ATTACK
@@ -860,8 +880,8 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                             <span className="relative flex h-2 w-2">
                                 <span className={cn(
                                     "relative inline-flex rounded-full h-2 w-2",
-                                    viewMode === "radar" ? "bg-green-500" :
-                                    viewMode === "defense" ? "bg-blue-500" : "bg-red-500"
+                                    viewMode === "radar" ? "bg-success" :
+                                    viewMode === "defense" ? "bg-info" : "bg-danger"
                                 )}></span>
                             </span>
                             {currentMode.status}
@@ -892,7 +912,7 @@ export function ThreatRadar({ data, investigationCount = 0, onSegmentClick }: Th
                                     href={threat.link}
                                     className={cn(
                                         "flex items-center gap-1.5 px-2 py-1.5 rounded transition-all font-mono",
-                                        "hover:bg-green-500/10 cursor-pointer border border-transparent hover:border-green-500/30",
+                                        "hover:bg-success/10 cursor-pointer border border-transparent hover:border-success/30",
                                         value > 0 ? "opacity-100" : "opacity-30"
                                     )}
                                 >

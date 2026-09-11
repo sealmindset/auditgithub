@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { ShieldAlert, FileCode, Star, GitFork, Clock, Eye, EyeOff, Globe, Archive, GitBranch, Tag, Scale, Users, BookOpen, MessageSquare, ExternalLink, Calendar, HardDrive } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from "recharts"
 import Link from "next/link"
+import { AXIS_PROPS, TOOLTIP_PROPS, severityColor } from "@/lib/chart"
 
 interface ProjectOverviewProps {
     project: any
@@ -55,10 +56,10 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
     }
 
     const severityData = [
-        { name: "Critical", value: severityCounts.critical, color: "#ef4444" },
-        { name: "High", value: severityCounts.high, color: "#f97316" },
-        { name: "Medium", value: severityCounts.medium, color: "#eab308" },
-        { name: "Low", value: severityCounts.low, color: "#3b82f6" },
+        { name: "Critical", value: severityCounts.critical, color: severityColor("critical") },
+        { name: "High", value: severityCounts.high, color: severityColor("high") },
+        { name: "Medium", value: severityCounts.medium, color: severityColor("medium") },
+        { name: "Low", value: severityCounts.low, color: severityColor("low") },
     ].filter(d => d.value > 0)
 
     const typeData = [
@@ -76,21 +77,21 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
         
         if (effectiveVisibility === "public") {
             return (
-                <Badge variant="destructive" className="bg-red-500">
+                <Badge variant="destructive" className="bg-danger">
                     <Globe className="h-3 w-3 mr-1" />
                     Public
                 </Badge>
             )
         } else if (effectiveVisibility === "internal") {
             return (
-                <Badge className="bg-green-500">
+                <Badge className="bg-success">
                     <Eye className="h-3 w-3 mr-1" />
                     Internal
                 </Badge>
             )
         }
         return (
-            <Badge className="bg-green-500">
+            <Badge className="bg-success">
                 <EyeOff className="h-3 w-3 mr-1" />
                 Private
             </Badge>
@@ -120,7 +121,7 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
                             )}
                         </div>
                         {project.url && (
-                            <Link href={project.url} target="_blank" className="text-blue-600 hover:underline flex items-center gap-1 text-sm">
+                            <Link href={project.url} target="_blank" className="text-info-text hover:underline flex items-center gap-1 text-sm">
                                 View on GitHub <ExternalLink className="h-3 w-3" />
                             </Link>
                         )}
@@ -184,7 +185,7 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Open Findings</CardTitle>
-                        <ShieldAlert className="h-4 w-4 text-red-500" />
+                        <ShieldAlert className="h-4 w-4 text-danger-text" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{project.stats?.open_findings || 0}</div>
@@ -204,7 +205,7 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Stars</CardTitle>
-                        <Star className="h-4 w-4 text-yellow-500" />
+                        <Star className="h-4 w-4 text-warning-text" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{project.stats?.stars || 0}</div>
@@ -301,8 +302,8 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    <Tooltip />
-                                    <Legend />
+                                    <Tooltip {...TOOLTIP_PROPS} />
+                                    <Legend iconType="circle" wrapperStyle={{ fontSize: "0.75rem" }} />
                                 </PieChart>
                             </ResponsiveContainer>
                         ) : (
@@ -319,10 +320,10 @@ export function ProjectOverview({ project, secrets, sast, terraform, oss }: Proj
                     <CardContent className="h-[200px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={typeData}>
-                                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                                <YAxis tick={{ fontSize: 12 }} />
-                                <Tooltip />
-                                <Bar dataKey="count" fill="#8884d8" radius={[4, 4, 0, 0]} />
+                                <XAxis dataKey="name" {...AXIS_PROPS} />
+                                <YAxis {...AXIS_PROPS} />
+                                <Tooltip {...TOOLTIP_PROPS} />
+                                <Bar dataKey="count" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </CardContent>

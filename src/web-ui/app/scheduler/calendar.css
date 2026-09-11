@@ -1,19 +1,19 @@
 /* Override calendar styles to match application theme */
 /* Note: react-big-calendar base styles imported in SchedulerCalendar.tsx */
 .scheduler-calendar {
-    --rbc-today-bg: hsl(var(--accent) / 0.3);
-    --rbc-off-range-bg: hsl(var(--muted) / 0.5);
-    --rbc-off-range-color: hsl(var(--muted-foreground));
-    --rbc-header-bg: hsl(var(--muted));
-    --rbc-border-color: hsl(var(--border));
-    --rbc-slot-bg: hsl(var(--background));
-    --rbc-event-bg: hsl(var(--primary));
+    --rbc-today-bg: color-mix(in oklab, var(--accent) 30%, transparent);
+    --rbc-off-range-bg: color-mix(in oklab, var(--muted) 50%, transparent);
+    --rbc-off-range-color: var(--muted-foreground);
+    --rbc-header-bg: var(--muted);
+    --rbc-border-color: var(--border);
+    --rbc-slot-bg: var(--background);
+    --rbc-event-bg: var(--primary);
 }
 
 /* Calendar container */
 .scheduler-calendar .rbc-calendar {
     font-family: inherit;
-    color: hsl(var(--foreground));
+    color: var(--foreground);
 }
 
 /* Header styling */
@@ -21,7 +21,7 @@
     padding: 8px 4px;
     font-weight: 500;
     font-size: 0.875rem;
-    color: hsl(var(--muted-foreground));
+    color: var(--muted-foreground);
     background-color: var(--rbc-header-bg);
     border-bottom: 1px solid var(--rbc-border-color);
 }
@@ -73,12 +73,12 @@
 }
 
 .scheduler-calendar .rbc-date-cell > a {
-    color: hsl(var(--foreground));
+    color: var(--foreground);
 }
 
 .scheduler-calendar .rbc-date-cell.rbc-now > a {
     font-weight: 600;
-    color: hsl(var(--primary));
+    color: var(--primary);
 }
 
 /* Event styling */
@@ -97,7 +97,7 @@
 }
 
 .scheduler-calendar .rbc-event:focus {
-    outline: 2px solid hsl(var(--ring));
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
 }
 
@@ -136,11 +136,11 @@
 }
 
 .scheduler-calendar .rbc-day-slot .rbc-time-slot {
-    border-top: 1px dashed hsl(var(--border) / 0.5);
+    border-top: 1px dashed color-mix(in oklab, var(--border) 50%, transparent);
 }
 
 .scheduler-calendar .rbc-time-gutter {
-    color: hsl(var(--muted-foreground));
+    color: var(--muted-foreground);
     font-size: 0.75rem;
 }
 
@@ -168,33 +168,33 @@
     font-size: 0.875rem;
     font-weight: 500;
     border-radius: 0.375rem;
-    background-color: hsl(var(--secondary));
-    color: hsl(var(--secondary-foreground));
-    border: 1px solid hsl(var(--border));
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+    border: 1px solid var(--border);
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .scheduler-calendar .rbc-toolbar button:hover {
-    background-color: hsl(var(--accent));
-    border-color: hsl(var(--accent));
+    background-color: var(--accent);
+    border-color: var(--accent);
 }
 
 .scheduler-calendar .rbc-toolbar button:focus {
-    outline: 2px solid hsl(var(--ring));
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
 }
 
 .scheduler-calendar .rbc-toolbar button.rbc-active {
-    background-color: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-    border-color: hsl(var(--primary));
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
 }
 
 .scheduler-calendar .rbc-toolbar-label {
     font-weight: 600;
     font-size: 1.125rem;
-    color: hsl(var(--foreground));
+    color: var(--foreground);
 }
 
 /* Button groups in toolbar */
@@ -219,7 +219,7 @@
 
 /* Show more link */
 .scheduler-calendar .rbc-show-more {
-    color: hsl(var(--primary));
+    color: var(--primary);
     font-size: 0.75rem;
     font-weight: 500;
     padding: 2px 4px;
@@ -231,10 +231,10 @@
 
 /* Overlay/popup for events */
 .scheduler-calendar .rbc-overlay {
-    background-color: hsl(var(--popover));
-    border: 1px solid hsl(var(--border));
+    background-color: var(--popover);
+    border: 1px solid var(--border);
     border-radius: 0.5rem;
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    box-shadow: var(--elev-lg);
     padding: 8px;
     max-height: 300px;
     overflow-y: auto;
@@ -244,13 +244,13 @@
     padding: 4px 8px;
     font-weight: 600;
     font-size: 0.875rem;
-    border-bottom: 1px solid hsl(var(--border));
+    border-bottom: 1px solid var(--border);
     margin-bottom: 8px;
 }
 
 /* Current time indicator */
 .scheduler-calendar .rbc-current-time-indicator {
-    background-color: hsl(var(--destructive));
+    background-color: var(--danger);
     height: 2px;
 }
 
@@ -261,7 +261,7 @@
     top: -4px;
     width: 10px;
     height: 10px;
-    background-color: hsl(var(--destructive));
+    background-color: var(--danger);
     border-radius: 50%;
 }
 
@@ -296,6 +296,6 @@
 /* Dark mode support using CSS variables */
 :root.dark .scheduler-calendar,
 .dark .scheduler-calendar {
-    --rbc-today-bg: hsl(var(--accent) / 0.2);
-    --rbc-off-range-bg: hsl(var(--muted) / 0.3);
+    --rbc-today-bg: color-mix(in oklab, var(--accent) 20%, transparent);
+    --rbc-off-range-bg: color-mix(in oklab, var(--muted) 30%, transparent);
 }

@@ -332,7 +332,7 @@ export function ZeroDayView() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex gap-4">
-                        <Input
+                        <Input aria-label="Analysis query"
                             placeholder="e.g., 'Identify all repositories using React' or 'Find projects affected by CVE-2024-12345'"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
@@ -448,7 +448,7 @@ export function ZeroDayView() {
                             needs to see, in the same place, which surfaces went unexamined —
                             otherwise an empty result reads as an all-clear. */}
                         {(result.hunt_enabled === false || (result.coverage_notes?.length ?? 0) > 0) && (
-                            <Card className="mt-4 border-amber-500/60">
+                            <Card className="mt-4 border-warning/60">
                                 <CardHeader>
                                     <CardTitle className="text-base">Coverage and Blind Spots</CardTitle>
                                     <CardDescription>
@@ -516,7 +516,7 @@ export function ZeroDayView() {
                         <CardContent>
                             {result.affected_repositories.length === 0 ? (
                                 <div className="flex items-center gap-2 text-muted-foreground">
-                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                    <CheckCircle2 className="h-4 w-4 text-success-text" />
                                     <span>No affected repositories found locally.</span>
                                 </div>
                             ) : (

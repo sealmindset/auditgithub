@@ -82,9 +82,9 @@ interface ContributorsViewProps {
 // Simple Progress component
 function Progress({ value, className }: { value: number; className?: string }) {
     return (
-        <div className={`h-2 w-full rounded-full bg-muted overflow-hidden ${className || ""}`}>
+        <div className={`h-2 w-full rounded-full bg-muted overflow-hidden ${className ||""}`}>
             <div
-                className={`h-full transition-all ${value >= 50 ? "bg-red-500" : value >= 25 ? "bg-yellow-500" : "bg-green-500"}`}
+                className={`h-full transition-all ${value >= 50 ? "bg-danger" : value >= 25 ? "bg-warning" : "bg-success"}`}
                 style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
             />
         </div>
@@ -96,14 +96,14 @@ function SeverityBadge({ severity }: { severity: string | null }) {
     if (!severity) return null
 
     const variants: Record<string, string> = {
-        critical: "bg-red-600 text-white hover:bg-red-600",
-        high: "bg-orange-500 text-white hover:bg-orange-500",
-        medium: "bg-yellow-500 text-black hover:bg-yellow-500",
-        low: "bg-blue-500 text-white hover:bg-blue-500"
+        critical: "bg-danger text-danger-foreground hover:bg-danger",
+        high: "bg-warning text-warning-foreground hover:bg-warning",
+        medium: "bg-warning text-warning-foreground hover:bg-warning",
+        low: "bg-info text-info-foreground hover:bg-info"
     }
 
     return (
-        <Badge className={`text-xs ${variants[severity] || "bg-gray-500"}`}>
+        <Badge className={`text-xs ${variants[severity] ||"bg-muted-foreground"}`}>
             {severity.toUpperCase()}
         </Badge>
     )
@@ -167,7 +167,7 @@ function ContributorModal({
                                     <div className="text-sm text-muted-foreground">
                                         {detail.email}
                                         {detail.github_username && (
-                                            <span className="ml-2 text-blue-500">@{detail.github_username}</span>
+                                            <span className="ml-2 text-info-text">@{detail.github_username}</span>
                                         )}
                                     </div>
                                 </div>
@@ -180,7 +180,7 @@ function ContributorModal({
                         </DialogHeader>
 
                         {/* Stats Cards */}
-                        <div className="grid grid-cols-4 gap-4 my-4">
+                        <div className="grid grid-cols-2 gap-4 my-4 lg:grid-cols-4">
                             <Card>
                                 <CardContent className="pt-4">
                                     <div className="text-2xl font-bold">{detail.commits}</div>
@@ -191,13 +191,13 @@ function ContributorModal({
                             </Card>
                             <Card>
                                 <CardContent className="pt-4">
-                                    <div className="text-2xl font-bold text-red-600">{detail.critical_files_count}</div>
+                                    <div className="text-2xl font-bold text-danger-text">{detail.critical_files_count}</div>
                                     <div className="text-xs text-muted-foreground">Critical Files</div>
                                 </CardContent>
                             </Card>
                             <Card>
                                 <CardContent className="pt-4">
-                                    <div className="text-2xl font-bold text-orange-500">{detail.high_files_count}</div>
+                                    <div className="text-2xl font-bold text-warning-text">{detail.high_files_count}</div>
                                     <div className="text-xs text-muted-foreground">High Severity</div>
                                 </CardContent>
                             </Card>
@@ -211,7 +211,7 @@ function ContributorModal({
 
                         {/* AI Summary */}
                         {detail.ai_summary && (
-                            <Card className="mb-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950">
+                            <Card className="mb-4 bg-gradient-to-r from-ai-soft to-info-soft dark:from-ai dark:to-info">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm flex items-center gap-2">
                                         <Brain className="h-4 w-4" />
@@ -274,13 +274,13 @@ function ContributorModal({
 
                             <TabsContent value="folders" className="mt-4">
                                 <ScrollArea className="h-[300px] pr-4">
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                         {detail.folders_contributed.map((folder, idx) => (
                                             <div
                                                 key={folder || `folder-${idx}`}
                                                 className="flex items-center gap-2 p-3 rounded-lg bg-muted"
                                             >
-                                                <FolderOpen className="h-5 w-5 text-yellow-500" />
+                                                <FolderOpen className="h-5 w-5 text-warning-text" />
                                                 <span className="text-sm font-medium">{folder}</span>
                                             </div>
                                         ))}
@@ -424,7 +424,7 @@ export function ContributorsView({ projectId }: ContributorsViewProps) {
                 return (
                     <div className="flex items-center gap-2">
                         <Progress value={score} className="w-16" />
-                        <span className={`text-sm font-medium ${score >= 50 ? 'text-red-500' : ''}`}>
+                        <span className={`text-sm font-medium ${score >= 50 ?'text-danger-text' : ''}`}>
                             {score}
                         </span>
                     </div>
@@ -527,7 +527,7 @@ export function ContributorsView({ projectId }: ContributorsViewProps) {
 
             {/* Search */}
             <div className="flex items-center gap-4">
-                <Input
+                <Input aria-label="Search contributors"
                     placeholder="Search contributors..."
                     value={globalFilter}
                     onChange={(e) => setGlobalFilter(e.target.value)}

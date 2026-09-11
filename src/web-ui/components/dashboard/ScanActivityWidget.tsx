@@ -21,10 +21,10 @@ interface ScanActivity {
 }
 
 const statusConfig = {
-  completed: { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-500/10" },
-  failed: { icon: XCircle, color: "text-red-500", bg: "bg-red-500/10" },
-  running: { icon: Loader2, color: "text-blue-500", bg: "bg-blue-500/10", animate: true },
-  queued: { icon: Clock, color: "text-yellow-500", bg: "bg-yellow-500/10" }
+  completed: { icon: CheckCircle2, color: "text-success-text", bg: "bg-success/10" },
+  failed: { icon: XCircle, color: "text-danger-text", bg: "bg-danger/10" },
+  running: { icon: Loader2, color: "text-info-text", bg: "bg-info/10", animate: true },
+  queued: { icon: Clock, color: "text-warning-text", bg: "bg-warning/10" }
 }
 
 const scanTypeLabels: Record<string, string> = {

@@ -5,6 +5,7 @@ import { useWidgetData } from "@/hooks/useWidgetData"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 import { TrendingUp, TrendingDown, Minus, Shield, AlertTriangle, AlertCircle, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { TOOLTIP_PROPS, severityColor } from "@/lib/chart"
 
 interface ThreatRadarData {
   critical: number
@@ -23,11 +24,11 @@ interface SeverityItem {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  Critical: "#ef4444",
-  High: "#f97316",
-  Medium: "#eab308",
-  Low: "#22c55e",
-  Info: "#3b82f6"
+  Critical: severityColor("critical"),
+  High: severityColor("high"),
+  Medium: severityColor("medium"),
+  Low: severityColor("low"),
+  Info: severityColor("info"),
 }
 
 const SEVERITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -46,8 +47,8 @@ function TrendBadge({ trend }: { trend: number }) {
   return (
     <span className={cn(
       "inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded",
-      isGood ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-      isPositive ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+      isGood ? "bg-success-soft text-success-text dark:bg-success-soft/30" :
+      isPositive ? "bg-danger-soft text-danger-text dark:bg-danger-soft/30" :
       "bg-muted text-muted-foreground"
     )}>
       {isPositive ? <TrendingUp className="h-3 w-3" /> :
@@ -60,7 +61,7 @@ function TrendBadge({ trend }: { trend: number }) {
 
 function SeverityRow({ item }: { item: SeverityItem }) {
   const Icon = SEVERITY_ICONS[item.name] || Info
-  const color = SEVERITY_COLORS[item.name] || "#6b7280"
+  const color = SEVERITY_COLORS[item.name] || "var(--muted-foreground)"
 
   return (
     <div className="flex items-center justify-between py-2">
@@ -94,16 +95,16 @@ export function SecurityOverviewWidget() {
   const chartData = severityData?.filter(s => s.count > 0).map(s => ({
     name: s.name,
     value: s.count,
-    color: SEVERITY_COLORS[s.name] || "#6b7280"
+    color: SEVERITY_COLORS[s.name] || "var(--muted-foreground)"
   })) || []
 
   const totalFindings = severityData?.reduce((sum, s) => sum + s.count, 0) || 0
   const overallScore = threatData?.overallScore || 0
 
   // Score color based on value
-  const scoreColor = overallScore >= 80 ? "text-green-500" :
-                     overallScore >= 60 ? "text-yellow-500" :
-                     overallScore >= 40 ? "text-orange-500" : "text-red-500"
+  const scoreColor = overallScore >= 80 ? "text-success-text" :
+                     overallScore >= 60 ? "text-warning-text" :
+                     overallScore >= 40 ? "text-warning-text" : "text-danger-text"
 
   return (
     <Widget
@@ -131,6 +132,7 @@ export function SecurityOverviewWidget() {
                 ))}
               </Pie>
               <Tooltip
+                {...TOOLTIP_PROPS}
                 formatter={(value: number, name: string) => [`${value} findings`, name]}
               />
             </PieChart>

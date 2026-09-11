@@ -215,11 +215,11 @@ export function OrganizationSelector({
     const getScanStatusIcon = (status: string) => {
         switch (status) {
             case "scanning":
-                return <Loader2 className="h-3 w-3 animate-spin text-blue-500" />;
+                return <Loader2 className="h-3 w-3 animate-spin text-info-text" />;
             case "error":
-                return <AlertCircle className="h-3 w-3 text-red-500" />;
+                return <AlertCircle className="h-3 w-3 text-danger-text" />;
             case "queued":
-                return <Loader2 className="h-3 w-3 text-yellow-500" />;
+                return <Loader2 className="h-3 w-3 text-warning-text" />;
             default:
                 return null;
         }
@@ -229,19 +229,19 @@ export function OrganizationSelector({
         switch (status) {
             case "synced":
                 return (
-                    <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 border-green-500/30">
+                    <Badge variant="outline" className="text-[10px] bg-success/10 text-success-text border-success/30">
                         Synced
                     </Badge>
                 );
             case "drift":
                 return (
-                    <Badge variant="outline" className="text-[10px] bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
+                    <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning-text border-warning/30">
                         Drift
                     </Badge>
                 );
             case "error":
                 return (
-                    <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-600 border-red-500/30">
+                    <Badge variant="outline" className="text-[10px] bg-danger/10 text-danger-text border-danger/30">
                         Error
                     </Badge>
                 );
@@ -273,7 +273,7 @@ export function OrganizationSelector({
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button variant="ghost" size="sm" onClick={refreshOrganizations}>
-                                <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+                                <AlertCircle className="h-4 w-4 mr-2 text-danger-text" />
                                 Retry
                             </Button>
                         </TooltipTrigger>
@@ -331,7 +331,7 @@ export function OrganizationSelector({
 
             <DropdownMenuContent align="start" className="w-[280px]">
                 <DropdownMenuLabel className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-yellow-500" />
+                    <Zap className="h-4 w-4 text-warning-text" />
                     Organizations
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

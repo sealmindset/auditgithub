@@ -26,42 +26,42 @@ const QUICK_ACTIONS: QuickAction[] = [
     description: "Manage scan schedules",
     href: "/scheduler",
     icon: <Calendar className="h-5 w-5" />,
-    color: "text-blue-500"
+    color: "text-info-text"
   },
   {
     label: "View Findings",
     description: "Browse all findings",
     href: "/findings",
     icon: <AlertTriangle className="h-5 w-5" />,
-    color: "text-orange-500"
+    color: "text-warning-text"
   },
   {
     label: "Repositories",
     description: "Manage tracked repos",
     href: "/projects",
     icon: <FolderGit2 className="h-5 w-5" />,
-    color: "text-green-500"
+    color: "text-success-text"
   },
   {
     label: "Scan History",
     description: "View past scans",
     href: "/scans",
     icon: <PlayCircle className="h-5 w-5" />,
-    color: "text-purple-500"
+    color: "text-ai-text"
   },
   {
     label: "Reports",
     description: "Export & reports",
     href: "/reports",
     icon: <FileText className="h-5 w-5" />,
-    color: "text-cyan-500"
+    color: "text-info-text"
   },
   {
     label: "Settings",
     description: "Configure AuditGH",
     href: "/settings",
     icon: <Settings className="h-5 w-5" />,
-    color: "text-gray-500"
+    color: "text-muted-foreground"
   }
 ]
 

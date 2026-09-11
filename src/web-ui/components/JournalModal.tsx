@@ -246,24 +246,24 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
   const getStatusIcon = (status: string | null) => {
     switch (status) {
       case "triage":
-        return <AlertTriangle className="h-4 w-4 text-yellow-500" />
+        return <AlertTriangle className="h-4 w-4 text-warning-text" />
       case "incident_response":
-        return <Shield className="h-4 w-4 text-red-500" />
+        return <Shield className="h-4 w-4 text-danger-text" />
       case "resolved":
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />
+        return <CheckCircle2 className="h-4 w-4 text-success-text" />
       default:
-        return <Clock className="h-4 w-4 text-gray-400" />
+        return <Clock className="h-4 w-4 text-muted-foreground" />
     }
   }
 
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case "triage":
-        return <Badge className="bg-yellow-500 hover:bg-yellow-600">Triage</Badge>
+        return <Badge className="bg-warning hover:bg-warning">Triage</Badge>
       case "incident_response":
-        return <Badge className="bg-red-500 hover:bg-red-600">Incident Response</Badge>
+        return <Badge className="bg-danger hover:bg-danger">Incident Response</Badge>
       case "resolved":
-        return <Badge className="bg-green-500 hover:bg-green-600">Resolved</Badge>
+        return <Badge className="bg-success hover:bg-success">Resolved</Badge>
       default:
         return <Badge variant="outline">No Status</Badge>
     }
@@ -280,9 +280,9 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
   }
 
   const getEntryTypeIcon = (entry: JournalEntry) => {
-    if (entry.is_ai_generated) return <Bot className="h-4 w-4 text-purple-500" />
-    if (entry.entry_type === "status_change") return <RefreshCw className="h-4 w-4 text-blue-500" />
-    return <User className="h-4 w-4 text-gray-500" />
+    if (entry.is_ai_generated) return <Bot className="h-4 w-4 text-ai-text" />
+    if (entry.entry_type === "status_change") return <RefreshCw className="h-4 w-4 text-info-text" />
+    return <User className="h-4 w-4 text-muted-foreground" />
   }
 
   return (
@@ -290,13 +290,13 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
       <DialogContent className="!w-[75vw] !h-[75vh] !max-w-[75vw] !max-h-[75vh] flex flex-col p-6">
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-blue-500" />
+            <BookOpen className="h-5 w-5 text-info-text" />
             Investigation Journal
           </DialogTitle>
         </DialogHeader>
 
         {/* Status Selector */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-slate-100 to-transparent dark:from-slate-800 dark:to-transparent p-4 rounded-lg">
+        <div className="flex items-center justify-between bg-gradient-to-r from-muted to-transparent p-4 rounded-lg">
           <div className="flex items-center gap-3">
             {getStatusIcon(investigationStatus)}
             <div>
@@ -318,25 +318,25 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
             <SelectContent>
               <SelectItem value="none">
                 <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-gray-400" />
+                  <Clock className="h-4 w-4 text-muted-foreground" />
                   No Status
                 </div>
               </SelectItem>
               <SelectItem value="triage">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  <AlertTriangle className="h-4 w-4 text-warning-text" />
                   Triage
                 </div>
               </SelectItem>
               <SelectItem value="incident_response">
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-red-500" />
+                  <Shield className="h-4 w-4 text-danger-text" />
                   Incident Response
                 </div>
               </SelectItem>
               <SelectItem value="resolved">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 text-success-text" />
                   Resolved
                 </div>
               </SelectItem>
@@ -366,9 +366,9 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
                     key={entry.id}
                     className={`p-3 rounded-lg border group ${
                       entry.is_ai_generated
-                        ? "bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border-purple-200 dark:border-purple-800"
+                        ? "bg-gradient-to-br from-ai-soft to-info-soft dark:from-ai/20 dark:to-info/20 border-ai-line"
                         : entry.entry_type === "status_change"
-                        ? "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+                        ? "bg-info-soft dark:bg-info-soft/20 border-info-line"
                         : "bg-card border-border"
                     }`}
                   >
@@ -403,7 +403,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
                       )}
                     </div>
                     {entry.is_ai_generated && entry.ai_prompt && (
-                      <div className="mb-2 p-2 bg-white/50 dark:bg-black/20 rounded text-sm">
+                      <div className="mb-2 p-2 bg-muted/60 rounded text-sm">
                         <span className="text-muted-foreground">Question: </span>
                         {entry.ai_prompt}
                       </div>
@@ -411,7 +411,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
                     {/* Edit mode */}
                     {editingEntryId === entry.id ? (
                       <div className="space-y-2">
-                        <Textarea
+                        <Textarea aria-label="Edit note"
                           value={editingText}
                           onChange={(e) => setEditingText(e.target.value)}
                           className="min-h-[100px] resize-none"
@@ -431,7 +431,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            className="h-8 w-8 text-success-text hover:text-success-text hover:bg-success-soft"
                             onClick={handleSaveEdit}
                             disabled={!editingText.trim() || isUpdating}
                             title="Save changes"
@@ -464,7 +464,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
         <div className="space-y-3">
           {/* Note Input */}
           <div className="flex gap-2">
-            <Textarea
+            <Textarea aria-label="New journal note"
               placeholder="Add a journal note..."
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
@@ -475,7 +475,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
                 }
               }}
             />
-            <Button
+            <Button aria-label="Add note"
               onClick={handleAddNote}
               disabled={!newNote.trim() || isSubmitting}
               className="self-end"
@@ -494,14 +494,14 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
               variant="outline"
               size="sm"
               onClick={() => setShowAiInput(!showAiInput)}
-              className={showAiInput ? "bg-purple-100 dark:bg-purple-900/20" : ""}
+              className={showAiInput ? "bg-ai-soft dark:bg-ai-soft/20" : ""}
             >
-              <Sparkles className="h-4 w-4 mr-2 text-purple-500" />
+              <Sparkles className="h-4 w-4 mr-2 text-ai-text" />
               Ask AI Assistant
             </Button>
             {showAiInput && (
               <div className="flex-1 flex gap-2">
-                <Textarea
+                <Textarea aria-label="Question for AI"
                   placeholder="Ask AI a question about this finding..."
                   value={aiQuestion}
                   onChange={(e) => setAiQuestion(e.target.value)}
@@ -516,7 +516,7 @@ export function JournalModal({ findingId, isOpen, onClose, onStatusChange }: Jou
                   onClick={handleAskAI}
                   disabled={!aiQuestion.trim() || isAskingAI}
                   variant="secondary"
-                  className="self-end bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:from-purple-600 hover:to-blue-600"
+                  className="self-end bg-gradient-to-r from-ai to-info text-ai-foreground hover:from-ai hover:to-info"
                 >
                   {isAskingAI ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { BackButton, PageHeader, PageShell } from "@/components/ui/page-header"
 
 export default function FindingDetailsPage() {
     const params = useParams()
@@ -71,21 +72,21 @@ export default function FindingDetailsPage() {
         switch (status) {
             case "triage":
                 return (
-                    <Badge className="bg-yellow-500 hover:bg-yellow-600 text-white flex items-center gap-1">
+                    <Badge className="bg-warning hover:bg-warning text-warning-foreground flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" />
                         Triage
                     </Badge>
                 )
             case "incident_response":
                 return (
-                    <Badge className="bg-red-500 hover:bg-red-600 text-white flex items-center gap-1">
+                    <Badge className="bg-danger hover:bg-danger text-danger-foreground flex items-center gap-1">
                         <Shield className="h-3 w-3" />
                         IR
                     </Badge>
                 )
             case "resolved":
                 return (
-                    <Badge className="bg-green-500 hover:bg-green-600 text-white flex items-center gap-1">
+                    <Badge className="bg-success hover:bg-success text-success-foreground flex items-center gap-1">
                         <CheckCircle2 className="h-3 w-3" />
                         Resolved
                     </Badge>
@@ -106,40 +107,39 @@ export default function FindingDetailsPage() {
     if (error || !finding) {
         return (
             <div className="flex h-screen flex-col items-center justify-center gap-4">
-                <p className="text-red-500">{error || "Finding not found"}</p>
+                <p className="text-danger-text">{error || "Finding not found"}</p>
                 <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
             </div>
         )
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                    <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">{finding.title}</h1>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+        <PageShell>
+            <PageHeader
+                back={<BackButton onClick={() => router.back()} label="Back to findings" />}
+                eyebrow="Finding"
+                title={finding.title}
+                description={
+                    <span className="flex flex-wrap items-center gap-2">
                         {finding.repository_id ? (
-                            <Link href={`/projects/${finding.repository_id}`} className="text-blue-600 hover:underline">
+                            <Link href={`/projects/${finding.repository_id}`} className="font-medium text-primary-text hover:underline">
                                 {finding.repo_name}
                             </Link>
                         ) : (
                             <span>{finding.repo_name}</span>
                         )}
-                        <span>•</span>
-                        <span>{finding.id.substring(0, 8)}</span>
-                        {/* Investigation Status Badge */}
+                        <span aria-hidden>•</span>
+                        <span className="font-mono text-xs">{finding.id.substring(0, 8)}</span>
                         {finding.investigation_status && (
                             <>
-                                <span>•</span>
+                                <span aria-hidden>•</span>
                                 {getInvestigationStatusBadge(finding.investigation_status)}
                             </>
                         )}
-                    </div>
-                </div>
-                <div className="ml-auto flex items-center gap-2">
+                    </span>
+                }
+                actions={
+                <>
                     {/* Include in Report Checkbox */}
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border bg-card hover:bg-accent/50 transition-colors">
                         <Checkbox
@@ -147,7 +147,7 @@ export default function FindingDetailsPage() {
                             checked={includeInReport}
                             onCheckedChange={(checked) => handleToggleIncludeInReport(checked as boolean)}
                             disabled={isTogglingReport}
-                            className="data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
+                            className="data-[state=checked]:bg-danger data-[state=checked]:border-danger"
                         />
                         <Label 
                             htmlFor="include-in-report" 
@@ -179,8 +179,9 @@ export default function FindingDetailsPage() {
                         factors={finding.risk_factors}
                         size="md"
                     />
-                </div>
-            </div>
+                </>
+                }
+            />
 
             <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-6">
@@ -198,8 +199,8 @@ export default function FindingDetailsPage() {
                             <div>
                                 <h3 className="font-semibold mb-2">Description</h3>
                                 {finding.description?.startsWith('**AI Security Analysis') ? (
-                                    <div className="rounded-lg border bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 p-4">
-                                        <div className="flex items-center gap-2 mb-3 text-purple-600 dark:text-purple-400">
+                                    <div className="rounded-lg border bg-gradient-to-br from-ai-soft to-info-soft dark:from-ai/20 dark:to-info/20 p-4">
+                                        <div className="flex items-center gap-2 mb-3 text-ai-text">
                                             <Sparkles className="h-4 w-4" />
                                             <span className="text-xs font-medium uppercase tracking-wide">AI-Enhanced Description</span>
                                         </div>
@@ -239,12 +240,12 @@ export default function FindingDetailsPage() {
                                         <GitCommit className="h-4 w-4 text-muted-foreground" />
                                         File History
                                     </h3>
-                                    <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 rounded-lg p-4 space-y-3">
+                                    <div className="bg-gradient-to-br from-muted to-muted rounded-lg p-4 space-y-3">
                                         {finding.file_last_commit_at ? (
                                             <>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2 text-sm">
-                                                        <Calendar className="h-4 w-4 text-blue-500" />
+                                                        <Calendar className="h-4 w-4 text-info-text" />
                                                         <span className="text-muted-foreground">Last File Commit</span>
                                                     </div>
                                                     <div className="text-sm font-medium">
@@ -260,7 +261,7 @@ export default function FindingDetailsPage() {
                                                 {finding.file_last_commit_author && (
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2 text-sm">
-                                                            <User className="h-4 w-4 text-green-500" />
+                                                            <User className="h-4 w-4 text-success-text" />
                                                             <span className="text-muted-foreground">Last Author</span>
                                                         </div>
                                                         <div className="text-sm font-medium">
@@ -268,7 +269,7 @@ export default function FindingDetailsPage() {
                                                         </div>
                                                     </div>
                                                 )}
-                                                <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
                                                     <div className="flex items-center gap-1">
                                                         <FileCode className="h-3 w-3" />
                                                         <span>File-level commit data from GitHub</span>
@@ -297,7 +298,7 @@ export default function FindingDetailsPage() {
                                             <>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2 text-sm">
-                                                        <Calendar className="h-4 w-4 text-amber-500" />
+                                                        <Calendar className="h-4 w-4 text-warning-text" />
                                                         <span className="text-muted-foreground">Last Repo Push</span>
                                                     </div>
                                                     <div className="text-sm font-medium">
@@ -314,7 +315,7 @@ export default function FindingDetailsPage() {
                                             </>
                                         )}
                                         {finding.is_archived && (
-                                            <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                            <div className="flex items-center gap-2 pt-2 border-t border-border">
                                                 <Badge variant="secondary" className="text-xs">
                                                     <Archive className="h-3 w-3 mr-1" />
                                                     Archived Repository
@@ -333,7 +334,7 @@ export default function FindingDetailsPage() {
                                 <CardTitle>Code Context</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <pre className="overflow-x-auto rounded-md bg-slate-950 p-4 text-xs text-slate-50">
+                                <pre className="overflow-x-auto rounded-md bg-muted p-4 text-xs text-muted-foreground">
                                     <code>{finding.code_snippet}</code>
                                 </pre>
                             </CardContent>
@@ -362,6 +363,6 @@ export default function FindingDetailsPage() {
                     setFinding({ ...finding, investigation_status: newStatus })
                 }}
             />
-        </div>
+        </PageShell>
     )
 }

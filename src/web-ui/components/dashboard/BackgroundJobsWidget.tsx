@@ -49,8 +49,8 @@ interface NextRunsResponse {
 }
 
 const statusConfig = {
-  success: { icon: CheckCircle2, color: "text-green-500", label: "Success" },
-  error: { icon: XCircle, color: "text-red-500", label: "Failed" },
+  success: { icon: CheckCircle2, color: "text-success-text", label: "Success" },
+  error: { icon: XCircle, color: "text-danger-text", label: "Failed" },
   never_run: { icon: Clock, color: "text-muted-foreground", label: "Never run" }
 }
 
@@ -174,7 +174,7 @@ export function BackgroundJobsWidget() {
                   <div className="text-right text-xs text-muted-foreground">
                     <div>{job.run_count} runs</div>
                     {job.error_count > 0 && (
-                      <div className="text-red-500">{job.error_count} errors</div>
+                      <div className="text-danger-text">{job.error_count} errors</div>
                     )}
                   </div>
                   <Button

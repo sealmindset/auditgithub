@@ -87,7 +87,7 @@ export function Combobox({
       </PopoverTrigger>
       <PopoverContent className="w-[250px] p-0" align="start">
         <div className="p-2">
-          <Input
+          <Input aria-label="Search options"
             placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}

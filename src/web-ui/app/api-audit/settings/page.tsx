@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Loader2, Trash2, Plus, Globe, BookOpen } from "lucide-react"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 // Type definitions
 type PathWord = {
@@ -156,13 +157,13 @@ export default function ApiAuditSettingsPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">API Audit Settings</h1>
-                <p className="text-muted-foreground">
-                    Manage global dictionaries and libraries for AI discovery and fuzzing.
-                </p>
-            </div>
+        <PageShell>
+            <PageHeader
+                icon={BookOpen}
+                eyebrow="API audit"
+                title="API audit settings"
+                description="Global dictionaries and libraries used for AI discovery and fuzzing."
+            />
 
             <Tabs defaultValue="dictionary" className="space-y-4">
                 <TabsList>
@@ -239,7 +240,7 @@ export default function ApiAuditSettingsPage() {
                                                     <TableCell>{item.category || "-"}</TableCell>
                                                     <TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell>
                                                     <TableCell className="text-right">
-                                                        <Button
+                                                        <Button aria-label="Delete word"
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-8 w-8 text-destructive hover:bg-destructive/10"
@@ -329,7 +330,7 @@ export default function ApiAuditSettingsPage() {
                                                     </TableCell>
                                                     <TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell>
                                                     <TableCell className="text-right">
-                                                        <Button
+                                                        <Button aria-label="Delete URI"
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-8 w-8 text-destructive hover:bg-destructive/10"
@@ -348,6 +349,6 @@ export default function ApiAuditSettingsPage() {
                     </Card>
                 </TabsContent>
             </Tabs>
-        </div>
+        </PageShell>
     )
 }

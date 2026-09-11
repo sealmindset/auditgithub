@@ -12,6 +12,7 @@ import { Monitor, Trash2, Edit2, AlertCircle, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface DeviceAuthorization {
   id: string
@@ -165,32 +166,29 @@ export default function MyDevicesPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <PageShell>
+      <PageHeader
+        icon={Monitor}
+        eyebrow="Settings"
+        title="My devices"
+        description="Devices and applications with access to your account. Rename or revoke access at any time."
+      />
+
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Monitor className="h-5 w-5" />
-            My Authorized Devices
-          </CardTitle>
-          <CardDescription>
-            Manage devices and applications that have access to your account.
-            You can rename or revoke access at any time.
-          </CardDescription>
-        </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : devices.length === 0 ? (
             <div className="text-center py-12">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-600 font-medium mb-2">No authorized devices yet</p>
-              <p className="text-sm text-gray-500">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground font-medium mb-2">No authorized devices yet</p>
+              <p className="text-sm text-muted-foreground">
                 Use the AuditGitHub CLI or other tools to authorize devices
               </p>
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg max-w-md mx-auto">
-                <p className="text-sm text-gray-700 font-mono">
+              <div className="mt-6 p-4 bg-muted rounded-lg max-w-md mx-auto">
+                <p className="text-sm text-muted-foreground font-mono">
                   ./cli/auditgh-cli.py login
                 </p>
               </div>
@@ -217,19 +215,19 @@ export default function MyDevicesPage() {
                       </TableCell>
                       <TableCell>{device.client_name}</TableCell>
                       <TableCell className="capitalize">{device.provider}</TableCell>
-                      <TableCell className="text-sm text-gray-600">
+                      <TableCell className="text-sm text-muted-foreground">
                         {formatDistanceToNow(new Date(device.created_at), {
                           addSuffix: true
                         })}
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600">
+                      <TableCell className="text-sm text-muted-foreground">
                         {formatDistanceToNow(new Date(device.last_used_at), {
                           addSuffix: true
                         })}
                       </TableCell>
                       <TableCell>
                         {device.is_active ? (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default" className="bg-success">
                             Active
                           </Badge>
                         ) : (
@@ -253,7 +251,7 @@ export default function MyDevicesPage() {
                             onClick={() => openRevokeDialog(device)}
                             disabled={!device.is_active}
                             title="Revoke device"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-danger-text hover:text-danger-text hover:bg-danger-soft"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -316,14 +314,14 @@ export default function MyDevicesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="bg-warning-soft border border-warning-line rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                <AlertCircle className="h-5 w-5 text-warning-text mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-yellow-900 mb-1">
+                  <p className="text-sm font-medium text-warning-text mb-1">
                     This action cannot be undone
                   </p>
-                  <p className="text-sm text-yellow-700">
+                  <p className="text-sm text-warning-text">
                     The device will lose access to your account and will need to
                     re-authorize to regain access.
                   </p>
@@ -334,11 +332,11 @@ export default function MyDevicesPage() {
               <div className="mt-4 space-y-2">
                 <div className="text-sm">
                   <span className="font-medium">Device:</span>{" "}
-                  <span className="text-gray-600">{selectedDevice.device_name}</span>
+                  <span className="text-muted-foreground">{selectedDevice.device_name}</span>
                 </div>
                 <div className="text-sm">
                   <span className="font-medium">Application:</span>{" "}
-                  <span className="text-gray-600">{selectedDevice.client_name}</span>
+                  <span className="text-muted-foreground">{selectedDevice.client_name}</span>
                 </div>
               </div>
             )}
@@ -362,6 +360,6 @@ export default function MyDevicesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   )
 }

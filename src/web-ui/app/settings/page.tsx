@@ -8,12 +8,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, CheckCircle2, XCircle, Database, Send } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, Database, Send, Settings as SettingsIcon } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import AuthConfigTab from "@/components/AuthConfigTab"
 import dynamic from "next/dynamic"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 // Dynamically import My Devices page
 const MyDevicesPage = dynamic(() => import("./devices/page"), { ssr: false })
@@ -347,13 +348,13 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-                <p className="text-muted-foreground">
-                    Manage your platform configuration and integrations.
-                </p>
-            </div>
+        <PageShell>
+            <PageHeader
+                icon={SettingsIcon}
+                eyebrow="Platform"
+                title="Settings"
+                description="Platform configuration, authentication and integrations."
+            />
 
             <Tabs defaultValue="general" className="space-y-4">
                 <TabsList>
@@ -423,11 +424,11 @@ export default function SettingsPage() {
                                         {verifyingOpenAI ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
                                     </Button>
                                 </div>
-                                <p className={`text-xs ${openaiKeyInfo?.unreadable ? "text-red-600" : "text-muted-foreground"}`}>
+                                <p className={`text-xs ${openaiKeyInfo?.unreadable ?"text-danger-text" : "text-muted-foreground"}`}>
                                     {secretStatusText(openaiKeyInfo)}
                                 </p>
                                 {openaiStatus && (
-                                    <div className={`flex items-center gap-2 text-sm ${openaiStatus.valid ? "text-green-600" : "text-red-600"}`}>
+                                    <div className={`flex items-center gap-2 text-sm ${openaiStatus.valid ?"text-success-text" : "text-danger-text"}`}>
                                         {openaiStatus.valid ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                                         {openaiStatus.message}
                                     </div>
@@ -477,11 +478,11 @@ export default function SettingsPage() {
                                             {verifyingJira ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
                                         </Button>
                                     </div>
-                                    <p className={`text-xs ${jiraTokenInfo?.unreadable ? "text-red-600" : "text-muted-foreground"}`}>
+                                    <p className={`text-xs ${jiraTokenInfo?.unreadable ?"text-danger-text" : "text-muted-foreground"}`}>
                                         {secretStatusText(jiraTokenInfo)}
                                     </p>
                                     {jiraStatus && (
-                                        <div className={`flex items-center gap-2 text-sm ${jiraStatus.valid ? "text-green-600" : "text-red-600"}`}>
+                                        <div className={`flex items-center gap-2 text-sm ${jiraStatus.valid ?"text-success-text" : "text-danger-text"}`}>
                                             {jiraStatus.valid ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                                             {jiraStatus.message}
                                         </div>
@@ -627,10 +628,10 @@ export default function SettingsPage() {
                             </div>
 
                             {criblTestResult && (
-                                <div className={`flex items-start gap-2 p-3 rounded-md ${criblTestResult.success ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
-                                    {criblTestResult.success ? <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" /> : <XCircle className="h-5 w-5 text-red-600 mt-0.5" />}
+                                <div className={`flex items-start gap-2 p-3 rounded-md ${criblTestResult.success ? "bg-success-soft border border-success-line" : "bg-danger-soft border border-danger-line"}`}>
+                                    {criblTestResult.success ? <CheckCircle2 className="h-5 w-5 text-success-text mt-0.5" /> : <XCircle className="h-5 w-5 text-danger-text mt-0.5" />}
                                     <div>
-                                        <p className={`font-medium ${criblTestResult.success ? "text-green-800" : "text-red-800"}`}>
+                                        <p className={`font-medium ${criblTestResult.success ? "text-success-text" : "text-danger-text"}`}>
                                             {criblTestResult.message}
                                         </p>
                                         {criblTestResult.response_time_ms && (
@@ -732,10 +733,10 @@ export default function SettingsPage() {
                             </div>
 
                             {minioTestResult && (
-                                <div className={`flex items-start gap-2 p-3 rounded-md ${minioTestResult.success ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
-                                    {minioTestResult.success ? <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" /> : <XCircle className="h-5 w-5 text-red-600 mt-0.5" />}
+                                <div className={`flex items-start gap-2 p-3 rounded-md ${minioTestResult.success ? "bg-success-soft border border-success-line" : "bg-danger-soft border border-danger-line"}`}>
+                                    {minioTestResult.success ? <CheckCircle2 className="h-5 w-5 text-success-text mt-0.5" /> : <XCircle className="h-5 w-5 text-danger-text mt-0.5" />}
                                     <div>
-                                        <p className={`font-medium ${minioTestResult.success ? "text-green-800" : "text-red-800"}`}>
+                                        <p className={`font-medium ${minioTestResult.success ? "text-success-text" : "text-danger-text"}`}>
                                             {minioTestResult.message}
                                         </p>
                                         {minioTestResult.response_time_ms && (
@@ -798,6 +799,6 @@ export default function SettingsPage() {
                     Save Changes
                 </Button>
             </div>
-        </div>
+        </PageShell>
     )
 }

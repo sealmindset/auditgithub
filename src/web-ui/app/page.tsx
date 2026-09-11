@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
     Table,
@@ -14,7 +13,10 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import Link from "next/link"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, LayoutDashboard, ShieldCheck } from "lucide-react"
+import { PageHeader, PageShell, LiveIndicator } from "@/components/ui/page-header"
+import { SeverityBadge, StatusBadge } from "@/components/ui/severity-badge"
+import { EmptyState } from "@/components/ui/empty-state"
 
 // Hollywood Dashboard Components
 import { HeroMetrics } from "@/components/dashboard/HeroMetrics"
@@ -155,26 +157,19 @@ export default function DashboardPage() {
     }, [fetchHollywoodData, fetchLegacyData])
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6 pt-0">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Security Dashboard</h2>
-                    <p className="text-muted-foreground">
-                        Real-time security posture and AI-powered insights
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="gap-1">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                        </span>
-                        Live
-                    </Badge>
-                    <DashboardCustomizer layout={layout} />
-                </div>
-            </div>
+        <PageShell>
+            <PageHeader
+                icon={LayoutDashboard}
+                eyebrow="Platform"
+                title="Security dashboard"
+                description="Current posture across every monitored repository, refreshed every 30 seconds."
+                actions={
+                    <>
+                        <LiveIndicator />
+                        <DashboardCustomizer layout={layout} />
+                    </>
+                }
+            />
 
             {/* Hero Metrics */}
             {layout.isVisible("hero-metrics") && (
@@ -185,7 +180,7 @@ export default function DashboardPage() {
                             componentName="Hero Metrics"
                         />
                     </div>
-                    <HeroMetrics data={heroMetrics} />
+                    <HeroMetrics data={heroMetrics} loading={loading} />
                 </div>
             )}
 
@@ -272,8 +267,13 @@ export default function DashboardPage() {
                         <TableBody>
                             {recentFindings.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                                        No critical findings found. Your security posture is looking good!
+                                    <TableCell colSpan={6} className="p-0">
+                                        <EmptyState
+                                            icon={ShieldCheck}
+                                            size="sm"
+                                            title="No critical findings"
+                                            description="Nothing in this organization currently needs immediate attention."
+                                        />
                                     </TableCell>
                                 </TableRow>
                             ) : (
@@ -291,22 +291,7 @@ export default function DashboardPage() {
                                             {finding.title}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge
-                                                variant={
-                                                    finding.severity === "Critical"
-                                                        ? "destructive"
-                                                        : finding.severity === "High"
-                                                            ? "default"
-                                                            : "secondary"
-                                                }
-                                                className={
-                                                    finding.severity === "High"
-                                                        ? "bg-orange-500 hover:bg-orange-600"
-                                                        : ""
-                                                }
-                                            >
-                                                {finding.severity}
-                                            </Badge>
+                                            <SeverityBadge severity={finding.severity} />
                                         </TableCell>
                                         <TableCell>
                                             <Link
@@ -317,7 +302,7 @@ export default function DashboardPage() {
                                             </Link>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant="outline">{finding.status}</Badge>
+                                            <StatusBadge status={finding.status} />
                                         </TableCell>
                                         <TableCell className="text-right text-muted-foreground">
                                             {finding.date}
@@ -329,6 +314,6 @@ export default function DashboardPage() {
                     </Table>
                 </CardContent>
             </Card>}
-        </div>
+        </PageShell>
     )
 }

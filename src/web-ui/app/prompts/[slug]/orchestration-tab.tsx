@@ -37,22 +37,25 @@ const LAYERS = [
 
 type ViewMode = "tree" | "swimlane" | "radial"
 
+// Six layers is one more than the severity ramp can express, and these are
+// categories rather than ranks, so they come from the categorical palette.
+// Consumed by SVG `stroke`/`fill` and inline styles, where a `var()` resolves.
 const LAYER_COLORS: Record<string, string> = {
-  orchestrator: "#8b5cf6",
-  agent: "#f97316",
-  system: "#a855f7",
-  template: "#22c55e",
-  skill: "#06b6d4",
-  mcp: "#ec4899",
+  orchestrator: "var(--chart-1)",
+  agent: "var(--chart-2)",
+  system: "var(--chart-3)",
+  template: "var(--chart-4)",
+  skill: "var(--chart-5)",
+  mcp: "var(--chart-6)",
 }
 
 const LAYER_BG: Record<string, string> = {
-  orchestrator: "bg-violet-500/15 border-violet-500/30 text-violet-700 dark:text-violet-300",
-  agent: "bg-orange-500/15 border-orange-500/30 text-orange-700 dark:text-orange-300",
-  system: "bg-purple-500/15 border-purple-500/30 text-purple-700 dark:text-purple-300",
-  template: "bg-green-500/15 border-green-500/30 text-green-700 dark:text-green-300",
-  skill: "bg-cyan-500/15 border-cyan-500/30 text-cyan-700 dark:text-cyan-300",
-  mcp: "bg-pink-500/15 border-pink-500/30 text-pink-700 dark:text-pink-300",
+  orchestrator:"bg-ai/15 border-ai/30 text-ai-text dark:text-ai-text",
+  agent:"bg-warning/15 border-warning/30 text-warning-text dark:text-warning-text",
+  system:"bg-ai/15 border-ai/30 text-ai-text dark:text-ai-text",
+  template:"bg-success/15 border-success/30 text-success-text dark:text-success-text",
+  skill:"bg-info/15 border-info/30 text-info-text dark:text-info-text",
+  mcp:"bg-ai/15 border-ai/30 text-ai-text dark:text-ai-text",
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +160,7 @@ function TreeView({
                 y1={pNode.y + pNode.h}
                 x2={node.x + node.w / 2}
                 y2={node.y}
-                stroke={node.prompt?.slug === currentPrompt.slug ? LAYER_COLORS[lp.layer.key] : "#94a3b8"}
+                stroke={node.prompt?.slug === currentPrompt.slug ? LAYER_COLORS[lp.layer.key] : "var(--muted-foreground)"}
                 strokeWidth={node.prompt?.slug === currentPrompt.slug ? 2.5 : 1}
                 strokeDasharray={node.prompt?.slug === currentPrompt.slug ? undefined : "4 4"}
                 opacity={node.prompt?.slug === currentPrompt.slug ? 1 : 0.4}
@@ -190,7 +193,7 @@ function TreeView({
                   width={node.w}
                   height={node.h}
                   rx={8}
-                  fill={isCurrent ? color : "var(--card)"}
+                  fill={isCurrent ? `color-mix(in oklab, ${color} 18%, var(--card))` : "var(--card)"}
                   stroke={color}
                   strokeWidth={isCurrent ? 2.5 : 1.5}
                   opacity={isCurrent || isOrchestrator ? 1 : 0.7}
@@ -213,7 +216,7 @@ function TreeView({
                   x={node.x + node.w / 2}
                   y={node.y + 20}
                   textAnchor="middle"
-                  fill={isCurrent ? "white" : "currentColor"}
+                  fill="var(--foreground)"
                   fontSize={12}
                   fontWeight={isCurrent ? 700 : 500}
                   className="select-none"
@@ -224,7 +227,7 @@ function TreeView({
                   x={node.x + node.w / 2}
                   y={node.y + 36}
                   textAnchor="middle"
-                  fill={isCurrent ? "rgba(255,255,255,0.7)" : "#94a3b8"}
+                  fill="var(--muted-foreground)"
                   fontSize={10}
                   className="select-none"
                 >
@@ -323,14 +326,14 @@ function SwimlaneView({
       {/* Connection legend */}
       <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded border-2 border-violet-500 bg-violet-500/20" />
+          <span className="inline-block w-3 h-3 rounded border-2 border-ai bg-ai/20" />
           Orchestrator
         </span>
         {Object.entries(layerGroups).map(([key]) => (
           <span key={key} className="flex items-center gap-1">
             <span
               className="inline-block w-3 h-3 rounded"
-              style={{ backgroundColor: LAYER_COLORS[key] + "33", border: `2px solid ${LAYER_COLORS[key]}` }}
+              style={{ backgroundColor: `color-mix(in oklab, ${LAYER_COLORS[key]} 20%, transparent)`, border: `2px solid ${LAYER_COLORS[key]}` }}
             />
             {LAYERS.find((l) => l.key === key)?.label ?? key}
           </span>
@@ -401,7 +404,7 @@ function RadialView({
             y1={centerY}
             x2={sp.x}
             y2={sp.y}
-            stroke={LAYER_COLORS[getLayerForPrompt(sp.prompt)] ?? "#94a3b8"}
+            stroke={LAYER_COLORS[getLayerForPrompt(sp.prompt)] ?? "var(--muted-foreground)"}
             strokeWidth={1.5}
             strokeDasharray="4 4"
             opacity={0.4}
@@ -423,14 +426,14 @@ function RadialView({
           <text x={orchX} y={orchY + 4} textAnchor="middle" fill="currentColor" fontSize={12} fontWeight={600}>
             {agentId}
           </text>
-          <text x={orchX} y={orchY + 16} textAnchor="middle" fill="#94a3b8" fontSize={9}>
+          <text x={orchX} y={orchY + 16} textAnchor="middle" fill="var(--muted-foreground)" fontSize={9}>
             orchestrator
           </text>
         </g>
 
         {/* Sibling nodes */}
         {siblingPositions.map((sp, i) => {
-          const color = LAYER_COLORS[getLayerForPrompt(sp.prompt)] ?? "#94a3b8"
+          const color = LAYER_COLORS[getLayerForPrompt(sp.prompt)] ?? "var(--muted-foreground)"
           const label = sp.prompt.name.length > 18 ? sp.prompt.name.slice(0, 16) + "..." : sp.prompt.name
           return (
             <g
@@ -452,7 +455,7 @@ function RadialView({
               <text x={sp.x} y={sp.y + 2} textAnchor="middle" fill="currentColor" fontSize={11} fontWeight={500}>
                 {label}
               </text>
-              <text x={sp.x} y={sp.y + 14} textAnchor="middle" fill="#94a3b8" fontSize={9}>
+              <text x={sp.x} y={sp.y + 14} textAnchor="middle" fill="var(--muted-foreground)" fontSize={9}>
                 {sp.prompt.category}
               </text>
             </g>
@@ -468,14 +471,14 @@ function RadialView({
             width={160}
             height={48}
             rx={10}
-            fill={LAYER_COLORS[getLayerForPrompt(currentPrompt)]}
+            fill={`color-mix(in oklab, ${LAYER_COLORS[getLayerForPrompt(currentPrompt)]} 18%, var(--card))`}
             stroke={LAYER_COLORS[getLayerForPrompt(currentPrompt)]}
             strokeWidth={2}
           />
-          <text x={centerX} y={centerY - 4} textAnchor="middle" fill="white" fontSize={12} fontWeight={700}>
+          <text x={centerX} y={centerY - 4} textAnchor="middle" fill="var(--foreground)" fontSize={12} fontWeight={700}>
             {currentPrompt.name.length > 20 ? currentPrompt.name.slice(0, 18) + "..." : currentPrompt.name}
           </text>
-          <text x={centerX} y={centerY + 12} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={10}>
+          <text x={centerX} y={centerY + 12} textAnchor="middle" fill="var(--muted-foreground)" fontSize={10}>
             {currentPrompt.category} (current)
           </text>
         </g>

@@ -109,14 +109,14 @@ function getCommitAgeBadge(days: number | null) {
 
   if (days < 31) {
     return (
-      <Badge className="bg-green-500 hover:bg-green-600">
+      <Badge className="bg-success hover:bg-success">
         <Clock className="h-3 w-3 mr-1" />
         {days}d ago
       </Badge>
     )
   } else if (days < 365) {
     return (
-      <Badge className="bg-yellow-500 hover:bg-yellow-600">
+      <Badge className="bg-warning hover:bg-warning">
         <Clock className="h-3 w-3 mr-1" />
         {days}d ago
       </Badge>
@@ -144,14 +144,14 @@ function getScanAgeBadge(days: number | null) {
 
   if (days < 7) {
     return (
-      <Badge className="bg-green-500 hover:bg-green-600">
+      <Badge className="bg-success hover:bg-success">
         <Scan className="h-3 w-3 mr-1" />
         {days}d ago
       </Badge>
     )
   } else if (days < 30) {
     return (
-      <Badge className="bg-yellow-500 hover:bg-yellow-600">
+      <Badge className="bg-warning hover:bg-warning">
         <Scan className="h-3 w-3 mr-1" />
         {days}d ago
       </Badge>
@@ -192,14 +192,14 @@ function ScheduleStatusBadge({ repo }: { repo: RepositoryScheduleInfo }) {
         variant="outline"
         className={cn(
           "gap-1",
-          isAI ? "border-blue-500 text-blue-600" : "border-purple-500 text-purple-600"
+          isAI ? "border-info text-info-text" : "border-ai text-ai-text"
         )}
       >
         {isAI ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
         {isAI ? "AI" : "Manual"}
       </Badge>
       {repo.is_locked && (
-        <Lock className="h-3.5 w-3.5 text-amber-500" />
+        <Lock className="h-3.5 w-3.5 text-warning-text" />
       )}
     </div>
   )

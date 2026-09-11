@@ -37,7 +37,8 @@ import {
     RefreshCw,
     FileText,
     X,
-    Code
+    Code,
+    Search
 } from "lucide-react"
 import { DownloadControl } from "./DownloadControl"
 import { API_BASE, apiFetch } from "@/lib/api"
@@ -529,16 +530,16 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
         }
         
         if (!result) {
-            return <Badge variant="outline" className="text-xs text-gray-500">Not Tested</Badge>
+            return <Badge variant="outline" className="text-xs text-muted-foreground">Not Tested</Badge>
         }
         
         switch (result.auth_status) {
             case 'yes':
-                return <Badge className="text-xs bg-green-500 hover:bg-green-600">Yes</Badge>
+                return <Badge className="text-xs bg-success hover:bg-success">Yes</Badge>
             case 'failed':
-                return <Badge className="text-xs bg-red-500 hover:bg-red-600">Failed</Badge>
+                return <Badge className="text-xs bg-danger hover:bg-danger">Failed</Badge>
             default:
-                return <Badge variant="outline" className="text-xs text-gray-500">Not Tested</Badge>
+                return <Badge variant="outline" className="text-xs text-muted-foreground">Not Tested</Badge>
         }
     }
 
@@ -690,9 +691,9 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
     const renderSeverityBadge = (severity: "high" | "medium" | "low", count: number) => {
         const configs = {
-            high: { bg: "bg-red-500/10 border-red-500/30", text: "text-red-500", icon: XCircle, label: "HIGH" },
-            medium: { bg: "bg-yellow-500/10 border-yellow-500/30", text: "text-yellow-500", icon: AlertTriangle, label: "MEDIUM" },
-            low: { bg: "bg-green-500/10 border-green-500/30", text: "text-green-500", icon: CheckCircle2, label: "LOW" }
+            high: { bg: "bg-danger/10 border-danger/30", text: "text-danger-text", icon: XCircle, label: "HIGH" },
+            medium: { bg: "bg-warning/10 border-warning/30", text: "text-warning-text", icon: AlertTriangle, label: "MEDIUM" },
+            low: { bg: "bg-success/10 border-success/30", text: "text-success-text", icon: CheckCircle2, label: "LOW" }
         }
         const config = configs[severity]
         const Icon = config.icon
@@ -834,7 +835,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
 
                     {/* Executive Summary Cards */}
                     <div className="grid gap-4 md:grid-cols-4">
-                        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+                        <Card className="bg-gradient-to-br from-info/10 to-info/5 border-info/20">
                             <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
                                     <CardDescription className="flex items-center gap-2">
@@ -860,7 +861,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                             </CardContent>
                         </Card>
 
-                        <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
+                        <Card className="bg-gradient-to-br from-ai/10 to-ai/5 border-ai/20">
                             <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
                                     <CardDescription className="flex items-center gap-2">
@@ -886,7 +887,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                             </CardContent>
                         </Card>
 
-                        <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
+                        <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
                             <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
                                     <CardDescription className="flex items-center gap-2">
@@ -910,7 +911,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                             </CardContent>
                         </Card>
 
-                        <Card className="bg-gradient-to-br from-orange-500/10 to-orange-600/5 border-orange-500/20">
+                        <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
                             <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
                                     <CardDescription className="flex items-center gap-2">
@@ -951,11 +952,11 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                         <Card className="overflow-hidden">
                             <CardHeader className="pb-3">
                                 <div className="flex items-center gap-3">
-                                    <Globe className="h-5 w-5 text-cyan-500" />
+                                    <Globe className="h-5 w-5 text-info-text" />
                                     <div>
                                         <CardTitle className="text-lg flex items-center gap-2">
                                             Inbound API Target URLs
-                                            <Badge variant="outline" className="text-[10px] bg-cyan-500/10 text-cyan-600 border-cyan-500/30">
+                                            <Badge variant="outline" className="text-[10px] bg-info/10 text-info-text border-info/30">
                                                 AI Agent
                                             </Badge>
                                         </CardTitle>
@@ -964,9 +965,9 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-r from-cyan-500/5 to-blue-500/5 p-4">
+                                <div className="rounded-lg border border-info/30 bg-gradient-to-r from-info/5 to-info/5 p-4">
                                     <div className="flex items-center gap-2 mb-3">
-                                        <Zap className="h-4 w-4 text-cyan-500" />
+                                        <Zap className="h-4 w-4 text-info-text" />
                                         <h4 className="font-semibold text-sm">AI Target URL Mapping</h4>
                                     </div>
                                     <div className="rounded-lg border overflow-hidden">
@@ -988,14 +989,14 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                             </div>
                                                         </td>
                                                         <td className="px-4 py-2">
-                                                            <a href={corr.target_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline font-mono truncate block max-w-xs">
+                                                            <a href={corr.target_url} target="_blank" rel="noopener noreferrer" className="text-xs text-info-text hover:underline font-mono truncate block max-w-xs">
                                                                 {corr.target_url}
                                                             </a>
                                                         </td>
                                                         <td className="px-4 py-2 text-center">
                                                             <div className="flex items-center justify-center gap-1">
-                                                                <div className={`h-2 w-2 rounded-full ${corr.confidence >= 70 ? 'bg-green-500' : corr.confidence >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                                                                <span className={`text-xs font-medium ${corr.confidence >= 70 ? 'text-green-600' : corr.confidence >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                                <div className={`h-2 w-2 rounded-full ${corr.confidence >= 70 ? 'bg-success' : corr.confidence >= 40 ? 'bg-warning' : 'bg-danger'}`} />
+                                                                <span className={`text-xs font-medium ${corr.confidence >= 70 ? 'text-success-text' : corr.confidence >= 40 ? 'text-warning-text' : 'text-danger-text'}`}>
                                                                     {corr.confidence}%
                                                                 </span>
                                                             </div>
@@ -1020,11 +1021,11 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                         <Card className="overflow-hidden">
                             <CardHeader className="pb-3">
                                 <div className="flex items-center gap-3">
-                                    <Upload className="h-5 w-5 text-purple-500" />
+                                    <Upload className="h-5 w-5 text-ai-text" />
                                     <div>
                                         <CardTitle className="text-lg flex items-center gap-2">
                                             Outbound API Target URLs
-                                            <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-600 border-purple-500/30">
+                                            <Badge variant="outline" className="text-[10px] bg-ai/10 text-ai-text border-ai/30">
                                                 AI Agent
                                             </Badge>
                                         </CardTitle>
@@ -1033,9 +1034,9 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="rounded-lg border border-purple-500/30 bg-gradient-to-r from-purple-500/5 to-pink-500/5 p-4">
+                                <div className="rounded-lg border border-ai/30 bg-gradient-to-r from-ai/5 to-ai/5 p-4">
                                     <div className="flex items-center gap-2 mb-3">
-                                        <Zap className="h-4 w-4 text-purple-500" />
+                                        <Zap className="h-4 w-4 text-ai-text" />
                                         <h4 className="font-semibold text-sm">AI Target URL Mapping</h4>
                                     </div>
                                     <div className="rounded-lg border overflow-hidden">
@@ -1049,21 +1050,21 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                             </thead>
                                             <tbody>
                                                 {outboundCorrelations.slice(0, 5).map((corr, i) => (
-                                                    <tr key={`outbound-${corr.external_url}-${i}`} className="border-t hover:bg-muted/30">
+                                                    <tr key={`outbound-${corr.target_url}-${i}`} className="border-t hover:bg-muted/30">
                                                         <td className="px-4 py-2">
                                                             <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate block max-w-xs">
                                                                 {corr.endpoint.code.length > 60 ? corr.endpoint.code.slice(0, 60) + '...' : corr.endpoint.code}
                                                             </code>
                                                         </td>
                                                         <td className="px-4 py-2">
-                                                            <a href={corr.target_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline font-mono truncate block max-w-xs">
+                                                            <a href={corr.target_url} target="_blank" rel="noopener noreferrer" className="text-xs text-info-text hover:underline font-mono truncate block max-w-xs">
                                                                 {corr.target_url}
                                                             </a>
                                                         </td>
                                                         <td className="px-4 py-2 text-center">
                                                             <div className="flex items-center justify-center gap-1">
-                                                                <div className={`h-2 w-2 rounded-full ${corr.confidence >= 70 ? 'bg-green-500' : corr.confidence >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                                                                <span className={`text-xs font-medium ${corr.confidence >= 70 ? 'text-green-600' : corr.confidence >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                                <div className={`h-2 w-2 rounded-full ${corr.confidence >= 70 ? 'bg-success' : corr.confidence >= 40 ? 'bg-warning' : 'bg-danger'}`} />
+                                                                <span className={`text-xs font-medium ${corr.confidence >= 70 ? 'text-success-text' : corr.confidence >= 40 ? 'text-warning-text' : 'text-danger-text'}`}>
                                                                     {corr.confidence}%
                                                                 </span>
                                                             </div>
@@ -1088,11 +1089,11 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                         <Card className="overflow-hidden">
                             <CardHeader className="pb-3">
                                 <div className="flex items-center gap-3">
-                                    <Server className="h-5 w-5 text-green-500" />
+                                    <Server className="h-5 w-5 text-success-text" />
                                     <div>
                                         <CardTitle className="text-lg flex items-center gap-2">
                                             Server-Credential Mapping
-                                            <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 border-green-500/30">
+                                            <Badge variant="outline" className="text-[10px] bg-success/10 text-success-text border-success/30">
                                                 AI Agent
                                             </Badge>
                                         </CardTitle>
@@ -1101,17 +1102,17 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="rounded-lg border border-green-500/30 bg-gradient-to-r from-green-500/5 to-emerald-500/5 p-4">
+                                <div className="rounded-lg border border-success/30 bg-gradient-to-r from-success/5 to-success/5 p-4">
                                     <div className="flex items-center gap-2 mb-3">
-                                        <Zap className="h-4 w-4 text-green-500" />
+                                        <Zap className="h-4 w-4 text-success-text" />
                                         <h4 className="font-semibold text-sm">AI Server-Credential Mapping</h4>
                                     </div>
                                     <div className="space-y-3">
                                         {serverCredCorrelations.slice(0, 5).map((corr, i) => (
                                             <div key={i} className="rounded-lg border bg-background p-3">
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <Globe className="h-4 w-4 text-green-500" />
-                                                    <a href={corr.server.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 hover:underline font-mono">
+                                                    <Globe className="h-4 w-4 text-success-text" />
+                                                    <a href={corr.server.url} target="_blank" rel="noopener noreferrer" className="text-sm text-info-text hover:underline font-mono">
                                                         {corr.server.url}
                                                     </a>
                                                     <Badge variant="outline" className="text-xs">{corr.server.environment}</Badge>
@@ -1121,7 +1122,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         <div key={j} className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded">
                                                             <Key className="h-3 w-3" />
                                                             <span>{cred.credential.type}</span>
-                                                            <span className={`${cred.confidence >= 70 ? 'text-green-600' : cred.confidence >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                            <span className={`${cred.confidence >= 70 ? 'text-success-text' : cred.confidence >= 40 ? 'text-warning-text' : 'text-danger-text'}`}>
                                                                 ({cred.confidence}%)
                                                             </span>
                                                         </div>
@@ -1146,16 +1147,16 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                     {/* Swagger Server Credentials - For Connection Testing */}
                     {swaggerServerCredentials.length > 0 && (
                         <Collapsible open={expandedSections.has("swagger-server-credentials")} onOpenChange={() => toggleSection("swagger-server-credentials")}>
-                            <Card className="overflow-hidden border-green-500/30">
+                            <Card className="overflow-hidden border-success/30">
                                 <CollapsibleTrigger asChild>
                                     <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <Globe className="h-5 w-5 text-green-500" />
+                                                <Globe className="h-5 w-5 text-success-text" />
                                                 <div>
                                                     <CardTitle className="text-lg flex items-center gap-2">
                                                         Server Credentials for Testing
-                                                        <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 border-green-500/30">
+                                                        <Badge variant="outline" className="text-[10px] bg-success/10 text-success-text border-success/30">
                                                             API Discovery
                                                         </Badge>
                                                     </CardTitle>
@@ -1171,9 +1172,9 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 </CollapsibleTrigger>
                                 <CollapsibleContent>
                                     <CardContent>
-                                        <div className="rounded-lg border border-green-500/30 bg-gradient-to-r from-green-500/5 to-emerald-500/5 p-4">
+                                        <div className="rounded-lg border border-success/30 bg-gradient-to-r from-success/5 to-success/5 p-4">
                                             <div className="flex items-center gap-2 mb-3">
-                                                <Zap className="h-4 w-4 text-green-500" />
+                                                <Zap className="h-4 w-4 text-success-text" />
                                                 <h4 className="font-semibold text-sm">Swagger Server → Credential Mapping</h4>
                                                 <span className="text-xs text-muted-foreground">(Use these for API connection testing)</span>
                                             </div>
@@ -1182,8 +1183,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                     <div key={i} className="rounded-lg border bg-background p-4">
                                                         <div className="flex items-center justify-between mb-3">
                                                             <div className="flex items-center gap-2">
-                                                                <Globe className="h-4 w-4 text-green-500" />
-                                                                <a href={server.server_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 hover:underline font-mono">
+                                                                <Globe className="h-4 w-4 text-success-text" />
+                                                                <a href={server.server_url} target="_blank" rel="noopener noreferrer" className="text-sm text-info-text hover:underline font-mono">
                                                                     {server.server_url}
                                                                 </a>
                                                                 <Badge variant="outline" className="text-xs">{server.server_environment}</Badge>
@@ -1191,7 +1192,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                             <div className="flex items-center gap-2">
                                                                 <Badge variant="secondary" className="text-xs">{server.credential_count} credentials</Badge>
                                                                 {server.top_confidence >= 70 && (
-                                                                    <Badge className="text-xs bg-green-500">High Match</Badge>
+                                                                    <Badge className="text-xs bg-success">High Match</Badge>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -1225,8 +1226,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                                                 </td>
                                                                                 <td className="px-3 py-2 text-center">
                                                                                     <div className="flex items-center justify-center gap-1">
-                                                                                        <div className={`h-2 w-2 rounded-full ${cred.confidence >= 70 ? 'bg-green-500' : cred.confidence >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                                                                                        <span className={`text-xs font-medium ${cred.confidence >= 70 ? 'text-green-600' : cred.confidence >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                                                        <div className={`h-2 w-2 rounded-full ${cred.confidence >= 70 ? 'bg-success' : cred.confidence >= 40 ? 'bg-warning' : 'bg-danger'}`} />
+                                                                                        <span className={`text-xs font-medium ${cred.confidence >= 70 ? 'text-success-text' : cred.confidence >= 40 ? 'text-warning-text' : 'text-danger-text'}`}>
                                                                                             {cred.confidence}%
                                                                                         </span>
                                                                                     </div>
@@ -1257,11 +1258,11 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                     <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <Key className="h-5 w-5 text-cyan-500" />
+                                                <Key className="h-5 w-5 text-info-text" />
                                                 <div>
                                                     <CardTitle className="text-lg flex items-center gap-2">
                                                         Credential-URL Mapping
-                                                        <Badge variant="outline" className="text-[10px] bg-cyan-500/10 text-cyan-600 border-cyan-500/30">
+                                                        <Badge variant="outline" className="text-[10px] bg-info/10 text-info-text border-info/30">
                                                             AI Agent
                                                         </Badge>
                                                     </CardTitle>
@@ -1301,11 +1302,11 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 </CollapsibleTrigger>
                                 <CollapsibleContent>
                                     <CardContent>
-                                        <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-r from-cyan-500/5 to-blue-500/5 p-4">
+                                        <div className="rounded-lg border border-info/30 bg-gradient-to-r from-info/5 to-info/5 p-4">
                                             {/* Header with Test All button and Rate Limit selector */}
                                             <div className="flex items-center justify-between mb-4">
                                                 <div className="flex items-center gap-2">
-                                                    <Zap className="h-4 w-4 text-cyan-500" />
+                                                    <Zap className="h-4 w-4 text-info-text" />
                                                     <h4 className="font-semibold text-sm">AI Credential-URL Mapping</h4>
                                                 </div>
                                                 <div className="flex items-center gap-3">
@@ -1346,7 +1347,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         {credentialUrlCorrelations.map((corr, i) => (
                                                             <tr key={i} className="border-t hover:bg-muted/30">
                                                                 <td className="px-3 py-2">
-                                                                    <a href={corr.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline font-mono truncate block max-w-[200px]" title={corr.url}>
+                                                                    <a href={corr.url} target="_blank" rel="noopener noreferrer" className="text-xs text-info-text hover:underline font-mono truncate block max-w-[200px]" title={corr.url}>
                                                                         {corr.url.length > 40 ? corr.url.slice(0, 40) + '...' : corr.url}
                                                                     </a>
                                                                 </td>
@@ -1360,8 +1361,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                                 </td>
                                                                 <td className="px-3 py-2 text-center">
                                                                     <div className="flex items-center justify-center gap-1">
-                                                                        <div className={`h-2 w-2 rounded-full ${corr.confidence >= 70 ? 'bg-green-500' : corr.confidence >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                                                                        <span className={`text-xs font-medium ${corr.confidence >= 70 ? 'text-green-600' : corr.confidence >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                                        <div className={`h-2 w-2 rounded-full ${corr.confidence >= 70 ? 'bg-success' : corr.confidence >= 40 ? 'bg-warning' : 'bg-danger'}`} />
+                                                                        <span className={`text-xs font-medium ${corr.confidence >= 70 ? 'text-success-text' : corr.confidence >= 40 ? 'text-warning-text' : 'text-danger-text'}`}>
                                                                             {corr.confidence}%
                                                                         </span>
                                                                     </div>
@@ -1419,7 +1420,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                     <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <ShieldAlert className="h-5 w-5 text-orange-500" />
+                                                <ShieldAlert className="h-5 w-5 text-warning-text" />
                                                 <div>
                                                     <CardTitle className="text-lg">Hardcoded Credentials Risk Assessment</CardTitle>
                                                     <CardDescription>API keys, tokens, and secrets found in source code</CardDescription>
@@ -1442,13 +1443,13 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         {(auditData.credentials?.high?.length || 0) > 0 && (
                                             <div className="space-y-3">
                                                 <div className="flex items-center gap-2">
-                                                    <XCircle className="h-4 w-4 text-red-500" />
-                                                    <h4 className="font-semibold text-red-500">High Risk</h4>
+                                                    <XCircle className="h-4 w-4 text-danger-text" />
+                                                    <h4 className="font-semibold text-danger-text">High Risk</h4>
                                                     <span className="text-xs text-muted-foreground">— May allow infrastructure access or service impersonation</span>
                                                 </div>
-                                                <div className="rounded-lg border border-red-500/20 bg-red-500/5 overflow-hidden">
+                                                <div className="rounded-lg border border-danger/20 bg-danger/5 overflow-hidden">
                                                     <table className="w-full text-sm">
-                                                        <thead className="bg-red-500/10">
+                                                        <thead className="bg-danger/10">
                                                             <tr>
                                                                 <th className="px-4 py-2 text-left font-medium">Type</th>
                                                                 <th className="px-4 py-2 text-left font-medium">Environment</th>
@@ -1457,7 +1458,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         </thead>
                                                         <tbody>
                                                             {auditData.credentials.high.slice(0, 10).map((cred, i) => (
-                                                                <tr key={`cred-high-${cred.url}-${cred.type}-${i}`} className="border-t border-red-500/10">
+                                                                <tr key={`cred-high-${cred.file}-${cred.type}-${i}`} className="border-t border-danger/10">
                                                                     <td className="px-4 py-2 font-mono text-xs">{cred.type}</td>
                                                                     <td className="px-4 py-2">
                                                                         <Badge variant="outline" className="text-xs">{cred.environment}</Badge>
@@ -1475,13 +1476,13 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         {(auditData.credentials?.medium?.length || 0) > 0 && (
                                             <div className="space-y-3">
                                                 <div className="flex items-center gap-2">
-                                                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                                    <h4 className="font-semibold text-yellow-500">Medium Risk</h4>
+                                                    <AlertTriangle className="h-4 w-4 text-warning-text" />
+                                                    <h4 className="font-semibold text-warning-text">Medium Risk</h4>
                                                     <span className="text-xs text-muted-foreground">— Allows data injection, analytics pollution, or API abuse</span>
                                                 </div>
-                                                <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 overflow-hidden">
+                                                <div className="rounded-lg border border-warning/20 bg-warning/5 overflow-hidden">
                                                     <table className="w-full text-sm">
-                                                        <thead className="bg-yellow-500/10">
+                                                        <thead className="bg-warning/10">
                                                             <tr>
                                                                 <th className="px-4 py-2 text-left font-medium">Type</th>
                                                                 <th className="px-4 py-2 text-left font-medium">Environment</th>
@@ -1490,7 +1491,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         </thead>
                                                         <tbody>
                                                             {auditData.credentials.medium.slice(0, 10).map((cred, i) => (
-                                                                <tr key={`cred-medium-${cred.url}-${cred.type}-${i}`} className="border-t border-yellow-500/10">
+                                                                <tr key={`cred-medium-${cred.file}-${cred.type}-${i}`} className="border-t border-warning/10">
                                                                     <td className="px-4 py-2 font-mono text-xs">{cred.type}</td>
                                                                     <td className="px-4 py-2">
                                                                         <Badge variant="outline" className="text-xs">{cred.environment}</Badge>
@@ -1508,8 +1509,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         {(auditData.credentials?.low?.length || 0) > 0 && (
                                             <div className="space-y-3">
                                                 <div className="flex items-center gap-2">
-                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                    <h4 className="font-semibold text-green-500">Low Risk</h4>
+                                                    <CheckCircle2 className="h-4 w-4 text-success-text" />
+                                                    <h4 className="font-semibold text-success-text">Low Risk</h4>
                                                     <span className="text-xs text-muted-foreground">— Public OAuth client IDs, useful for API reconnaissance</span>
                                                 </div>
                                                 <p className="text-sm text-muted-foreground">
@@ -1531,7 +1532,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                     <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <Server className="h-5 w-5 text-green-500" />
+                                                <Server className="h-5 w-5 text-success-text" />
                                                 <div>
                                                     <CardTitle className="text-lg">Discovered API Servers</CardTitle>
                                                     <CardDescription>Server URLs extracted from configuration files</CardDescription>
@@ -1550,7 +1551,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                             {serverGroups.production.length > 0 && (
                                                 <div className="space-y-2">
                                                     <h4 className="font-semibold text-sm flex items-center gap-2">
-                                                        <div className="h-2 w-2 rounded-full bg-green-500" />
+                                                        <div className="h-2 w-2 rounded-full bg-success" />
                                                         Production ({serverGroups.production.length})
                                                     </h4>
                                                     <div className="space-y-1">
@@ -1570,7 +1571,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                             {serverGroups.staging.length > 0 && (
                                                 <div className="space-y-2">
                                                     <h4 className="font-semibold text-sm flex items-center gap-2">
-                                                        <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                                                        <div className="h-2 w-2 rounded-full bg-warning" />
                                                         Staging ({serverGroups.staging.length})
                                                     </h4>
                                                     <div className="space-y-1">
@@ -1587,7 +1588,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                             {serverGroups.development.length > 0 && (
                                                 <div className="space-y-2">
                                                     <h4 className="font-semibold text-sm flex items-center gap-2">
-                                                        <div className="h-2 w-2 rounded-full bg-blue-500" />
+                                                        <div className="h-2 w-2 rounded-full bg-info" />
                                                         Development/QA ({serverGroups.development.length})
                                                     </h4>
                                                     <div className="space-y-1">
@@ -1615,7 +1616,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                         <Card>
                             <CardHeader>
                                 <div className="flex items-center gap-3">
-                                    <FolderOpen className="h-5 w-5 text-blue-500" />
+                                    <FolderOpen className="h-5 w-5 text-info-text" />
                                     <div>
                                         <CardTitle className="text-lg">Configuration Sources</CardTitle>
                                         <CardDescription>Files where API configuration was discovered</CardDescription>
@@ -1655,7 +1656,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         size="sm"
                                         onClick={() => window.open(`${API_BASE}/projects/${projectId}/api-audit/server-testing`, '_blank')}
                                     >
-                                        🔍 API Discovery
+                                        <Search className="h-4 w-4" aria-hidden />
+                                        API Discovery
                                     </Button>
                                 </div>
                             </div>
@@ -1739,7 +1741,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         className="mt-4"
                                         onClick={() => window.open(`${API_BASE}/projects/${projectId}/api-audit/server-testing`, '_blank')}
                                     >
-                                        🔍 Open API Discovery
+                                        <Search className="h-4 w-4" aria-hidden />
+                                        Open API Discovery
                                     </Button>
                                 </div>
                             )}
@@ -1793,7 +1796,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         </code>
                                                     </td>
                                                     <td className="p-3 text-center">
-                                                        <Badge className={cred.certainty >= 90 ? 'bg-green-500' : cred.certainty >= 80 ? 'bg-yellow-500' : 'bg-gray-500'}>
+                                                        <Badge className={cred.certainty >= 90 ? 'bg-success' : cred.certainty >= 80 ? 'bg-warning' : 'bg-muted-foreground'}>
                                                             {cred.certainty}%
                                                         </Badge>
                                                     </td>
@@ -1815,10 +1818,10 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                     {/* Credentials Modal */}
                     {credentialsModalOpen && (
                         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white dark:bg-black rounded-lg w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden shadow-2xl border dark:border-zinc-800">
+                            <div className="bg-card rounded-lg w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden shadow-2xl border dark:border-border">
                                 <div className="flex items-center justify-between p-4 border-b">
                                     <h2 className="text-lg font-semibold">All Matched Credentials ({matchedCredentials.length})</h2>
-                                    <Button variant="ghost" size="sm" onClick={() => setCredentialsModalOpen(false)}>
+                                    <Button aria-label="Close credentials" variant="ghost" size="sm" onClick={() => setCredentialsModalOpen(false)}>
                                         <XCircle className="h-5 w-5" />
                                     </Button>
                                 </div>
@@ -1847,7 +1850,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                         </code>
                                                     </td>
                                                     <td className="p-3 text-center">
-                                                        <Badge className={cred.certainty >= 90 ? 'bg-green-500' : cred.certainty >= 80 ? 'bg-yellow-500' : 'bg-gray-500'}>
+                                                        <Badge className={cred.certainty >= 90 ? 'bg-success' : cred.certainty >= 80 ? 'bg-warning' : 'bg-muted-foreground'}>
                                                             {cred.certainty}%
                                                         </Badge>
                                                     </td>
@@ -1865,10 +1868,10 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
             {/* SwaggerUI Modal - outside TabsContent for proper z-index */}
             {swaggerModalUrl && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-black rounded-lg w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl border dark:border-zinc-800">
+                    <div className="bg-card rounded-lg w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl border dark:border-border">
                         <div className="flex items-center justify-between p-4 border-b">
                             <h2 className="text-lg font-semibold">SwaggerUI</h2>
-                            <Button variant="ghost" size="sm" onClick={() => setSwaggerModalUrl(null)}>
+                            <Button aria-label="Close specification" variant="ghost" size="sm" onClick={() => setSwaggerModalUrl(null)}>
                                 <XCircle className="h-5 w-5" />
                             </Button>
                         </div>
@@ -1886,11 +1889,11 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
             {/* Credential-URL Test Report Modal - outside TabsContent for proper z-index */}
             {reportModalOpen && selectedReportResult && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg w-[80vw] max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl border dark:border-zinc-700">
+                    <div className="bg-card rounded-lg w-[80vw] max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl border dark:border-border">
                         {/* Modal Header - Fixed */}
-                        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-gradient-to-r from-cyan-500/10 to-blue-500/10">
+                        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-gradient-to-r from-info/10 to-info/10">
                             <div className="flex items-center gap-3">
-                                <FileText className="h-5 w-5 text-cyan-500" />
+                                <FileText className="h-5 w-5 text-info-text" />
                                 <div>
                                     <h2 className="text-lg font-semibold">Credential-URL Test Report</h2>
                                     <p className="text-xs text-muted-foreground font-mono truncate max-w-[500px]">{selectedReportResult.target_url}</p>
@@ -1908,7 +1911,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                     <Download className="h-4 w-4 mr-1" />
                                     Download
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => setReportModalOpen(false)}>
+                                <Button aria-label="Close report" variant="ghost" size="sm" onClick={() => setReportModalOpen(false)}>
                                     <X className="h-5 w-5" />
                                 </Button>
                             </div>
@@ -1918,9 +1921,9 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                         <div className="flex-1 overflow-y-auto p-6">
                             <div className="space-y-6 max-w-4xl mx-auto">
                                 {/* Overview Section */}
-                                <div className="rounded-lg border p-4 bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+                                <div className="rounded-lg border p-4 bg-gradient-to-r from-info/5 to-ai/5">
                                     <h3 className="font-semibold mb-2 flex items-center gap-2">
-                                        <Zap className="h-4 w-4 text-blue-500" />
+                                        <Zap className="h-4 w-4 text-info-text" />
                                         Overview
                                     </h3>
                                     <p className="text-sm text-muted-foreground leading-relaxed">
@@ -1930,10 +1933,10 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         <div className="mt-3 flex items-center gap-2">
                                             <span className="text-xs font-medium">Risk Level:</span>
                                             <Badge className={`text-xs ${
-                                                selectedReportResult.threat_level === 'critical' ? 'bg-red-600' :
-                                                selectedReportResult.threat_level === 'high' ? 'bg-orange-500' :
-                                                selectedReportResult.threat_level === 'medium' ? 'bg-yellow-500' :
-                                                selectedReportResult.threat_level === 'low' ? 'bg-blue-500' : 'bg-gray-500'
+                                                selectedReportResult.threat_level === 'critical' ? 'bg-danger' :
+                                                selectedReportResult.threat_level === 'high' ? 'bg-warning' :
+                                                selectedReportResult.threat_level === 'medium' ? 'bg-warning' :
+                                                selectedReportResult.threat_level === 'low' ? 'bg-info' : 'bg-muted-foreground'
                                             }`}>
                                                 {selectedReportResult.threat_level.toUpperCase()}
                                             </Badge>
@@ -1944,14 +1947,14 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 {/* Authentication Status */}
                                 <div className="rounded-lg border p-4">
                                     <h3 className="font-semibold mb-3 flex items-center gap-2">
-                                        <Key className="h-4 w-4 text-green-500" />
+                                        <Key className="h-4 w-4 text-success-text" />
                                         Authentication Status
                                     </h3>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                         <div>
                                             <span className="text-muted-foreground">Status</span>
                                             <div className="font-medium mt-1">
-                                                <Badge className={selectedReportResult.auth_status === 'yes' ? 'bg-green-500' : 'bg-red-500'}>
+                                                <Badge className={selectedReportResult.auth_status === 'yes' ? 'bg-success' : 'bg-danger'}>
                                                     {selectedReportResult.auth_status === 'yes' ? 'Authenticated' : 'Failed'}
                                                 </Badge>
                                             </div>
@@ -1970,16 +1973,16 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         </div>
                                     </div>
                                     {selectedReportResult.auth_error_message && (
-                                        <div className="mt-3 text-sm text-red-500">
+                                        <div className="mt-3 text-sm text-danger-text">
                                             Error: {selectedReportResult.auth_error_message}
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Raw Request/Response Section */}
-                                <div className="rounded-lg border p-4 bg-gradient-to-r from-slate-500/5 to-zinc-500/5">
+                                <div className="rounded-lg border p-4 bg-gradient-to-r from-muted/5 to-muted/5">
                                     <h3 className="font-semibold mb-3 flex items-center gap-2">
-                                        <Code className="h-4 w-4 text-slate-500" />
+                                        <Code className="h-4 w-4 text-muted-foreground" />
                                         Raw HTTP Request & Response
                                     </h3>
                                     
@@ -1987,40 +1990,40 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         {/* Request Section */}
                                         <div>
                                             <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                                                <span className="text-green-500">→</span> Request
+                                                <span className="text-success-text">→</span> Request
                                             </h4>
-                                            <div className="bg-zinc-950 dark:bg-black rounded-lg overflow-hidden">
+                                            <div className="bg-muted rounded-lg overflow-hidden">
                                                 {/* Request Line */}
-                                                <div className="p-3 border-b border-zinc-800">
-                                                    <span className="text-green-400 font-mono text-sm">
+                                                <div className="p-3 border-b border-border">
+                                                    <span className="text-success-text font-mono text-sm">
                                                         {selectedReportResult.auth_request_method || 'GET'} {selectedReportResult.auth_request_url || selectedReportResult.target_url} HTTP/1.1
                                                     </span>
                                                 </div>
                                                 
                                                 {/* Request Headers */}
-                                                <div className="p-3 border-b border-zinc-800 max-h-[200px] overflow-y-auto">
-                                                    <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Headers</div>
+                                                <div className="p-3 border-b border-border max-h-[200px] overflow-y-auto">
+                                                    <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Headers</div>
                                                     <div className="font-mono text-xs space-y-1">
                                                         {selectedReportResult.auth_request_headers && Object.keys(selectedReportResult.auth_request_headers).length > 0 ? (
                                                             Object.entries(selectedReportResult.auth_request_headers).map(([key, value]: [string, any], idx: number) => (
                                                                 <div key={idx} className="flex">
-                                                                    <span className="text-cyan-400">{key}:</span>
-                                                                    <span className="text-slate-300 ml-2 break-all">{String(value)}</span>
+                                                                    <span className="text-info-text">{key}:</span>
+                                                                    <span className="text-muted-foreground ml-2 break-all">{String(value)}</span>
                                                                 </div>
                                                             ))
                                                         ) : (
                                                             <>
                                                                 <div className="flex">
-                                                                    <span className="text-cyan-400">Host:</span>
-                                                                    <span className="text-slate-300 ml-2">{(() => { try { return new URL(selectedReportResult.target_url).host } catch { return 'N/A' } })()}</span>
+                                                                    <span className="text-info-text">Host:</span>
+                                                                    <span className="text-muted-foreground ml-2">{(() => { try { return new URL(selectedReportResult.target_url).host } catch { return 'N/A' } })()}</span>
                                                                 </div>
                                                                 <div className="flex">
-                                                                    <span className="text-cyan-400">Accept:</span>
-                                                                    <span className="text-slate-300 ml-2">application/json, text/plain, */*</span>
+                                                                    <span className="text-info-text">Accept:</span>
+                                                                    <span className="text-muted-foreground ml-2">application/json, text/plain, */*</span>
                                                                 </div>
                                                                 <div className="flex">
-                                                                    <span className="text-cyan-400">User-Agent:</span>
-                                                                    <span className="text-slate-300 ml-2">AuditGH-SecurityScanner/1.0</span>
+                                                                    <span className="text-info-text">User-Agent:</span>
+                                                                    <span className="text-muted-foreground ml-2">AuditGH-SecurityScanner/1.0</span>
                                                                 </div>
                                                                 {/* Display auth headers with actual credential values for security analyst validation */}
                                                                 {selectedReportResult.auth_headers_used && selectedReportResult.auth_headers_used.map((header: string, idx: number) => {
@@ -2035,7 +2038,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                                         headerValue = `Basic ${credValue}`;
                                                                     }
                                                                     return (
-                                                                        <div key={idx} className="flex text-yellow-400">
+                                                                        <div key={idx} className="flex text-warning-text">
                                                                             <span>{headerName}:</span>
                                                                             <span className="ml-2 break-all">{headerValue}</span>
                                                                         </div>
@@ -2049,8 +2052,8 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                 {/* Request Body */}
                                                 {selectedReportResult.auth_request_body && (
                                                     <div className="p-3">
-                                                        <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Body</div>
-                                                        <pre className="font-mono text-xs text-slate-300 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                                                        <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Body</div>
+                                                        <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
                                                             {selectedReportResult.auth_request_body}
                                                         </pre>
                                                     </div>
@@ -2061,17 +2064,17 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                         {/* Response Section */}
                                         <div>
                                             <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                                                <span className={selectedReportResult.auth_status === 'yes' ? 'text-green-500' : 'text-red-500'}>←</span> Response
+                                                <span className={selectedReportResult.auth_status === 'yes' ? 'text-success-text' : 'text-danger-text'}>←</span> Response
                                             </h4>
-                                            <div className="bg-zinc-950 dark:bg-black rounded-lg overflow-hidden">
+                                            <div className="bg-muted rounded-lg overflow-hidden">
                                                 {/* Status Line */}
-                                                <div className="p-3 border-b border-zinc-800">
+                                                <div className="p-3 border-b border-border">
                                                     <span className={`font-mono text-sm ${
                                                         selectedReportResult.auth_status_code >= 200 && selectedReportResult.auth_status_code < 300 
-                                                            ? 'text-green-400' 
+                                                            ? 'text-success-text' 
                                                             : selectedReportResult.auth_status_code >= 400 
-                                                                ? 'text-red-400' 
-                                                                : 'text-yellow-400'
+                                                                ? 'text-danger-text' 
+                                                                : 'text-warning-text'
                                                     }`}>
                                                         HTTP/1.1 {selectedReportResult.auth_status_code} {
                                                             selectedReportResult.auth_status_code === 200 ? 'OK' :
@@ -2085,38 +2088,38 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                             ''
                                                         }
                                                     </span>
-                                                    <span className="text-slate-500 text-xs ml-4">
+                                                    <span className="text-muted-foreground text-xs ml-4">
                                                         ({selectedReportResult.auth_response_time_ms}ms)
                                                     </span>
                                                 </div>
                                                 
                                                 {/* Response Headers */}
-                                                <div className="p-3 border-b border-zinc-800 max-h-[200px] overflow-y-auto">
-                                                    <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Headers</div>
+                                                <div className="p-3 border-b border-border max-h-[200px] overflow-y-auto">
+                                                    <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Headers</div>
                                                     <div className="font-mono text-xs space-y-1">
                                                         {selectedReportResult.auth_response_headers && Object.keys(selectedReportResult.auth_response_headers).length > 0 ? (
                                                             Object.entries(selectedReportResult.auth_response_headers).map(([key, value]: [string, any], idx: number) => (
                                                                 <div key={idx} className="flex">
-                                                                    <span className="text-cyan-400">{key}:</span>
-                                                                    <span className="text-slate-300 ml-2 break-all">{String(value)}</span>
+                                                                    <span className="text-info-text">{key}:</span>
+                                                                    <span className="text-muted-foreground ml-2 break-all">{String(value)}</span>
                                                                 </div>
                                                             ))
                                                         ) : (
-                                                            <div className="text-slate-500 italic">No headers captured</div>
+                                                            <div className="text-muted-foreground italic">No headers captured</div>
                                                         )}
                                                     </div>
                                                 </div>
                                                 
                                                 {/* Response Body */}
                                                 <div className="p-3">
-                                                    <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide flex items-center gap-2">
+                                                    <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wide flex items-center gap-2">
                                                         Body
                                                         {selectedReportResult.auth_response_body_truncated && (
-                                                            <Badge variant="outline" className="text-xs text-yellow-500 border-yellow-500">Truncated</Badge>
+                                                            <Badge variant="outline" className="text-xs text-warning-text border-warning">Truncated</Badge>
                                                         )}
                                                     </div>
                                                     {selectedReportResult.auth_response_body ? (
-                                                        <pre className="font-mono text-xs text-slate-300 whitespace-pre-wrap break-all max-h-[300px] overflow-y-auto bg-zinc-900 rounded p-2">
+                                                        <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all max-h-[300px] overflow-y-auto bg-muted rounded p-2">
                                                             {(() => {
                                                                 try {
                                                                     // Try to pretty-print JSON
@@ -2129,14 +2132,14 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                             })()}
                                                         </pre>
                                                     ) : (
-                                                        <div className="text-slate-500 italic text-xs">No response body captured</div>
+                                                        <div className="text-muted-foreground italic text-xs">No response body captured</div>
                                                     )}
                                                 </div>
                                             </div>
                                         </div>
 
                                         {/* Credential Info Summary */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm pt-2 border-t border-zinc-700">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm pt-2 border-t border-border">
                                             <div>
                                                 <span className="text-muted-foreground text-xs">Credential Type</span>
                                                 <div className="font-medium mt-1 font-mono text-xs">{selectedReportResult.credential_type}</div>
@@ -2169,7 +2172,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 {/* Discovered Paths */}
                                 <div className="rounded-lg border p-4">
                                     <h3 className="font-semibold mb-3 flex items-center gap-2">
-                                        <Globe className="h-4 w-4 text-purple-500" />
+                                        <Globe className="h-4 w-4 text-ai-text" />
                                         Discovered Paths ({selectedReportResult.discovered_paths_count} total, {selectedReportResult.hidden_paths_found} hidden)
                                     </h3>
                                     {selectedReportResult.discovered_paths && selectedReportResult.discovered_paths.length > 0 ? (
@@ -2195,9 +2198,9 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                             <td className="px-3 py-2 text-center">{path.status_code}</td>
                                                             <td className="px-3 py-2 text-center">
                                                                 {path.success ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500 inline" />
+                                                                    <CheckCircle2 className="h-4 w-4 text-success-text inline" />
                                                                 ) : (
-                                                                    <XCircle className="h-4 w-4 text-red-500 inline" />
+                                                                    <XCircle className="h-4 w-4 text-danger-text inline" />
                                                                 )}
                                                             </td>
                                                         </tr>
@@ -2213,7 +2216,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 {/* OSINT Findings */}
                                 <div className="rounded-lg border p-4">
                                     <h3 className="font-semibold mb-3 flex items-center gap-2">
-                                        <ExternalLink className="h-4 w-4 text-orange-500" />
+                                        <ExternalLink className="h-4 w-4 text-warning-text" />
                                         OSINT Findings ({selectedReportResult.osint_findings?.length || 0} sources)
                                     </h3>
                                     {selectedReportResult.osint_findings && selectedReportResult.osint_findings.length > 0 ? (
@@ -2234,7 +2237,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                                             </td>
                                                             <td className="px-3 py-2 text-xs">{finding.type}</td>
                                                             <td className="px-3 py-2">
-                                                                <a href={finding.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline truncate block max-w-[300px]">
+                                                                <a href={finding.url} target="_blank" rel="noopener noreferrer" className="text-xs text-info-text hover:underline truncate block max-w-[300px]">
                                                                     {finding.url}
                                                                 </a>
                                                             </td>
@@ -2251,14 +2254,14 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                                 {/* Recommendations */}
                                 <div className="rounded-lg border p-4">
                                     <h3 className="font-semibold mb-3 flex items-center gap-2">
-                                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                        <AlertTriangle className="h-4 w-4 text-warning-text" />
                                         Recommendations
                                     </h3>
                                     {selectedReportResult.ai_recommendations && selectedReportResult.ai_recommendations.length > 0 ? (
                                         <ul className="space-y-2">
                                             {selectedReportResult.ai_recommendations.map((rec: string, idx: number) => (
                                                 <li key={idx} className="text-sm flex items-start gap-2">
-                                                    <span className="text-yellow-500 mt-1">•</span>
+                                                    <span className="text-warning-text mt-1">•</span>
                                                     <span>{rec}</span>
                                                 </li>
                                             ))}
@@ -2286,13 +2289,13 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
             {/* Download Modal - outside TabsContent for proper z-index */}
             {downloadModalOpen && selectedReportResult && (
                 <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg w-full max-w-md p-6 shadow-2xl border dark:border-zinc-700">
+                    <div className="bg-card rounded-lg w-full max-w-md p-6 shadow-2xl border dark:border-border">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-semibold flex items-center gap-2">
-                                <Download className="h-5 w-5 text-blue-500" />
+                                <Download className="h-5 w-5 text-info-text" />
                                 Download Report
                             </h3>
-                            <Button variant="ghost" size="sm" onClick={() => setDownloadModalOpen(false)}>
+                            <Button aria-label="Close download options" variant="ghost" size="sm" onClick={() => setDownloadModalOpen(false)}>
                                 <X className="h-4 w-4" />
                             </Button>
                         </div>
@@ -2315,7 +2318,7 @@ export function APIAuditView({ projectId }: APIAuditViewProps) {
                             
                             <div>
                                 <label className="text-sm font-medium mb-1 block">Filename</label>
-                                <input 
+                                <input aria-label="Filename" 
                                     type="text"
                                     value={downloadFilename}
                                     onChange={(e) => setDownloadFilename(e.target.value)}

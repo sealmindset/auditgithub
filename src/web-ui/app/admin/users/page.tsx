@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { API_BASE, apiFetch } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface User {
   id: string
@@ -59,11 +60,11 @@ interface DirectoryUser {
 }
 
 const ROLES = [
-  { value: "user", label: "User", description: "View Only", color: "bg-gray-600" },
-  { value: "analyst", label: "Analyst", description: "Manage Findings", color: "bg-blue-600" },
-  { value: "manager", label: "Manager", description: "Power User", color: "bg-orange-600" },
-  { value: "admin", label: "Admin", description: "Full Access", color: "bg-red-600" },
-  { value: "super_admin", label: "Super Admin", description: "System Access", color: "bg-purple-600" },
+  { value: "user", label: "User", description: "View Only", color: "bg-muted-foreground" },
+  { value: "analyst", label: "Analyst", description: "Manage Findings", color: "bg-info" },
+  { value: "manager", label: "Manager", description: "Power User", color: "bg-warning" },
+  { value: "admin", label: "Admin", description: "Full Access", color: "bg-danger" },
+  { value: "super_admin", label: "Super Admin", description: "System Access", color: "bg-ai" },
 ]
 
 const ACCESS_TYPES = [
@@ -331,29 +332,27 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Users className="h-8 w-8" />
-            User Management
-          </h1>
-          <p className="text-muted-foreground mt-1">Manage users, roles, and access</p>
-        </div>
-        <Button onClick={() => setInviteDialogOpen(true)}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Invite User
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={Users}
+        eyebrow="Administration"
+        title="User management"
+        description="Manage users, roles, and access."
+        actions={
+          <Button onClick={() => setInviteDialogOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Invite user
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-100 dark:bg-blue-900/30 p-2">
-                <Users className="h-5 w-5 text-blue-600" />
+              <div className="rounded-lg bg-info-soft dark:bg-info-soft/30 p-2">
+                <Users className="h-5 w-5 text-info-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Users</p>
@@ -365,8 +364,8 @@ export default function AdminUsersPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-green-100 dark:bg-green-900/30 p-2">
-                <UserCheck className="h-5 w-5 text-green-600" />
+              <div className="rounded-lg bg-success-soft dark:bg-success-soft/30 p-2">
+                <UserCheck className="h-5 w-5 text-success-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active Users</p>
@@ -378,8 +377,8 @@ export default function AdminUsersPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-purple-100 dark:bg-purple-900/30 p-2">
-                <ShieldCheck className="h-5 w-5 text-purple-600" />
+              <div className="rounded-lg bg-ai-soft dark:bg-ai-soft/30 p-2">
+                <ShieldCheck className="h-5 w-5 text-ai-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Admins</p>
@@ -391,8 +390,8 @@ export default function AdminUsersPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2">
-                <Clock className="h-5 w-5 text-amber-600" />
+              <div className="rounded-lg bg-warning-soft dark:bg-warning-soft/30 p-2">
+                <Clock className="h-5 w-5 text-warning-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active (7d)</p>
@@ -417,10 +416,10 @@ export default function AdminUsersPage() {
               {invitations.map((inv) => (
                 <div
                   key={inv.id}
-                  className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg"
+                  className="flex items-center justify-between p-3 bg-warning-soft dark:bg-warning-soft/20 border border-warning-line rounded-lg"
                 >
                   <div className="flex items-center gap-3">
-                    <Mail className="h-4 w-4 text-yellow-600" />
+                    <Mail className="h-4 w-4 text-warning-text" />
                     <div>
                       <p className="font-medium text-sm">{inv.email}</p>
                       <p className="text-xs text-muted-foreground">
@@ -433,7 +432,7 @@ export default function AdminUsersPage() {
                     <Badge className={getRoleInfo(inv.role).color}>
                       {inv.role.replace("_", " ")}
                     </Badge>
-                    <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 h-8" onClick={() => handleRevokeInvitation(inv.id)}>
+                    <Button size="sm" variant="ghost" className="text-danger-text hover:text-danger-text h-8" onClick={() => handleRevokeInvitation(inv.id)}>
                       Revoke
                     </Button>
                   </div>
@@ -457,7 +456,7 @@ export default function AdminUsersPage() {
             </div>
             <div className="relative w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
+              <Input aria-label="Search users"
                 placeholder="Search users..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -508,7 +507,7 @@ export default function AdminUsersPage() {
                         </TableCell>
                         <TableCell>
                           {user.access_type === "both" ? (
-                            <Badge variant="default" className="bg-green-600">Full</Badge>
+                            <Badge variant="default" className="bg-success">Full</Badge>
                           ) : (
                             <Badge variant="outline">{user.access_type === "ui_only" ? "UI" : "API"}</Badge>
                           )}
@@ -517,12 +516,12 @@ export default function AdminUsersPage() {
                         {directoryAvailable && (
                           <TableCell>
                             {directoryEmails.has(user.email.toLowerCase()) ? (
-                              <Badge variant="outline" className="text-green-600 border-green-300">
+                              <Badge variant="outline" className="text-success-text border-success-line">
                                 <CheckCircle2 className="h-3 w-3 mr-1" />
                                 Verified
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-amber-600 border-amber-300">
+                              <Badge variant="outline" className="text-warning-text border-warning-line">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                                 Not in IdP
                               </Badge>
@@ -536,7 +535,7 @@ export default function AdminUsersPage() {
                         </TableCell>
                         <TableCell>
                           {user.is_active ? (
-                            <Badge variant="default" className="bg-green-600">Active</Badge>
+                            <Badge variant="default" className="bg-success">Active</Badge>
                           ) : (
                             <Badge variant="destructive">Inactive</Badge>
                           )}
@@ -544,7 +543,7 @@ export default function AdminUsersPage() {
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button aria-label="User actions" variant="ghost" size="icon" className="h-8 w-8">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -555,7 +554,7 @@ export default function AdminUsersPage() {
                               </DropdownMenuItem>
                               {user.is_active && user.email !== currentUser?.email && (
                                 <DropdownMenuItem
-                                  className="text-red-600"
+                                  className="text-danger-text"
                                   onClick={() => { setDeactivateUser(user); setDeactivateDialogOpen(true) }}
                                 >
                                   <UserX className="h-4 w-4 mr-2" />
@@ -600,8 +599,8 @@ export default function AdminUsersPage() {
                   onClick={() => setInviteTab("directory")}
                   className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
                     inviteTab === "directory"
-                      ? "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-foreground shadow-sm"
-                      : "bg-gray-100 dark:bg-gray-900 border-transparent text-muted-foreground hover:text-foreground"
+                      ?"bg-card border-border text-foreground shadow-sm"
+                      :"bg-muted border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <Users className="h-4 w-4" />
@@ -611,8 +610,8 @@ export default function AdminUsersPage() {
                   onClick={() => setInviteTab("manual")}
                   className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
                     inviteTab === "manual"
-                      ? "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-foreground shadow-sm"
-                      : "bg-gray-100 dark:bg-gray-900 border-transparent text-muted-foreground hover:text-foreground"
+                      ?"bg-card border-border text-foreground shadow-sm"
+                      :"bg-muted border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <AlertTriangle className="h-4 w-4" />
@@ -627,7 +626,7 @@ export default function AdminUsersPage() {
                 <Label className="font-semibold">Search Directory</Label>
                 <div className="relative mt-2">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
+                  <Input aria-label="Search directory"
                     value={directorySearch}
                     onChange={(e) => searchDirectory(e.target.value)}
                     placeholder="Search by name or email..."
@@ -661,7 +660,7 @@ export default function AdminUsersPage() {
                           }}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted border-b last:border-b-0 transition-colors"
                         >
-                          <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                          <div className="h-10 w-10 rounded-full bg-info-soft dark:bg-info-soft/40 text-info-text flex items-center justify-center text-sm font-semibold flex-shrink-0">
                             {initials}
                           </div>
                           <div className="text-left min-w-0">
@@ -681,18 +680,18 @@ export default function AdminUsersPage() {
                 )}
                 {/* Selected user card */}
                 {inviteEmail && selectedDirUser && (
-                  <div className="mt-3 flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-700 rounded-lg">
+                  <div className="mt-3 flex items-center gap-3 p-3 bg-info-soft dark:bg-info-soft/20 border-2 border-info-line dark:border-info rounded-lg">
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm text-blue-700 dark:text-blue-300 truncate">
+                      <p className="font-semibold text-sm text-info-text truncate">
                         {selectedDirUser.name}
                       </p>
-                      <p className="text-sm text-blue-600 dark:text-blue-400 truncate">
+                      <p className="text-sm text-info-text truncate">
                         {inviteEmail}
                       </p>
                     </div>
-                    <button
+                    <button aria-label="Clear selected user"
                       onClick={() => { setInviteEmail(""); setSelectedDirUser(null) }}
-                      className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 flex-shrink-0"
+                      className="text-info-text hover:text-info-text flex-shrink-0"
                     >
                       <UserX className="h-5 w-5" />
                     </button>
@@ -702,9 +701,9 @@ export default function AdminUsersPage() {
             ) : (
               <div>
                 {inviteTab === "manual" && (
-                  <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <div className="mb-4 p-3 bg-warning-soft dark:bg-warning-soft/20 border border-warning-line rounded-lg flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-warning-text mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-warning-text dark:text-warning-text">
                       Pre-staging requires IdP enrollment. This user must be added to
                       the identity provider before they can sign in.
                     </p>
@@ -734,8 +733,8 @@ export default function AdminUsersPage() {
                     disabled={inviteLoading}
                     className={`px-4 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                       inviteRole === r.value
-                        ? "bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300"
-                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-foreground hover:bg-gray-50 dark:hover:bg-gray-750"
+                        ?"bg-ai-soft dark:bg-ai-soft/40 border-ai-line dark:border-ai text-ai-text dark:text-ai-text"
+                        :"bg-card border-border text-foreground hover:bg-accent"
                     }`}
                   >
                     {r.label}
@@ -750,7 +749,7 @@ export default function AdminUsersPage() {
             {/* Notes */}
             <div>
               <Label className="font-semibold">Notes (optional)</Label>
-              <Textarea
+              <Textarea aria-label="Notes"
                 value={inviteNotes}
                 onChange={(e) => setInviteNotes(e.target.value)}
                 placeholder="Team, department, or reason for access..."
@@ -858,7 +857,7 @@ export default function AdminUsersPage() {
       <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-danger-text">
               <ShieldAlert className="h-5 w-5" />
               Deactivate User
             </DialogTitle>
@@ -868,7 +867,7 @@ export default function AdminUsersPage() {
           </DialogHeader>
           {deactivateUser && (
             <div className="py-4">
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="p-3 bg-danger-soft dark:bg-danger-soft/20 border border-danger-line rounded-lg">
                 <p className="font-medium">{deactivateUser.full_name || deactivateUser.username}</p>
                 <p className="text-sm text-muted-foreground">{deactivateUser.email}</p>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -900,6 +899,6 @@ export default function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   )
 }

@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider"
 import { ShieldAlert, Loader2, Clock, Timer, Save, RotateCcw } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface SessionSettings {
   inactivity_timeout_minutes: number
@@ -121,21 +122,14 @@ export default function SessionSettingsPage() {
   const bounds = settings.bounds
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ShieldAlert className="h-8 w-8" />
-            Session Settings
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Configure session timeout policies for all users
-          </p>
-        </div>
-        <Badge variant="outline" className="text-purple-600 border-purple-300">
-          Super Admin Only
-        </Badge>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={ShieldAlert}
+        eyebrow="Settings"
+        title="Session settings"
+        description="Session timeout policy applied to every user."
+        actions={<Badge variant="ai">Super admin only</Badge>}
+      />
 
       <div className="grid gap-6 max-w-2xl">
         {/* Inactivity Timeout */}
@@ -224,6 +218,6 @@ export default function SessionSettingsPage() {
           </Button>
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }

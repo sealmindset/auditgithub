@@ -135,7 +135,7 @@ export function PromptEditorDialog({
                                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                             </div>
                         ) : (
-                            <Textarea
+                            <Textarea aria-label="Prompt text"
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
                                 className="flex-1 font-mono text-sm resize-none overflow-y-auto"
@@ -146,7 +146,7 @@ export function PromptEditorDialog({
 
                     <div className="flex flex-col gap-2 h-full">
                         <h3 className="text-sm font-medium text-muted-foreground">Response</h3>
-                        <div className="flex-1 border rounded-md p-4 overflow-y-auto bg-slate-50 dark:bg-slate-900">
+                        <div className="flex-1 border rounded-md p-4 overflow-y-auto bg-muted">
                             {response ? (
                                 <div className="prose dark:prose-invert max-w-none text-sm">
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>

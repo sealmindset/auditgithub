@@ -35,6 +35,7 @@ import {
     Workflow,
     Globe,
     ChevronRight,
+    FileCode2,
     Sparkles
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
@@ -163,25 +164,25 @@ export function SecurityReportModal({ projectId, projectName, isOpen, onClose }:
     }
 
     const getRiskColor = (score: number) => {
-        if (score >= 80) return "text-red-500"
-        if (score >= 60) return "text-orange-500"
-        if (score >= 40) return "text-yellow-500"
-        return "text-green-500"
+        if (score >= 80) return "text-danger-text"
+        if (score >= 60) return "text-warning-text"
+        if (score >= 40) return "text-warning-text"
+        return "text-success-text"
     }
 
     const getRiskBgColor = (score: number) => {
-        if (score >= 80) return "bg-red-500"
-        if (score >= 60) return "bg-orange-500"
-        if (score >= 40) return "bg-yellow-500"
-        return "bg-green-500"
+        if (score >= 80) return "bg-danger"
+        if (score >= 60) return "bg-warning"
+        if (score >= 40) return "bg-warning"
+        return "bg-success"
     }
 
     const getSeverityIcon = (severity: string) => {
         switch (severity.toLowerCase()) {
-            case "critical": return <AlertCircle className="h-5 w-5 text-red-500" />
-            case "high": return <AlertTriangle className="h-5 w-5 text-orange-500" />
-            case "medium": return <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            default: return <CheckCircle className="h-5 w-5 text-blue-500" />
+            case "critical": return <AlertCircle className="h-5 w-5 text-danger-text" />
+            case "high": return <AlertTriangle className="h-5 w-5 text-warning-text" />
+            case "medium": return <AlertTriangle className="h-5 w-5 text-warning-text" />
+            default: return <CheckCircle className="h-5 w-5 text-info-text" />
         }
     }
 
@@ -702,8 +703,8 @@ ${htmlContent}
                 {/* Fixed Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b bg-background sticky top-0 z-10">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
-                            <Shield className="h-6 w-6 text-white" />
+                        <div className="rounded-lg bg-primary p-2">
+                            <Shield className="h-6 w-6 text-primary-foreground" />
                         </div>
                         <div>
                             <DialogTitle className="text-xl font-bold">
@@ -743,7 +744,7 @@ ${htmlContent}
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button variant="ghost" size="icon" onClick={onClose}>
+                        <Button aria-label="Close report" variant="ghost" size="icon" onClick={onClose}>
                             <X className="h-4 w-4" />
                         </Button>
                     </div>
@@ -755,7 +756,7 @@ ${htmlContent}
                         {generating ? (
                             <div className="flex flex-col items-center justify-center h-96 gap-4">
                                 <div className="relative">
-                                    <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
+                                    <Loader2 className="h-12 w-12 animate-spin text-info-text" />
                                 </div>
                                 <div className="text-center">
                                     <h3 className="text-lg font-semibold">Generating Report</h3>
@@ -766,9 +767,9 @@ ${htmlContent}
                             </div>
                         ) : error ? (
                             <div className="flex flex-col items-center justify-center h-96 gap-4">
-                                <AlertCircle className="h-12 w-12 text-red-500" />
+                                <AlertCircle className="h-12 w-12 text-danger-text" />
                                 <div className="text-center">
-                                    <h3 className="text-lg font-semibold text-red-500">Error Generating Report</h3>
+                                    <h3 className="text-lg font-semibold text-danger-text">Error Generating Report</h3>
                                     <p className="text-sm text-muted-foreground">{error}</p>
                                 </div>
                                 <Button onClick={generateReport}>Try Again</Button>
@@ -777,7 +778,7 @@ ${htmlContent}
                             <div className="space-y-8">
                                 {/* Risk Score Overview */}
                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                    <Card className="md:col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white">
+                                    <Card className="md:col-span-2 bg-muted/40">
                                         <CardHeader className="pb-2">
                                             <CardTitle className="text-lg">Overall Risk Score</CardTitle>
                                         </CardHeader>
@@ -791,7 +792,7 @@ ${htmlContent}
                                                         value={reportData.risk_score?.overall || 0} 
                                                         className="h-3"
                                                     />
-                                                    <p className="text-xs text-slate-400 mt-1">
+                                                    <p className="text-xs text-muted-foreground mt-1">
                                                         {reportData.risk_score?.overall >= 80 ? "Critical Risk" :
                                                          reportData.risk_score?.overall >= 60 ? "High Risk" :
                                                          reportData.risk_score?.overall >= 40 ? "Medium Risk" : "Low Risk"}
@@ -847,7 +848,7 @@ ${htmlContent}
                                     <Card>
                                         <CardHeader>
                                             <div className="flex items-center gap-2">
-                                                <Server className="h-5 w-5 text-blue-500" />
+                                                <Server className="h-5 w-5 text-info-text" />
                                                 <CardTitle>System Architecture</CardTitle>
                                             </div>
                                             <CardDescription>
@@ -856,7 +857,7 @@ ${htmlContent}
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             {reportData.architecture.diagram_base64 && (
-                                                <div className="flex justify-center p-4 bg-white rounded-lg">
+                                                <div className="flex justify-center rounded-lg bg-white p-4">
                                                     <img 
                                                         src={`data:image/png;base64,${reportData.architecture.diagram_base64}`}
                                                         alt="Architecture Diagram"
@@ -870,12 +871,12 @@ ${htmlContent}
                                                 </ReactMarkdown>
                                             </div>
                                             {reportData.architecture.insights && (
-                                                <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                                                <div className="mt-4 p-4 bg-ai-soft dark:bg-ai-soft/30 rounded-lg border border-ai-line dark:border-ai-line">
                                                     <div className="flex items-center gap-2 mb-2">
-                                                        <Sparkles className="h-4 w-4 text-purple-500" />
-                                                        <span className="font-semibold text-purple-700 dark:text-purple-300">Insights</span>
+                                                        <Sparkles className="h-4 w-4 text-ai-text" />
+                                                        <span className="font-semibold text-ai-text dark:text-ai-text">Insights</span>
                                                     </div>
-                                                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                                                    <p className="text-sm text-ai-text dark:text-ai-text">
                                                         {reportData.architecture.insights}
                                                     </p>
                                                 </div>
@@ -888,7 +889,7 @@ ${htmlContent}
                                 <Card>
                                     <CardHeader>
                                         <div className="flex items-center gap-2">
-                                            <TrendingUp className="h-5 w-5 text-green-500" />
+                                            <TrendingUp className="h-5 w-5 text-success-text" />
                                             <CardTitle>Project Insights</CardTitle>
                                         </div>
                                         <CardDescription>
@@ -952,13 +953,13 @@ ${htmlContent}
 
                                 {/* Critical Insights - RCE and other critical vulnerabilities */}
                                 {reportData.critical_insights && reportData.critical_insights.length > 0 && (
-                                    <Card className="border-4 border-red-500 dark:border-red-700 shadow-lg shadow-red-200 dark:shadow-red-900/30">
-                                        <CardHeader className="bg-gradient-to-r from-red-100 to-red-50 dark:from-red-950 dark:to-red-900/50">
+                                    <Card className="border-danger-line shadow-md">
+                                        <CardHeader className="bg-danger-soft">
                                             <div className="flex items-center gap-2">
-                                                <AlertCircle className="h-6 w-6 text-red-600 animate-pulse" />
-                                                <CardTitle className="text-red-700 dark:text-red-400">⚠️ Critical Security Insights</CardTitle>
+                                                <AlertCircle className="h-5 w-5 text-danger-text" />
+                                                <CardTitle className="text-danger-text">Critical security insights</CardTitle>
                                             </div>
-                                            <CardDescription className="text-red-600 dark:text-red-400">
+                                            <CardDescription className="text-danger-text dark:text-danger-text">
                                                 Remote Code Execution and other critical vulnerabilities requiring immediate attention
                                             </CardDescription>
                                         </CardHeader>
@@ -967,35 +968,36 @@ ${htmlContent}
                                                 {reportData.critical_insights.map((insight, idx) => (
                                                     <div
                                                         key={`insight-${insight.type}-${insight.severity}-${idx}`}
-                                                        className="p-4 rounded-lg border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50"
+                                                        className="p-4 rounded-lg border-2 border-danger-line bg-danger-soft dark:bg-danger-soft/50"
                                                     >
                                                         <div className="flex items-start gap-4">
                                                             <div className="flex-shrink-0 mt-1">
-                                                                <AlertCircle className="h-6 w-6 text-red-600" />
+                                                                <AlertCircle className="h-6 w-6 text-danger-text" />
                                                             </div>
                                                             <div className="flex-1 space-y-2">
                                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                                    <Badge className={insight.severity === 'critical' ? "bg-red-600 text-white font-bold" : "bg-orange-500 text-white font-bold"}>
+                                                                    <Badge className={insight.severity === 'critical' ? "bg-danger font-semibold text-danger-foreground" : "bg-warning font-semibold text-warning-foreground"}>
                                                                         {insight.type}
                                                                     </Badge>
-                                                                    <Badge variant="outline" className={insight.severity === 'critical' ? "border-red-500 text-red-600" : "border-orange-500 text-orange-600"}>
+                                                                    <Badge variant="outline" className={insight.severity === 'critical' ? "border-danger text-danger-text" : "border-warning text-warning-text"}>
                                                                         {insight.severity?.toUpperCase() || 'CRITICAL'}
                                                                     </Badge>
                                                                 </div>
-                                                                <h4 className="font-semibold text-red-800 dark:text-red-300">{insight.title}</h4>
-                                                                <p className="text-sm text-red-700 dark:text-red-400 font-medium">
+                                                                <h4 className="font-semibold text-danger-text dark:text-danger-text">{insight.title}</h4>
+                                                                <p className="text-sm text-danger-text font-medium">
                                                                     {insight.message}
                                                                 </p>
                                                                 {insight.file_path && (
-                                                                    <p className="text-xs text-red-600 dark:text-red-500 font-mono">
-                                                                        📁 {insight.file_path}{insight.line ? `:${insight.line}` : ''}
+                                                                    <p className="flex items-center gap-1.5 text-xs text-danger-text font-mono">
+                                                                        <FileCode2 className="h-3 w-3 shrink-0" aria-hidden />
+                                                                        {insight.file_path}{insight.line ? `:${insight.line}` : ''}
                                                                     </p>
                                                                 )}
                                                                 {/* Code snippet - Full unredacted for security analyst validation */}
                                                                 {insight.code_snippet && (
-                                                                    <div className="mt-3 p-3 bg-slate-900 dark:bg-slate-950 rounded border border-red-500">
-                                                                        <p className="text-xs text-red-400 mb-1">Vulnerable Code (Full - Unredacted)</p>
-                                                                        <pre className="text-sm font-mono text-slate-100 whitespace-pre-wrap break-all overflow-x-auto">
+                                                                    <div className="mt-3 p-3 bg-muted rounded border border-danger">
+                                                                        <p className="text-xs text-danger-text mb-1">Vulnerable Code (Full - Unredacted)</p>
+                                                                        <pre className="text-sm font-mono text-muted-foreground whitespace-pre-wrap break-all overflow-x-auto">
                                                                             {insight.code_snippet}
                                                                         </pre>
                                                                     </div>
@@ -1010,10 +1012,10 @@ ${htmlContent}
                                 )}
 
                                 {/* Critical Findings Highlight Reel */}
-                                <Card className="border-2 border-red-200 dark:border-red-900">
-                                    <CardHeader className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30">
+                                <Card className="border-2 border-danger-line dark:border-danger-line">
+                                    <CardHeader className="bg-gradient-to-r from-danger-soft to-warning-soft dark:from-danger/30 dark:to-warning/30">
                                         <div className="flex items-center gap-2">
-                                            <AlertTriangle className="h-5 w-5 text-red-500" />
+                                            <AlertTriangle className="h-5 w-5 text-danger-text" />
                                             <CardTitle>Critical Findings Highlight Reel</CardTitle>
                                         </div>
                                         <CardDescription>
@@ -1041,29 +1043,30 @@ ${htmlContent}
                                                                     </Badge>
                                                                     <Badge 
                                                                         className={
-                                                                            highlight.severity === "critical" ? "bg-red-500" :
-                                                                            highlight.severity === "high" ? "bg-orange-500" :
-                                                                            highlight.severity === "medium" ? "bg-yellow-500" : "bg-blue-500"
+                                                                            highlight.severity === "critical" ? "bg-danger" :
+                                                                            highlight.severity === "high" ? "bg-warning" :
+                                                                            highlight.severity === "medium" ? "bg-warning" : "bg-info"
                                                                         }
                                                                     >
                                                                         {highlight.severity}
                                                                     </Badge>
                                                                 </div>
-                                                                <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded border border-red-200 dark:border-red-800">
-                                                                    <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                                                                <div className="p-3 bg-danger-soft dark:bg-danger-soft/30 rounded border border-danger-line dark:border-danger-line">
+                                                                    <p className="text-sm font-medium text-danger-text dark:text-danger-text">
                                                                         <strong>Impact:</strong> {highlight.impact}
                                                                     </p>
                                                                 </div>
                                                                 {highlight.file_path && (
-                                                                    <p className="text-xs text-muted-foreground font-mono">
-                                                                        📁 {highlight.file_path}{highlight.line ? `:${highlight.line}` : ''}
+                                                                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono">
+                                                                        <FileCode2 className="h-3 w-3 shrink-0" aria-hidden />
+                                                                        {highlight.file_path}{highlight.line ? `:${highlight.line}` : ''}
                                                                     </p>
                                                                 )}
                                                                 {/* Code snippet - Full unredacted for security analyst validation */}
                                                                 {highlight.code_snippet && (
-                                                                    <div className="mt-3 p-3 bg-slate-900 dark:bg-slate-950 rounded border">
-                                                                        <p className="text-xs text-slate-400 mb-1">Code Context (Full - Unredacted)</p>
-                                                                        <pre className="text-sm font-mono text-slate-100 whitespace-pre-wrap break-all overflow-x-auto">
+                                                                    <div className="mt-3 p-3 bg-muted rounded border">
+                                                                        <p className="text-xs text-muted-foreground mb-1">Code Context (Full - Unredacted)</p>
+                                                                        <pre className="text-sm font-mono text-muted-foreground whitespace-pre-wrap break-all overflow-x-auto">
                                                                             {highlight.code_snippet}
                                                                         </pre>
                                                                     </div>
@@ -1080,7 +1083,7 @@ ${htmlContent}
                                             </div>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground">
-                                                <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
+                                                <CheckCircle className="h-12 w-12 mx-auto mb-2 text-success-text" />
                                                 <p>No critical findings identified. Great job!</p>
                                             </div>
                                         )}
@@ -1089,10 +1092,10 @@ ${htmlContent}
 
                                 {/* API Security Audit Section - Only Successful Compromises */}
                                 {reportData.findings?.api_audit && reportData.findings.api_audit.length > 0 && (
-                                    <Card className="border-2 border-red-200 dark:border-red-900">
-                                        <CardHeader className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30">
+                                    <Card className="border-2 border-danger-line dark:border-danger-line">
+                                        <CardHeader className="bg-gradient-to-r from-danger-soft to-warning-soft dark:from-danger/30 dark:to-warning/30">
                                             <div className="flex items-center gap-2">
-                                                <Globe className="h-5 w-5 text-red-500" />
+                                                <Globe className="h-5 w-5 text-danger-text" />
                                                 <CardTitle>Successful API Compromises</CardTitle>
                                             </div>
                                             <CardDescription>
@@ -1117,9 +1120,9 @@ ${htmlContent}
                                                             <div className="flex items-center gap-2 flex-wrap">
                                                                 <Badge 
                                                                     className={
-                                                                        audit.threat_level === "critical" ? "bg-red-500" :
-                                                                        audit.threat_level === "high" ? "bg-orange-500" :
-                                                                        audit.threat_level === "medium" ? "bg-yellow-500" : "bg-blue-500"
+                                                                        audit.threat_level === "critical" ? "bg-danger" :
+                                                                        audit.threat_level === "high" ? "bg-warning" :
+                                                                        audit.threat_level === "medium" ? "bg-warning" : "bg-info"
                                                                     }
                                                                 >
                                                                     {audit.threat_level || "unknown"} threat
@@ -1127,12 +1130,17 @@ ${htmlContent}
                                                                 <Badge variant="outline">
                                                                     {audit.credential_type || "unknown"}
                                                                 </Badge>
-                                                                <Badge variant={audit.auth_status === "yes" ? "default" : "secondary"}>
-                                                                    {audit.auth_status === "yes" ? "✓ Authenticated" : 
-                                                                     audit.auth_status === "failed" ? "✗ Auth Failed" : "Not Tested"}
+                                                                <Badge variant={audit.auth_status === "yes" ? "success" : audit.auth_status === "failed" ? "danger" : "neutral"}>
+                                                                    {audit.auth_status === "yes" ? (
+                                                                        <CheckCircle className="h-3 w-3" aria-hidden />
+                                                                    ) : audit.auth_status === "failed" ? (
+                                                                        <X className="h-3 w-3" aria-hidden />
+                                                                    ) : null}
+                                                                    {audit.auth_status === "yes" ? "Authenticated" :
+                                                                     audit.auth_status === "failed" ? "Auth failed" : "Not tested"}
                                                                 </Badge>
                                                                 {audit.detected_service && (
-                                                                    <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950">
+                                                                    <Badge variant="outline" className="bg-ai-soft dark:bg-ai-soft">
                                                                         {audit.detected_service}
                                                                     </Badge>
                                                                 )}
@@ -1140,8 +1148,8 @@ ${htmlContent}
                                                             {audit.auth_status_code && (
                                                                 <div className="flex items-center gap-2">
                                                                     <span className={`text-2xl font-bold ${
-                                                                        audit.auth_status_code >= 200 && audit.auth_status_code < 300 ? "text-green-500" :
-                                                                        audit.auth_status_code >= 400 ? "text-red-500" : "text-yellow-500"
+                                                                        audit.auth_status_code >= 200 && audit.auth_status_code < 300 ? "text-success-text" :
+                                                                        audit.auth_status_code >= 400 ? "text-danger-text" : "text-warning-text"
                                                                     }`}>
                                                                         {audit.auth_status_code}
                                                                     </span>
@@ -1160,11 +1168,11 @@ ${htmlContent}
 
                                                         {/* Credential Value - Full unredacted for security analyst validation */}
                                                         {audit.credential_value && (
-                                                            <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-950/30 rounded border border-slate-200 dark:border-slate-800">
-                                                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-1">
+                                                            <div className="mb-4 p-3 bg-muted dark:bg-muted/30 rounded border border-border dark:border-border">
+                                                                <p className="text-sm font-medium text-foreground dark:text-muted-foreground mb-1">
                                                                     Credential Value
                                                                 </p>
-                                                                <code className="text-sm font-mono break-all text-slate-700 dark:text-slate-300 block">
+                                                                <code className="text-sm font-mono break-all text-muted-foreground block">
                                                                     {audit.credential_value}
                                                                 </code>
                                                             </div>
@@ -1172,11 +1180,11 @@ ${htmlContent}
 
                                                         {/* Risk Assessment */}
                                                         {audit.risk_assessment && (
-                                                            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/30 rounded border border-amber-200 dark:border-amber-800">
-                                                                <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                                                            <div className="mb-4 p-3 bg-warning-soft dark:bg-warning-soft/30 rounded border border-warning-line dark:border-warning-line">
+                                                                <p className="text-sm font-medium text-warning-text mb-1">
                                                                     Risk Assessment
                                                                 </p>
-                                                                <p className="text-sm text-amber-700 dark:text-amber-300">
+                                                                <p className="text-sm text-warning-text dark:text-warning-text">
                                                                     {audit.risk_assessment}
                                                                 </p>
                                                             </div>
@@ -1213,7 +1221,7 @@ ${htmlContent}
                                                                                 {path.method || "GET"}
                                                                             </Badge>
                                                                             <span className="flex-1 truncate">{path.path}</span>
-                                                                            <Badge className={path.success ? "bg-green-500" : "bg-gray-500"}>
+                                                                            <Badge className={path.success ? "bg-success" : "bg-muted-foreground"}>
                                                                                 {path.status_code || "?"}
                                                                             </Badge>
                                                                         </div>
@@ -1246,7 +1254,7 @@ ${htmlContent}
                                                                                     href={finding.url} 
                                                                                     target="_blank" 
                                                                                     rel="noopener noreferrer"
-                                                                                    className="text-blue-500 hover:underline truncate block"
+                                                                                    className="text-info-text hover:underline truncate block"
                                                                                 >
                                                                                     {finding.url}
                                                                                 </a>
@@ -1299,7 +1307,7 @@ ${htmlContent}
                                 <Card>
                                     <CardHeader>
                                         <div className="flex items-center gap-2">
-                                            <FileText className="h-5 w-5 text-blue-500" />
+                                            <FileText className="h-5 w-5 text-info-text" />
                                             <CardTitle>Comprehensive Findings</CardTitle>
                                         </div>
                                         <CardDescription>
@@ -1308,7 +1316,7 @@ ${htmlContent}
                                     </CardHeader>
                                     <CardContent>
                                         <Tabs defaultValue="secrets" className="w-full">
-                                            <TabsList className="grid grid-cols-5 lg:grid-cols-9 gap-1">
+                                            <TabsList className="grid h-auto grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1">
                                                 <TabsTrigger value="secrets" className="text-xs">
                                                     Secrets ({reportData.findings?.secrets?.length || 0})
                                                 </TabsTrigger>
@@ -1460,9 +1468,9 @@ function FindingsTable({ findings }: { findings: any[] }) {
                         <div className="flex items-center gap-2">
                             <Badge 
                                 className={
-                                    finding.severity === "critical" ? "bg-red-500" :
-                                    finding.severity === "high" ? "bg-orange-500" :
-                                    finding.severity === "medium" ? "bg-yellow-500" : "bg-blue-500"
+                                    finding.severity === "critical" ? "bg-danger" :
+                                    finding.severity === "high" ? "bg-warning" :
+                                    finding.severity === "medium" ? "bg-warning" : "bg-info"
                                 }
                             >
                                 {finding.severity}
@@ -1471,12 +1479,12 @@ function FindingsTable({ findings }: { findings: any[] }) {
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             {finding.is_verified_by_scanner && (
-                                <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+                                <Badge variant="outline" className="bg-success-soft text-success-text dark:text-success-text">
                                     Verified
                                 </Badge>
                             )}
                             {finding.is_validated_active && (
-                                <Badge variant="outline" className="bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300">
+                                <Badge variant="outline" className="bg-danger-soft text-danger-text dark:text-danger-text">
                                     Active
                                 </Badge>
                             )}
@@ -1491,9 +1499,9 @@ function FindingsTable({ findings }: { findings: any[] }) {
                     
                     {/* Code snippet - Full unredacted for security analyst validation */}
                     {finding.code_snippet && (
-                        <div className="mt-3 p-3 bg-slate-900 dark:bg-slate-950 rounded border">
-                            <p className="text-xs text-slate-400 mb-1">Code Context (Full - Unredacted)</p>
-                            <pre className="text-sm font-mono text-slate-100 whitespace-pre-wrap break-all overflow-x-auto">
+                        <div className="mt-3 p-3 bg-muted rounded border">
+                            <p className="text-xs text-muted-foreground mb-1">Code Context (Full - Unredacted)</p>
+                            <pre className="text-sm font-mono text-muted-foreground whitespace-pre-wrap break-all overflow-x-auto">
                                 {finding.code_snippet}
                             </pre>
                         </div>
@@ -1541,8 +1549,8 @@ function ContributorsTable({ contributors }: { contributors: any[] }) {
                         <tr key={c.id || c.login || `contributor-${c.name}-${idx}`} className="border-t hover:bg-muted/50">
                             <td className="px-4 py-2 font-medium">{c.login || c.name}</td>
                             <td className="px-4 py-2">{c.commits || c.contributions || 0}</td>
-                            <td className="px-4 py-2 text-green-600">+{c.additions || 0}</td>
-                            <td className="px-4 py-2 text-red-600">-{c.deletions || 0}</td>
+                            <td className="px-4 py-2 text-success-text">+{c.additions || 0}</td>
+                            <td className="px-4 py-2 text-danger-text">-{c.deletions || 0}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -1650,9 +1658,9 @@ function APIAuditTable({ results }: { results: any[] }) {
                             <td className="px-4 py-2">
                                 <Badge 
                                     className={
-                                        r.threat_level === "critical" ? "bg-red-500" :
-                                        r.threat_level === "high" ? "bg-orange-500" :
-                                        r.threat_level === "medium" ? "bg-yellow-500" : "bg-blue-500"
+                                        r.threat_level === "critical" ? "bg-danger" :
+                                        r.threat_level === "high" ? "bg-warning" :
+                                        r.threat_level === "medium" ? "bg-warning" : "bg-info"
                                     }
                                 >
                                     {r.threat_level || "unknown"}

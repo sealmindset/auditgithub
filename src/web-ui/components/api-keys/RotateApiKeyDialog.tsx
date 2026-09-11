@@ -101,9 +101,9 @@ export function RotateApiKeyDialog({
         </DialogHeader>
 
         {!newKey ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
-            <div className="text-sm text-yellow-800">
+          <div className="bg-warning-soft border border-warning-line rounded-md p-3 flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning-text mt-0.5 shrink-0" />
+            <div className="text-sm text-warning-text">
               <p className="font-medium">Rotating key:</p>
               <p className="mt-1">
                 <strong>{keyName}</strong> ({keyPrefix}...)
@@ -116,23 +116,23 @@ export function RotateApiKeyDialog({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 flex items-start gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
-              <p className="text-sm text-yellow-800">
+            <div className="bg-warning-soft border border-warning-line rounded-md p-3 flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning-text mt-0.5 shrink-0" />
+              <p className="text-sm text-warning-text">
                 This key will only be shown once. Copy it now and store it securely.
               </p>
             </div>
             <div className="space-y-2">
               <Label>New API Key</Label>
               <div className="flex gap-2">
-                <Input
+                <Input aria-label="New API key"
                   readOnly
                   value={newKey}
-                  className="font-mono text-sm bg-gray-50"
+                  className="font-mono text-sm bg-muted"
                 />
-                <Button variant="outline" size="icon" onClick={handleCopy}>
+                <Button aria-label="Copy API key" variant="outline" size="icon" onClick={handleCopy}>
                   {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-success-text" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -140,7 +140,7 @@ export function RotateApiKeyDialog({
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              New key prefix: <code className="bg-gray-100 px-1 rounded">{newKeyPrefix}</code>
+              New key prefix: <code className="bg-muted px-1 rounded">{newKeyPrefix}</code>
             </p>
           </div>
         )}

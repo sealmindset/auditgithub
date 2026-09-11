@@ -77,22 +77,22 @@ function StatusBadge({ status }: { status: string }) {
         scheduled: {
             icon: Clock,
             label: "Scheduled",
-            className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+            className: "bg-info-soft text-info-text dark:bg-info-soft/30 border-info-line"
         },
         running: {
             icon: Loader2,
             label: "Running",
-            className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800 animate-pulse"
+            className: "bg-warning-soft text-warning-text dark:bg-warning-soft/30 border-warning-line animate-pulse"
         },
         completed: {
             icon: CheckCircle2,
             label: "Completed",
-            className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800"
+            className: "bg-success-soft text-success-text dark:bg-success-soft/30 border-success-line"
         },
         failed: {
             icon: XCircle,
             label: "Failed",
-            className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800"
+            className: "bg-danger-soft text-danger-text dark:bg-danger-soft/30 border-danger-line"
         }
     }
 
@@ -121,17 +121,17 @@ function ScanCard({ scan, onTrigger }: { scan: TodayScan; onTrigger: (repoId: st
             className={cn(
                 "group relative rounded-lg border p-4 transition-all duration-200",
                 "hover:shadow-md hover:border-primary/30",
-                isRunning && "border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20",
-                isCompleted && "border-green-500/30 bg-green-50/30 dark:bg-green-950/10",
-                isFailed && "border-red-500/30 bg-red-50/30 dark:bg-red-950/10",
-                isScheduled && "border-blue-500/30 bg-blue-50/30 dark:bg-blue-950/10"
+                isRunning && "border-warning/50 bg-warning-soft/50 dark:bg-warning-soft/20",
+                isCompleted && "border-success/30 bg-success-soft/30 dark:bg-success-soft/10",
+                isFailed && "border-danger/30 bg-danger-soft/30 dark:bg-danger-soft/10",
+                isScheduled && "border-info/30 bg-info-soft/30 dark:bg-info-soft/10"
             )}
         >
             {/* Running indicator pulse */}
             {isRunning && (
                 <div className="absolute -top-1 -right-1 h-3 w-3">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                    <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-500" />
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-warning" />
                 </div>
             )}
 
@@ -179,7 +179,7 @@ function ScanCard({ scan, onTrigger }: { scan: TodayScan; onTrigger: (repoId: st
 
                     {/* Error message for failed scans */}
                     {isFailed && scan.error_message && (
-                        <div className="mt-2 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+                        <div className="mt-2 flex items-start gap-1.5 text-xs text-danger-text">
                             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                             <span className="line-clamp-2">{scan.error_message}</span>
                         </div>
@@ -325,7 +325,7 @@ export function TodayScansPanel() {
     if (error) {
         return (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-                <XCircle className="h-8 w-8 text-red-500 mb-2" />
+                <XCircle className="h-8 w-8 text-danger-text mb-2" />
                 <p className="text-sm text-muted-foreground">{error}</p>
                 <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>
                     <RefreshCw className="h-4 w-4 mr-2" />
@@ -361,25 +361,25 @@ export function TodayScansPanel() {
                     icon={Clock}
                     label="Scheduled"
                     value={data.total_scheduled}
-                    color="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20"
+                    color="border-info-line bg-info-soft/50 dark:bg-info-soft/20"
                 />
                 <StatsCard
                     icon={Loader2}
                     label="Running"
                     value={data.total_running}
-                    color="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20"
+                    color="border-warning-line bg-warning-soft/50 dark:bg-warning-soft/20"
                 />
                 <StatsCard
                     icon={CheckCircle2}
                     label="Completed"
                     value={data.total_completed}
-                    color="border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20"
+                    color="border-success-line bg-success-soft/50 dark:bg-success-soft/20"
                 />
                 <StatsCard
                     icon={XCircle}
                     label="Failed"
                     value={data.total_failed}
-                    color="border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20"
+                    color="border-danger-line bg-danger-soft/50 dark:bg-danger-soft/20"
                 />
             </div>
 

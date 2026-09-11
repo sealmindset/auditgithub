@@ -46,16 +46,16 @@ interface AuditLogResponse {
 }
 
 const ACTION_COLORS: Record<string, string> = {
-  created: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20",
-  updated: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20",
-  restored: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20",
-  activated: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
-  deactivated: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/20",
-  locked: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20",
-  unlocked: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/20",
-  deleted: "bg-red-600/15 text-red-800 dark:text-red-300 border-red-600/20",
-  tested: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/20",
-  imported: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-500/20",
+  created: "bg-success/15 text-success-text border-success/20",
+  updated: "bg-info/15 text-info-text border-info/20",
+  restored: "bg-warning/15 text-warning-text border-warning/20",
+  activated: "bg-success/15 text-success-text border-success/20",
+  deactivated: "bg-danger/15 text-danger-text border-danger/20",
+  locked: "bg-warning/15 text-warning-text border-warning/20",
+  unlocked: "bg-info/15 text-info-text border-info/20",
+  deleted: "bg-danger/15 text-danger-text border-danger/20",
+  tested: "bg-ai/15 text-ai-text border-ai/20",
+  imported: "bg-info/15 text-info-text border-info/20",
 }
 
 const ACTIONS = [
@@ -110,21 +110,14 @@ export default function PromptAuditLogPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <History className="h-8 w-8 text-primary" />
-            Prompt Audit Log
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Immutable record of all prompt management actions
-          </p>
-        </div>
-        <Badge variant="outline" className="text-sm">
-          {total.toLocaleString()} entries
-        </Badge>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={History}
+        eyebrow="Prompts"
+        title="Prompt audit log"
+        description="Immutable record of every prompt management action."
+        actions={<Badge variant="outline">{total.toLocaleString()} entries</Badge>}
+      />
 
       {/* Filters */}
       <Card>
@@ -134,7 +127,7 @@ export default function PromptAuditLogPage() {
               <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
                 Filter by prompt slug
               </label>
-              <Input
+              <Input aria-label="Filter by slug"
                 placeholder="e.g. triage-finding-system"
                 value={slugFilter}
                 onChange={(e) => { setSlugFilter(e.target.value); setPage(0) }}
@@ -250,6 +243,8 @@ export default function PromptAuditLogPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }
+
+import { PageHeader, PageShell } from "@/components/ui/page-header"

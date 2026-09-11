@@ -126,7 +126,7 @@ ${finding.description || 'No original description provided.'}`
                 <div className="flex-1 overflow-y-auto">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-8">
-                            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                            <Loader2 className="h-8 w-8 animate-spin text-info-text" />
                             <p className="mt-2 text-sm text-muted-foreground">Analyzing with AI...</p>
                         </div>
                     ) : analysis ? (
@@ -162,7 +162,7 @@ ${finding.description || 'No original description provided.'}`
                                     </div>
                                     {saved ? (
                                         <Button variant="outline" size="sm" disabled className="gap-2">
-                                            <Check className="h-4 w-4 text-green-500" />
+                                            <Check className="h-4 w-4 text-success-text" />
                                             Description Updated
                                         </Button>
                                     ) : (
@@ -190,7 +190,7 @@ ${finding.description || 'No original description provided.'}`
                             </div>
                         </div>
                     ) : (
-                        <div className="py-4 text-center text-sm text-red-500">
+                        <div className="py-4 text-center text-sm text-danger-text">
                             Failed to generate analysis.
                         </div>
                     )}

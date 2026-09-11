@@ -32,20 +32,20 @@ interface RiskHeatmapProps {
 function getRiskColor(level: string, isHovered: boolean = false): string {
     const colors: Record<string, { base: string; hover: string }> = {
         critical: {
-            base: "bg-red-500/80",
-            hover: "bg-red-500"
+            base: "bg-danger/80",
+            hover: "bg-danger"
         },
         high: {
-            base: "bg-orange-500/80",
-            hover: "bg-orange-500"
+            base: "bg-warning/80",
+            hover: "bg-warning"
         },
         medium: {
-            base: "bg-yellow-500/70",
-            hover: "bg-yellow-500"
+            base: "bg-warning/70",
+            hover: "bg-warning"
         },
         low: {
-            base: "bg-green-500/60",
-            hover: "bg-green-500"
+            base: "bg-success/60",
+            hover: "bg-success"
         }
     }
     const color = colors[level] || colors.low
@@ -54,10 +54,10 @@ function getRiskColor(level: string, isHovered: boolean = false): string {
 
 function getRiskGlow(level: string): string {
     const glows: Record<string, string> = {
-        critical: "shadow-red-500/50",
-        high: "shadow-orange-500/50",
-        medium: "shadow-yellow-500/30",
-        low: "shadow-green-500/20"
+        critical: "shadow-danger/50",
+        high: "shadow-warning/50",
+        medium: "shadow-warning/30",
+        low: "shadow-success/20"
     }
     return glows[level] || ""
 }
@@ -89,19 +89,19 @@ export function RiskHeatmap({ repos, maxDisplay = 50 }: RiskHeatmapProps) {
                     </CardTitle>
                     <div className="flex items-center gap-3 text-xs">
                         <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-sm bg-red-500" />
+                            <div className="w-3 h-3 rounded-sm bg-danger" />
                             <span className="text-muted-foreground">Critical ({counts.critical || 0})</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-sm bg-orange-500" />
+                            <div className="w-3 h-3 rounded-sm bg-warning" />
                             <span className="text-muted-foreground">High ({counts.high || 0})</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-sm bg-yellow-500" />
+                            <div className="w-3 h-3 rounded-sm bg-warning" />
                             <span className="text-muted-foreground">Medium ({counts.medium || 0})</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-sm bg-green-500" />
+                            <div className="w-3 h-3 rounded-sm bg-success" />
                             <span className="text-muted-foreground">Low ({counts.low || 0})</span>
                         </div>
                     </div>
@@ -150,10 +150,10 @@ export function RiskHeatmap({ repos, maxDisplay = 50 }: RiskHeatmapProps) {
                                                     variant="outline"
                                                     className={cn(
                                                         "text-xs",
-                                                        repo.riskLevel === "critical" && "border-red-500 text-red-500",
-                                                        repo.riskLevel === "high" && "border-orange-500 text-orange-500",
-                                                        repo.riskLevel === "medium" && "border-yellow-500 text-yellow-500",
-                                                        repo.riskLevel === "low" && "border-green-500 text-green-500"
+                                                        repo.riskLevel === "critical" && "border-danger text-danger-text",
+                                                        repo.riskLevel === "high" && "border-warning text-warning-text",
+                                                        repo.riskLevel === "medium" && "border-warning text-warning-text",
+                                                        repo.riskLevel === "low" && "border-success text-success-text"
                                                     )}
                                                 >
                                                     Risk: {repo.riskScore}
@@ -161,25 +161,25 @@ export function RiskHeatmap({ repos, maxDisplay = 50 }: RiskHeatmapProps) {
                                             </div>
                                             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
                                                 {repo.criticalFindings > 0 && (
-                                                    <span className="text-red-400">
+                                                    <span className="text-danger-text">
                                                         {repo.criticalFindings} critical
                                                     </span>
                                                 )}
                                                 {repo.highFindings > 0 && (
-                                                    <span className="text-orange-400">
+                                                    <span className="text-warning-text">
                                                         {repo.highFindings} high
                                                     </span>
                                                 )}
                                                 {repo.secretsCount > 0 && (
-                                                    <span className="text-purple-400">
+                                                    <span className="text-ai-text">
                                                         {repo.secretsCount} secrets
                                                     </span>
                                                 )}
                                                 {repo.isArchived && (
-                                                    <span className="text-slate-400">Archived</span>
+                                                    <span className="text-muted-foreground">Archived</span>
                                                 )}
                                                 {repo.isAbandoned && (
-                                                    <span className="text-slate-400">Abandoned</span>
+                                                    <span className="text-muted-foreground">Abandoned</span>
                                                 )}
                                             </div>
                                             <div className="text-xs text-primary pt-1 border-t">

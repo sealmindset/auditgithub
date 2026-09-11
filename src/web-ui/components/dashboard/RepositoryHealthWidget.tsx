@@ -31,36 +31,36 @@ interface RepoRiskItem {
 const riskLevelConfig = {
   critical: {
     icon: ShieldAlert,
-    color: "text-red-500",
-    bg: "bg-red-500",
+    color: "text-danger-text",
+    bg: "bg-danger",
     badgeVariant: "destructive" as const
   },
   high: {
     icon: AlertTriangle,
-    color: "text-orange-500",
-    bg: "bg-orange-500",
+    color: "text-warning-text",
+    bg: "bg-warning",
     badgeVariant: "default" as const
   },
   medium: {
     icon: Shield,
-    color: "text-yellow-500",
-    bg: "bg-yellow-500",
+    color: "text-warning-text",
+    bg: "bg-warning",
     badgeVariant: "secondary" as const
   },
   low: {
     icon: ShieldCheck,
-    color: "text-green-500",
-    bg: "bg-green-500",
+    color: "text-success-text",
+    bg: "bg-success",
     badgeVariant: "outline" as const
   }
 }
 
 function RiskProgressBar({ score }: { score: number }) {
   const getColor = (score: number) => {
-    if (score >= 75) return "bg-red-500"
-    if (score >= 50) return "bg-orange-500"
-    if (score >= 25) return "bg-yellow-500"
-    return "bg-green-500"
+    if (score >= 75) return "bg-danger"
+    if (score >= 50) return "bg-warning"
+    if (score >= 25) return "bg-warning"
+    return "bg-success"
   }
 
   return (
@@ -89,7 +89,7 @@ function RepoHealthCard({ repo }: { repo: RepoRiskItem }) {
             <Archive className="h-3 w-3 text-muted-foreground" />
           )}
           {repo.isAbandoned && (
-            <Clock className="h-3 w-3 text-yellow-500" title="Abandoned" />
+            <Clock className="h-3 w-3 text-warning-text" aria-label="Abandoned" role="img" />
           )}
         </div>
         <RiskProgressBar score={repo.riskScore} />
@@ -101,12 +101,12 @@ function RepoHealthCard({ repo }: { repo: RepoRiskItem }) {
           </Badge>
         )}
         {repo.highFindings > 0 && (
-          <Badge variant="secondary" className="text-xs bg-orange-500/10 text-orange-600">
+          <Badge variant="secondary" className="text-xs bg-warning/10 text-warning-text">
             {repo.highFindings} high
           </Badge>
         )}
         {repo.secretsCount > 0 && (
-          <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">
+          <Badge variant="outline" className="text-xs text-ai-text border-ai-line">
             {repo.secretsCount} secrets
           </Badge>
         )}
@@ -143,7 +143,7 @@ export function RepositoryHealthWidget() {
       onRetry={refetch}
       action={
         healthyCount > 0 ? (
-          <Badge variant="outline" className="text-green-600 border-green-300">
+          <Badge variant="outline" className="text-success-text border-success-line">
             {healthyCount} healthy
           </Badge>
         ) : null

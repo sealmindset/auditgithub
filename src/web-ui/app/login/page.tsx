@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { AlertCircle, Shield, Loader2 } from "lucide-react"
+import { AlertCircle, ShieldCheck, Loader2, LockKeyhole, ScanSearch, Bot } from "lucide-react"
 import { API_BASE, apiFetch } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -14,6 +14,13 @@ interface Provider {
   name: string
   display_name: string
 }
+
+/** What the product does, said once, on the only page a signed-out user sees. */
+const PITCH = [
+  { icon: ScanSearch, title: "Continuous scanning", body: "Secrets, SAST, IaC and dependency findings across every repository in the organization." },
+  { icon: Bot, title: "AI triage", body: "Findings arrive ranked and explained, so the queue starts at the part that matters." },
+  { icon: LockKeyhole, title: "Audited access", body: "Every session, override and export is attributed and logged." },
+]
 
 function LoginForm() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -84,158 +91,212 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="text-center space-y-2">
-          <div className="flex justify-center mb-2">
-            <Shield className="h-12 w-12 text-blue-600" />
+    <div className="relative min-h-screen overflow-hidden bg-background">
+      {/* Two soft brand washes rather than a flat gradient: they read as depth in
+          both themes, where a light-mode gradient tends to read as a smudge. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 [background:radial-gradient(60rem_40rem_at_15%_-10%,var(--primary-soft),transparent_60%),radial-gradient(50rem_35rem_at_100%_110%,var(--ai-soft),transparent_55%)]"
+      />
+
+      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-12 px-4 py-10 sm:px-6 lg:grid-cols-2 lg:gap-16">
+        {/* Brand panel — hidden on small screens, where the form is the whole job */}
+        <section className="hidden lg:block">
+          <div className="flex items-center gap-3">
+            <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <ShieldCheck className="size-6" />
+            </span>
+            <div className="leading-tight">
+              <p className="text-lg font-semibold tracking-tight">AuditGH</p>
+              <p className="text-sm text-muted-foreground">Security Platform</p>
+            </div>
           </div>
-          <CardTitle className="text-3xl font-bold">AuditGitHub</CardTitle>
-          <CardDescription className="text-base">
-            Security Scanning & Analysis Platform
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {!showBreakGlass ? (
-            <>
-              {/* Normal Login */}
-              <div className="space-y-4">
-                {providersLoading ? (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+
+          <h1 className="mt-8 text-4xl font-semibold tracking-tight text-balance">
+            Every repository, every finding, one queue.
+          </h1>
+          <p className="mt-3 max-w-md text-base text-muted-foreground">
+            Sign in to review the current security posture of your GitHub organization.
+          </p>
+
+          <ul className="mt-10 space-y-6">
+            {PITCH.map(({ icon: Icon, title, body }) => (
+              <li key={title} className="flex gap-4">
+                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-text">
+                  <Icon className="size-4.5" />
+                </span>
+                <div>
+                  <p className="text-sm font-medium">{title}</p>
+                  <p className="mt-0.5 max-w-sm text-sm text-muted-foreground">{body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Auth panel */}
+        <div className="mx-auto w-full max-w-md">
+          {/* Small-screen brand lockup: the panel above is hidden there. */}
+          <div className="mb-6 flex items-center justify-center gap-3 lg:hidden">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <ShieldCheck className="size-5" />
+            </span>
+            <div className="leading-tight">
+              <p className="font-semibold tracking-tight">AuditGH</p>
+              <p className="text-xs text-muted-foreground">Security Platform</p>
+            </div>
+          </div>
+
+          <Card elevation="md" className="backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-xl">
+                {showBreakGlass ? "Emergency access" : "Sign in"}
+              </CardTitle>
+              <CardDescription>
+                {showBreakGlass
+                  ? "Use only while single sign-on is unavailable."
+                  : "Use your organization account to continue."}
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              {!showBreakGlass ? (
+                <div className="space-y-4">
+                  {providersLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                      Loading sign-in options
+                    </div>
+                  ) : providers.length > 0 ? (
+                    providers.map((provider) => (
+                      <Button
+                        key={provider.name}
+                        onClick={() => handleProviderLogin(provider.name)}
+                        className="w-full"
+                        size="lg"
+                      >
+                        Sign in with {provider.display_name}
+                      </Button>
+                    ))
+                  ) : (
+                    <p className="rounded-lg border border-warning-line bg-warning-soft px-3 py-2.5 text-sm text-warning-text">
+                      No single sign-on providers are configured. Use emergency access below.
+                    </p>
+                  )}
+
+                  <div className="relative py-1">
+                    <div className="absolute inset-0 flex items-center" aria-hidden>
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="eyebrow bg-card px-2">Need help?</span>
+                    </div>
                   </div>
-                ) : providers.length > 0 ? (
-                  providers.map((provider) => (
+
+                  <div className="space-y-2 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Don&apos;t have access? Contact your administrator for an invitation.
+                    </p>
                     <Button
-                      key={provider.name}
-                      onClick={() => handleProviderLogin(provider.name)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-lg"
-                      size="lg"
+                      variant="link"
+                      size="sm"
+                      onClick={() => setShowBreakGlass(true)}
+                      className="text-muted-foreground hover:text-foreground"
                     >
-                      Sign in with {provider.display_name}
+                      Emergency access
                     </Button>
-                  ))
-                ) : (
-                  <p className="text-center text-sm text-gray-500">
-                    No SSO providers configured. Use emergency access below.
-                  </p>
-                )}
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-gray-300" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white dark:bg-gray-800 px-2 text-gray-500">
-                      Need help?
-                    </span>
                   </div>
                 </div>
-
-                <div className="text-center">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    Don&apos;t have access? Contact your administrator for an invitation.
-                  </p>
-                  <button
-                    onClick={() => setShowBreakGlass(true)}
-                    className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                  >
-                    Emergency Access
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Break Glass Login */}
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-red-900 dark:text-red-300 mb-1">
-                    Emergency Break Glass Access
-                  </p>
-                  <p className="text-xs text-red-700 dark:text-red-400">
-                    This is emergency access only for when SSO is unavailable.
-                    All actions will be audited and logged.
-                  </p>
-                </div>
-              </div>
-
-              <form onSubmit={handleBreakGlassLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium">
-                    Email Address
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="admin@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={loading}
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">
-                    Local Password
-                  </Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={loading}
-                    className="w-full"
-                  />
-                </div>
-
-                {error && (
-                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3 rounded-lg border border-danger-line bg-danger-soft p-3">
+                    <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger-text" aria-hidden />
+                    <div>
+                      <p className="text-sm font-semibold text-danger-text">Break-glass credentials</p>
+                      <p className="mt-1 text-xs text-danger-text/90">
+                        For use only when single sign-on is unavailable. Every action in this
+                        session is attributed and logged.
+                      </p>
+                    </div>
                   </div>
-                )}
 
-                <div className="space-y-3 pt-2">
-                  <Button
-                    type="submit"
-                    className="w-full bg-red-600 hover:bg-red-700 text-white"
-                    disabled={loading}
-                  >
-                    {loading ? "Signing In..." : "Sign In (Emergency Access)"}
-                  </Button>
+                  <form onSubmit={handleBreakGlassLogin} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email address</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        autoComplete="username"
+                        placeholder="admin@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        disabled={loading}
+                        aria-invalid={!!error}
+                      />
+                    </div>
 
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setShowBreakGlass(false)
-                      setError("")
-                      setEmail("")
-                      setPassword("")
-                    }}
-                    className="w-full"
-                    variant="outline"
-                    disabled={loading}
-                  >
-                    Back to Normal Login
-                  </Button>
-                </div>
-              </form>
-            </>
-          )}
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Local password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        autoComplete="current-password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        disabled={loading}
+                        aria-invalid={!!error}
+                      />
+                    </div>
 
-          {/* Footer */}
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-              By signing in, you agree to our security policies and terms of use.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+                    {error && (
+                      <p
+                        role="alert"
+                        className="flex items-start gap-2 rounded-lg border border-danger-line bg-danger-soft p-3 text-sm text-danger-text"
+                      >
+                        <AlertCircle className="mt-px size-4 shrink-0" aria-hidden />
+                        {error}
+                      </p>
+                    )}
+
+                    <div className="space-y-2 pt-1">
+                      <Button
+                        type="submit"
+                        variant="destructive"
+                        className="w-full"
+                        loading={loading}
+                      >
+                        {loading ? "Signing in" : "Sign in with emergency access"}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="w-full"
+                        disabled={loading}
+                        onClick={() => {
+                          setShowBreakGlass(false)
+                          setError("")
+                          setEmail("")
+                          setPassword("")
+                        }}
+                      >
+                        Back to normal sign-in
+                      </Button>
+                    </div>
+                  </form>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            By signing in you agree to the organization&apos;s security policies and terms of use.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

@@ -37,7 +37,9 @@ import {
   AlertCircle,
   Clock,
   TrendingUp,
+  BarChart3,
 } from "lucide-react"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface Prompt {
   id: string
@@ -77,21 +79,21 @@ interface PromptAnalyticsOverview {
 }
 
 const categoryColors: Record<string, string> = {
-  system: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30",
-  user: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
-  template: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30",
-  agent: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30",
-  skill: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/30",
-  mcp: "bg-pink-500/15 text-pink-700 dark:text-pink-400 border-pink-500/30",
+  system: "bg-ai/15 text-ai-text border-ai/30",
+  user: "bg-info/15 text-info-text border-info/30",
+  template: "bg-success/15 text-success-text border-success/30",
+  agent: "bg-warning/15 text-warning-text border-warning/30",
+  skill: "bg-info/15 text-info-text border-info/30",
+  mcp: "bg-ai/15 text-ai-text border-ai/30",
 }
 
 const categoryBarColors: Record<string, string> = {
-  system: "bg-purple-500",
-  user: "bg-blue-500",
-  template: "bg-green-500",
-  agent: "bg-orange-500",
-  skill: "bg-cyan-500",
-  mcp: "bg-pink-500",
+  system: "bg-ai",
+  user: "bg-info",
+  template: "bg-success",
+  agent: "bg-warning",
+  skill: "bg-info",
+  mcp: "bg-ai",
 }
 
 function StyledBar({
@@ -113,7 +115,7 @@ function StyledBar({
       </span>
       <div className="flex-1 h-6 rounded-md bg-muted overflow-hidden relative">
         <div
-          className={`h-full rounded-md transition-all duration-500 ${barColor ?? "bg-primary"}`}
+          className={`h-full rounded-md transition-all duration-300 ${barColor ?? "bg-primary"}`}
           style={{ width: `${Math.max(pct, 2)}%` }}
         />
       </div>
@@ -222,16 +224,13 @@ export default function PromptAnalyticsPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Prompt Analytics</h1>
-        <p className="text-muted-foreground mt-1">
-          Usage metrics and insights across all managed prompts.
-        </p>
-      </div>
-
-      <Separator />
+    <PageShell>
+      <PageHeader
+        icon={BarChart3}
+        eyebrow="Prompts"
+        title="Prompt analytics"
+        description="Usage metrics and insights across all managed prompts."
+      />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
@@ -241,7 +240,7 @@ export default function PromptAnalyticsPage() {
           value={data.total_prompts}
         />
         <StatCard
-          icon={<Activity className="h-5 w-5 text-green-500" />}
+          icon={<Activity className="h-5 w-5 text-success-text" />}
           label="Active"
           value={data.active_prompts}
         />
@@ -267,7 +266,7 @@ export default function PromptAnalyticsPage() {
           value={formatNumber(data.total_tokens)}
         />
         <StatCard
-          icon={<AlertTriangle className="h-5 w-5 text-red-500" />}
+          icon={<AlertTriangle className="h-5 w-5 text-danger-text" />}
           label="Error Rate"
           value={`${(data.error_rate * 100).toFixed(1)}%`}
         />
@@ -476,6 +475,6 @@ export default function PromptAnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   )
 }

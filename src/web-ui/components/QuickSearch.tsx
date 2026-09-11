@@ -185,7 +185,7 @@ export function QuickSearch() {
           </DialogHeader>
           <div className="flex items-center border-b px-3">
             <Search className="h-4 w-4 text-muted-foreground mr-2" />
-            <Input
+            <Input aria-label="Search navigation"
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}

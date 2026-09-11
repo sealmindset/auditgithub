@@ -45,7 +45,9 @@ import {
     X,
     Lock,
     Tag,
+    Sparkles,
 } from "lucide-react"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,12 +107,12 @@ interface CreatePromptForm {
 const CATEGORIES = ["system", "user", "template", "agent", "skill", "mcp"] as const
 
 const CATEGORY_COLORS: Record<string, string> = {
-    system: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/20",
-    user: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20",
-    template: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20",
-    agent: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20",
-    skill: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/20",
-    mcp: "bg-pink-500/15 text-pink-700 dark:text-pink-400 border-pink-500/20",
+    system: "bg-ai/15 text-ai-text border-ai/20",
+    user: "bg-info/15 text-info-text border-info/20",
+    template: "bg-success/15 text-success-text border-success/20",
+    agent: "bg-warning/15 text-warning-text border-warning/20",
+    skill: "bg-info/15 text-info-text border-info/20",
+    mcp: "bg-ai/15 text-ai-text border-ai/20",
 }
 
 const PROVIDERS = [
@@ -169,7 +171,7 @@ function getModelBadge(model: string | null) {
     return (
         <Badge
             variant="secondary"
-            className="font-mono text-xs bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20"
+            className="font-mono text-xs bg-muted-foreground/10 text-muted-foreground border-border-strong/20"
         >
             {model}
         </Badge>
@@ -179,7 +181,7 @@ function getModelBadge(model: string | null) {
 function getStatusBadge(isActive: boolean) {
     if (isActive) {
         return (
-            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" variant="outline">
+            <Badge className="bg-success/15 text-success-text border-success/20" variant="outline">
                 <CheckCircle2 className="h-3 w-3 mr-1" />
                 Active
             </Badge>
@@ -208,7 +210,7 @@ const columns: ColumnDef<Prompt>[] = [
                 <div className="flex items-center gap-2 min-w-[180px]">
                     <Link
                         href={`/prompts/${prompt.slug}`}
-                        className="font-medium text-blue-600 dark:text-blue-400 hover:underline truncate"
+                        className="font-medium text-info-text hover:underline truncate"
                     >
                         {prompt.name}
                     </Link>
@@ -216,7 +218,7 @@ const columns: ColumnDef<Prompt>[] = [
                         <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Lock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                    <Lock className="h-3.5 w-3.5 text-warning-text shrink-0" />
                                 </TooltipTrigger>
                                 <TooltipContent>Locked prompt</TooltipContent>
                             </Tooltip>
@@ -499,15 +501,13 @@ export default function PromptsPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">AI Prompt Registry</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Manage, version, and organize prompts across agents and providers.
-                    </p>
-                </div>
+        <PageShell>
+            <PageHeader
+                icon={Sparkles}
+                eyebrow="Prompts"
+                title="AI prompt registry"
+                description="Manage, version and organize prompts across agents and providers."
+                actions={
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                     <DialogTrigger asChild>
                         <Button>
@@ -558,7 +558,7 @@ export default function PromptsPage() {
                                     }
                                 />
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                 <div className="space-y-2">
                                     <Label>Category</Label>
                                     <Select
@@ -676,7 +676,8 @@ export default function PromptsPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-            </div>
+                }
+            />
 
             {/* Stats Cards */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -694,7 +695,7 @@ export default function PromptsPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Active</CardTitle>
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        <CheckCircle2 className="h-4 w-4 text-success-text" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
@@ -730,14 +731,14 @@ export default function PromptsPage() {
             <div className="flex flex-wrap items-center gap-3">
                 <div className="relative flex-1 min-w-[200px] max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
+                    <Input aria-label="Search prompts"
                         placeholder="Search prompts..."
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         className="pl-9"
                     />
                     {searchInput && (
-                        <button
+                        <button aria-label="Clear search"
                             onClick={() => setSearchInput("")}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                         >
@@ -776,9 +777,7 @@ export default function PromptsPage() {
                         <button
                             key={status}
                             onClick={() => setStatusFilter(status)}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                                statusFilter === status
-                                    ? "bg-primary text-primary-foreground shadow-sm"
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${ statusFilter === status ?"bg-primary text-primary-foreground shadow-sm"
                                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
                             }`}
                         >
@@ -817,6 +816,6 @@ export default function PromptsPage() {
                 tableId="prompts"
                 initialPageSize={20}
             />
-        </div>
+        </PageShell>
     )
 }

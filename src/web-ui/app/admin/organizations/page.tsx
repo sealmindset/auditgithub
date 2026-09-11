@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface Organization {
     id: string
@@ -245,17 +246,13 @@ export default function OrganizationsAdminPage() {
     }
 
     return (
-        <div className="container mx-auto py-8 px-4 space-y-6">
-            <div className="flex items-start justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                        <Building2 className="h-8 w-8" />
-                        Organizations
-                    </h1>
-                    <p className="text-muted-foreground mt-1">
-                        Sync repositories from GitHub and manage scans
-                    </p>
-                </div>
+        <PageShell>
+            <PageHeader
+                icon={Building2}
+                eyebrow="Administration"
+                title="Organizations"
+                description="Sync repositories from GitHub and manage scans."
+                actions={
                 <Select value={selectedOrg} onValueChange={handleOrgChange}>
                     <SelectTrigger className="w-[300px]">
                         <div className="flex items-center gap-2">
@@ -279,7 +276,8 @@ export default function OrganizationsAdminPage() {
                         ))}
                     </SelectContent>
                 </Select>
-            </div>
+                }
+            />
 
             {currentOrg && (
                 <div className="grid gap-4 md:grid-cols-3">
@@ -346,18 +344,18 @@ export default function OrganizationsAdminPage() {
                         <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
                             <div className="flex items-center gap-2">
                                 {syncResult.failed === 0 ? (
-                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                    <CheckCircle2 className="h-5 w-5 text-success-text" />
                                 ) : (
-                                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                                    <AlertTriangle className="h-5 w-5 text-warning-text" />
                                 )}
                                 <span className="font-medium">{syncResult.message}</span>
                             </div>
                             <div className="flex gap-4 text-sm text-muted-foreground">
                                 <span>{syncResult.total} total</span>
-                                <span className="text-green-600">{syncResult.created} new</span>
-                                <span className="text-blue-600">{syncResult.updated} updated</span>
+                                <span className="text-success-text">{syncResult.created} new</span>
+                                <span className="text-info-text">{syncResult.updated} updated</span>
                                 {syncResult.failed > 0 && (
-                                    <span className="text-red-600">{syncResult.failed} failed</span>
+                                    <span className="text-danger-text">{syncResult.failed} failed</span>
                                 )}
                             </div>
                         </div>
@@ -378,7 +376,7 @@ export default function OrganizationsAdminPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex gap-2">
-                        <Input
+                        <Input aria-label="Search repositories"
                             value={repoSearch}
                             onChange={e => setRepoSearch(e.target.value)}
                             onKeyDown={e => e.key === "Enter" && handleSearchRepos()}
@@ -386,7 +384,7 @@ export default function OrganizationsAdminPage() {
                             className="flex-1"
                             disabled={!selectedOrg}
                         />
-                        <Button
+                        <Button aria-label="Search repositories"
                             onClick={handleSearchRepos}
                             disabled={searching || !selectedOrg || repoSearch.length < 2}
                             variant="secondary"
@@ -430,7 +428,7 @@ export default function OrganizationsAdminPage() {
                                                     {repo.visibility === "private" ? (
                                                         <EyeOff className="h-3 w-3 text-muted-foreground" />
                                                     ) : repo.visibility === "public" ? (
-                                                        <Globe className="h-3 w-3 text-red-500" />
+                                                        <Globe className="h-3 w-3 text-danger-text" />
                                                     ) : null}
                                                     {repo.is_archived && (
                                                         <Archive className="h-3 w-3 text-muted-foreground" />
@@ -489,7 +487,7 @@ export default function OrganizationsAdminPage() {
                     <Button
                         onClick={handleStartScan}
                         disabled={scanRunning || !selectedOrg}
-                        className="bg-green-600 hover:bg-green-700"
+                        className="bg-success hover:bg-success"
                     >
                         {scanRunning ? (
                             <>
@@ -508,11 +506,11 @@ export default function OrganizationsAdminPage() {
                         <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
                             <div className="flex items-center gap-2">
                                 {scanStatus.scan_status === "completed" ? (
-                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                    <CheckCircle2 className="h-5 w-5 text-success-text" />
                                 ) : scanStatus.scan_status === "failed" ? (
-                                    <XCircle className="h-5 w-5 text-red-500" />
+                                    <XCircle className="h-5 w-5 text-danger-text" />
                                 ) : (
-                                    <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                                    <Loader2 className="h-5 w-5 animate-spin text-info-text" />
                                 )}
                                 <span className="font-medium capitalize">
                                     {scanStatus.scan_status || "Unknown"}
@@ -527,6 +525,6 @@ export default function OrganizationsAdminPage() {
                     )}
                 </CardContent>
             </Card>
-        </div>
+        </PageShell>
     )
 }

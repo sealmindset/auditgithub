@@ -24,12 +24,12 @@ import { ChevronsUpDown, LogOut, ShieldAlert } from "lucide-react";
 
 const ROLE_COLORS: Record<RoleName, string> = {
   super_admin:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  admin: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    "bg-ai-soft text-ai-text",
+  admin: "bg-danger-soft text-danger-text",
   manager:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  analyst: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  user: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
+    "bg-warning-soft text-warning-text",
+  analyst: "bg-info-soft text-info-text",
+  user: "bg-muted text-foreground dark:text-muted-foreground",
 };
 
 const ROLE_LABELS: Record<RoleName, string> = {
@@ -119,7 +119,7 @@ export function UserNav() {
 
               <DropdownMenuItem
                 onClick={() => logout()}
-                className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
+                className="text-danger-text focus:text-danger-text"
               >
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign Out

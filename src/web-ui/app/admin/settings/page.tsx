@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Settings, Clock, Shield, Loader2, CheckCircle2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
+import { Badge } from "@/components/ui/badge"
 
 interface SessionSettings {
   inactivity_timeout_minutes: number
@@ -108,7 +110,7 @@ export default function AdminSettingsPage() {
     return (
       <div className="container mx-auto py-8 px-4">
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       </div>
     )
@@ -117,7 +119,7 @@ export default function AdminSettingsPage() {
   if (!settings) {
     return (
       <div className="container mx-auto py-8 px-4">
-        <p className="text-gray-500">Unable to load session settings.</p>
+        <p className="text-muted-foreground">Unable to load session settings.</p>
       </div>
     )
   }
@@ -125,14 +127,14 @@ export default function AdminSettingsPage() {
   const bounds = settings.bounds
 
   return (
-    <div className="container mx-auto py-8 px-4 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Settings className="h-8 w-8" />
-          Session Settings
-        </h1>
-        <p className="text-gray-600 mt-1">Configure session timeout policies (Super Admin only)</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={Settings}
+        eyebrow="Administration"
+        title="Session settings"
+        description="Session timeout policy for the whole platform."
+        actions={<Badge variant="ai">Super admin only</Badge>}
+      />
 
       <Card>
         <CardHeader>
@@ -151,7 +153,7 @@ export default function AdminSettingsPage() {
               Inactivity Timeout (minutes)
             </Label>
             <div className="flex items-center gap-4">
-              <input
+              <input aria-label="Inactivity timeout in minutes"
                 type="range"
                 min={bounds.inactivity_timeout_minutes.min}
                 max={bounds.inactivity_timeout_minutes.max}
@@ -169,7 +171,7 @@ export default function AdminSettingsPage() {
                 className="w-24"
               />
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Sessions expire after {formatDuration(inactivity)} of inactivity.
               Range: {bounds.inactivity_timeout_minutes.min}-{bounds.inactivity_timeout_minutes.max} minutes.
             </p>
@@ -181,7 +183,7 @@ export default function AdminSettingsPage() {
               Maximum Session Duration (hours)
             </Label>
             <div className="flex items-center gap-4">
-              <input
+              <input aria-label="Maximum session duration in hours"
                 type="range"
                 min={bounds.absolute_timeout_hours.min}
                 max={bounds.absolute_timeout_hours.max}
@@ -199,19 +201,19 @@ export default function AdminSettingsPage() {
                 className="w-24"
               />
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Sessions expire after {absolute} hours regardless of activity.
               Range: {bounds.absolute_timeout_hours.min}-{bounds.absolute_timeout_hours.max} hours.
             </p>
           </div>
 
           {/* Effective Policy Summary */}
-          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="p-4 bg-info-soft dark:bg-info-soft/20 border border-info-line rounded-lg">
             <div className="flex items-center gap-2 mb-2">
-              <Shield className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-semibold text-blue-900 dark:text-blue-300">Effective Policy</span>
+              <Shield className="h-4 w-4 text-info-text" />
+              <span className="text-sm font-semibold text-info-text">Effective Policy</span>
             </div>
-            <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1">
+            <ul className="text-sm text-info-text space-y-1">
               <li>Users will be logged out after {formatDuration(inactivity)} of inactivity</li>
               <li>Sessions will expire after {absolute} hours maximum, even if active</li>
             </ul>
@@ -222,7 +224,7 @@ export default function AdminSettingsPage() {
             <Button
               onClick={handleSave}
               disabled={saving}
-              className={saved ? "bg-green-600 hover:bg-green-700" : ""}
+              className={saved ? "bg-success hover:bg-success" : ""}
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -234,6 +236,6 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }

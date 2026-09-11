@@ -229,7 +229,7 @@ tr:nth-child(even) { background-color: #f2f2f2; }
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
                         <Label htmlFor="filename" className="text-right">
                             Filename
                         </Label>
@@ -240,7 +240,7 @@ tr:nth-child(even) { background-color: #f2f2f2; }
                             className="col-span-3"
                         />
                     </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
                         <Label htmlFor="format" className="text-right">
                             Format
                         </Label>

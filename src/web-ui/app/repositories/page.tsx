@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { ColumnDef } from "@tanstack/react-table"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, Clock, ScanSearch, Eye, EyeOff, Globe, Archive, FileText, Activity } from "lucide-react"
+import { Badge, type BadgeTone } from "@/components/ui/badge"
+import { Loader2, Clock, GitBranch, ScanSearch, Eye, EyeOff, Globe, Archive, FileText, Activity } from "lucide-react"
 import Link from "next/link"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 function getDaysSince(date: string | null): number | null {
     if (!date) return null
@@ -30,14 +31,14 @@ function getCommitAgeBadge(days: number | null) {
 
     if (days < 31) {
         return (
-            <Badge className="bg-green-500 hover:bg-green-600">
+            <Badge className="bg-success hover:bg-success">
                 <Clock className="h-3 w-3 mr-1" />
                 {days}d ago
             </Badge>
         )
     } else if (days < 365) {
         return (
-            <Badge className="bg-yellow-500 hover:bg-yellow-600">
+            <Badge className="bg-warning hover:bg-warning">
                 <Clock className="h-3 w-3 mr-1" />
                 {days}d ago
             </Badge>
@@ -69,14 +70,14 @@ function getScanAgeBadge(days: number | null) {
     // > 30 days: red (scan outdated)
     if (days < 7) {
         return (
-            <Badge className="bg-green-500 hover:bg-green-600">
+            <Badge className="bg-success hover:bg-success">
                 <ScanSearch className="h-3 w-3 mr-1" />
                 Scanned {days}d ago
             </Badge>
         )
     } else if (days < 30) {
         return (
-            <Badge className="bg-yellow-500 hover:bg-yellow-600">
+            <Badge className="bg-warning hover:bg-warning">
                 <ScanSearch className="h-3 w-3 mr-1" />
                 Scanned {days}d ago
             </Badge>
@@ -121,14 +122,14 @@ export default function RepositoriesPage() {
         fetchProjects()
     }, [])
 
-    const deploymentStatusConfig: Record<string, { label: string; color: string }> = {
-        production: { label: "Production", color: "bg-green-500 hover:bg-green-600" },
-        staging: { label: "Staging", color: "bg-blue-500 hover:bg-blue-600" },
-        development: { label: "Development", color: "bg-yellow-500 hover:bg-yellow-600" },
-        deprecated: { label: "Deprecated", color: "bg-orange-500 hover:bg-orange-600" },
-        archived: { label: "Archived", color: "bg-gray-500 hover:bg-gray-600" },
-        decommissioned: { label: "Decommissioned", color: "bg-red-500 hover:bg-red-600" },
-        unknown: { label: "Unknown", color: "" },
+    const deploymentStatusConfig: Record<string, { label: string; tone: BadgeTone }> = {
+        production: { label: "Production", tone: "success" },
+        staging: { label: "Staging", tone: "info" },
+        development: { label: "Development", tone: "warning" },
+        deprecated: { label: "Deprecated", tone: "warning" },
+        archived: { label: "Archived", tone: "neutral" },
+        decommissioned: { label: "Decommissioned", tone: "danger" },
+        unknown: { label: "Unknown", tone: "neutral" },
     }
 
     const columns: ColumnDef<any>[] = [
@@ -143,12 +144,12 @@ export default function RepositoriesPage() {
                 const config = deploymentStatus ? deploymentStatusConfig[deploymentStatus] : null
                 return (
                     <div className="flex items-center gap-2">
-                        <Link href={`/projects/${row.original.id}`} className="font-medium text-blue-600 hover:underline">
+                        <Link href={`/projects/${row.original.id}`} className="font-medium text-info-text hover:underline">
                             {row.getValue("name")}
                         </Link>
                         {deploymentStatus && deploymentStatus !== "unknown" && config && (
-                            <Badge className={`text-xs text-white ${config.color}`}>
-                                <Activity className="h-3 w-3 mr-1" />
+                            <Badge variant={config.tone} size="sm">
+                                <Activity className="h-3 w-3" />
                                 {config.label}
                             </Badge>
                         )}
@@ -176,21 +177,21 @@ export default function RepositoriesPage() {
                 
                 if (effectiveVisibility === "public") {
                     return (
-                        <Badge variant="destructive" className="bg-red-500 hover:bg-red-600">
+                        <Badge variant="destructive" className="bg-danger hover:bg-danger">
                             <Globe className="h-3 w-3 mr-1" />
                             Public
                         </Badge>
                     )
                 } else if (effectiveVisibility === "internal") {
                     return (
-                        <Badge className="bg-green-500 hover:bg-green-600">
+                        <Badge className="bg-success hover:bg-success">
                             <Eye className="h-3 w-3 mr-1" />
                             Internal
                         </Badge>
                     )
                 } else {
                     return (
-                        <Badge className="bg-green-500 hover:bg-green-600">
+                        <Badge className="bg-success hover:bg-success">
                             <EyeOff className="h-3 w-3 mr-1" />
                             Private
                         </Badge>
@@ -273,10 +274,10 @@ export default function RepositoriesPage() {
                 return (
                     <Badge
                         className={
-                            severityLower === "critical" ? "bg-red-500 hover:bg-red-600" :
-                            severityLower === "high" ? "bg-orange-500 hover:bg-orange-600" :
-                            severityLower === "medium" ? "bg-yellow-500 hover:bg-yellow-600" :
-                            "bg-blue-500 hover:bg-blue-600"
+                            severityLower === "critical" ? "bg-danger hover:bg-danger" :
+                            severityLower === "high" ? "bg-warning hover:bg-warning" :
+                            severityLower === "medium" ? "bg-warning hover:bg-warning" :
+                            "bg-info hover:bg-info"
                         }
                     >
                         {severity}
@@ -309,7 +310,7 @@ export default function RepositoriesPage() {
                 const hasArchitecture = row.getValue("has_architecture") as boolean
                 if (hasArchitecture) {
                     return (
-                        <Badge className="bg-green-500 hover:bg-green-600">
+                        <Badge className="bg-success hover:bg-success">
                             <FileText className="h-3 w-3 mr-1" />
                             Yes
                         </Badge>
@@ -344,14 +345,14 @@ export default function RepositoriesPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Repositories</h1>
-                <p className="text-muted-foreground">
-                    List of all monitored repositories.
-                </p>
-            </div>
+        <PageShell>
+            <PageHeader
+                icon={GitBranch}
+                eyebrow="Inventory"
+                title="Repositories"
+                description="Every repository this platform monitors, with its current finding counts."
+            />
             <DataTable columns={columns} data={projects} searchKey="name" tableId="repositories" />
-        </div>
+        </PageShell>
     )
 }

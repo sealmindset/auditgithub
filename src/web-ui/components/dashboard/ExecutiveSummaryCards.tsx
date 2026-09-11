@@ -47,19 +47,19 @@ interface ExecutiveSummaryData {
 }
 
 function getGradeColor(grade: string): string {
-    if (grade.startsWith("A")) return "text-green-500"
-    if (grade.startsWith("B")) return "text-lime-500"
-    if (grade.startsWith("C")) return "text-yellow-500"
-    if (grade.startsWith("D")) return "text-orange-500"
-    return "text-red-500"
+    if (grade.startsWith("A")) return "text-success-text"
+    if (grade.startsWith("B")) return "text-success-text"
+    if (grade.startsWith("C")) return "text-warning-text"
+    if (grade.startsWith("D")) return "text-warning-text"
+    return "text-danger-text"
 }
 
 function getGradeBgColor(grade: string): string {
-    if (grade.startsWith("A")) return "bg-green-500/10 border-green-500/30"
-    if (grade.startsWith("B")) return "bg-lime-500/10 border-lime-500/30"
-    if (grade.startsWith("C")) return "bg-yellow-500/10 border-yellow-500/30"
-    if (grade.startsWith("D")) return "bg-orange-500/10 border-orange-500/30"
-    return "bg-red-500/10 border-red-500/30"
+    if (grade.startsWith("A")) return "bg-success/10 border-success/30"
+    if (grade.startsWith("B")) return "bg-success/10 border-success/30"
+    if (grade.startsWith("C")) return "bg-warning/10 border-warning/30"
+    if (grade.startsWith("D")) return "bg-warning/10 border-warning/30"
+    return "bg-danger/10 border-danger/30"
 }
 
 export function ExecutiveSummaryCards() {
@@ -125,7 +125,7 @@ export function ExecutiveSummaryCards() {
     return (
         <div className="grid gap-6 md:grid-cols-3">
             {/* Immediate Action Card */}
-            <Card className="relative overflow-hidden border-red-500/30 bg-gradient-to-br from-red-500/5 to-transparent">
+            <Card className="relative overflow-hidden border-danger/30 bg-gradient-to-br from-danger/5 to-transparent">
                 <div className="absolute top-2 right-2">
                     <FeedbackButton
                         componentId="executive-immediate-action"
@@ -134,8 +134,8 @@ export function ExecutiveSummaryCards() {
                 </div>
                 <CardContent className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="p-2 rounded-lg bg-red-500/20">
-                            <AlertOctagon className="h-5 w-5 text-red-500" />
+                        <div className="p-2 rounded-lg bg-danger/20">
+                            <AlertOctagon className="h-5 w-5 text-danger-text" />
                         </div>
                         <div>
                             <h3 className="font-semibold text-sm">IMMEDIATE ACTION</h3>
@@ -149,17 +149,17 @@ export function ExecutiveSummaryCards() {
                                 key={index}
                                 className={cn(
                                     "flex items-start gap-2 p-2 rounded-md",
-                                    action.severity === "critical" && "bg-red-500/10",
-                                    action.severity === "high" && "bg-orange-500/10",
-                                    action.severity === "medium" && "bg-yellow-500/10"
+                                    action.severity === "critical" && "bg-danger/10",
+                                    action.severity === "high" && "bg-warning/10",
+                                    action.severity === "medium" && "bg-warning/10"
                                 )}
                             >
                                 {action.title.toLowerCase().includes("secret") ? (
-                                    <Key className="h-4 w-4 mt-0.5 text-red-400 shrink-0" />
+                                    <Key className="h-4 w-4 mt-0.5 text-danger-text shrink-0" />
                                 ) : action.title.toLowerCase().includes("repo") ? (
-                                    <GitBranch className="h-4 w-4 mt-0.5 text-orange-400 shrink-0" />
+                                    <GitBranch className="h-4 w-4 mt-0.5 text-warning-text shrink-0" />
                                 ) : (
-                                    <Shield className="h-4 w-4 mt-0.5 text-yellow-400 shrink-0" />
+                                    <Shield className="h-4 w-4 mt-0.5 text-warning-text shrink-0" />
                                 )}
                                 <div className="min-w-0 flex-1">
                                     <p className="text-sm font-medium leading-tight">
@@ -174,7 +174,7 @@ export function ExecutiveSummaryCards() {
                     </div>
 
                     <Link href="/findings?severity=critical" className="block mt-4">
-                        <Button variant="outline" size="sm" className="w-full gap-2 border-red-500/30 hover:bg-red-500/10">
+                        <Button variant="outline" size="sm" className="w-full gap-2 border-danger/30 hover:bg-danger/10">
                             View All Actions
                             <ArrowRight className="h-4 w-4" />
                         </Button>
@@ -183,7 +183,7 @@ export function ExecutiveSummaryCards() {
             </Card>
 
             {/* This Week Trends Card */}
-            <Card className="relative overflow-hidden border-blue-500/30 bg-gradient-to-br from-blue-500/5 to-transparent">
+            <Card className="relative overflow-hidden border-info/30 bg-gradient-to-br from-info/5 to-transparent">
                 <div className="absolute top-2 right-2">
                     <FeedbackButton
                         componentId="executive-weekly-trends"
@@ -192,8 +192,8 @@ export function ExecutiveSummaryCards() {
                 </div>
                 <CardContent className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="p-2 rounded-lg bg-blue-500/20">
-                            <TrendingUp className="h-5 w-5 text-blue-500" />
+                        <div className="p-2 rounded-lg bg-info/20">
+                            <TrendingUp className="h-5 w-5 text-info-text" />
                         </div>
                         <div>
                             <h3 className="font-semibold text-sm">THIS WEEK</h3>
@@ -211,21 +211,21 @@ export function ExecutiveSummaryCards() {
                                     {trend.direction === "up" ? (
                                         <TrendingUp className={cn(
                                             "h-4 w-4",
-                                            trend.isGood ? "text-green-500" : "text-red-500"
+                                            trend.isGood ? "text-success-text" : "text-danger-text"
                                         )} />
                                     ) : trend.direction === "down" ? (
                                         <TrendingDown className={cn(
                                             "h-4 w-4",
-                                            trend.isGood ? "text-green-500" : "text-red-500"
+                                            trend.isGood ? "text-success-text" : "text-danger-text"
                                         )} />
                                     ) : (
-                                        <Scan className="h-4 w-4 text-blue-500" />
+                                        <Scan className="h-4 w-4 text-info-text" />
                                     )}
                                     <span className="text-sm">{trend.label}</span>
                                 </div>
                                 <span className={cn(
                                     "text-sm font-semibold",
-                                    trend.isGood ? "text-green-500" : trend.direction !== "neutral" ? "text-red-500" : "text-blue-500"
+                                    trend.isGood ? "text-success-text" : trend.direction !== "neutral" ? "text-danger-text" : "text-info-text"
                                 )}>
                                     {trend.value}
                                 </span>
@@ -234,7 +234,7 @@ export function ExecutiveSummaryCards() {
                     </div>
 
                     <Link href="/analytics" className="block mt-4">
-                        <Button variant="outline" size="sm" className="w-full gap-2 border-blue-500/30 hover:bg-blue-500/10">
+                        <Button variant="outline" size="sm" className="w-full gap-2 border-info/30 hover:bg-info/10">
                             View Analytics
                             <ArrowRight className="h-4 w-4" />
                         </Button>
@@ -258,10 +258,10 @@ export function ExecutiveSummaryCards() {
                         <div className={cn(
                             "p-2 rounded-lg",
                             data.posture.grade.startsWith("A") || data.posture.grade.startsWith("B")
-                                ? "bg-green-500/20"
+                                ? "bg-success/20"
                                 : data.posture.grade.startsWith("C")
-                                    ? "bg-yellow-500/20"
-                                    : "bg-red-500/20"
+                                    ? "bg-warning/20"
+                                    : "bg-danger/20"
                         )}>
                             <Target className={cn(
                                 "h-5 w-5",
@@ -299,10 +299,10 @@ export function ExecutiveSummaryCards() {
                         <Button variant="outline" size="sm" className={cn(
                             "w-full gap-2",
                             data.posture.grade.startsWith("A") || data.posture.grade.startsWith("B")
-                                ? "border-green-500/30 hover:bg-green-500/10"
+                                ? "border-success/30 hover:bg-success/10"
                                 : data.posture.grade.startsWith("C")
-                                    ? "border-yellow-500/30 hover:bg-yellow-500/10"
-                                    : "border-red-500/30 hover:bg-red-500/10"
+                                    ? "border-warning/30 hover:bg-warning/10"
+                                    : "border-danger/30 hover:bg-danger/10"
                         )}>
                             Full Report
                             <ArrowRight className="h-4 w-4" />

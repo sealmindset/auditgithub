@@ -29,6 +29,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface Prompt {
   id: string
@@ -48,12 +49,12 @@ interface AgentSummary {
 }
 
 const categoryColors: Record<string, string> = {
-  system: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30",
-  user: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
-  template: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30",
-  agent: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30",
-  skill: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/30",
-  mcp: "bg-pink-500/15 text-pink-700 dark:text-pink-400 border-pink-500/30",
+  system: "bg-ai/15 text-ai-text border-ai/30",
+  user: "bg-info/15 text-info-text border-info/30",
+  template: "bg-success/15 text-success-text border-success/30",
+  agent: "bg-warning/15 text-warning-text border-warning/30",
+  skill: "bg-info/15 text-info-text border-info/30",
+  mcp: "bg-ai/15 text-ai-text border-ai/30",
 }
 
 export default function AgentInventoryPage() {
@@ -113,15 +114,13 @@ export default function AgentInventoryPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Agent Inventory</h1>
-        <p className="text-muted-foreground mt-1">
-          All AI agents and their bound prompt configurations.
-        </p>
-      </div>
-
-      <Separator />
+    <PageShell>
+      <PageHeader
+        icon={Bot}
+        eyebrow="Prompts"
+        title="Agent inventory"
+        description="All AI agents and the prompt configurations bound to them."
+      />
 
       {agents.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
@@ -252,6 +251,6 @@ export default function AgentInventoryPage() {
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

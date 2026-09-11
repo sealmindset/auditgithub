@@ -67,6 +67,7 @@ import {
 } from "lucide-react"
 
 import { OrchestrationTab } from "./orchestration-tab"
+import { BackButton, PageHeader, PageShell } from "@/components/ui/page-header"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -153,16 +154,16 @@ interface TestCase {
 // ---------------------------------------------------------------------------
 
 const CATEGORY_COLORS: Record<string, string> = {
-  system: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
-  user: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
-  template: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30",
-  agent: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30",
-  skill: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
-  mcp: "bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/30",
+  system: "bg-ai/15 text-ai-text border-ai/30",
+  user: "bg-info/15 text-info-text border-info/30",
+  template: "bg-success/15 text-success-text border-success/30",
+  agent: "bg-warning/15 text-warning-text border-warning/30",
+  skill: "bg-info/15 text-info-text border-info/30",
+  mcp: "bg-ai/15 text-ai-text border-ai/30",
 }
 
 function categoryBadge(category: string) {
-  const colors = CATEGORY_COLORS[category] ?? "bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-500/30"
+  const colors = CATEGORY_COLORS[category] ?? "bg-muted-foreground/15 text-muted-foreground border-border-strong/30"
   return (
     <Badge variant="outline" className={colors}>
       {category}
@@ -173,7 +174,7 @@ function categoryBadge(category: string) {
 function modelBadge(model: string | null) {
   if (!model) return null
   return (
-    <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 font-mono text-xs">
+    <Badge variant="outline" className="bg-info/10 text-info-text border-info/30 font-mono text-xs">
       {model}
     </Badge>
   )
@@ -181,7 +182,7 @@ function modelBadge(model: string | null) {
 
 function statusBadge(active: boolean) {
   return active ? (
-    <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Active</Badge>
+    <Badge className="bg-success hover:bg-success text-success-foreground">Active</Badge>
   ) : (
     <Badge variant="secondary" className="text-muted-foreground">Inactive</Badge>
   )
@@ -418,7 +419,7 @@ export default function PromptDetailPage() {
   if (error || !prompt) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <p className="text-red-500">{error || "Prompt not found"}</p>
+        <p className="text-danger-text">{error || "Prompt not found"}</p>
         <Button variant="outline" onClick={() => router.push("/prompts")}>
           Back to Prompts
         </Button>
@@ -428,29 +429,25 @@ export default function PromptDetailPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <PageShell>
         {/* ---------------------------------------------------------------- */}
         {/* Header                                                           */}
         {/* ---------------------------------------------------------------- */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/prompts">
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{prompt.name}</h1>
-              <p className="text-sm text-muted-foreground font-mono">{prompt.slug}</p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
+        <PageHeader
+          back={<BackButton href="/prompts" label="Back to prompt registry" />}
+          eyebrow="Prompt"
+          title={prompt.name}
+          description={<span className="font-mono text-xs">{prompt.slug}</span>}
+          actions={
+          <>
+            <div className="flex flex-wrap items-center gap-2">
               {categoryBadge(prompt.category)}
               {modelBadge(prompt.model)}
               {statusBadge(prompt.is_active)}
               {prompt.is_locked && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Badge variant="outline" className="bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30">
+                    <Badge variant="outline" className="bg-danger/10 text-danger-text border-danger/30">
                       <Lock className="h-3 w-3 mr-1" />
                       Locked
                     </Badge>
@@ -462,9 +459,7 @@ export default function PromptDetailPage() {
                 </Tooltip>
               )}
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => router.push(`/prompts/${slug}/edit`)}>
               <Pencil className="h-4 w-4 mr-1" />
               Edit
@@ -486,8 +481,9 @@ export default function PromptDetailPage() {
               <XCircle className="h-4 w-4 mr-1" />
               {prompt.is_active ? "Deactivate" : "Activate"}
             </Button>
-          </div>
-        </div>
+          </>
+          }
+        />
 
         {/* Description */}
         {prompt.description && (
@@ -701,7 +697,7 @@ export default function PromptDetailPage() {
                           <TableCell className="font-mono font-medium">
                             v{v.version}
                             {v.version === prompt.current_version && (
-                              <Badge className="ml-2 bg-emerald-500 text-white text-[10px]">
+                              <Badge className="ml-2 bg-success text-success-foreground text-[10px]">
                                 current
                               </Badge>
                             )}
@@ -862,7 +858,7 @@ export default function PromptDetailPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               {u.error_count > 0 ? (
-                                <span className="text-red-500 font-medium">{u.error_count}</span>
+                                <span className="text-danger-text font-medium">{u.error_count}</span>
                               ) : (
                                 <span className="text-muted-foreground">0</span>
                               )}
@@ -899,7 +895,7 @@ export default function PromptDetailPage() {
                         className="flex items-center gap-1 pr-1"
                       >
                         {tag}
-                        <button
+                        <button aria-label="Remove tag"
                           onClick={() => handleRemoveTag(tag)}
                           disabled={tagsLoading}
                           className="ml-1 rounded-full p-0.5 hover:bg-destructive/20 transition-colors"
@@ -921,7 +917,7 @@ export default function PromptDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 max-w-md">
-                  <Input
+                  <Input aria-label="Tag name"
                     placeholder="Enter tag name..."
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}
@@ -1104,7 +1100,7 @@ export default function PromptDetailPage() {
             <OrchestrationTab prompt={prompt} />
           </TabsContent>
         </Tabs>
-      </div>
+      </PageShell>
     </TooltipProvider>
   )
 }

@@ -348,7 +348,7 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
             </div>
             {repoScopeMode === "restrict" && (
               <>
-                <Input
+                <Input aria-label="Search repositories"
                   placeholder="Search repositories..."
                   value={repoSearch}
                   onChange={(e) => setRepoSearch(e.target.value)}
@@ -384,23 +384,23 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
         {/* Step 4 — Key Created */}
         {step === 4 && createdKey && (
           <div className="space-y-4 py-2">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 flex items-start gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
-              <p className="text-sm text-yellow-800">
+            <div className="bg-warning-soft border border-warning-line rounded-md p-3 flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning-text mt-0.5 shrink-0" />
+              <p className="text-sm text-warning-text">
                 This key will only be shown once. Copy it now and store it securely.
               </p>
             </div>
             <div className="space-y-2">
               <Label>API Key</Label>
               <div className="flex gap-2">
-                <Input
+                <Input aria-label="API key"
                   readOnly
                   value={createdKey}
-                  className="font-mono text-sm bg-gray-50"
+                  className="font-mono text-sm bg-muted"
                 />
-                <Button variant="outline" size="icon" onClick={handleCopy}>
+                <Button aria-label="Copy API key" variant="outline" size="icon" onClick={handleCopy}>
                   {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-success-text" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -408,7 +408,7 @@ export function CreateApiKeyDialog({ open, onOpenChange, onCreated }: CreateApiK
               </div>
             </div>
             <div className="text-sm text-muted-foreground">
-              Key prefix: <code className="bg-gray-100 px-1 rounded">{createdKeyPrefix}</code>
+              Key prefix: <code className="bg-muted px-1 rounded">{createdKeyPrefix}</code>
             </div>
           </div>
         )}

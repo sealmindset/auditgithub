@@ -159,7 +159,7 @@ export function AskAIModal({
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'system',
-        content: '⚠️ Failed to get AI response. Please try again.',
+        content: 'Failed to get AI response. Please try again.',
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -212,16 +212,16 @@ export function AskAIModal({
   const getCitationColor = (type: Citation['type']) => {
     switch (type) {
       case 'repository':
-        return 'bg-blue-500/10 text-blue-700 border-blue-200';
+        return 'bg-info/10 text-info-text border-info-line';
       case 'scan_result':
       case 'vulnerability':
-        return 'bg-red-500/10 text-red-700 border-red-200';
+        return 'bg-danger/10 text-danger-text border-danger-line';
       case 'web':
-        return 'bg-purple-500/10 text-purple-700 border-purple-200';
+        return 'bg-ai/10 text-ai-text border-ai-line';
       case 'documentation':
-        return 'bg-green-500/10 text-green-700 border-green-200';
+        return 'bg-success/10 text-success-text border-success-line';
       default:
-        return 'bg-gray-500/10 text-gray-700 border-gray-200';
+        return 'bg-muted-foreground/10 text-muted-foreground border-border';
     }
   };
 
@@ -231,7 +231,7 @@ export function AskAIModal({
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 text-white">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-ai to-info text-ai-foreground">
               <Brain className="w-6 h-6" />
             </div>
             <div className="flex-1">
@@ -287,12 +287,12 @@ export function AskAIModal({
                 {message.role !== 'user' && (
                   <div className="flex-shrink-0">
                     {message.role === 'system' ? (
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                        <Sparkles className="w-4 h-4 text-gray-600" />
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <Sparkles className="w-4 h-4 text-muted-foreground" />
                       </div>
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                        <Brain className="w-4 h-4 text-white" />
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ai">
+                        <Brain className="h-4 w-4 text-ai-foreground" />
                       </div>
                     )}
                   </div>
@@ -308,15 +308,15 @@ export function AskAIModal({
                     className={cn(
                       'rounded-lg px-4 py-3',
                       message.role === 'user'
-                        ? 'bg-blue-600 text-white ml-auto'
+                        ? 'bg-info text-info-foreground ml-auto'
                         : message.role === 'system'
-                        ? 'bg-gray-50 border border-gray-200'
-                        : 'bg-white border border-gray-200'
+                        ? 'bg-muted border border-border'
+                        : 'bg-card border border-border'
                     )}
                   >
                     {/* Thinking indicator */}
                     {message.thinking && (
-                      <div className="mb-2 text-xs text-gray-500 italic flex items-center gap-1">
+                      <div className="mb-2 text-xs text-muted-foreground italic flex items-center gap-1">
                         <Brain className="w-3 h-3" />
                         {message.thinking}
                       </div>
@@ -337,7 +337,7 @@ export function AskAIModal({
 
                     {/* Clarification needed indicator */}
                     {message.needsClarification && message.clarificationQuestion && (
-                      <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                      <div className="mt-3 p-2 bg-warning-soft border border-warning-line rounded text-xs text-warning-text">
                         <div className="flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                           <div>
@@ -350,8 +350,8 @@ export function AskAIModal({
 
                     {/* Citations */}
                     {message.citations && message.citations.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <div className="text-xs font-medium text-gray-500 mb-2">
+                      <div className="mt-3 pt-3 border-t border-border">
+                        <div className="text-xs font-medium text-muted-foreground mb-2">
                           References ({message.citations.length}):
                         </div>
                         <div className="space-y-2">
@@ -368,8 +368,8 @@ export function AskAIModal({
                                 <div className="flex items-center gap-2">
                                   {getCitationIcon(citation.type)}
                                   <span className="font-medium">{citation.source}</span>
-                                  <span className="text-gray-500">•</span>
-                                  <span className="text-gray-600">{citation.reference}</span>
+                                  <span className="text-muted-foreground">•</span>
+                                  <span className="text-muted-foreground">{citation.reference}</span>
                                 </div>
                                 {expandedCitations.has(citation.id) ? (
                                   <ChevronUp className="w-3 h-3" />
@@ -379,14 +379,14 @@ export function AskAIModal({
                               </button>
 
                               {expandedCitations.has(citation.id) && citation.excerpt && (
-                                <div className="mt-1 ml-6 p-2 bg-gray-50 border border-gray-200 rounded text-gray-600">
+                                <div className="mt-1 ml-6 p-2 bg-muted border border-border rounded text-muted-foreground">
                                   {citation.excerpt}
                                   {citation.url && (
                                     <a
                                       href={citation.url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="mt-1 inline-flex items-center gap-1 text-blue-600 hover:underline"
+                                      className="mt-1 inline-flex items-center gap-1 text-info-text hover:underline"
                                     >
                                       View source <ExternalLink className="w-3 h-3" />
                                     </a>
@@ -424,7 +424,7 @@ export function AskAIModal({
                     )}
                   </div>
 
-                  <div className="mt-1 text-xs text-gray-400 px-1">
+                  <div className="mt-1 text-xs text-muted-foreground px-1">
                     {message.timestamp.toLocaleTimeString()}
                   </div>
                 </div>
@@ -433,12 +433,12 @@ export function AskAIModal({
 
             {isLoading && (
               <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                  <Brain className="w-4 h-4 text-white" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ai">
+                  <Brain className="h-4 w-4 text-ai-foreground" />
                 </div>
                 <div className="flex-1 max-w-[80%]">
-                  <div className="rounded-lg px-4 py-3 bg-white border border-gray-200">
-                    <div className="flex items-center gap-2 text-gray-500">
+                  <div className="rounded-lg border border-border bg-card px-4 py-3">
+                    <div className="flex items-center gap-2 text-muted-foreground">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span className="text-sm">Analyzing and researching...</span>
                     </div>
@@ -450,9 +450,9 @@ export function AskAIModal({
         </ScrollArea>
 
         {/* Input Area */}
-        <div className="px-6 py-4 border-t bg-gray-50 flex-shrink-0">
+        <div className="px-6 py-4 border-t bg-muted flex-shrink-0">
           <div className="flex gap-2">
-            <Textarea
+            <Textarea aria-label="Your question"
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -461,7 +461,7 @@ export function AskAIModal({
               className="min-h-[60px] max-h-[120px] resize-none"
               disabled={isLoading}
             />
-            <Button
+            <Button aria-label="Send message"
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
               size="lg"
@@ -474,9 +474,9 @@ export function AskAIModal({
               )}
             </Button>
           </div>
-          <div className="mt-2 text-xs text-gray-500">
-            Press <kbd className="px-1 py-0.5 bg-gray-200 rounded">Enter</kbd> to send,{' '}
-            <kbd className="px-1 py-0.5 bg-gray-200 rounded">Shift+Enter</kbd> for new line
+          <div className="mt-2 text-xs text-muted-foreground">
+            Press <kbd className="px-1 py-0.5 bg-muted rounded">Enter</kbd> to send,{' '}
+            <kbd className="px-1 py-0.5 bg-muted rounded">Shift+Enter</kbd> for new line
           </div>
         </div>
       </DialogContent>

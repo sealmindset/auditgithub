@@ -196,10 +196,10 @@ export function ScheduleCreateDialog({
                   htmlFor="mode-ai"
                   className={cn(
                     "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                    "peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500"
+                    "peer-data-[state=checked]:border-info [&:has([data-state=checked])]:border-info"
                   )}
                 >
-                  <Bot className="mb-2 h-6 w-6 text-blue-500" />
+                  <Bot className="mb-2 h-6 w-6 text-info-text" />
                   <span className="text-sm font-medium">AI Recommended</span>
                   <span className="text-xs text-muted-foreground text-center mt-1">
                     Let AI optimize based on activity
@@ -216,10 +216,10 @@ export function ScheduleCreateDialog({
                   htmlFor="mode-manual"
                   className={cn(
                     "flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground cursor-pointer",
-                    "peer-data-[state=checked]:border-purple-500 [&:has([data-state=checked])]:border-purple-500"
+                    "peer-data-[state=checked]:border-ai [&:has([data-state=checked])]:border-ai"
                   )}
                 >
-                  <User className="mb-2 h-6 w-6 text-purple-500" />
+                  <User className="mb-2 h-6 w-6 text-ai-text" />
                   <span className="text-sm font-medium">Manual</span>
                   <span className="text-xs text-muted-foreground text-center mt-1">
                     Configure your own schedule
@@ -231,7 +231,7 @@ export function ScheduleCreateDialog({
 
           {/* AI Recommendation Display */}
           {mode === "ai" && (
-            <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/20 p-4">
+            <div className="rounded-lg border bg-info-soft dark:bg-info-soft/20 p-4">
               {isLoadingRecommendation ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -240,7 +240,7 @@ export function ScheduleCreateDialog({
               ) : recommendation ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-blue-500" />
+                    <Sparkles className="h-4 w-4 text-info-text" />
                     <span className="text-sm font-medium">AI Recommendation</span>
                     <span className="text-xs text-muted-foreground">
                       ({Math.round(recommendation.confidence * 100)}% confidence)
@@ -259,7 +259,7 @@ export function ScheduleCreateDialog({
                       {recommendation.factors_considered.map((factor) => (
                         <span
                           key={factor}
-                          className="text-xs bg-blue-100 dark:bg-blue-900 px-2 py-0.5 rounded"
+                          className="text-xs bg-info-soft px-2 py-0.5 rounded"
                         >
                           {factor.replace(/_/g, " ")}
                         </span>

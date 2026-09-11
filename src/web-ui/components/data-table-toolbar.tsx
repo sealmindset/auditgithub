@@ -107,7 +107,7 @@ export function DataTableToolbar<TData>({
                 <div className="flex items-center gap-2 flex-1">
                     <div className="relative flex-1 max-w-sm">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
+                        <Input aria-label="Search table"
                             placeholder={searchPlaceholder}
                             value={globalFilter}
                             onChange={(e) => {
@@ -117,7 +117,7 @@ export function DataTableToolbar<TData>({
                             className="pl-8 pr-8"
                         />
                         {globalFilter && (
-                            <Button
+                            <Button aria-label="Clear search"
                                 variant="ghost"
                                 size="sm"
                                 className="absolute right-1 top-1 h-7 w-7 p-0"
@@ -201,14 +201,14 @@ export function DataTableToolbar<TData>({
                     <Button
                         variant={hasCustomizations ? "outline" : "ghost"}
                         size="sm"
-                        className={cn("h-9", hasCustomizations && "border-orange-300 text-orange-600 hover:bg-orange-50")}
+                        className={cn("h-9", hasCustomizations && "border-warning-line text-warning-text hover:bg-warning-soft")}
                         onClick={resetAll}
                         title="Reset all filters, sorting, and column visibility"
                     >
                         <RotateCcw className="h-4 w-4 mr-2" />
                         Reset
                         {hasCustomizations && (
-                            <Badge variant="secondary" className="ml-1 bg-orange-100 text-orange-700">
+                            <Badge variant="secondary" className="ml-1 bg-warning-soft text-warning-text">
                                 Active
                             </Badge>
                         )}

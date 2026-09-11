@@ -42,6 +42,11 @@ eggs/
 .eggs/
 lib/
 lib64/
+# The Python packaging rules above also swallow `src/web-ui/lib/`, the Next.js
+# source directory holding utils.ts, api.ts, rbac.ts, severity.ts and chart.ts.
+# Those files have never been tracked because of it. A negation cannot reach
+# inside an ignored directory, so the directory itself is un-ignored here.
+!src/web-ui/lib/
 parts/
 sdist/
 var/

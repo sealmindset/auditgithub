@@ -20,6 +20,7 @@ import { APIAuditView } from "@/components/APIAuditView"
 import { OperationsView } from "@/components/OperationsView"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { BackButton, PageHeader, PageShell } from "@/components/ui/page-header"
 
 export default function ProjectPage() {
     const params = useParams()
@@ -85,9 +86,9 @@ export default function ProjectPage() {
                 return (
                     <Badge
                         className={
-                            severity === "critical" ? "bg-red-500" :
-                                severity === "high" ? "bg-orange-500" :
-                                    severity === "medium" ? "bg-yellow-500" : "bg-blue-500"
+                            severity === "critical" ? "bg-danger" :
+                                severity === "high" ? "bg-warning" :
+                                    severity === "medium" ? "bg-warning" : "bg-info"
                         }
                     >
                         {severity}
@@ -104,7 +105,7 @@ export default function ProjectPage() {
                 <DataTableColumnHeader column={column} title="Title" />
             ),
             cell: ({ row }) => (
-                <Link href={`/findings/${row.original.id}`} className="font-medium text-blue-600 hover:underline">
+                <Link href={`/findings/${row.original.id}`} className="font-medium text-info-text hover:underline">
                     {row.getValue("title")}
                 </Link>
             )
@@ -176,26 +177,19 @@ export default function ProjectPage() {
     ]
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                        <ArrowLeft className="h-4 w-4" />
+        <PageShell>
+            <PageHeader
+                back={<BackButton onClick={() => router.back()} label="Back to repositories" />}
+                eyebrow="Repository"
+                title={project.name}
+                description={project.description || "No description"}
+                actions={
+                    <Button variant="outline" onClick={() => setReportModalOpen(true)}>
+                        <FileText className="h-4 w-4" />
+                        Security report
                     </Button>
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-                        <p className="text-muted-foreground">{project.description || "No description"}</p>
-                    </div>
-                </div>
-                <Button 
-                    variant="outline" 
-                    onClick={() => setReportModalOpen(true)}
-                    title="Generate Security Assessment Report"
-                >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Report
-                </Button>
-            </div>
+                }
+            />
 
             <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList>
@@ -272,6 +266,6 @@ export default function ProjectPage() {
                 isOpen={reportModalOpen}
                 onClose={() => setReportModalOpen(false)}
             />
-        </div>
+        </PageShell>
     )
 }

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { ArrowLeft, Loader2, Save } from "lucide-react"
+import { BackButton, PageHeader, PageShell } from "@/components/ui/page-header"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -231,7 +232,7 @@ export default function PromptEditPage() {
   if (error || !prompt) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <p className="text-red-500">{error || "Prompt not found"}</p>
+        <p className="text-danger-text">{error || "Prompt not found"}</p>
         <Button variant="outline" onClick={() => router.push("/prompts")}>
           Back to Prompts
         </Button>
@@ -240,26 +241,20 @@ export default function PromptEditPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6 max-w-4xl">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href={`/prompts/${slug}`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Edit: {prompt.name}</h1>
-          <p className="text-sm text-muted-foreground font-mono">{prompt.slug}</p>
-        </div>
-        <Badge variant="outline" className="ml-2">v{prompt.current_version}</Badge>
-      </div>
+    <PageShell className="max-w-4xl">
+      <PageHeader
+        back={<BackButton href={`/prompts/${slug}`} label="Back to prompt" />}
+        eyebrow="Editing"
+        title={prompt.name}
+        description={<span className="font-mono text-xs">{prompt.slug}</span>}
+        actions={<Badge variant="outline">v{prompt.current_version}</Badge>}
+      />
 
       <Separator />
 
       {/* Error banner */}
       {saveError && (
-        <div className="rounded-md bg-red-500/10 border border-red-500/30 p-3 text-sm text-red-700 dark:text-red-300">
+        <div className="rounded-md bg-danger/10 border border-danger/30 p-3 text-sm text-danger-text">
           {saveError}
         </div>
       )}
@@ -430,6 +425,6 @@ export default function PromptEditPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }

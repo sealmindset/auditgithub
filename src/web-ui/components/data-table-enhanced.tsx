@@ -221,7 +221,7 @@ function GroupedTableRow<TData>({
                         className="flex items-center gap-2"
                         style={{ paddingLeft: `${depth * 1.5}rem` }}
                     >
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                        <Button aria-label="Toggle row details" variant="ghost" size="sm" className="h-6 w-6 p-0">
                             {isExpanded ? (
                                 <ChevronDown className="h-4 w-4" />
                             ) : (

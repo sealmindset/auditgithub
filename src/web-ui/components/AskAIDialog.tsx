@@ -91,7 +91,7 @@ export function AskAIDialog({ findingId, trigger, onDescriptionUpdated }: AskAID
                 // Add notification to conversation
                 setConversation(prev => [...prev, {
                     role: 'assistant',
-                    content: `✅ **Description Restored**\n\nThe description has been restored to a previous version from the history.`,
+                    content: `**Description restored**\n\nThe description has been restored to a previous version from the history.`,
                     timestamp: new Date()
                 }])
             } else {
@@ -230,7 +230,7 @@ ${newAnalysis}
                     setConversation(prev => [...prev, {
                         role: 'assistant',
                         content: saved 
-                            ? `✅ **Description Updated**\n\nI've revised the description based on your request and automatically saved it. The new description is now displayed above.\n\n---\n\n${data.analysis}`
+                            ? `**Description updated**\n\nI've revised the description based on your request and automatically saved it. The new description is now displayed above.\n\n---\n\n${data.analysis}`
                             : `I've revised the description based on your request (shown above), but there was an issue saving it automatically. Please use the "Update Description with AI Results" button to save manually.\n\n---\n\n${data.analysis}`,
                         timestamp: new Date()
                     }])
@@ -326,7 +326,7 @@ ${analysis}
             <DialogTrigger asChild>
                 {trigger || (
                     <Button variant="outline" size="sm" className="gap-2">
-                        <Sparkles className="h-4 w-4 text-purple-500" />
+                        <Sparkles className="h-4 w-4 text-ai-text" />
                         Ask AI
                     </Button>
                 )}
@@ -334,7 +334,7 @@ ${analysis}
             <DialogContent className="!w-[75vw] !h-[75vh] !max-w-none flex flex-col">
                 <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <DialogTitle className="flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-purple-500" />
+                        <Sparkles className="h-5 w-5 text-ai-text" />
                         AI Security Analysis
                     </DialogTitle>
                     <Popover open={historyOpen} onOpenChange={(open) => {
@@ -411,10 +411,10 @@ ${analysis}
                 {/* Scrollable content area */}
                 <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2">
                     {/* Initial Analysis Card */}
-                    <Card className="border-purple-200 dark:border-purple-800">
+                    <Card className="border-ai-line">
                         <CardHeader className="pb-3">
                             <CardTitle className="text-base flex items-center gap-2">
-                                <Sparkles className="h-4 w-4 text-purple-500" />
+                                <Sparkles className="h-4 w-4 text-ai-text" />
                                 Initial Analysis
                             </CardTitle>
                         </CardHeader>
@@ -443,7 +443,7 @@ ${analysis}
                             </div>
                             {saved ? (
                                 <Button variant="outline" size="sm" disabled className="gap-2">
-                                    <Check className="h-4 w-4 text-green-500" />
+                                    <Check className="h-4 w-4 text-success-text" />
                                     Description Updated
                                 </Button>
                             ) : (
@@ -475,7 +475,7 @@ ${analysis}
                         <Card>
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                                    <MessageSquare className="h-4 w-4 text-info-text" />
                                     Follow-up Conversation
                                 </CardTitle>
                             </CardHeader>
@@ -486,14 +486,14 @@ ${analysis}
                                         className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                                     >
                                         {message.role === 'assistant' && (
-                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                                <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ai-soft flex items-center justify-center">
+                                                <Bot className="h-4 w-4 text-ai-text" />
                                             </div>
                                         )}
                                         <div
                                             className={`max-w-[80%] rounded-lg p-3 ${
                                                 message.role === 'user'
-                                                    ? 'bg-blue-500 text-white'
+                                                    ? 'bg-info text-info-foreground'
                                                     : 'bg-muted'
                                             }`}
                                         >
@@ -504,13 +504,13 @@ ${analysis}
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                                                 </div>
                                             )}
-                                            <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-muted-foreground'}`}>
+                                            <p className={`text-xs mt-2 ${message.role ==='user' ? 'text-info-text' : 'text-muted-foreground'}`}>
                                                 {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
                                         </div>
                                         {message.role === 'user' && (
-                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                                <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-info-soft flex items-center justify-center">
+                                                <User className="h-4 w-4 text-info-text" />
                                             </div>
                                         )}
                                     </div>
@@ -519,8 +519,8 @@ ${analysis}
                                 {/* Loading indicator for follow-up */}
                                 {isLoading && analysis && (
                                     <div className="flex gap-3 justify-start">
-                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                            <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ai-soft flex items-center justify-center">
+                                            <Bot className="h-4 w-4 text-ai-text" />
                                         </div>
                                         <div className="bg-muted rounded-lg p-3">
                                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -536,14 +536,14 @@ ${analysis}
                         <Card>
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                                    <MessageSquare className="h-4 w-4 text-info-text" />
                                     Follow-up Conversation
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="flex gap-3 justify-start">
-                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                        <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ai-soft flex items-center justify-center">
+                                        <Bot className="h-4 w-4 text-ai-text" />
                                     </div>
                                     <div className="bg-muted rounded-lg p-3">
                                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -558,7 +558,7 @@ ${analysis}
                 {analysis && (
                     <div className="pt-4 border-t mt-4 space-y-2">
                         <div className="flex gap-2">
-                            <Textarea
+                            <Textarea aria-label="Follow-up question"
                                 placeholder="Ask a follow-up question..."
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
@@ -572,7 +572,7 @@ ${analysis}
                                 }}
                             />
                             <div className="flex flex-col gap-2">
-                                <Button
+                                <Button aria-label="Send question"
                                     onClick={handleAnalyze}
                                     disabled={isLoading || !prompt.trim()}
                                     className="h-auto flex-1"
@@ -581,17 +581,17 @@ ${analysis}
                                 </Button>
                                 <Popover>
                                     <PopoverTrigger asChild>
-                                        <Button
+                                        <Button aria-label="Show example questions"
                                             variant="ghost"
                                             size="icon"
-                                            className="h-8 w-8 text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                                            className="h-8 w-8 text-warning-text hover:text-warning-text hover:bg-warning-soft"
                                         >
                                             <Lightbulb className="h-4 w-4" />
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-[420px]" align="end" side="top">
+                                    <PopoverContent className="w-[min(420px,calc(100vw-2rem))]" align="end" side="top">
                                         <div className="space-y-4">
-                                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                                            <div className="flex items-center gap-2 text-warning-text">
                                                 <Lightbulb className="h-5 w-5" />
                                                 <h4 className="font-semibold">Pro Tips: Smart Description Updates</h4>
                                             </div>
@@ -619,24 +619,24 @@ ${analysis}
                                                 <h5 className="text-sm font-medium">The system will automatically:</h5>
                                                 <ul className="text-xs text-muted-foreground space-y-1">
                                                     <li className="flex items-center gap-2">
-                                                        <Check className="h-3 w-3 text-green-500" />
+                                                        <Check className="h-3 w-3 text-success-text" />
                                                         Detect your revision intent using smart matching
                                                     </li>
                                                     <li className="flex items-center gap-2">
-                                                        <Check className="h-3 w-3 text-green-500" />
+                                                        <Check className="h-3 w-3 text-success-text" />
                                                         Generate a complete revised description
                                                     </li>
                                                     <li className="flex items-center gap-2">
-                                                        <Check className="h-3 w-3 text-green-500" />
+                                                        <Check className="h-3 w-3 text-success-text" />
                                                         Update the Initial Analysis card above
                                                     </li>
                                                     <li className="flex items-center gap-2">
-                                                        <Check className="h-3 w-3 text-green-500" />
+                                                        <Check className="h-3 w-3 text-success-text" />
                                                         Auto-save to the database (no button click needed!)
                                                     </li>
                                                     <li className="flex items-center gap-2">
-                                                        <Check className="h-3 w-3 text-green-500" />
-                                                        Show ✅ confirmation in the conversation
+                                                        <Check className="h-3 w-3 text-success-text" />
+                                                        Confirm in the conversation once saved
                                                     </li>
                                                 </ul>
                                             </div>

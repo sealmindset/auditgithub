@@ -71,12 +71,12 @@ export default function InviteAcceptPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-info-soft to-info-soft dark:from-muted dark:to-muted">
         <Card className="w-full max-w-md shadow-xl">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center justify-center py-8">
-              <Loader2 className="h-12 w-12 text-blue-600 animate-spin mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">Loading invitation...</p>
+              <Loader2 className="h-12 w-12 text-info-text animate-spin mb-4" />
+              <p className="text-muted-foreground">Loading invitation...</p>
             </div>
           </CardContent>
         </Card>
@@ -86,18 +86,18 @@ export default function InviteAcceptPage() {
 
   if (error || !invitation) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-100 dark:from-gray-900 dark:to-gray-800">
-        <Card className="w-full max-w-md shadow-xl border-red-200 dark:border-red-800">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-danger-soft to-warning-soft dark:from-muted dark:to-muted">
+        <Card className="w-full max-w-md shadow-xl border-danger-line">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-2">
-              <AlertCircle className="h-12 w-12 text-red-600" />
+              <AlertCircle className="h-12 w-12 text-danger-text" />
             </div>
-            <CardTitle className="text-2xl text-red-900 dark:text-red-300">
+            <CardTitle className="text-2xl text-danger-text">
               Invitation Error
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-center text-gray-700 dark:text-gray-300 mb-6">
+            <p className="text-center text-muted-foreground mb-6">
               {error || "Could not load invitation"}
             </p>
             <Button
@@ -115,21 +115,21 @@ export default function InviteAcceptPage() {
 
   if (!invitation.valid) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-50 to-orange-100 dark:from-gray-900 dark:to-gray-800">
-        <Card className="w-full max-w-md shadow-xl border-yellow-200 dark:border-yellow-800">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-warning-soft to-warning-soft dark:from-muted dark:to-muted">
+        <Card className="w-full max-w-md shadow-xl border-warning-line">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-2">
-              <AlertCircle className="h-12 w-12 text-yellow-600" />
+              <AlertCircle className="h-12 w-12 text-warning-text" />
             </div>
-            <CardTitle className="text-2xl text-yellow-900 dark:text-yellow-300">
+            <CardTitle className="text-2xl text-warning-text">
               Invalid Invitation
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-center text-gray-700 dark:text-gray-300 mb-6">
+            <p className="text-center text-muted-foreground mb-6">
               {invitation.message || "This invitation is no longer valid."}
             </p>
-            <p className="text-sm text-center text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-sm text-center text-muted-foreground mb-6">
               Please contact your administrator for a new invitation.
             </p>
             <Button
@@ -146,11 +146,11 @@ export default function InviteAcceptPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-success-soft to-info-soft dark:from-muted dark:to-muted">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center space-y-2">
           <div className="flex justify-center mb-2">
-            <CheckCircle2 className="h-12 w-12 text-green-600" />
+            <CheckCircle2 className="h-12 w-12 text-success-text" />
           </div>
           <CardTitle className="text-3xl font-bold">You're Invited!</CardTitle>
           <CardDescription className="text-base">
@@ -159,23 +159,23 @@ export default function InviteAcceptPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Invitation Details */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+          <div className="bg-info-soft dark:bg-info-soft/20 border border-info-line rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-3">
-              <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <Mail className="h-5 w-5 text-info-text flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs text-gray-600 dark:text-gray-400">Email</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <p className="text-xs text-muted-foreground">Email</p>
+                <p className="text-sm font-semibold text-foreground dark:text-muted-foreground">
                   {invitation.email}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <User className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <User className="h-5 w-5 text-info-text flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs text-gray-600 dark:text-gray-400">Role</p>
+                <p className="text-xs text-muted-foreground">Role</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="default" className="bg-blue-600">
+                  <Badge variant="default" className="bg-info">
                     {invitation.role}
                   </Badge>
                   <Badge variant="outline">
@@ -190,20 +190,20 @@ export default function InviteAcceptPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <Shield className="h-5 w-5 text-info-text flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs text-gray-600 dark:text-gray-400">Invited By</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <p className="text-xs text-muted-foreground">Invited By</p>
+                <p className="text-sm font-medium text-foreground dark:text-muted-foreground">
                   {invitation.invited_by_email}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <Clock className="h-5 w-5 text-info-text flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs text-gray-600 dark:text-gray-400">Expires</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <p className="text-xs text-muted-foreground">Expires</p>
+                <p className="text-sm font-medium text-foreground dark:text-muted-foreground">
                   {invitation.expires_at
                     ? formatDistanceToNow(new Date(invitation.expires_at), {
                         addSuffix: true
@@ -216,7 +216,7 @@ export default function InviteAcceptPage() {
 
           {/* Call to Action */}
           <div className="space-y-4">
-            <Button onClick={handleAccept} className="w-full bg-blue-600 hover:bg-blue-700 py-6 text-lg">
+            <Button onClick={handleAccept} className="w-full bg-info hover:bg-info py-6 text-lg">
               <svg
                 className="w-5 h-5 mr-2"
                 fill="currentColor"
@@ -227,16 +227,16 @@ export default function InviteAcceptPage() {
               Accept Invitation & Sign In
             </Button>
 
-            <p className="text-xs text-center text-gray-600 dark:text-gray-400">
+            <p className="text-xs text-center text-muted-foreground">
               By accepting, you'll be redirected to Microsoft to sign in with your work account.
             </p>
           </div>
 
           {/* Info Box */}
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-600 dark:text-gray-400">
+          <div className="bg-muted rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">
               <span className="font-semibold">Note:</span> You must sign in with the email address{" "}
-              <span className="font-mono text-blue-600 dark:text-blue-400">{invitation.email}</span> to
+              <span className="font-mono text-info-text">{invitation.email}</span> to
               accept this invitation.
             </p>
           </div>

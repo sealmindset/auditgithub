@@ -275,7 +275,7 @@ export function DataTableColumnHeader<TData, TValue>({
                                     Sort Z→A
                                 </Button>
                                 {column.getIsSorted() && (
-                                    <Button
+                                    <Button aria-label="Clear sorting"
                                         variant="ghost"
                                         size="sm"
                                         className="h-7 px-2"
@@ -340,7 +340,7 @@ export function DataTableColumnHeader<TData, TValue>({
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        <Input
+                                        <Input aria-label="Comparison value"
                                             placeholder={columnType === 'date' ? '2023' : 'value'}
                                             value={comparisonValue}
                                             onChange={(e) => setComparisonValue(e.target.value)}
@@ -349,7 +349,7 @@ export function DataTableColumnHeader<TData, TValue>({
                                             }}
                                             className="h-9 flex-1 font-mono"
                                         />
-                                        <Button
+                                        <Button aria-label="Apply filter"
                                             variant="default"
                                             size="sm"
                                             className="h-9 px-3"
@@ -359,7 +359,7 @@ export function DataTableColumnHeader<TData, TValue>({
                                             <Check className="h-4 w-4" />
                                         </Button>
                                         {isComparisonFilter && (
-                                            <Button
+                                            <Button aria-label="Clear filter"
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-9 px-2"
@@ -388,14 +388,14 @@ export function DataTableColumnHeader<TData, TValue>({
                                     {/* Search input */}
                                     <div className="relative mb-3">
                                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input
+                                        <Input aria-label="Search values"
                                             placeholder={`Search ${allUniqueValues.length} values...`}
                                             value={searchValue}
                                             onChange={(e) => setSearchValue(e.target.value)}
                                             className="h-9 pl-8 pr-8"
                                         />
                                         {searchValue && (
-                                            <Button
+                                            <Button aria-label="Clear filter text"
                                                 variant="ghost"
                                                 size="sm"
                                                 className="absolute right-1 top-1 h-7 w-7 p-0"
@@ -560,7 +560,7 @@ function FilterValueItem({
             onMouseLeave={() => setShowActions(false)}
         >
             <div
-                className="flex items-center flex-1 min-w-0"
+                className="flex min-w-0 flex-1 cursor-pointer items-center"
                 onClick={onToggle}
             >
                 <Checkbox

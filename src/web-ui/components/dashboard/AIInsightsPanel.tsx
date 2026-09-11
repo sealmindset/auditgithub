@@ -47,17 +47,17 @@ function getInsightIcon(type: string) {
 }
 
 function getInsightColor(type: string, severity?: string): string {
-    if (severity === "critical") return "text-red-500 bg-red-500/10 border-red-500/20"
-    if (severity === "high") return "text-orange-500 bg-orange-500/10 border-orange-500/20"
+    if (severity === "critical") return "text-danger-text bg-danger/10 border-danger/20"
+    if (severity === "high") return "text-warning-text bg-warning/10 border-warning/20"
 
     const colors: Record<string, string> = {
-        finding: "text-red-400 bg-red-500/10 border-red-500/20",
-        analysis: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-        remediation: "text-green-400 bg-green-500/10 border-green-500/20",
-        alert: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-        scan: "text-purple-400 bg-purple-500/10 border-purple-500/20"
+        finding: "text-danger-text bg-danger/10 border-danger/20",
+        analysis: "text-info-text bg-info/10 border-info/20",
+        remediation: "text-success-text bg-success/10 border-success/20",
+        alert: "text-warning-text bg-warning/10 border-warning/20",
+        scan: "text-ai-text bg-ai/10 border-ai/20"
     }
-    return colors[type] || "text-slate-400 bg-slate-500/10 border-slate-500/20"
+    return colors[type] || "text-muted-foreground bg-muted-foreground/10 border-border-strong/20"
 }
 
 function formatTimeAgo(date: Date): string {
@@ -98,8 +98,8 @@ function InsightRow({ insight, isNew }: { insight: InsightItem; isNew: boolean }
                             variant="outline"
                             className={cn(
                                 "text-[10px] px-1.5 py-0",
-                                insight.severity === "critical" && "border-red-500 text-red-500",
-                                insight.severity === "high" && "border-orange-500 text-orange-500"
+                                insight.severity === "critical" && "border-danger text-danger-text",
+                                insight.severity === "high" && "border-warning text-warning-text"
                             )}
                         >
                             {insight.severity}
@@ -176,7 +176,7 @@ export function AIInsightsPanel({
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Bot className="h-5 w-5 text-purple-500" />
+                        <Bot className="h-5 w-5 text-ai-text" />
                         <CardTitle className="text-lg font-semibold">
                             AI Security Insights
                         </CardTitle>
@@ -184,8 +184,8 @@ export function AIInsightsPanel({
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5">
                             <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
                             </span>
                             <span className="text-xs text-muted-foreground">Live</span>
                         </div>

@@ -89,7 +89,7 @@ export function DataTablePagination<TData>({
                 </div>
                 <div className="flex items-center space-x-2 text-sm font-medium">
                     <span>Page</span>
-                    <Input
+                    <Input aria-label="Page number"
                         type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"

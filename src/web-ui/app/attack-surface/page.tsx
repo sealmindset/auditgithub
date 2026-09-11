@@ -30,9 +30,13 @@ import {
   Cell,
   Legend,
 } from "recharts"
+import { AXIS_PROPS } from "@/lib/chart"
+import { SeverityBadge } from "@/components/ui/severity-badge"
+import { severityFromRisk } from "@/lib/severity"
 import {
   Shield,
   ShieldAlert,
+  Radar,
   ShieldX,
   Key,
   Users,
@@ -52,6 +56,7 @@ import {
 } from "lucide-react"
 import { ContributorProfileModal } from "@/components/contributor-profile-modal"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface AttackSurfaceSummary {
   total_repos: number
@@ -148,29 +153,37 @@ interface IRFinding {
   last_journal_at: string | null
 }
 
-// Color scheme for secrets
+// Colour per secret type.
+//
+// Vendor hexes are literal on purpose: AWS orange and Slack aubergine are how a
+// reader recognises the row at a glance, and re-theming a brand mark makes it
+// wrong rather than consistent. They are fixed marks, not design-system chrome.
+//
+// Everything that is not a vendor mark uses a token. `GitHub` and `JWT` are in
+// that group deliberately: both brands are near-black, which disappeared against
+// the dark-mode canvas, so they follow `--foreground` and flip with the theme.
 const SECRET_COLORS: Record<string, string> = {
   AWS: "#FF9900",
   Azure: "#0089D6",
   AzureStorage: "#0089D6",
   Box: "#0061D5",
-  PrivateKey: "#DC2626",
+  PrivateKey: "var(--danger)",
   SQLServer: "#CC2927",
   Postgres: "#336791",
   Docker: "#2496ED",
   Dockerhub: "#2496ED",
-  GitHub: "#333333",
-  Github: "#333333",
-  JWT: "#000000",
+  GitHub: "var(--foreground)",
+  Github: "var(--foreground)",
+  JWT: "var(--foreground)",
   SlackWebhook: "#4A154B",
   Slack: "#4A154B",
   Grafana: "#F46800",
   TatumIO: "#6366F1",
-  URI: "#6B7280",
-  FTP: "#22C55E",
+  URI: "var(--muted-foreground)",
+  FTP: "var(--chart-4)",
   FormBucket: "#8B5CF6",
   Gitter: "#ED1965",
-  default: "#6B7280",
+  default: "var(--muted-foreground)",
 }
 
 export default function AttackSurfacePage() {
@@ -264,7 +277,7 @@ export default function AttackSurfacePage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => openContributorModal(email)}
-                className="font-medium text-left hover:text-blue-600 hover:underline cursor-pointer"
+                className="font-medium text-left hover:text-info-text hover:underline cursor-pointer"
               >
                 {row.getValue("name")}
               </button>
@@ -276,12 +289,12 @@ export default function AttackSurfacePage() {
             </div>
             <button
               onClick={() => openContributorModal(email)}
-              className="text-xs text-muted-foreground truncate max-w-[200px] text-left hover:text-blue-500 cursor-pointer"
+              className="text-xs text-muted-foreground truncate max-w-[200px] text-left hover:text-info-text cursor-pointer"
             >
               {email}
             </button>
             {allEmails && allEmails.length > 1 && (
-              <span className="text-[10px] text-blue-500 truncate max-w-[200px]">
+              <span className="text-[10px] text-info-text truncate max-w-[200px]">
                 Also: {allEmails.filter(e => e !== email).join(', ')}
               </span>
             )}
@@ -387,7 +400,7 @@ export default function AttackSurfacePage() {
         <div className="flex flex-col gap-1">
           <Link
             href={`/projects/${row.original.id}`}
-            className="font-medium text-blue-600 hover:underline flex items-center gap-1"
+            className="font-medium text-info-text hover:underline flex items-center gap-1"
           >
             {row.getValue("name")}
             <ExternalLink className="h-3 w-3" />
@@ -512,7 +525,7 @@ export default function AttackSurfacePage() {
         <div className="flex flex-col gap-1">
           <Link
             href={`/projects/${row.original.id}`}
-            className="font-medium text-blue-600 hover:underline flex items-center gap-1"
+            className="font-medium text-info-text hover:underline flex items-center gap-1"
           >
             {row.getValue("name")}
             <ExternalLink className="h-3 w-3" />
@@ -543,9 +556,9 @@ export default function AttackSurfacePage() {
         return (
           <Badge variant={variant} className={
             level === 'critical' ? '' :
-            level === 'high' ? 'bg-orange-100 text-orange-800 border-orange-200' :
-            level === 'medium' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-            'bg-blue-100 text-blue-800 border-blue-200'
+            level === 'high' ? 'bg-warning-soft text-warning-text border-warning-line' :
+            level === 'medium' ? 'bg-warning-soft text-warning-text border-warning-line' :
+            'bg-info-soft text-info-text border-info-line'
           }>
             {level.toUpperCase()}
           </Badge>
@@ -622,7 +635,7 @@ export default function AttackSurfacePage() {
               <Badge variant="destructive">{critical}</Badge>
             )}
             {high > 0 && (
-              <Badge variant="secondary" className="bg-orange-100 text-orange-800">{high}</Badge>
+              <Badge variant="secondary" className="bg-warning-soft text-warning-text">{high}</Badge>
             )}
             {critical === 0 && high === 0 && (
               <Badge variant="outline">0</Badge>
@@ -695,118 +708,116 @@ export default function AttackSurfacePage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-red-600 to-orange-500 bg-clip-text text-transparent">
-            Attack Surface Analysis
-          </h2>
-          <p className="text-muted-foreground mt-1">
-            Real-time visibility into security risks across your organization
-          </p>
-        </div>
-        <Badge variant={riskScore > 60 ? "destructive" : riskScore > 30 ? "secondary" : "default"} className="text-lg px-4 py-2">
-          <Shield className="h-5 w-5 mr-2" />
-          Risk Score: {riskScore}/100
-        </Badge>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={Radar}
+        eyebrow="Analysis"
+        title="Attack surface"
+        description="Where the organization is exposed right now, across secrets, dependencies and infrastructure."
+        actions={
+          <SeverityBadge
+            severity={severityFromRisk(riskScore)}
+            className="h-8 px-3 text-sm"
+            label={`Risk score ${riskScore}/100`}
+          />
+        }
+      />
 
       {/* Executive Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {/* Total Secrets Card */}
-        <Card className="border-l-4 border-l-red-500 bg-gradient-to-r from-red-500/5 to-transparent">
+        <Card className="border-l-4 border-l-red-500 bg-gradient-to-r from-danger/5 to-transparent">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Hardcoded Secrets
             </CardTitle>
-            <Key className="h-5 w-5 text-red-500" />
+            <Key className="h-5 w-5 text-danger-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600">{summary?.total_secrets || 0}</div>
+            <div className="text-3xl font-bold text-danger-text">{summary?.total_secrets || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {secretsData?.secrets_by_type ? Object.keys(secretsData.secrets_by_type).length : 0} secret types detected
             </p>
-            <Progress value={Math.min((summary?.total_secrets || 0) / 10, 100)} className="mt-2 h-1 bg-red-100" />
+            <Progress value={Math.min((summary?.total_secrets || 0) / 10, 100)} className="mt-2 h-1 bg-danger-soft" />
           </CardContent>
         </Card>
 
         {/* Abandoned Repos Card */}
-        <Card className="border-l-4 border-l-orange-500 bg-gradient-to-r from-orange-500/5 to-transparent">
+        <Card className="border-l-4 border-l-orange-500 bg-gradient-to-r from-warning/5 to-transparent">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Abandoned Repos
             </CardTitle>
-            <Archive className="h-5 w-5 text-orange-500" />
+            <Archive className="h-5 w-5 text-warning-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-orange-600">{summary?.abandoned_repos || 0}</div>
+            <div className="text-3xl font-bold text-warning-text">{summary?.abandoned_repos || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {summary ? Math.round((summary.abandoned_repos / summary.total_repos) * 100) : 0}% of total repositories
             </p>
             <Progress
               value={summary ? (summary.abandoned_repos / summary.total_repos) * 100 : 0}
-              className="mt-2 h-1 bg-orange-100"
+              className="mt-2 h-1 bg-warning-soft"
             />
           </CardContent>
         </Card>
 
         {/* Stale Contributors Card */}
-        <Card className="border-l-4 border-l-yellow-500 bg-gradient-to-r from-yellow-500/5 to-transparent">
+        <Card className="border-l-4 border-l-yellow-500 bg-gradient-to-r from-warning/5 to-transparent">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Stale Contributors
             </CardTitle>
-            <Users className="h-5 w-5 text-yellow-600" />
+            <Users className="h-5 w-5 text-warning-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-yellow-600">{summary?.stale_contributors || 0}</div>
+            <div className="text-3xl font-bold text-warning-text">{summary?.stale_contributors || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
               No commits in 90+ days
             </p>
-            <Progress value={75} className="mt-2 h-1 bg-yellow-100" />
+            <Progress value={75} className="mt-2 h-1 bg-warning-soft" />
           </CardContent>
         </Card>
 
         {/* High Risk Repos Card */}
-        <Card className="border-l-4 border-l-purple-500 bg-gradient-to-r from-purple-500/5 to-transparent">
+        <Card className="border-l-4 border-l-purple-500 bg-gradient-to-r from-ai/5 to-transparent">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               High Risk Repos
             </CardTitle>
-            <ShieldAlert className="h-5 w-5 text-purple-500" />
+            <ShieldAlert className="h-5 w-5 text-ai-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-purple-600">{summary?.high_risk_repos || 0}</div>
+            <div className="text-3xl font-bold text-ai-text">{summary?.high_risk_repos || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Public or with exposed secrets
             </p>
             <Progress
               value={summary ? (summary.high_risk_repos / summary.total_repos) * 100 : 0}
-              className="mt-2 h-1 bg-purple-100"
+              className="mt-2 h-1 bg-ai-soft"
             />
           </CardContent>
         </Card>
 
         {/* Incident Response Card */}
         <Card 
-          className="border-l-4 border-l-blue-500 bg-gradient-to-r from-blue-500/5 to-transparent cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors"
+          className="border-l-4 border-l-blue-500 bg-gradient-to-r from-info/5 to-transparent cursor-pointer hover:bg-info-soft/50 dark:hover:bg-info-soft/20 transition-colors"
           onClick={() => setActiveTab("ir")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Incident Response
             </CardTitle>
-            <Shield className="h-5 w-5 text-blue-500" />
+            <Shield className="h-5 w-5 text-info-text" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-600">{summary?.active_investigations || 0}</div>
+            <div className="text-3xl font-bold text-info-text">{summary?.active_investigations || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Active investigations
             </p>
             <Progress
               value={Math.min((summary?.active_investigations || 0) * 10, 100)}
-              className="mt-2 h-1 bg-blue-100"
+              className="mt-2 h-1 bg-info-soft"
             />
           </CardContent>
         </Card>
@@ -814,7 +825,7 @@ export default function AttackSurfacePage() {
 
       {/* Tabbed Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full max-w-3xl grid-cols-6">
+        <TabsList className="grid h-auto w-full max-w-3xl grid-cols-3 sm:grid-cols-6">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <Eye className="h-4 w-4" />
             Overview
@@ -848,7 +859,7 @@ export default function AttackSurfacePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Key className="h-5 w-5 text-red-500" />
+                  <Key className="h-5 w-5 text-danger-text" />
                   Secrets by Type
                 </CardTitle>
                 <CardDescription>Top 10 secret types detected in codebase</CardDescription>
@@ -856,8 +867,8 @@ export default function AttackSurfacePage() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={secretsChartData} layout="vertical">
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 12 }} />
+                    <XAxis type="number" {...AXIS_PROPS} />
+                    <YAxis type="category" dataKey="name" width={110} {...AXIS_PROPS} />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
@@ -887,7 +898,7 @@ export default function AttackSurfacePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-500" />
+                  <AlertTriangle className="h-5 w-5 text-warning-text" />
                   Top Repos with Secrets
                 </CardTitle>
                 <CardDescription>Repositories requiring immediate attention</CardDescription>
@@ -897,7 +908,7 @@ export default function AttackSurfacePage() {
                   {secretsData?.secrets_by_repo.slice(0, 8).map((repo, i) => (
                     <div key={repo.repo} className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 text-xs font-bold">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-danger-soft text-danger-text text-xs font-bold">
                           {i + 1}
                         </span>
                         <Link
@@ -917,66 +928,66 @@ export default function AttackSurfacePage() {
 
           {/* Quick Stats Row */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
+            <Card className="bg-muted/40">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-300">Total Repositories</p>
+                    <p className="text-sm text-muted-foreground">Total Repositories</p>
                     <p className="text-4xl font-bold">{summary?.total_repos || 0}</p>
                   </div>
-                  <Database className="h-12 w-12 text-slate-500" />
+                  <Database className="h-12 w-12 text-muted-foreground" />
                 </div>
                 <div className="flex gap-4 mt-4 text-sm">
                   <div className="flex items-center gap-1">
-                    <Globe className="h-4 w-4 text-red-400" />
+                    <Globe className="h-4 w-4 text-danger-text" />
                     <span>{summary?.public_repos || 0} public</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Archive className="h-4 w-4 text-yellow-400" />
+                    <Archive className="h-4 w-4 text-warning-text" />
                     <span>{summary?.archived_repos || 0} archived</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-red-900 to-red-800 text-white">
+            <Card className="border-danger-line bg-danger-soft">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-red-200">Security Findings</p>
+                    <p className="text-sm text-danger-text">Security Findings</p>
                     <p className="text-4xl font-bold">{summary?.total_findings || 0}</p>
                   </div>
-                  <ShieldX className="h-12 w-12 text-red-500" />
+                  <ShieldX className="h-12 w-12 text-danger-text" />
                 </div>
                 <div className="flex gap-4 mt-4 text-sm">
                   <div className="flex items-center gap-1">
-                    <Key className="h-4 w-4 text-red-300" />
+                    <Key className="h-4 w-4 text-danger-text" />
                     <span>{summary?.total_secrets || 0} secrets</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Server className="h-4 w-4 text-red-300" />
+                    <Server className="h-4 w-4 text-danger-text" />
                     <span>{summary?.total_hardcoded_assets || 0} IPs</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-amber-900 to-amber-800 text-white">
+            <Card className="border-warning-line bg-warning-soft">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-amber-200">Risk Contributors</p>
+                    <p className="text-sm text-warning-text">Risk Contributors</p>
                     <p className="text-4xl font-bold">{summary?.stale_contributors || 0}</p>
                   </div>
-                  <Users className="h-12 w-12 text-amber-500" />
+                  <Users className="h-12 w-12 text-warning-text" />
                 </div>
                 <div className="flex gap-4 mt-4 text-sm">
                   <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4 text-amber-300" />
+                    <Clock className="h-4 w-4 text-warning-text" />
                     <span>90+ days inactive</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <TrendingDown className="h-4 w-4 text-amber-300" />
+                    <TrendingDown className="h-4 w-4 text-warning-text" />
                     <span>Code ownership risk</span>
                   </div>
                 </div>
@@ -990,7 +1001,7 @@ export default function AttackSurfacePage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <ShieldAlert className="h-5 w-5 text-red-500" />
+                <ShieldAlert className="h-5 w-5 text-danger-text" />
                 High Risk Repositories
               </CardTitle>
               <CardDescription>
@@ -1148,7 +1159,7 @@ export default function AttackSurfacePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5 text-blue-500" />
+                    <Shield className="h-5 w-5 text-info-text" />
                     Active Investigations
                   </CardTitle>
                   <CardDescription>
@@ -1185,7 +1196,7 @@ export default function AttackSurfacePage() {
                         <TableCell className="max-w-[300px]">
                           <Link
                             href={`/findings/${finding.id}`}
-                            className="font-medium text-blue-600 hover:underline line-clamp-2"
+                            className="font-medium text-info-text hover:underline line-clamp-2"
                           >
                             {finding.title}
                           </Link>
@@ -1197,10 +1208,10 @@ export default function AttackSurfacePage() {
                           <Badge
                             className={
                               finding.investigation_status === "incident_response"
-                                ? "bg-red-500 hover:bg-red-600"
+                                ? "bg-danger hover:bg-danger"
                                 : finding.investigation_status === "triage"
-                                ? "bg-yellow-500 hover:bg-yellow-600"
-                                : "bg-green-500 hover:bg-green-600"
+                                ? "bg-warning hover:bg-warning"
+                                : "bg-success hover:bg-success"
                             }
                           >
                             {finding.investigation_status === "incident_response"
@@ -1259,6 +1270,6 @@ export default function AttackSurfacePage() {
         isOpen={contributorModalOpen}
         onClose={() => setContributorModalOpen(false)}
       />
-    </div>
+    </PageShell>
   )
 }

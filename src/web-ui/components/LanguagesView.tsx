@@ -97,17 +97,17 @@ export function LanguagesView({ projectId }: LanguagesViewProps) {
                             </Badge>
                         )}
                         {findings.high > 0 && (
-                            <Badge className="bg-orange-500 hover:bg-orange-600 h-5 px-1.5 text-[10px]">
+                            <Badge className="bg-warning hover:bg-warning h-5 px-1.5 text-[10px]">
                                 High: {findings.high}
                             </Badge>
                         )}
                         {findings.medium > 0 && (
-                            <Badge className="bg-yellow-500 hover:bg-yellow-600 h-5 px-1.5 text-[10px]">
+                            <Badge className="bg-warning hover:bg-warning h-5 px-1.5 text-[10px]">
                                 Med: {findings.medium}
                             </Badge>
                         )}
                         {findings.low > 0 && (
-                            <Badge className="bg-blue-500 hover:bg-blue-600 h-5 px-1.5 text-[10px]">
+                            <Badge className="bg-info hover:bg-info h-5 px-1.5 text-[10px]">
                                 Low: {findings.low}
                             </Badge>
                         )}

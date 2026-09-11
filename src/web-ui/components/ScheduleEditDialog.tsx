@@ -139,9 +139,9 @@ export function ScheduleEditDialog({
         <div className="space-y-6 py-4">
           {/* Lock Status Indicator */}
           {schedule.is_locked && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
-              <Lock className="h-4 w-4 text-amber-600" />
-              <span className="text-amber-700 dark:text-amber-400">
+            <div className="flex items-center gap-2 rounded-lg border border-warning-line bg-warning-soft dark:bg-warning-soft/20 p-3 text-sm">
+              <Lock className="h-4 w-4 text-warning-text" />
+              <span className="text-warning-text">
                 This schedule is locked. Changes will keep the lock active.
               </span>
             </div>

@@ -6,7 +6,7 @@ import { RepositoryScheduleTable, RepositoryScheduleInfo } from "@/components/Re
 import { ScheduleCreateDialog } from "@/components/ScheduleCreateDialog"
 import { ScheduleEditDialog } from "@/components/ScheduleEditDialog"
 import { OrganizationSelector } from "@/components/OrganizationSelector"
-import { Loader2, Bot, RefreshCw, Wand2, CalendarDays, BarChart3, Table2, Radar } from "lucide-react"
+import { Loader2, Bot, RefreshCw, Wand2, CalendarDays, CalendarClock, BarChart3, Table2, Radar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
@@ -15,6 +15,7 @@ import { ScanActivityGraph } from "@/components/ScanActivityGraph"
 import { TodayScansPanel } from "@/components/TodayScansPanel"
 import { API_BASE, apiFetch } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 // Schedule type from API
 interface Schedule {
@@ -482,7 +483,7 @@ export default function SchedulerPage() {
                 message = `${result.skipped} repositories were skipped (likely archived or already scheduled). No new schedules were created.`
             } else if (result.created > 0) {
                 title = "AI schedules applied"
-                message = `✓ Created ${result.created} new schedules\n${result.skipped > 0 ? `⊘ Skipped ${result.skipped} repositories\n` : ''}${result.errors > 0 ? `✗ Errors: ${result.errors}` : ''}`
+                message = `Created ${result.created} new schedules.${result.skipped > 0 ? ` Skipped ${result.skipped} repositories.` : ''}${result.errors > 0 ? ` Errors: ${result.errors}.` : ''}`
             } else {
                 title = "Scheduling completed"
                 message = `Created: ${result.created}, Skipped: ${result.skipped}, Errors: ${result.errors}`
@@ -571,32 +572,28 @@ export default function SchedulerPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            <div className="flex items-start justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Scan Scheduler</h1>
-                    <p className="text-muted-foreground">
-                        AI-powered scan scheduling with manual override support.
-                    </p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
+        <PageShell>
+            <PageHeader
+                icon={CalendarClock}
+                eyebrow="Operations"
+                title="Scan scheduler"
+                description="AI-planned scan cadence, with manual override where a repository needs it."
+                actions={
+                    <>
                         <Badge variant="outline">{stats.total} scheduled</Badge>
                         <Badge variant="outline">{stats.aiManaged} AI-managed</Badge>
                         <Badge variant="outline">{stats.locked} locked</Badge>
                         {stats.unscheduled > 0 && (
-                            <Badge variant="secondary" className="bg-amber-100 text-amber-800">
-                                {stats.unscheduled} unscheduled
-                            </Badge>
+                            <Badge variant="warning">{stats.unscheduled} unscheduled</Badge>
                         )}
-                    </div>
-                    <OrganizationSelector />
-                </div>
-            </div>
+                        <OrganizationSelector />
+                    </>
+                }
+            />
 
             {/* AI Scheduling Actions */}
-            <div className="flex items-center gap-3 p-4 rounded-lg border bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
-                <Bot className="h-5 w-5 text-blue-500" />
+            <div className="flex items-center gap-3 p-4 rounded-lg border bg-gradient-to-r from-info-soft to-ai-soft dark:from-info/20 dark:to-ai/20">
+                <Bot className="h-5 w-5 text-info-text" />
                 <div className="flex-1">
                     <p className="text-sm font-medium">AI-Powered Scheduling</p>
                     <p className="text-xs text-muted-foreground">
@@ -611,7 +608,7 @@ export default function SchedulerPage() {
                             size="sm"
                             onClick={handleApplyAISchedules}
                             disabled={applyingAI || refreshingAI}
-                            className="bg-blue-600 hover:bg-blue-700"
+                            className="bg-info hover:bg-info"
                         >
                             {applyingAI ? (
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -735,6 +732,6 @@ export default function SchedulerPage() {
                 schedule={selectedScheduleForEdit}
                 onScheduleUpdated={handleScheduleUpdated}
             />
-        </div>
+        </PageShell>
     )
 }

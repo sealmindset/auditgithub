@@ -281,7 +281,7 @@ export function ZDAReportsView() {
                     <div className="flex gap-4">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
+                            <Input aria-label="Search reports"
                                 placeholder="Search reports by query or scope..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -329,7 +329,7 @@ export function ZDAReportsView() {
                                                 {entry.repoCount} repo{entry.repoCount !== 1 ? 's' : ''} affected
                                             </Badge>
                                             {entry.scope && entry.scope.length > 0 && !entry.scope.includes("all") && (
-                                                <span className="text-blue-600 dark:text-blue-400">
+                                                <span className="text-info-text">
                                                     Scope: {entry.scope.join(', ')}
                                                 </span>
                                             )}
@@ -369,7 +369,7 @@ export function ZDAReportsView() {
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
-                                        <Button
+                                        <Button aria-label="Delete report"
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => deleteReport(entry.id)}

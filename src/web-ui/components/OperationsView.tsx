@@ -109,13 +109,13 @@ interface OperationsViewProps {
 // ---------------------------------------------------------------------------
 
 const DEPLOYMENT_STATUSES = [
-    { value: "production", label: "Production", color: "bg-green-500" },
-    { value: "staging", label: "Staging", color: "bg-blue-500" },
-    { value: "development", label: "Development", color: "bg-yellow-500" },
-    { value: "deprecated", label: "Deprecated", color: "bg-orange-500" },
-    { value: "archived", label: "Archived", color: "bg-gray-500" },
-    { value: "decommissioned", label: "Decommissioned", color: "bg-red-500" },
-    { value: "unknown", label: "Unknown", color: "bg-gray-400" },
+    { value: "production", label: "Production", tone: "success" as const },
+    { value: "staging", label: "Staging", tone: "info" as const },
+    { value: "development", label: "Development", tone: "warning" as const },
+    { value: "deprecated", label: "Deprecated", tone: "warning" as const },
+    { value: "archived", label: "Archived", tone: "neutral" as const },
+    { value: "decommissioned", label: "Decommissioned", tone: "danger" as const },
+    { value: "unknown", label: "Unknown", tone: "neutral" as const },
 ]
 
 const HOSTING_PLATFORMS = [
@@ -135,10 +135,10 @@ const IAC_TYPES = [
 ]
 
 const CRITICALITY_LEVELS = [
-    { value: "critical", label: "Critical", color: "bg-red-500" },
-    { value: "high", label: "High", color: "bg-orange-500" },
-    { value: "medium", label: "Medium", color: "bg-yellow-500" },
-    { value: "low", label: "Low", color: "bg-blue-500" },
+    { value: "critical", label: "Critical", tone: "danger" as const },
+    { value: "high", label: "High", tone: "warning" as const },
+    { value: "medium", label: "Medium", tone: "warning" as const },
+    { value: "low", label: "Low", tone: "info" as const },
 ]
 
 const DATA_CLASSIFICATIONS = ["public", "internal", "confidential", "restricted"]
@@ -148,13 +148,13 @@ function DeploymentStatusBadge({ status }: { status: string | null }) {
     if (!found) {
         return <Badge variant="secondary">Unknown</Badge>
     }
-    return <Badge className={`${found.color} text-white`}>{found.label}</Badge>
+    return <Badge variant={found.tone}>{found.label}</Badge>
 }
 
 function ConfidenceBadge({ confidence }: { confidence: number }) {
     const pct = Math.round(confidence * 100)
-    const color = pct >= 80 ? "bg-green-500" : pct >= 50 ? "bg-yellow-500" : "bg-orange-500"
-    return <Badge className={`${color} text-white text-xs`}>{pct}%</Badge>
+    const tone = pct >= 80 ? "success" : pct >= 50 ? "warning" : "danger"
+    return <Badge variant={tone} size="sm" data-numeric>{pct}%</Badge>
 }
 
 function fieldLabel(field: string): string {
@@ -452,10 +452,10 @@ export function OperationsView({ projectId }: OperationsViewProps) {
 
             {/* AI Discovery Suggestions */}
             {pendingSuggestions.length > 0 && (
-                <Card className="border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950">
+                <Card className="border-ai-line bg-gradient-to-r from-ai-soft to-info-soft dark:from-ai dark:to-info">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm flex items-center gap-2">
-                            <Sparkles className="h-4 w-4 text-purple-500" />
+                            <Sparkles className="h-4 w-4 text-ai-text" />
                             AI Discovery Suggestions
                         </CardTitle>
                         <CardDescription>
@@ -467,7 +467,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                             {pendingSuggestions.map((suggestion, idx) => (
                                 <div
                                     key={`${suggestion.field}-${idx}`}
-                                    className="flex items-start justify-between gap-4 p-3 rounded-lg bg-white dark:bg-gray-900 border"
+                                    className="flex items-start justify-between gap-4 p-3 rounded-lg bg-card border"
                                 >
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
@@ -476,7 +476,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                             </span>
                                             <ConfidenceBadge confidence={suggestion.confidence} />
                                         </div>
-                                        <div className="text-sm font-mono text-blue-600 dark:text-blue-400 mb-1">
+                                        <div className="text-sm font-mono text-info-text mb-1">
                                             {suggestion.value}
                                         </div>
                                         <div className="text-xs text-muted-foreground">
@@ -487,7 +487,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                         <Button
                                             size="sm"
                                             variant="ghost"
-                                            className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                            className="h-8 w-8 p-0 text-success-text hover:text-success-text hover:bg-success-soft"
                                             onClick={() =>
                                                 latestDiscovery &&
                                                 handleAcceptSuggestion(latestDiscovery.id, suggestion.field, true)
@@ -503,7 +503,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                         <Button
                                             size="sm"
                                             variant="ghost"
-                                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                            className="h-8 w-8 p-0 text-danger-text hover:text-danger-text hover:bg-danger-soft"
                                             onClick={() =>
                                                 latestDiscovery &&
                                                 handleAcceptSuggestion(latestDiscovery.id, suggestion.field, false)
@@ -555,7 +555,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         </div>
                         <div className="space-y-2">
                             <Label>Notes</Label>
-                            <Textarea
+                            <Textarea aria-label="Deployment notes"
                                 value={ops.deployment_status_notes || ""}
                                 onChange={(e) => updateField("deployment_status_notes", e.target.value)}
                                 placeholder="Additional deployment notes..."
@@ -614,7 +614,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         </div>
                         <div className="space-y-2">
                             <Label>Hosting Detail</Label>
-                            <Input
+                            <Input aria-label="Hosting detail"
                                 value={ops.hosting_detail || ""}
                                 onChange={(e) => updateField("hosting_detail", e.target.value)}
                                 placeholder="e.g. AWS ECS Fargate in us-east-1"
@@ -634,7 +634,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
                             <Label>Team Owner</Label>
-                            <Input
+                            <Input aria-label="Team owner"
                                 value={ops.team_owner || ""}
                                 onChange={(e) => updateField("team_owner", e.target.value)}
                                 placeholder="e.g. Platform Engineering"
@@ -643,7 +643,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Contact Email</Label>
-                                <Input
+                                <Input aria-label="Contact email"
                                     type="email"
                                     value={ops.team_contact_email || ""}
                                     onChange={(e) => updateField("team_contact_email", e.target.value)}
@@ -652,7 +652,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                             </div>
                             <div className="space-y-2">
                                 <Label>Slack Channel</Label>
-                                <Input
+                                <Input aria-label="Slack channel"
                                     value={ops.team_slack_channel || ""}
                                     onChange={(e) => updateField("team_slack_channel", e.target.value)}
                                     placeholder="#team-channel"
@@ -711,7 +711,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         </div>
                         <div className="space-y-2">
                             <Label>Notes</Label>
-                            <Textarea
+                            <Textarea aria-label="Business criticality notes"
                                 value={ops.business_criticality_notes || ""}
                                 onChange={(e) => updateField("business_criticality_notes", e.target.value)}
                                 placeholder="Business criticality justification..."
@@ -744,13 +744,13 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                             <div className="space-y-3">
                                 {envUrls.map((env, idx) => (
                                     <div key={idx} className="flex items-center gap-3">
-                                        <Input
+                                        <Input aria-label="Environment name"
                                             value={env.name}
                                             onChange={(e) => updateEnvUrl(idx, "name", e.target.value)}
                                             placeholder="Environment name"
                                             className="w-40"
                                         />
-                                        <Input
+                                        <Input aria-label="Environment URL"
                                             value={env.url}
                                             onChange={(e) => updateEnvUrl(idx, "url", e.target.value)}
                                             placeholder="https://..."
@@ -765,10 +765,10 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                             />
                                             Primary
                                         </label>
-                                        <Button
+                                        <Button aria-label="Remove environment URL"
                                             variant="ghost"
                                             size="sm"
-                                            className="h-8 w-8 p-0 text-red-500"
+                                            className="h-8 w-8 p-0 text-danger-text"
                                             onClick={() => removeEnvUrl(idx)}
                                         >
                                             <Trash2 className="h-3 w-3" />
@@ -795,9 +795,9 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                 {frameworks.map(fw => (
                                     <Badge key={fw} variant="outline" className="pr-1">
                                         {fw}
-                                        <button
+                                        <button aria-label="Remove framework"
                                             onClick={() => removeFramework(fw)}
-                                            className="ml-1 hover:text-red-500"
+                                            className="ml-1 hover:text-danger-text"
                                         >
                                             <X className="h-3 w-3" />
                                         </button>
@@ -805,21 +805,21 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                 ))}
                             </div>
                             <div className="flex gap-2">
-                                <Input
+                                <Input aria-label="Compliance framework"
                                     value={newFramework}
                                     onChange={(e) => setNewFramework(e.target.value)}
                                     placeholder="e.g. SOC2, PCI-DSS, HIPAA"
                                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addFramework())}
                                     className="flex-1"
                                 />
-                                <Button variant="outline" size="sm" onClick={addFramework}>
+                                <Button aria-label="Add framework" variant="outline" size="sm" onClick={addFramework}>
                                     <Plus className="h-3 w-3" />
                                 </Button>
                             </div>
                         </div>
                         <div className="space-y-2">
                             <Label>Regulatory Notes</Label>
-                            <Textarea
+                            <Textarea aria-label="Regulatory notes"
                                 value={ops.regulatory_notes || ""}
                                 onChange={(e) => updateField("regulatory_notes", e.target.value)}
                                 placeholder="Regulatory requirements..."
@@ -878,7 +878,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         </div>
                         <div className="space-y-2">
                             <Label>CI/CD Pipeline URL</Label>
-                            <Input
+                            <Input aria-label="CI/CD pipeline URL"
                                 value={ops.cicd_pipeline_url || ""}
                                 onChange={(e) => updateField("cicd_pipeline_url", e.target.value)}
                                 placeholder="https://..."
@@ -887,7 +887,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Container Registry</Label>
-                                <Input
+                                <Input aria-label="Container registry"
                                     value={ops.container_registry || ""}
                                     onChange={(e) => updateField("container_registry", e.target.value)}
                                     placeholder="e.g. ECR, ACR, DockerHub"
@@ -895,7 +895,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                             </div>
                             <div className="space-y-2">
                                 <Label>IaC Path</Label>
-                                <Input
+                                <Input aria-label="Infrastructure-as-code path"
                                     value={ops.iac_path || ""}
                                     onChange={(e) => updateField("iac_path", e.target.value)}
                                     placeholder="e.g. infra/, terraform/"
@@ -914,10 +914,10 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                             <div className="space-y-2">
                                 <Label>Monitoring URL</Label>
-                                <Input
+                                <Input aria-label="Monitoring URL"
                                     value={ops.monitoring_url || ""}
                                     onChange={(e) => updateField("monitoring_url", e.target.value)}
                                     placeholder="https://..."
@@ -925,7 +925,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                             </div>
                             <div className="space-y-2">
                                 <Label>Alerting URL</Label>
-                                <Input
+                                <Input aria-label="Alerting URL"
                                     value={ops.alerting_url || ""}
                                     onChange={(e) => updateField("alerting_url", e.target.value)}
                                     placeholder="https://..."
@@ -933,7 +933,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                             </div>
                             <div className="space-y-2">
                                 <Label>Logging URL</Label>
-                                <Input
+                                <Input aria-label="Logging URL"
                                     value={ops.logging_url || ""}
                                     onChange={(e) => updateField("logging_url", e.target.value)}
                                     placeholder="https://..."
@@ -949,7 +949,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                         <CardTitle className="text-sm">Notes</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <Textarea
+                        <Textarea aria-label="Operations notes"
                             value={ops.notes || ""}
                             onChange={(e) => updateField("notes", e.target.value)}
                             placeholder="General operations notes..."
@@ -968,7 +968,7 @@ export function OperationsView({ projectId }: OperationsViewProps) {
                                 <Clock className="h-4 w-4" />
                                 Discovery History
                             </CardTitle>
-                            <Button variant="ghost" size="sm" onClick={fetchDiscoveries}>
+                            <Button aria-label="Refresh discoveries" variant="ghost" size="sm" onClick={fetchDiscoveries}>
                                 <RefreshCw className="h-3 w-3" />
                             </Button>
                         </div>

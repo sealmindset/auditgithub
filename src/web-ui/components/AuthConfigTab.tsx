@@ -352,12 +352,12 @@ export default function AuthConfigTab() {
     return (
         <div className="space-y-6">
             {/* New Admin Panel Alert */}
-            <Alert className="border-blue-200 bg-blue-50">
-                <Shield className="h-5 w-5 text-blue-600" />
-                <AlertTitle className="text-blue-900 font-semibold">
+            <Alert className="border-info-line bg-info-soft">
+                <Shield className="h-5 w-5 text-info-text" />
+                <AlertTitle className="text-info-text font-semibold">
                     Enhanced User & Role Management Available
                 </AlertTitle>
-                <AlertDescription className="text-blue-800">
+                <AlertDescription className="text-info-text">
                     <p className="mb-2">
                         A new comprehensive admin panel is now available with advanced user management,
                         invitation system, and role-based access control (RBAC).
@@ -365,7 +365,7 @@ export default function AuthConfigTab() {
                     <Button
                         onClick={() => window.location.href = '/admin/users'}
                         variant="outline"
-                        className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                        className="border-info-line text-info-text hover:bg-info-soft"
                     >
                         <Users className="h-4 w-4 mr-2" />
                         Go to Admin Panel
@@ -549,7 +549,7 @@ export default function AuthConfigTab() {
                                                 >
                                                     Edit
                                                 </Button>
-                                                <Button
+                                                <Button aria-label="Delete provider"
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => handleDeleteProvider(provider.id || provider.name)}

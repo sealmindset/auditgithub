@@ -58,11 +58,11 @@ export function SbomView({ projectId }: SbomViewProps) {
 
     const getSeverityBadge = (sev: string) => {
         switch (sev?.toLowerCase()) {
-            case "critical": return "bg-red-500 hover:bg-red-600"
-            case "high": return "bg-orange-500 hover:bg-orange-600"
-            case "medium": return "bg-yellow-500 hover:bg-yellow-600"
-            case "low": return "bg-blue-500 hover:bg-blue-600"
-            default: return "bg-gray-500"
+            case "critical": return "bg-danger hover:bg-danger"
+            case "high": return "bg-warning hover:bg-warning"
+            case "medium": return "bg-warning hover:bg-warning"
+            case "low": return "bg-info hover:bg-info"
+            default: return "bg-muted-foreground"
         }
     }
 

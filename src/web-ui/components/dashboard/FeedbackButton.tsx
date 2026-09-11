@@ -64,7 +64,7 @@ export function FeedbackButton({
                 className
             )}>
                 {showThanks ? (
-                    <span className="text-[10px] text-green-500 px-2 py-1 animate-in fade-in-0">
+                    <span className="text-[10px] text-success-text px-2 py-1 animate-in fade-in-0">
                         Thanks!
                     </span>
                 ) : (
@@ -76,15 +76,15 @@ export function FeedbackButton({
                                     disabled={isSubmitting || feedback !== null}
                                     className={cn(
                                         buttonPadding,
-                                        "rounded-l-md transition-all hover:bg-green-500/20",
-                                        feedback === "up" && "bg-green-500/30 text-green-500",
+                                        "rounded-l-md transition-all hover:bg-success/20",
+                                        feedback === "up" && "bg-success/30 text-success-text",
                                         feedback !== null && feedback !== "up" && "opacity-30",
                                         isSubmitting && "cursor-wait"
                                     )}
                                 >
                                     <ThumbsUp className={cn(
                                         iconSize,
-                                        feedback === "up" ? "text-green-500" : "text-muted-foreground"
+                                        feedback === "up" ? "text-success-text" : "text-muted-foreground"
                                     )} />
                                 </button>
                             </TooltipTrigger>
@@ -102,15 +102,15 @@ export function FeedbackButton({
                                     disabled={isSubmitting || feedback !== null}
                                     className={cn(
                                         buttonPadding,
-                                        "rounded-r-md transition-all hover:bg-red-500/20",
-                                        feedback === "down" && "bg-red-500/30 text-red-500",
+                                        "rounded-r-md transition-all hover:bg-danger/20",
+                                        feedback === "down" && "bg-danger/30 text-danger-text",
                                         feedback !== null && feedback !== "down" && "opacity-30",
                                         isSubmitting && "cursor-wait"
                                     )}
                                 >
                                     <ThumbsDown className={cn(
                                         iconSize,
-                                        feedback === "down" ? "text-red-500" : "text-muted-foreground"
+                                        feedback === "down" ? "text-danger-text" : "text-muted-foreground"
                                     )} />
                                 </button>
                             </TooltipTrigger>

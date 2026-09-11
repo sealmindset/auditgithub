@@ -5,6 +5,7 @@ import { format, startOfYear, endOfYear, eachDayOfInterval, getDay, startOfWeek,
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { criticalRankColor } from "@/lib/chart"
 import { cn } from "@/lib/utils"
 
 interface Schedule {
@@ -107,11 +108,11 @@ function getIntensityLevel(count: number, maxCount: number): number {
 }
 
 const INTENSITY_COLORS = [
-    "bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700",  // 0: no scans - visible gray
-    "bg-green-200 hover:bg-green-300 dark:bg-green-900 dark:hover:bg-green-800",    // 1: low
-    "bg-green-400 hover:bg-green-500 dark:bg-green-700 dark:hover:bg-green-600",    // 2: medium-low
-    "bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-500",    // 3: medium-high
-    "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400",    // 4: high
+    "bg-muted hover:bg-muted",  // 0: no scans - visible gray
+    "bg-success-soft hover:bg-success dark:hover:bg-success-soft",    // 1: low
+    "bg-success hover:bg-success",    // 2: medium-low
+    "bg-success hover:bg-success",    // 3: medium-high
+    "bg-success hover:bg-success",    // 4: high
 ]
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -147,12 +148,12 @@ const woprStyles = `
     0%, 80%, 100% {
         opacity: 0.9;
         transform: scale(1);
-        box-shadow: 0 0 0 0 var(--glow-color, rgba(239, 68, 68, 0));
+        box-shadow: 0 0 0 0 var(--glow-color, transparent);
     }
     88%, 92% {
         opacity: 1;
         transform: scale(1.15);
-        box-shadow: 0 0 8px 2px var(--glow-color, rgba(239, 68, 68, 0.6));
+        box-shadow: 0 0 8px 2px var(--glow-color, transparent);
     }
 }
 
@@ -174,7 +175,7 @@ const woprStyles = `
 .wopr-dot-critical-red {
     animation: wopr-critical-flash var(--flash-duration, 4s) ease-in-out infinite;
     animation-delay: var(--flash-delay, 0s);
-    background-color: var(--critical-bg, rgb(239, 68, 68)) !important;
+    background-color: var(--critical-bg, var(--sev-critical)) !important;
 }
 `
 
@@ -384,22 +385,9 @@ export function ScanActivityGraph({ schedules, year: initialYear }: ScanActivity
                                             const criticalRank = calendarData.top10Thresholds.indexOf(day.count)
                                             const isTop10Critical = criticalRank !== -1 && day.count > 0
 
-                                            // Color gradient for top 10: purple (#8B5CF6) -> red (#EF4444) -> pale yellow (#FDE68A)
+                                            // Rank ramp for the top 10: violet -> red -> pale amber, from CRITICAL_RANK_RAMP in lib/chart.ts
                                             // Rank 0 = purple, Rank 4-5 = red, Rank 9 = pale yellow
-                                            const getCriticalColor = (rank: number) => {
-                                                if (rank === 0) return { bg: 'rgb(139, 92, 246)', glow: 'rgba(139, 92, 246, 0.7)' } // Purple
-                                                if (rank === 1) return { bg: 'rgb(167, 76, 194)', glow: 'rgba(167, 76, 194, 0.6)' } // Purple-red
-                                                if (rank === 2) return { bg: 'rgb(194, 60, 142)', glow: 'rgba(194, 60, 142, 0.6)' } // Magenta
-                                                if (rank === 3) return { bg: 'rgb(220, 56, 100)', glow: 'rgba(220, 56, 100, 0.6)' } // Red-magenta
-                                                if (rank === 4) return { bg: 'rgb(239, 68, 68)', glow: 'rgba(239, 68, 68, 0.6)' }  // Red
-                                                if (rank === 5) return { bg: 'rgb(245, 101, 58)', glow: 'rgba(245, 101, 58, 0.5)' } // Red-orange
-                                                if (rank === 6) return { bg: 'rgb(251, 134, 48)', glow: 'rgba(251, 134, 48, 0.5)' } // Orange
-                                                if (rank === 7) return { bg: 'rgb(252, 165, 60)', glow: 'rgba(252, 165, 60, 0.4)' } // Orange-yellow
-                                                if (rank === 8) return { bg: 'rgb(253, 196, 90)', glow: 'rgba(253, 196, 90, 0.4)' } // Yellow
-                                                return { bg: 'rgb(253, 230, 138)', glow: 'rgba(253, 230, 138, 0.3)' } // Pale yellow
-                                            }
-
-                                            const criticalColors = isTop10Critical ? getCriticalColor(criticalRank) : null
+                                            const criticalColors = isTop10Critical ? criticalRankColor(criticalRank) : null
 
                                             // For critical dots: random flash timing (no cascade)
                                             // For others: staggered wave effect
@@ -417,7 +405,7 @@ export function ScanActivityGraph({ schedules, year: initialYear }: ScanActivity
                                                             className={cn(
                                                                 "w-[10px] h-[10px] rounded-sm cursor-pointer",
                                                                 !isTop10Critical && INTENSITY_COLORS[intensity],
-                                                                isToday && "ring-1 ring-blue-500",
+                                                                isToday && "ring-1 ring-info",
                                                                 isTop10Critical ? "wopr-dot-critical-red" : isCritical ? "wopr-dot-critical" : hasActivity ? "wopr-dot-active" : "wopr-dot"
                                                             )}
                                                             style={isTop10Critical ? {
@@ -496,12 +484,10 @@ export function ScanActivityGraph({ schedules, year: initialYear }: ScanActivity
                         <span>More</span>
                         <span className="ml-4">|</span>
                         <span className="ml-1">Top 10:</span>
-                        {/* Top 10 gradient: purple -> red -> pale yellow */}
-                        {[
-                            { bg: 'rgb(139, 92, 246)', glow: 'rgba(139, 92, 246, 0.7)' },   // 1st - Purple
-                            { bg: 'rgb(239, 68, 68)', glow: 'rgba(239, 68, 68, 0.6)' },     // ~5th - Red
-                            { bg: 'rgb(253, 230, 138)', glow: 'rgba(253, 230, 138, 0.3)' }, // 10th - Pale yellow
-                        ].map((colors, i) => (
+                        {/* Three samples off the same ramp the dots use, so the
+                            key cannot drift out of step with what it explains:
+                            1st, ~5th and 10th. */}
+                        {[0, 4, 9].map(criticalRankColor).map((colors, i) => (
                             <div
                                 key={`critical-${i}`}
                                 className="w-[10px] h-[10px] rounded-sm wopr-dot-critical-red"

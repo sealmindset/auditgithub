@@ -1,13 +1,20 @@
+"use client"
+
+import { FileText } from "lucide-react"
+
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 import { ZDAReportsView } from "@/components/ZDAReportsView"
 
 export default function ZDAReportsPage() {
     return (
-        <div className="container mx-auto py-6">
-            <h1 className="text-3xl font-bold mb-6">ZDA Reports</h1>
-            <p className="text-muted-foreground mb-6">
-                View and manage your saved Zero Day Analysis reports.
-            </p>
+        <PageShell>
+            <PageHeader
+                icon={FileText}
+                eyebrow="Research"
+                title="ZDA reports"
+                description="Saved zero day analysis reports, newest first."
+            />
             <ZDAReportsView />
-        </div>
+        </PageShell>
     )
 }

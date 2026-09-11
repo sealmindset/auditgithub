@@ -95,10 +95,10 @@ const TIME_WINDOW_HOURS: Record<string, number> = {
 
 // Time window colors for dot indicators
 const TIME_WINDOW_COLORS: Record<string, string> = {
-    morning: "bg-yellow-500",
-    afternoon: "bg-orange-500",
-    evening: "bg-blue-500",
-    night: "bg-purple-500",
+    morning: "bg-warning",
+    afternoon: "bg-warning",
+    evening: "bg-info",
+    night: "bg-ai",
 }
 
 // Month names for navigation
@@ -129,17 +129,17 @@ const mapScheduleToEvent = (schedule: Schedule): CalendarEvent | null => {
 function EventComponent({ event }: { event: CalendarEvent }) {
     const schedule = event.resource
     const isAI = schedule.schedule_type === "ai"
-    const timeWindowColor = TIME_WINDOW_COLORS[schedule.time_window] || "bg-gray-500"
+    const timeWindowColor = TIME_WINDOW_COLORS[schedule.time_window] || "bg-muted-foreground"
 
     return (
         <div className="flex items-center gap-1 p-0.5 text-xs overflow-hidden">
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${timeWindowColor}`} />
             <span className="truncate flex-1">{event.title}</span>
             {schedule.is_locked && (
-                <Lock className="h-3 w-3 flex-shrink-0 text-amber-500" />
+                <Lock className="h-3 w-3 flex-shrink-0 text-warning-text" />
             )}
             {isAI && schedule.ai_confidence !== null && (
-                <span className="text-[10px] text-blue-400 flex-shrink-0">
+                <span className="text-[10px] text-info-text flex-shrink-0">
                     {Math.round(schedule.ai_confidence * 100)}%
                 </span>
             )}
@@ -375,8 +375,14 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
         const isAI = event.resource.schedule_type === "ai"
         return {
             style: {
-                backgroundColor: isAI ? "rgba(59, 130, 246, 0.2)" : "rgba(168, 85, 247, 0.2)",
-                borderLeft: `3px solid ${isAI ? "rgb(59, 130, 246)" : "rgb(168, 85, 247)"}`,
+                // AI-driven runs read as AI everywhere else in the product, so
+                // they take `--ai`; everything else is an ordinary scheduled scan
+                // and takes `--info`. Tinted rather than filled so the event text
+                // keeps its own colour.
+                backgroundColor: isAI
+                    ? "color-mix(in oklab, var(--ai) 20%, transparent)"
+                    : "color-mix(in oklab, var(--info) 20%, transparent)",
+                borderLeft: `3px solid ${isAI ? "var(--ai)" : "var(--info)"}`,
                 color: "inherit",
                 borderRadius: "4px",
             },
@@ -410,7 +416,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
             <div className="flex items-center justify-between gap-4 flex-wrap">
                 {/* Left: Month/Year Navigation */}
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+                    <Button aria-label="Previous month" variant="outline" size="icon" onClick={handlePrevMonth}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
 
@@ -440,7 +446,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                         </SelectContent>
                     </Select>
 
-                    <Button variant="outline" size="icon" onClick={handleNextMonth}>
+                    <Button aria-label="Next month" variant="outline" size="icon" onClick={handleNextMonth}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
 
@@ -456,7 +462,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                         <PopoverTrigger asChild>
                             <div className="relative flex-1">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
+                                <Input aria-label="Search repositories"
                                     placeholder="Search repositories..."
                                     value={searchQuery}
                                     onChange={(e) => {
@@ -466,7 +472,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                                     className="pl-9 pr-8"
                                 />
                                 {searchQuery && (
-                                    <Button
+                                    <Button aria-label="Clear search"
                                         variant="ghost"
                                         size="icon"
                                         className="absolute right-1 top-1 h-6 w-6"
@@ -509,7 +515,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
 
                     {/* Date Search */}
                     <div className="flex items-center gap-1">
-                        <Input
+                        <Input aria-label="Go to date, YYYY-MM-DD"
                             placeholder="Go to date (YYYY-MM-DD)"
                             value={dateSearchInput}
                             onChange={(e) => setDateSearchInput(e.target.value)}
@@ -553,15 +559,15 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                 {/* Schedule Type Legend */}
                 <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1">
-                        <Bot className="h-4 w-4 text-blue-500" />
+                        <Bot className="h-4 w-4 text-info-text" />
                         <span className="text-muted-foreground">AI Schedule</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <User className="h-4 w-4 text-purple-500" />
+                        <User className="h-4 w-4 text-ai-text" />
                         <span className="text-muted-foreground">Manual</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <Lock className="h-4 w-4 text-amber-500" />
+                        <Lock className="h-4 w-4 text-warning-text" />
                         <span className="text-muted-foreground">Locked</span>
                     </div>
                 </div>
@@ -570,19 +576,19 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span>Time windows:</span>
                     <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                        <span className="w-2 h-2 rounded-full bg-warning" />
                         <span>Morning</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-orange-500" />
+                        <span className="w-2 h-2 rounded-full bg-warning" />
                         <span>Afternoon</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span className="w-2 h-2 rounded-full bg-info" />
                         <span>Evening</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-purple-500" />
+                        <span className="w-2 h-2 rounded-full bg-ai" />
                         <span>Night</span>
                     </div>
                 </div>
@@ -591,7 +597,7 @@ export function SchedulerCalendar({ schedules, onScheduleUpdate, onScheduleLock,
                 {searchQuery && (
                     <Badge variant="secondary" className="gap-1">
                         Filtering: {filteredSchedules.length} of {schedules.length} schedules
-                        <Button
+                        <Button aria-label="Clear search"
                             variant="ghost"
                             size="icon"
                             className="h-4 w-4 ml-1"

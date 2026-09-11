@@ -26,6 +26,7 @@ import { RevokeApiKeyDialog } from "@/components/api-keys/RevokeApiKeyDialog"
 import { RotateApiKeyDialog } from "@/components/api-keys/RotateApiKeyDialog"
 import { Input } from "@/components/ui/input"
 import { API_BASE, apiFetch } from "@/lib/api"
+import { PageHeader, PageShell } from "@/components/ui/page-header"
 
 interface ApiKeyItem {
   id: string
@@ -178,7 +179,7 @@ export default function ApiKeysPage() {
               <div className="text-xs text-muted-foreground">{key.user_email}</div>
             </TableCell>
             <TableCell>
-              <code className="text-xs bg-gray-100 px-1 rounded">{key.key_prefix}...</code>
+              <code className="text-xs bg-muted px-1 rounded">{key.key_prefix}...</code>
             </TableCell>
             <TableCell>{getToolScopeDisplay(key)}</TableCell>
             <TableCell>{getRepoScopeDisplay(key)}</TableCell>
@@ -219,27 +220,27 @@ export default function ApiKeysPage() {
   )
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">API Keys</h1>
-          <p className="text-muted-foreground">
-            Manage API keys for programmatic access to AuditGitHub
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Generate New Key
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={KeyRound}
+        eyebrow="Settings"
+        title="API keys"
+        description="Keys for programmatic access to AuditGH."
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Generate new key
+          </Button>
+        }
+      />
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-100 dark:bg-blue-900/30 p-2">
-                <KeyRound className="h-5 w-5 text-blue-600" />
+              <div className="rounded-lg bg-info-soft dark:bg-info-soft/30 p-2">
+                <KeyRound className="h-5 w-5 text-info-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Keys</p>
@@ -251,8 +252,8 @@ export default function ApiKeysPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-green-100 dark:bg-green-900/30 p-2">
-                <ShieldCheck className="h-5 w-5 text-green-600" />
+              <div className="rounded-lg bg-success-soft dark:bg-success-soft/30 p-2">
+                <ShieldCheck className="h-5 w-5 text-success-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active</p>
@@ -264,8 +265,8 @@ export default function ApiKeysPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-red-100 dark:bg-red-900/30 p-2">
-                <Trash2 className="h-5 w-5 text-red-600" />
+              <div className="rounded-lg bg-danger-soft dark:bg-danger-soft/30 p-2">
+                <Trash2 className="h-5 w-5 text-danger-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Revoked</p>
@@ -277,8 +278,8 @@ export default function ApiKeysPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2">
-                <Clock className="h-5 w-5 text-amber-600" />
+              <div className="rounded-lg bg-warning-soft dark:bg-warning-soft/30 p-2">
+                <Clock className="h-5 w-5 text-warning-text" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Expiring Soon</p>
@@ -304,7 +305,7 @@ export default function ApiKeysPage() {
             </div>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
+              <Input aria-label="Search keys"
                 placeholder="Search keys..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -316,12 +317,12 @@ export default function ApiKeysPage() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : activeKeys.length === 0 ? (
             <div className="text-center py-12">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-600 font-medium mb-2">No active API keys</p>
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground font-medium mb-2">No active API keys</p>
               <p className="text-sm text-muted-foreground mb-4">
                 Generate a key to enable programmatic access
               </p>
@@ -384,6 +385,6 @@ export default function ApiKeysPage() {
           onRotated={fetchKeys}
         />
       )}
-    </div>
+    </PageShell>
   )
 }
