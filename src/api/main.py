@@ -243,7 +243,7 @@ import src.api.prompt_models  # noqa: F401 — register prompt management tables
 models.Base.metadata.create_all(bind=engine)
 
 # Import routers
-from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts, credentials, hunt, cicd
+from .routers import repositories, jira, ai, scans, analytics, findings, projects, settings, github_sync, attack_surface, contributor_profiles, feedback, secrets, sla, attack_paths, api_audit, tenants, organizations, scheduler, cribl, auth, schedules, git_sync, ai_chat, device_flow, invitations, users, api_keys, sarif_import, prompts, credentials, hunt, cicd, rule_equivalences
 
 # Multi-tenant support
 MULTI_TENANT_ENABLED = os.environ.get("MULTI_TENANT_ENABLED", "false").lower() == "true"
@@ -266,6 +266,7 @@ app.include_router(ai.router)
 app.include_router(scans.router)
 app.include_router(analytics.router)
 app.include_router(findings.router)
+app.include_router(rule_equivalences.router)  # Cross-scanner rule-merge review queue
 app.include_router(projects.router)
 app.include_router(settings.router)
 app.include_router(github_sync.router)

@@ -19,6 +19,9 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { API_BASE, apiFetch } from "@/lib/api"
 import { BackButton, PageHeader, PageShell } from "@/components/ui/page-header"
+import { JiraIssueDialog } from "@/components/JiraIssueDialog"
+import { AuditBoardIssueDialog } from "@/components/AuditBoardIssueDialog"
+import { AuditBoardFiledBadge } from "@/components/AuditBoardFiledBadge"
 
 export default function FindingDetailsPage() {
     const params = useParams()
@@ -30,6 +33,8 @@ export default function FindingDetailsPage() {
     const [journalOpen, setJournalOpen] = useState(false)
     const [includeInReport, setIncludeInReport] = useState(false)
     const [isTogglingReport, setIsTogglingReport] = useState(false)
+    // Bumped after an AuditBoard filing so the badge re-reads without a reload.
+    const [filedRefresh, setFiledRefresh] = useState(0)
 
     const fetchFinding = async () => {
         try {
@@ -168,6 +173,12 @@ export default function FindingDetailsPage() {
                         Journal
                     </Button>
                     <ExceptionDialog finding={finding} onDeleted={() => router.push("/findings")} />
+                    <JiraIssueDialog finding={finding} />
+                    <AuditBoardIssueDialog
+                        finding={finding}
+                        onFiled={() => setFiledRefresh((n) => n + 1)}
+                    />
+                    <AuditBoardFiledBadge findingId={finding.id} refreshKey={filedRefresh} />
                     <SeverityEditor
                         findingId={finding.id}
                         currentSeverity={finding.severity}

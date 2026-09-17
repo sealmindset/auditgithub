@@ -122,6 +122,32 @@ services:
       - HOST_PROJECT_DIR=${HOST_PROJECT_DIR:-.}
       - SCANNER_IMAGE=${SCANNER_IMAGE:-auditgithub-scanner:latest}
       - DOCKER_NETWORK=${DOCKER_NETWORK:-auditgithub_default}
+      # AuditBoard GRC issue filing. Unlike Jira — a credential-free deep link
+      # handled entirely in web-ui — filing here is an authenticated API write,
+      # so the token belongs to this service and to no other. It is never
+      # passed to web-ui and never exposed to a browser.
+      - AUDITBOARD_URL=${AUDITBOARD_URL:-}
+      - AUDITBOARD_TOKEN=${AUDITBOARD_TOKEN:-}
+      # 0, not empty: this one is an int, and "" is a parse error at import
+      # time — which would take the whole API down over an optional feature.
+      - AUDITBOARD_ISSUE_CATEGORY_ID=${AUDITBOARD_ISSUE_CATEGORY_ID:-0}
+      - AUDITBOARD_CREATE_STATUS=${AUDITBOARD_CREATE_STATUS:-Open}
+      - AUDITBOARD_ISSUE_IDENT_ID=${AUDITBOARD_ISSUE_IDENT_ID:-7}
+      - AUDITBOARD_ISSUE_SOURCE_ID=${AUDITBOARD_ISSUE_SOURCE_ID:-0}
+      - AUDITBOARD_WORKSPACE_ID=${AUDITBOARD_WORKSPACE_ID:-0}
+      # AuditBoard user IDs stamped on each issue. Category 10 requires a
+      # senior owner and a vice president at status Open; the API does not
+      # enforce it, so unset just files an incomplete record.
+      - AUDITBOARD_SENIOR_OWNER_USER_ID=${AUDITBOARD_SENIOR_OWNER_USER_ID:-0}
+      - AUDITBOARD_VICE_PRESIDENT_USER_ID=${AUDITBOARD_VICE_PRESIDENT_USER_ID:-0}
+      - AUDITBOARD_TESTER_USER_ID=${AUDITBOARD_TESTER_USER_ID:-0}
+      - AUDITBOARD_REVIEWER_USER_ID=${AUDITBOARD_REVIEWER_USER_ID:-0}
+      # Path inside the container to a CA bundle for the AuditBoard host. The
+      # instance presents a chain stock trust stores reject, and the request
+      # carries a bearer token, so verification is not optional here — the
+      # client refuses to send without this set. The repo root is mounted at
+      # /app, so ./certs/auditboard-ca.pem resolves without a new volume.
+      - AUDITBOARD_CA_BUNDLE=${AUDITBOARD_CA_BUNDLE:-}
     depends_on:
       db:
         condition: service_started
@@ -161,6 +187,19 @@ services:
     environment:
       - API_BASE=http://api:8000
       - NODE_ENV=development
+      # Jira deep-link target. Read at request time by /api/jira-config, so
+      # these can change without rebuilding the image. No credential here —
+      # the user authenticates to Jira themselves.
+      - JIRA_BASE_URL=${JIRA_BASE_URL:-}
+      - JIRA_PROJECT_ID=${JIRA_PROJECT_ID:-}
+      - JIRA_ISSUE_TYPE_ID=${JIRA_ISSUE_TYPE_ID:-}
+      # Optional. Without these the create screen opens on the project
+      # default and the mapped priority is shown for the user to set by hand.
+      - JIRA_PRIORITY_CRITICAL=${JIRA_PRIORITY_CRITICAL:-}
+      - JIRA_PRIORITY_HIGH=${JIRA_PRIORITY_HIGH:-}
+      - JIRA_PRIORITY_MEDIUM=${JIRA_PRIORITY_MEDIUM:-}
+      - JIRA_PRIORITY_LOW=${JIRA_PRIORITY_LOW:-}
+      - JIRA_PRIORITY_INFO=${JIRA_PRIORITY_INFO:-}
     volumes:
       - ./src/web-ui:/app
       - web-ui-node-modules:/app/node_modules

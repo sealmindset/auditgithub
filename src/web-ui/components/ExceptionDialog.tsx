@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, ShieldOff, Trash2, AlertTriangle, Copy, Check } from "lucide-react"
+import { Loader2, ShieldOff, Trash2, AlertTriangle, Copy, Check, ShieldAlert, ExternalLink } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { API_BASE, apiFetch } from "@/lib/api"
 
@@ -32,6 +32,28 @@ interface ExceptionRule {
     affected_count: number
 }
 
+/**
+ * An AuditBoard issue that covers findings being deleted.
+ *
+ * Deleting findings does not close GRC issues — nothing here has rights to,
+ * and the filing record is kept on purpose so a filing outlives the scan
+ * result. So the issue has to be named before the delete, not discovered
+ * later by whoever finds an open issue with no finding behind it.
+ */
+interface DryRunAuditBoardIssue {
+    issue_id: string
+    issue_uid: string | null
+    issue_url: string | null
+    issue_status: string | null
+    scope: "specific" | "global"
+    filed_by: string | null
+    filed_at: string | null
+    /** Filed from one of the findings being deleted, rather than a sibling. */
+    direct: boolean
+    /** Findings left in the scanner/file group afterwards. 0 = orphaned issue. */
+    remaining_findings: number
+}
+
 interface DryRunResult {
     count: number
     scanner_name: string
@@ -42,6 +64,7 @@ interface DryRunResult {
         file_path: string
         scanner_name: string
     }>
+    auditboard_issues?: DryRunAuditBoardIssue[]
 }
 
 export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
@@ -330,6 +353,50 @@ export function ExceptionDialog({ finding, onDeleted }: ExceptionDialogProps) {
                                             {dryRunResult.sample_findings.map((f) => (
                                                 <li key={f.id} className="truncate">
                                                     {f.title} - {f.file_path}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {(dryRunResult.auditboard_issues?.length ?? 0) > 0 && (
+                                    <div className="rounded-md border border-current/40 p-3 text-sm space-y-2">
+                                        <p className="flex items-center gap-2 font-medium">
+                                            <ShieldAlert className="h-4 w-4" />
+                                            Already filed in AuditBoard
+                                        </p>
+                                        <p>
+                                            Deleting the findings does not close the issue. Someone
+                                            with AuditBoard rights has to close it there, or the
+                                            register keeps reporting a defect this app no longer has.
+                                        </p>
+                                        <ul className="space-y-1">
+                                            {dryRunResult.auditboard_issues!.map((i) => (
+                                                <li key={i.issue_id} className="flex flex-wrap items-center gap-1.5">
+                                                    {i.issue_url ? (
+                                                        <a
+                                                            href={i.issue_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="font-mono underline underline-offset-2"
+                                                        >
+                                                            {i.issue_uid || `I#${i.issue_id}`}
+                                                            <ExternalLink className="ml-1 inline h-3 w-3" />
+                                                        </a>
+                                                    ) : (
+                                                        <span className="font-mono">
+                                                            {i.issue_uid || `I#${i.issue_id}`}
+                                                        </span>
+                                                    )}
+                                                    <span className="text-xs">
+                                                        {i.direct
+                                                            ? "filed from a finding being deleted"
+                                                            : `${i.scope} filing covering this group`}
+                                                        {i.issue_status ? `, ${i.issue_status} at filing` : ""}
+                                                        {i.filed_by ? `, by ${i.filed_by}` : ""}
+                                                        {i.remaining_findings === 0
+                                                            ? " — no findings left behind it after this delete"
+                                                            : ` — ${i.remaining_findings} finding(s) still behind it`}
+                                                    </span>
                                                 </li>
                                             ))}
                                         </ul>

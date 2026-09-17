@@ -1,16 +1,22 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DataTable } from "@/components/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, LayoutGrid, List, Clock, FileCode, Archive, ShieldAlert } from "lucide-react"
+import { Loader2, LayoutGrid, List, Clock, FileCode, Archive, ShieldAlert, ShieldCheck, Users } from "lucide-react"
 import Link from "next/link"
 import { ProjectScorecard } from "@/components/project-scorecard"
 import { API_BASE, apiFetch } from "@/lib/api"
 import { PageHeader, PageShell } from "@/components/ui/page-header"
+import {
+    buildFilingIndex,
+    lookupFiling,
+    type AuditBoardFiling,
+    type FilingIndex,
+} from "@/lib/auditboard"
 
 interface Finding {
     id: string
@@ -19,6 +25,10 @@ interface Finding {
     severity: string
     status: string
     scanner_name: string | null
+    // With scanner_name this identifies the defect, which is what an
+    // AuditBoard filing is matched on. Without it the AuditBoard ID column
+    // would only ever match pre-2026-09-16 'global' filings.
+    rule_id: string | null
     repo_name: string
     repository_id: string | null
     file_path: string | null
@@ -164,8 +174,84 @@ function getRiskBadge(riskScore: number | null, riskLevel: string | null) {
     )
 }
 
+/**
+ * AuditBoard column.
+ *
+ * Built from a filing index rather than a field on the finding, because a
+ * filing is not a property of a finding — a global filing covers every
+ * finding sharing its scanner and file path, so one issue annotates many
+ * rows that know nothing about it.
+ *
+ * Two states are shown differently on purpose: a shield for "this finding was
+ * filed" and people for "a group filing covers this one". Both link to the
+ * same issue; only the first means somebody looked at this row.
+ *
+ * The status shown in the tooltip is the status at filing time. Nothing here
+ * calls AuditBoard, so an issue closed over there still reads as it was
+ * created.
+ */
+function auditBoardColumn(index: FilingIndex | null): ColumnDef<Finding> {
+    return {
+        id: "auditboard",
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="AuditBoard" />
+        ),
+        // Sortable and searchable on the label people actually quote.
+        accessorFn: (row) => lookupFiling(index, row)?.filing.issue_uid ?? "",
+        cell: ({ row }) => {
+            const match = lookupFiling(index, row.original)
+            if (!match) return <span className="text-muted-foreground">—</span>
+            const { filing, direct } = match
+            const label = filing.issue_uid || `I#${filing.issue_id}`
+            const Icon = direct ? ShieldCheck : Users
+            const title = [
+                direct
+                    ? "Filed to AuditBoard from this finding"
+                    : "Covered by a global filing from the same scanner and file",
+                filing.deficiency_level_name ? `Level: ${filing.deficiency_level_name}` : null,
+                `Spoke for ${filing.occurrence_count} finding${filing.occurrence_count === 1 ? "" : "s"} when filed`,
+                filing.filed_by ? `By ${filing.filed_by}` : null,
+                filing.issue_status
+                    ? `Status at filing: ${filing.issue_status} (not kept in sync)`
+                    : null,
+            ]
+                .filter(Boolean)
+                .join("\n")
+
+            const badge = (
+                <Badge
+                    variant={direct ? "default" : "secondary"}
+                    className="gap-1 font-mono text-xs"
+                >
+                    <Icon className="h-3 w-3" />
+                    {label}
+                </Badge>
+            )
+
+            return filing.issue_url ? (
+                <a
+                    href={filing.issue_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={title}
+                    aria-label={`Open AuditBoard issue ${label}`}
+                >
+                    {badge}
+                </a>
+            ) : (
+                <span title={title}>{badge}</span>
+            )
+        },
+        filterFn: (row, id, value) => {
+            if (!value || !Array.isArray(value) || value.length === 0) return true
+            const uid = row.getValue(id) as string
+            return value.includes(uid ? "Filed" : "Not filed")
+        },
+    }
+}
+
 // Column definitions
-const columns: ColumnDef<Finding>[] = [
+const baseColumns: ColumnDef<Finding>[] = [
     {
         accessorKey: "severity",
         header: ({ column }) => (
@@ -324,6 +410,27 @@ export default function FindingsPage() {
     const [loading, setLoading] = useState(true)
     const [viewMode, setViewMode] = useState<"table" | "scorecard">("table")
     const [total, setTotal] = useState(0)
+    const [filingIndex, setFilingIndex] = useState<FilingIndex | null>(null)
+
+    // One request for every filing, not one per row. Failure is silent: a
+    // missing AuditBoard column should not stop the findings table rendering.
+    useEffect(() => {
+        let cancelled = false
+        apiFetch(`${API_BASE}/findings/auditboard/filings`, { credentials: "include" })
+            .then((res) => (res.ok ? res.json() : []))
+            .then((rows: AuditBoardFiling[]) => {
+                if (!cancelled) setFilingIndex(buildFilingIndex(Array.isArray(rows) ? rows : []))
+            })
+            .catch(() => {})
+        return () => {
+            cancelled = true
+        }
+    }, [])
+
+    const columns = useMemo(
+        () => [...baseColumns, auditBoardColumn(filingIndex)],
+        [filingIndex],
+    )
 
     useEffect(() => {
         const fetchFindings = async () => {

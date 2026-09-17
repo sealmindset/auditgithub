@@ -19,6 +19,7 @@ sys.path.insert(0, _repo_root)
 from api.database import SessionLocal, engine, Base
 from api.database_router import database_router
 from api import models
+from src.services.remediation_classifier import suppression_for
 
 # Configure logging
 logging.basicConfig(
@@ -1166,14 +1167,23 @@ def ingest_whispers(db: Session, repo: models.Repository, scan_run: models.ScanR
         return 0
     
     count = 0
+    excluded = 0
     for secret in findings_data:
         severity = secret.get('severity', 'Medium').lower()
         if severity not in ['critical', 'high', 'medium', 'low']:
             severity = 'medium'
-        
+
         # Get the full secret value for security analyst validation (no masking per policy)
         secret_value = secret.get('value', '')
-        
+        rule_id = secret.get('key', 'Unknown Key')
+
+        # Two of this scanner's rules matched 71.1% of the whole estate without
+        # reporting a credential. They are stored, not dropped — the evidence for
+        # that claim is the rows themselves — but they are marked so they stay out
+        # of the work list. See src/services/remediation_classifier.SUPPRESSIONS
+        # for the measurement behind each entry.
+        suppression = suppression_for('whispers', rule_id)
+
         finding = models.Finding(
             repository_id=repo.id,
             organization_id=repo.organization_id,
@@ -1181,18 +1191,27 @@ def ingest_whispers(db: Session, repo: models.Repository, scan_run: models.ScanR
             scanner_name='whispers',
             finding_type='secret',
             severity=severity,
-            title=f"Secret: {secret.get('key', 'Unknown Key')}",
+            title=f"Secret: {rule_id}",
+            rule_id=rule_id,
+            rule_id_is_stable=True,
             description=secret.get('message', 'Hardcoded secret detected'),
             code_snippet=f"Key: {secret.get('key', '')}\nValue: {secret_value}",  # Full unredacted for security analyst validation
             file_path=secret.get('file', ''),
             line_start=int(secret.get('line', 0)) if str(secret.get('line', '0')).isdigit() else 0,
-            status='open'
+            status='open',
+            excluded_from_actionable=bool(suppression),
+            exclusion_reason=suppression[1] if suppression else None,
         )
         db.add(finding)
         count += 1
-    
+        if suppression:
+            excluded += 1
+
     db.commit()
-    logger.info(f"Ingested {count} Whispers findings for {repo.name}")
+    logger.info(
+        f"Ingested {count} Whispers findings for {repo.name} "
+        f"({excluded} excluded from the work list by a recorded suppression)"
+    )
     return count
 
 

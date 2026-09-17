@@ -12,6 +12,7 @@ import {
     Users,
     AlertTriangle,
     GitBranch,
+    GitMerge,
     Search,
     ClipboardList,
     ChevronRight,
@@ -151,6 +152,13 @@ const data: { navMain: NavGroup[] } = {
                             icon: History,
                         },
                     ],
+                },
+                {
+                    // Sits under AI Management because an AI pass fills it, but
+                    // the decisions in it are the reviewer's, not the model's.
+                    title: "Rule Merges",
+                    url: "/rule-merges",
+                    icon: GitMerge,
                 },
             ],
         },
