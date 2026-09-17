@@ -117,3 +117,30 @@ __pycache__/
 # Registry lookup cache written by the npm supply-chain scans (one JSON per
 # package, hundreds of files). Regenerable from the registry; never commit.
 .cache/
+
+# Per-tool AI assistant scratch directories. Every assistant that has touched
+# this repo drops its own; none of them are project source, and they carry
+# local paths and session transcripts.
+.agent/
+.claude/
+.codebuddy/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.github/prompts/
+.kiro/
+.opencode/
+.qoder/
+.roo/
+.trae/
+.windsurf/
+
+# Read-only probe scripts written to answer one question and kept only so the
+# answer can be re-derived. Not part of the build and not maintained.
+.scratch/
+
+# Stray local artifacts
+temp
+nmptemp
+github_conf/*.zip
