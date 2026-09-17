@@ -13,6 +13,7 @@ import uuid
 from pydantic import BaseModel, Field
 from datetime import datetime
 from src.rbac.dependencies import require_permissions
+from src.services.markdown_excerpt import excerpt_markdown
 from src.api.schemas.common import CRUD_ERRORS, LIST_ERRORS, CREATE_ERRORS, DELETE_ERRORS
 from src.api.schemas.repository_operations import (
     RepositoryOperationsCreate,
@@ -1103,6 +1104,25 @@ def _analyze_contributors(contributors) -> str:
     return f"Total {total_commits} commits across {len(contributors)} contributors."
 
 
+def _architecture_excerpt(architecture_report, budget: int) -> str:
+    """Excerpt the architecture report to a budget, stating what was dropped.
+
+    Previously these call sites used `architecture_report[:2000]` and `[:3000]`.
+    Architecture reports in this estate run to roughly 14,000 characters, so
+    that discarded about 80% of the analysis, cut mid-sentence, with nothing in
+    the prompt to indicate anything was missing. The model then reasoned about
+    attack surface from an eighth of the document while reading as though it had
+    all of it.
+
+    Budgets are larger here because the constraint was never a real token limit:
+    8,000 characters is roughly 2,000 tokens against models with context in the
+    hundreds of thousands.
+    """
+    if not architecture_report:
+        return "No architecture analysis available."
+    return excerpt_markdown(architecture_report, budget).text
+
+
 async def _generate_ai_analysis(
     project,
     secrets,
@@ -1134,7 +1154,7 @@ Findings Summary:
 - API Audit: {len(api_audit)} endpoints successfully compromised (2xx responses)
 
 Architecture Overview:
-{architecture_report[:2000] if architecture_report else 'No architecture analysis available.'}
+{_architecture_excerpt(architecture_report, 8000)}
 """
 
             # Generate executive summary
@@ -1157,9 +1177,11 @@ Write the executive summary in a professional tone suitable for leadership. Focu
             if architecture_report:
                 arch_prompt = f"""Based on this architecture analysis, provide 2-3 key security insights about the system design:
 
-{architecture_report[:3000]}
+{_architecture_excerpt(architecture_report, 12000)}
 
-Focus on potential attack surfaces, security boundaries, and architectural risks."""
+Focus on potential attack surfaces, security boundaries, and architectural risks. If the
+analysis above is marked as truncated, confine your insights to the sections actually shown
+and do not infer the contents of the omitted ones."""
                 arch_insights = await provider.generate(arch_prompt, max_tokens=300)
 
             return executive_summary, highlight_reel, arch_insights

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, DateTime, ForeignKey, Text, JSON, Numeric, Sequence, UniqueConstraint, Index
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, DateTime, Float, ForeignKey, Text, JSON, Numeric, Sequence, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func, text
@@ -421,7 +421,32 @@ class Finding(Base):
     package_name = Column(String)
     package_version = Column(String)
     fixed_version = Column(String)
-    
+
+    # Rule identity (migration 023). Several scanners emit their rule ID only
+    # inside the title; src/services/remediation_classifier.py recovers it.
+    # rule_id_is_stable is False when the recovered value is a check name in
+    # prose rather than an identifier, and so may be reworded upstream.
+    rule_id = Column(String, nullable=True)
+    rule_id_is_stable = Column(Boolean, nullable=True)
+    # grype reports GitHub advisories, which are not CVEs and do not belong in cve_id
+    ghsa_id = Column(String, nullable=True)
+
+    # Remediation category (migration 023). NULL means not yet classified,
+    # which is distinct from every value in the taxonomy including false_positive.
+    remediation_category = Column(String, nullable=True)
+    category_source = Column(String, default='none')  # rule | ai | human | none
+    category_confidence = Column(Float, nullable=True)
+    category_rationale = Column(Text, nullable=True)
+    category_assigned_at = Column(DateTime, nullable=True)
+
+    # Kept and counted, but left out of the actionable work list. Distinct from
+    # deletion (the evidence survives) and from false_positive (excluding a
+    # filename-only match says the scanner never opened the file, not that the
+    # file is clean). Reason is always recorded; an exclusion with no stated
+    # basis is indistinguishable from data loss.
+    excluded_from_actionable = Column(Boolean, default=False)
+    exclusion_reason = Column(Text, nullable=True)
+
     status = Column(String, default='open')
     resolution = Column(String)
     resolution_notes = Column(Text)
@@ -502,6 +527,225 @@ class Remediation(Base):
     created_at = Column(DateTime, server_default=func.now())
     
     finding = relationship("Finding", back_populates="remediations")
+
+
+class RemediationAction(Base):
+    """One piece of work, covering one or many findings.
+
+    Distinct from Remediation above, which is per-finding AI-generated text.
+    An action is the unit that gets estimated, owned, and filed as an
+    AuditBoard issue: upgrading lodash once closes every lodash finding in the
+    organization, and estimating that work forty times would overstate it forty
+    times over.
+
+    Scope is per-organization, so an action spans the repositories of one org.
+    """
+
+    __tablename__ = "remediation_actions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('remediation_actions_api_id_seq'), unique=True)
+
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+
+    # Deterministic, e.g. "upgrade:npm:lodash:4.17.21". Re-running the grouper
+    # produces the same key, which is what makes the AuditBoard push idempotent.
+    action_key = Column(String, nullable=False)
+
+    category = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    remediation_text = Column(Text)
+
+    # Estimated, not measured. Never converted to hours — see src/services/effort.py.
+    effort_band = Column(String)
+    effort_score = Column(Integer)
+    effort_reasons = Column(JSONB, default=list)
+    # Drivers that could not be measured. Non-empty means the band rests partly
+    # on absent data, and the report says so next to it.
+    effort_unknowns = Column(JSONB, default=list)
+
+    # Measured drivers, refreshed by the grouper. Never hand-edited.
+    findings_count = Column(Integer, default=0)
+    files_count = Column(Integer, default=0)
+    repos_count = Column(Integer, default=0)
+    severity_counts = Column(JSONB, default=dict)
+
+    primary_role = Column(String)
+    supporting_roles = Column(JSONB, default=list)
+
+    package_ecosystem = Column(String)
+    package_name = Column(String)
+    current_version = Column(String)
+    fixed_version = Column(String)
+
+    status = Column(String, default='open')
+    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # NULL means never pushed. This schema cannot detect an issue deleted at the
+    # far end, so a non-NULL value proves we created one, not that it still exists.
+    auditboard_issue_id = Column(String, nullable=True)
+    auditboard_instance = Column(String, nullable=True)
+    auditboard_pushed_at = Column(DateTime, nullable=True)
+    auditboard_push_status = Column(String, default='not_pushed')
+    auditboard_push_detail = Column(Text)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('organization_id', 'action_key', name='uq_remediation_action_key'),
+    )
+
+    findings = relationship("RemediationActionFinding", back_populates="action", cascade="all, delete-orphan")
+
+
+class RemediationActionFinding(Base):
+    """Which findings one action covers.
+
+    The many-to-many that makes "this single upgrade closes these forty
+    findings" a queryable fact rather than an assertion in report prose.
+    """
+
+    __tablename__ = "remediation_action_findings"
+
+    action_id = Column(UUID(as_uuid=True), ForeignKey("remediation_actions.id", ondelete="CASCADE"), primary_key=True)
+    finding_id = Column(UUID(as_uuid=True), ForeignKey("findings.id", ondelete="CASCADE"), primary_key=True)
+    # Denormalised so repos_count does not require a join back to findings.
+    repository_id = Column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    action = relationship("RemediationAction", back_populates="findings")
+    finding = relationship("Finding")
+
+
+class FindingKnowledgeBase(Base):
+    """One entry per unique finding signature, reusable across organizations.
+
+    Not per occurrence: the 222,844 actionable findings in this estate resolve
+    to 2,639 distinct signatures, and the ten largest cover half of them. The
+    key is derived at read time by src/services/kb_key.py rather than stored on
+    findings, so a change to key precedence does not require a backfill.
+    """
+
+    __tablename__ = "finding_knowledge_base"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    api_id = Column(Integer, Sequence('finding_kb_api_id_seq'), unique=True)
+
+    # ghsa:… | cve:… | rule:{scanner}/{rule_id} | cwe:…
+    kb_key = Column(String(512), nullable=False, unique=True)
+    key_type = Column(String(16), nullable=False)
+
+    cve_id = Column(String(32))
+    cwe_id = Column(String(32))
+    ghsa_id = Column(String(32))
+    rule_id = Column(String(512))
+    scanner_name = Column(String(64))
+    # False when the key rests on prose upstream may reword (trivy-fs, nuclei).
+    key_is_stable = Column(Boolean, nullable=False, default=True)
+
+    title = Column(Text, nullable=False)
+    summary = Column(Text)
+    reference_ids = Column(JSONB, default=list)
+
+    target_asset_type = Column(String(32))
+    target_asset_detail = Column(Text)
+
+    # What an attacker gains — exploitation, not regulatory. Regulatory blast
+    # radius is sec-diligence's blast_radius.py and is a different thing.
+    blast_radius = Column(JSONB)
+    # CWE -> CAPEC -> ATT&CK, derived from committed MITRE data. mapping_source
+    # is 'none' whenever no published mapping exists, which is the common case
+    # here: findings.cwe_id carries no usable CWE anywhere in this estate.
+    ttp = Column(JSONB)
+    exploitability = Column(JSONB)
+    mitigation_options = Column(JSONB, default=list)
+
+    upstream_severity = Column(String(16))
+    # Advisories get retracted. Remediating a withdrawn one is wasted work.
+    is_withdrawn = Column(Boolean, nullable=False, default=False)
+    affected_packages = Column(JSONB, default=list)
+
+    status = Column(String(16), nullable=False, default='draft')
+    version = Column(Integer, nullable=False, default=1)
+    # import = fetched and citable, ai = generated, human = authored. Same
+    # discipline as Finding.category_source: never count the three as one.
+    source = Column(String(16), nullable=False, default='ai')
+    ai_confidence = Column(Numeric(3, 2))
+    source_url = Column(Text)
+    source_fetched_at = Column(DateTime)
+
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    approved_at = Column(DateTime)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    versions = relationship("FindingKBVersion", back_populates="kb_entry",
+                            cascade="all, delete-orphan")
+    overlays = relationship("FindingKBOrgOverlay", back_populates="kb_entry",
+                            cascade="all, delete-orphan")
+
+    @property
+    def is_renderable(self) -> bool:
+        """Only approved entries reach a report. A draft renders as
+        'knowledge base entry pending review', never as its own text."""
+        return self.status == 'approved'
+
+
+class FindingKBVersion(Base):
+    """Full snapshot per approved edit, mirroring PromptVersion.
+
+    A snapshot rather than a diff: a diff chain only replays while every link
+    survives, and the point of this table is re-rendering a months-old report
+    against the knowledge base as it stood when the report was issued.
+    """
+
+    __tablename__ = "finding_kb_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    kb_id = Column(UUID(as_uuid=True), ForeignKey("finding_knowledge_base.id", ondelete="CASCADE"),
+                   nullable=False)
+    version = Column(Integer, nullable=False)
+    snapshot = Column(JSONB, nullable=False)
+    change_note = Column(Text)
+    changed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, server_default=func.now())
+
+    kb_entry = relationship("FindingKnowledgeBase", back_populates="versions")
+
+    __table_args__ = (UniqueConstraint('kb_id', 'version', name='uq_kb_version'),)
+
+
+class FindingKBOrgOverlay(Base):
+    """An organization's local standards for a global knowledge base entry.
+
+    Kept separate so the global entry stays generic and reusable. The report
+    merges the overlay over the global entry and labels any overlaid row as
+    organization-specific, so a reader can tell house policy from published
+    guidance.
+    """
+
+    __tablename__ = "finding_kb_org_overlays"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    kb_id = Column(UUID(as_uuid=True), ForeignKey("finding_knowledge_base.id", ondelete="CASCADE"),
+                   nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+                             nullable=False)
+    # 'append' adds to the global options; 'replace' overrides them. Explicit,
+    # because "we have one too" and "the generic advice is wrong here" differ.
+    mitigation_mode = Column(String(16), nullable=False, default='append')
+    mitigation_options = Column(JSONB, default=list)
+    notes = Column(Text)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    kb_entry = relationship("FindingKnowledgeBase", back_populates="overlays")
+
+    __table_args__ = (UniqueConstraint('kb_id', 'organization_id', name='uq_kb_org_overlay'),)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -822,6 +1066,78 @@ class JournalEntry(Base):
     # Relationships
     finding = relationship("Finding", back_populates="journal_entries")
     author = relationship("User")
+
+
+class AuditBoardIssue(Base):
+    """A finding that was filed into AuditBoard, and the issue it became.
+
+    Written only after AuditBoard confirms the create, and from AuditBoard's
+    own response — never from what we asked for. A row here means the record
+    exists over there; no row means it does not, or nobody filed it yet.
+
+    Rows are kept when a finding is deleted rather than cascaded away: the
+    GRC issue outlives the scan result, and a filing history that disappears
+    with its source is not an audit trail. Hence the plain finding_id column
+    with no foreign key.
+
+    ``scope`` is the same vocabulary as everywhere else in this app. A global
+    filing speaks for every finding sharing scanner_name and file_path, so
+    those two are stored alongside the reference finding — they are how the
+    UI knows a sibling finding has already been reported.
+    """
+    __tablename__ = "auditboard_issues"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+
+    # Reference finding — the one the filer had open. Deliberately not a
+    # ForeignKey: see the class docstring.
+    finding_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    organization_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+
+    # Group key, for matching a filing to the findings it speaks for.
+    #
+    # ``scope`` is the tier: 'specific', 'project', 'org', or 'global' for
+    # rows filed before 2026-09-16. 'global' keyed on (scanner_name,
+    # file_path), which is why those two columns exist and still matter —
+    # four issues were filed at that tier and must keep matching their
+    # findings, or the UI shows them as unfiled and invites duplicates.
+    #
+    # Current tiers key on (scanner_name, rule_id) plus repository_id for
+    # 'project'. See services/finding_groups.py for why.
+    scope = Column(String, nullable=False, default='specific')
+    scanner_name = Column(String, index=True)
+    file_path = Column(Text, index=True)
+    rule_id = Column(String(255), index=True)
+    # The project a 'project'-tier filing belongs to. Null for 'org' and for
+    # legacy rows. Not a ForeignKey, for the same reason finding_id is not:
+    # the GRC issue outlives whatever this app later deletes.
+    repository_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    # Locations named in the issue body at filing time, and how many were
+    # omitted by the cap. Stored because the body cannot be edited afterwards,
+    # so this is the only record of what the issue actually claimed.
+    location_count = Column(Integer)
+    locations_omitted = Column(Integer, default=0)
+    # Projects the defect spanned when filed, which is what decided the tier.
+    project_count = Column(Integer)
+
+    # What AuditBoard created. issue_id is its numeric ID as a string: it is
+    # an identifier we echo and link to, never something we do arithmetic on.
+    issue_id = Column(String, nullable=False)
+    issue_uid = Column(String)          # e.g. "I#1714", the label people quote
+    issue_url = Column(Text)
+    issue_status = Column(String)       # status at creation, not kept in sync
+    issue_category_id = Column(Integer)
+    deficiency_level_id = Column(Integer)
+    deficiency_level_name = Column(String)
+
+    # Count measured server-side at filing time. Stored because the live
+    # count drifts as scans run, and the issue speaks for the population as
+    # it stood when it was filed.
+    occurrence_count = Column(Integer, default=1)
+
+    filed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    filed_by = Column(String)           # email or username, denormalized
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class SystemConfig(Base):
@@ -1909,3 +2225,81 @@ class RepoDeploymentMap(Base):
     def __repr__(self):
         return (f"<RepoDeploymentMap(env='{self.environment}', method='{self.method}', "
                 f"confidence={self.confidence})>")
+
+
+# =============================================================================
+# RULE EQUIVALENCE - cross-scanner "this is the same defect" decisions
+# =============================================================================
+
+class RuleEquivalence(Base):
+    """One claim that two scanners' rules describe the same defect.
+
+    Exists because grouping findings by ``(scanner_name, rule_id)`` files two
+    issues when grype and trivy-fs both report the same CVE. An AI pass
+    proposes which pairs are really one defect; a person approves or rejects;
+    only approved rows change how anything is filed.
+
+    That order is deliberate. AuditBoard issues cannot be deleted and their
+    descriptions cannot be edited after create, so a wrong merge permanently
+    claims an issue covers a finding it does not describe, and no later pass
+    can fix it. An unreviewed proposal therefore has no effect at all: the
+    scanners stay separate, which files a visible duplicate instead of hiding
+    a real defect.
+
+    The pair is stored in a canonical order (``scanner_a <= scanner_b``, then
+    rule) so the same two rules cannot be recorded twice in opposite order and
+    end up with contradictory verdicts.
+
+    Blocking keeps this table small: only rule pairs that actually co-occur on
+    the same normalized path in the same repository are worth asking about,
+    which was 478 pairs across the whole instance on 2026-09-16.
+    """
+    __tablename__ = "rule_equivalences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    organization_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+
+    # The pair, in canonical order. Not foreign keys: a rule is not a row
+    # anywhere, it is a value scanners emit.
+    scanner_a = Column(String(100), nullable=False)
+    rule_a = Column(String(255), nullable=False)
+    scanner_b = Column(String(100), nullable=False)
+    rule_b = Column(String(255), nullable=False)
+
+    # What the AI proposed. 'equivalent' or 'distinct'.
+    verdict = Column(String(20), nullable=False)
+    confidence = Column(Numeric(3, 2))
+    # Which model said so, and what it was shown. Without these a verdict is
+    # an assertion nobody can re-examine when a model is replaced.
+    model = Column(String(255))
+    rationale = Column(Text)
+    evidence = Column(JSONB)
+    proposed_at = Column(DateTime, server_default=func.now())
+
+    # Human review. Null review_decision means unreviewed, which means the
+    # row does not affect grouping.
+    review_decision = Column(String(20), index=True)  # approved|rejected
+    reviewed_by = Column(String(255))
+    reviewed_at = Column(DateTime)
+    review_note = Column(Text)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id", "scanner_a", "rule_a", "scanner_b", "rule_b",
+            name="uq_rule_equivalence_pair",
+        ),
+        Index("ix_rule_equivalence_approved", "review_decision", "verdict"),
+    )
+
+    @property
+    def is_active_merge(self) -> bool:
+        """True when this row actually merges two identities."""
+        return self.review_decision == "approved" and self.verdict == "equivalent"
+
+    def __repr__(self):
+        return (f"<RuleEquivalence({self.scanner_a}:{self.rule_a} ~ "
+                f"{self.scanner_b}:{self.rule_b}, {self.verdict}, "
+                f"review={self.review_decision or 'pending'})>")

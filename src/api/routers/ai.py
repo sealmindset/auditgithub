@@ -148,6 +148,34 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize diagrams index: {e}")
 
+def _resolve_finding(db: Session, finding_id: Optional[str]):
+    """Resolve the identifier the API hands out to a Finding row.
+
+    `findings.id` and `findings.finding_uuid` are separate columns with
+    independent `gen_random_uuid()` defaults, and every read endpoint publishes
+    `finding_uuid` as the finding's `id`. A writer that filters on
+    `Finding.id` therefore matches nothing: measured on this estate,
+    `SELECT count(*) FROM findings WHERE id = finding_uuid` returns 0 of
+    769,825. That is how `/ai/remediate` came to generate remediations and
+    persist none of them for the lifetime of the feature.
+
+    Tries the public identifier first, then the primary key, so a caller
+    holding either one works. Returns None for a malformed UUID rather than
+    raising, leaving the caller to decide between 404 and a skipped write.
+    """
+    if not finding_id:
+        return None
+    try:
+        f_uuid = uuid.UUID(str(finding_id))
+    except (ValueError, AttributeError, TypeError):
+        logger.warning(f"Invalid UUID format for finding_id: {finding_id}")
+        return None
+    return (
+        db.query(models.Finding).filter(models.Finding.finding_uuid == f_uuid).first()
+        or db.query(models.Finding).filter(models.Finding.id == f_uuid).first()
+    )
+
+
 class RemediationRequest(BaseModel):
     vuln_type: str = Field(..., description="Vulnerability type (e.g. SQL Injection, XSS)")
     description: str = Field(..., description="Description of the vulnerability")
@@ -202,25 +230,38 @@ async def generate_remediation(
         # Persist if finding_id is provided
         if request.finding_id:
             try:
-                # Verify finding exists
-                finding = db.query(models.Finding).filter(models.Finding.id == request.finding_id).first()
+                finding = _resolve_finding(db, request.finding_id)
                 if finding:
                     new_remediation = models.Remediation(
-                        finding_id=request.finding_id,
+                        # The FK targets findings.id, not the public identifier
+                        # the caller sent. Writing request.finding_id here would
+                        # violate the constraint for every caller holding a
+                        # finding_uuid, which is all of them.
+                        finding_id=finding.id,
                         remediation_text=remediation_text,
                         diff=diff_text,
                         confidence=0.85 # Placeholder/Default confidence from AI
                     )
                     db.add(new_remediation)
-                    
+
                     # Update the "latest" cache on the finding for backward compatibility
                     finding.ai_remediation_text = remediation_text
                     finding.ai_remediation_diff = diff_text
-                    
+
                     db.commit()
                     db.refresh(new_remediation)
                     remediation_id = str(new_remediation.id)
+                else:
+                    # Previously silent. A miss here means the generated text is
+                    # returned to the caller and then discarded, so it is logged
+                    # loudly enough to be noticed rather than inferred from an
+                    # empty table months later.
+                    logger.warning(
+                        f"Remediation generated but not persisted: no finding matches "
+                        f"id {request.finding_id} on finding_uuid or id"
+                    )
             except Exception as db_err:
+                db.rollback()
                 logger.error(f"Failed to persist remediation: {db_err}")
                 # Don't fail the request if persistence fails, just log it
         
