@@ -5953,7 +5953,20 @@ def main():
                             status = "✓ active" if org.is_active else "✗ inactive"
                             default = " (default)" if org.is_default else ""
                             print(f"  {org.name}{default}")
-                            print(f"    GitHub: {org.github_org} | DB: {org.database_name}")
+                            # The database scans actually write to, not the
+                            # name on the row. Those differ whenever
+                            # MULTI_TENANT_ENABLED is false and the row still
+                            # names a database: the name is inert, and
+                            # printing it invites the reader to believe scan
+                            # results are somewhere they are not.
+                            scan_db = agent._scan_database_name(org)
+                            row_db = (org.database_name or '').strip()
+                            db_note = (
+                                f"{scan_db} (row says {row_db}, unused: single-database mode)"
+                                if row_db and row_db != scan_db
+                                else scan_db
+                            )
+                            print(f"    GitHub: {org.github_org} | DB: {db_note}")
                             print(f"    Status: {status} | Schema: {org.schema_sync_status}")
                             if org.last_scan_at:
                                 print(f"    Last scan: {org.last_scan_at}")

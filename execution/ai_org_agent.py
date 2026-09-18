@@ -12,6 +12,7 @@ and provides intelligent error recovery and drift detection.
 """
 
 import os
+import re
 import sys
 import asyncio
 import hashlib
@@ -60,6 +61,153 @@ class SchemaSyncStatus(Enum):
     DRIFT = "drift"
     ERROR = "error"
     UNKNOWN = "unknown"
+    # A row with no database_name has nothing to sync. Distinct from ERROR,
+    # which means a sync was attempted and failed.
+    SKIPPED = "skipped"
+
+
+# =============================================================================
+# Database names
+# =============================================================================
+#
+# Two prefixes were in use: create_organization() wrote "auditgithub_{name}"
+# and _auto_register_orgs_from_env() wrote "auditgh_{name}", so the same
+# organization got a different database name depending on which path
+# registered it. Both now go through default_database_name().
+DATABASE_NAME_PREFIX = "auditgithub_"
+
+# Postgres identifiers are truncated at 63 bytes (NAMEDATALEN - 1), and every
+# database name here is interpolated into DDL rather than passed as a
+# parameter -- CREATE DATABASE takes an identifier, which cannot be bound. So
+# the value is validated instead.
+_VALID_DATABASE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]{0,62}$")
+
+
+def default_database_name(org_name: str) -> str:
+    """Database name for an organization registered without one."""
+    return f"{DATABASE_NAME_PREFIX}{org_name.lower().strip()}"
+
+
+# Queries whose combined output is a database's schema fingerprint. Ordering
+# is fixed in SQL so the hash does not depend on the server's chosen plan.
+#
+# Two deliberate insensitivities:
+#
+#   * Columns are ordered by name, not by ordinal_position. A table built by
+#     one CREATE TABLE and a table built by CREATE TABLE plus later ADD COLUMN
+#     hold their columns in different physical order while being the same
+#     schema to everything that queries them. Ordering by position would call
+#     that drift.
+#   * Constraints are identified by their definition, not their name.
+#     PostgreSQL generates names like '2200_16410_1_not_null' that differ
+#     between databases holding identical constraints.
+_SCHEMA_FINGERPRINT_QUERIES = (
+    """
+    SELECT table_schema, table_name, column_name, data_type,
+           coalesce(character_maximum_length, -1),
+           coalesce(numeric_precision, -1),
+           coalesce(numeric_scale, -1),
+           is_nullable,
+           coalesce(column_default, '')
+    FROM information_schema.columns
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+    ORDER BY table_schema, table_name, column_name
+    """,
+    """
+    SELECT n.nspname, c.relname, pg_get_constraintdef(k.oid)
+    FROM pg_constraint k
+    JOIN pg_class c ON c.oid = k.conrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+    ORDER BY 1, 2, 3
+    """,
+    """
+    SELECT schemaname, tablename, indexdef
+    FROM pg_indexes
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+    ORDER BY 1, 2, 3
+    """,
+)
+
+
+def split_sql_statements(sql: str) -> List[str]:
+    """Split a schema file into executable statements.
+
+    Splitting on ';' leaves each statement carrying the comment lines that
+    preceded it, so a fragment reads:
+
+        -- 1. Users & Authentication
+        CREATE TABLE IF NOT EXISTS users (...)
+
+    The previous filter was `if stmt and not stmt.startswith('--')`, which
+    discarded that entire fragment as a comment. Every table in
+    scripts/setup/schema.sql is preceded by a numbered comment, so all nine
+    CREATE TABLE statements were skipped and only the seven comment-free
+    fragments ran -- five of which were indexes on the tables that had just
+    been skipped, producing 'relation "findings" does not exist'. The applier
+    could create zero tables and report success.
+
+    Leading comments are dropped rather than the statement; Postgres would
+    accept them either way, but the emptiness check has to run against the
+    code, not the commentary.
+
+    Splitting on ';' is still wrong for dollar-quoted function bodies. The
+    schema file this is used on contains none; a guard raises rather than
+    silently truncating one if that changes.
+    """
+    if '$$' in sql:
+        raise ValueError(
+            "schema contains dollar-quoted text ($$), which splitting on ';' "
+            "would cut in half. Apply this schema with psql, or add proper "
+            "statement parsing before removing this guard."
+        )
+
+    statements = []
+    for fragment in sql.split(';'):
+        lines = fragment.splitlines()
+        while lines and (not lines[0].strip() or lines[0].lstrip().startswith('--')):
+            lines.pop(0)
+        statement = '\n'.join(lines).strip()
+        if statement:
+            statements.append(statement)
+    return statements
+
+
+def _statement_label(statement: str) -> str:
+    """First line of a statement, for error messages."""
+    return statement.split('\n')[0][:120]
+
+
+def validate_database_name(database_name: Optional[str], *, context: str) -> str:
+    """Reject a database name that cannot safely be interpolated into DDL.
+
+    A row with database_name NULL reached CREATE DATABASE as the empty
+    string -- _row_to_org() coerces NULL to '' so the dataclass field stays a
+    str -- and Postgres answered:
+
+        zero-length delimited identifier
+        LINE 1: CREATE DATABASE ""
+
+    which was then stored in schema_sync_error and reported on every startup
+    as a sync failure. The missing value is the fault; the DDL error is three
+    frames downstream of it and names neither the organization nor the column.
+    Callers that can legitimately have no database name should check before
+    calling rather than rely on this.
+    """
+    name = (database_name or "").strip()
+    if not name:
+        raise ValueError(
+            f"{context}: no database_name. The organizations row has NULL or an "
+            "empty database_name, so there is no database to act on. Set one "
+            f"(convention: {DATABASE_NAME_PREFIX}<org>) or skip this step."
+        )
+    if not _VALID_DATABASE_NAME.match(name):
+        raise ValueError(
+            f"{context}: {name!r} is not a usable PostgreSQL database name. "
+            "Expected up to 63 characters of letters, digits, underscore or $, "
+            "starting with a letter or underscore."
+        )
+    return name
 
 
 @dataclass
@@ -150,6 +298,21 @@ class AIOrganizationAgent:
             # Fallback defaults
             self.master_db_url = 'postgresql://postgres:postgres@localhost:5432/security_portal'
         self.auto_sync = auto_sync
+
+        # Whether organizations live in databases of their own. The API reads
+        # the same variable (src/api/database.py, src/api/dependencies.py,
+        # src/rbac/dependencies.py), and it defaults to false: one database,
+        # rows separated by organization_id.
+        #
+        # The agent used to ignore it and point scans at a per-organization
+        # database unconditionally. Since no such database was ever populated,
+        # `scan_repos.py --target sleepnumberinc` -- which is what the
+        # organization scan button runs -- rebound its session to a database
+        # with no `repositories` table while the UI read the master.
+        self.multi_tenant = (
+            os.environ.get('MULTI_TENANT_ENABLED', 'false').lower() == 'true'
+        )
+
         self._current_org: Optional[Organization] = None
         self._initialized = False
         self._db_pool = None
@@ -248,11 +411,17 @@ class AIOrganizationAgent:
             github_org = credentials.get('github_org', org_name)
             
             # Register in database
-            # Each org gets a unique database_name entry (even if sharing the same DB)
             try:
-                # Use org-specific database name for the record
-                # This allows future isolation if needed
-                database_name = f"auditgh_{org_name}"
+                # A database name only when this deployment gives each
+                # organization a database. The comment here used to read
+                # 'each org gets a unique database_name entry (even if
+                # sharing the same DB)' -- but the entry is what the scan
+                # path reads to decide where results go, so recording a name
+                # for a database that does not exist is not a note about a
+                # possible future, it is an instruction followed today.
+                database_name = (
+                    default_database_name(org_name) if self.multi_tenant else None
+                )
                 
                 query = """
                     INSERT INTO organizations (
@@ -383,32 +552,45 @@ class AIOrganizationAgent:
         github_org: str,
         github_token: str,
         display_name: Optional[str] = None,
-        create_database: bool = True,
+        create_database: Optional[bool] = None,
         set_as_default: bool = False
     ) -> Organization:
         """
-        Create a new organization with isolated database.
-        
+        Create a new organization, with a database of its own if this
+        deployment uses one per organization.
+
         Steps:
         1. Validate inputs
-        2. Create database from master schema (if create_database=True)
+        2. Create database from master schema (if create_database)
         3. Store credentials in secrets manager
         4. Register in organizations table
-        
+
         Args:
             name: Internal organization name (lowercase, no spaces)
             github_org: GitHub organization name
             github_token: GitHub personal access token
             display_name: Human-readable display name
-            create_database: Create new database (False to use existing)
+            create_database: Create a database for this organization. Default
+                None means "whatever this deployment does" --
+                MULTI_TENANT_ENABLED. It used to default to True regardless,
+                so registering an organization on a single-database
+                deployment created a database that nothing would ever read,
+                and recorded its name on the row as though it were in use.
             set_as_default: Set as default organization
-            
+
         Returns:
             Created Organization object
         """
         name = name.lower().strip()
-        database_name = f"auditgithub_{name}"
-        
+
+        if create_database is None:
+            create_database = self.multi_tenant
+
+        # NULL, not a name, when there is no database of its own. A name on
+        # the row is a claim that the database exists; the skip and fallback
+        # paths both key off the column being empty.
+        database_name = default_database_name(name) if create_database else None
+
         # Validate name
         if not name.isalnum() and '_' not in name:
             raise ValueError(f"Invalid organization name: {name}. Use alphanumeric and underscores only.")
@@ -427,10 +609,7 @@ class AIOrganizationAgent:
         
         # Store credentials
         await set_org_credentials(name, github_token, github_org)
-        
-        # Get master schema version
-        schema_hash = await self._get_schema_hash(self.master_db_name)
-        
+
         # Insert organization record
         # Insert organization record
         query = """
@@ -548,15 +727,24 @@ class AIOrganizationAgent:
     async def get_schema_hash(self, database_name: Optional[str] = None) -> str:
         """
         Get SHA-256 hash of database schema.
-        
+
         Args:
             database_name: Database to hash (defaults to master)
-            
+
         Returns:
             Schema hash string
+
+        Raises:
+            ValueError: the database does not exist. Returning a placeholder
+                hash for an absent database is what let the old
+                implementation compare master against nothing and call the
+                difference drift.
         """
         db_name = database_name or self.master_db_name
-        return await self._get_schema_hash(db_name)
+        digest = await self._get_schema_hash(db_name)
+        if digest is None:
+            raise ValueError(f"Database '{db_name}' does not exist")
+        return digest
     
     async def check_schema_drift(self) -> List[Dict[str, Any]]:
         """
@@ -565,15 +753,52 @@ class AIOrganizationAgent:
         Returns:
             List of drift reports per organization
         """
-        master_hash = await self._get_schema_hash(self.master_db_name)
         orgs = await self.list_organizations()
-        
+
+        if not self.multi_tenant:
+            # Nothing to drift from: every organization is in the master
+            # database, whose schema is the reference.
+            return [{
+                'organization': org.name,
+                'database': self.master_db_name,
+                'is_synced': None,
+                'status': 'skipped',
+                'reason': 'MULTI_TENANT_ENABLED is false; all organizations '
+                          'share the master database',
+            } for org in orgs]
+
+        master_hash = await self._get_schema_hash(self.master_db_name)
+
         results = []
         for org in orgs:
+            if not (org.database_name or '').strip():
+                # An unset database_name is not drift. The old code hashed the
+                # empty string here and reported a difference between master
+                # and a database that does not exist.
+                results.append({
+                    'organization': org.name,
+                    'database': None,
+                    'is_synced': None,
+                    'status': 'skipped',
+                    'reason': 'no database_name set',
+                })
+                continue
+
             try:
                 org_hash = await self._get_schema_hash(org.database_name)
+
+                if org_hash is None:
+                    results.append({
+                        'organization': org.name,
+                        'database': org.database_name,
+                        'is_synced': False,
+                        'status': 'missing',
+                        'reason': 'database does not exist',
+                    })
+                    continue
+
                 is_synced = master_hash == org_hash
-                
+
                 results.append({
                     'organization': org.name,
                     'database': org.database_name,
@@ -582,17 +807,14 @@ class AIOrganizationAgent:
                     'org_hash': org_hash[:12],
                     'status': 'synced' if is_synced else 'drift'
                 })
-                
-                # Update org status in database
-                # Update org status in database (Skipped - columns not in schema)
-                # status = 'synced' if is_synced else 'drift'
-                # await self._execute_query(
-                #    """UPDATE organizations 
-                #       SET schema_sync_status = $1, schema_version = $2
-                #       WHERE id = $3""",
-                #    status, org_hash, org.id
-                # )
-                
+
+                # The status write that used to live here was commented out
+                # with '(Skipped - columns not in schema)'. The columns exist
+                # now -- migrations/025_organization_scan_columns.sql added
+                # them -- but a function named check_* should not write, and
+                # sync_schema() already records the status. Left out
+                # deliberately rather than left commented.
+
             except Exception as e:
                 results.append({
                     'organization': org.name,
@@ -617,13 +839,43 @@ class AIOrganizationAgent:
         org = await self.get_organization(org_name)
         if not org:
             raise ValueError(f"Organization '{org_name}' not found")
-        
+
         print(f"[AIOrganizationAgent] Syncing schema for: {org_name}")
-        
+
+        if not self.multi_tenant:
+            # One database, rows separated by organization_id. There is no
+            # per-organization schema to keep in step, and creating one would
+            # produce a database nothing reads -- which is where the two empty
+            # auditgithub_* databases on this host came from.
+            await self._record_sync_skipped(org.id, org_name)
+            return {
+                'organization': org_name,
+                'status': 'skipped',
+                'reason': 'MULTI_TENANT_ENABLED is false; all organizations '
+                          'share the master database',
+            }
+
+        if not (org.database_name or '').strip():
+            # Nothing to sync, and nothing wrong. In single-database mode
+            # (MULTI_TENANT_ENABLED=false, the default) every organization
+            # lives in the master database and switch_organization() already
+            # falls back to it when database_name is unset. Inventing a name
+            # here would create an empty database that nothing reads, which is
+            # how the two stray auditgithub_* databases on this host appeared.
+            await self._record_sync_skipped(org.id, org_name)
+            return {
+                'organization': org_name,
+                'status': 'skipped',
+                'reason': 'no database_name set; organization uses the master database',
+            }
+
         master_hash = await self._get_schema_hash(self.master_db_name)
         org_hash = await self._get_schema_hash(org.database_name)
-        
-        if master_hash == org_hash:
+
+        # org_hash is None when the database does not exist yet, which is not
+        # equal to any master hash and so falls through to the apply below --
+        # _apply_master_schema() creates it.
+        if org_hash is not None and master_hash == org_hash:
             return {
                 'organization': org_name,
                 'status': 'already_synced',
@@ -633,25 +885,39 @@ class AIOrganizationAgent:
         # Apply master schema to org database
         try:
             await self._apply_master_schema(org.database_name)
-            
-            # Update org record
+
+            # Verify, rather than assume. 'synced' was written whenever
+            # _apply_master_schema() returned, and it returns after logging
+            # per-statement failures as warnings -- so both organizations on
+            # this host recorded schema_sync_status='synced' while holding one
+            # table and zero tables respectively, against the master's 66. A
+            # status that is written without being checked is not a status.
             new_hash = await self._get_schema_hash(org.database_name)
+            if new_hash != master_hash:
+                raise RuntimeError(
+                    f"schema apply did not reproduce the master schema: "
+                    f"master {master_hash[:12]}, "
+                    f"{org.database_name} {('missing' if new_hash is None else new_hash[:12])} "
+                    f"after applying. Check the per-statement warnings above."
+                )
+
             await self._execute_query(
-                """UPDATE organizations 
-                   SET schema_sync_status = 'synced', 
+                """UPDATE organizations
+                   SET schema_sync_status = 'synced',
                        schema_version = $1,
+                       schema_sync_error = NULL,
                        last_schema_sync = NOW()
                    WHERE id = $2""",
                 new_hash, org.id
             )
-            
+
             return {
                 'organization': org_name,
                 'status': 'synced',
-                'old_hash': org_hash[:12],
+                'old_hash': 'missing' if org_hash is None else org_hash[:12],
                 'new_hash': new_hash[:12]
             }
-            
+
         except Exception as e:
             await self._execute_query(
                 """UPDATE organizations 
@@ -662,34 +928,62 @@ class AIOrganizationAgent:
             )
             raise
     
+    async def _record_sync_skipped(self, org_id: str, org_name: str):
+        """Mark an organization as having nothing to sync, and clear any error.
+
+        The stale error matters: before the skip existed, this organization
+        recorded 'zero-length delimited identifier' in schema_sync_error, and
+        that text stayed on the row through every subsequent startup because
+        nothing ever wrote over it. `--list-orgs` went on reporting
+        'Schema: error' for a condition that was no longer being attempted.
+        """
+        try:
+            await self._execute_query(
+                """UPDATE organizations
+                   SET schema_sync_status = 'skipped',
+                       schema_sync_error = NULL,
+                       last_schema_sync = NOW()
+                   WHERE id = $1""",
+                org_id
+            )
+        except Exception as e:
+            print(f"[AIOrganizationAgent] Could not record skipped sync for "
+                  f"{org_name}: {e}")
+
     async def sync_all_schemas(self) -> Dict[str, Any]:
         """
         Sync all organization schemas with master.
-        
+
         Returns:
             Summary of sync results
         """
         print("[AIOrganizationAgent] Syncing all organization schemas...")
-        
+
         orgs = await self.list_organizations()
         results = {
             'total': len(orgs),
             'synced': 0,
             'already_synced': 0,
+            # Counted apart from errors. Folding the two together is what made
+            # startup report '2 synced, 1 errors' for a configuration that has
+            # nothing to sync.
+            'skipped': 0,
             'errors': 0,
             'details': []
         }
-        
+
         for org in orgs:
             try:
                 result = await self.sync_schema(org.name)
                 results['details'].append(result)
-                
+
                 if result['status'] == 'synced':
                     results['synced'] += 1
                 elif result['status'] == 'already_synced':
                     results['already_synced'] += 1
-                    
+                elif result['status'] == 'skipped':
+                    results['skipped'] += 1
+
             except Exception as e:
                 results['errors'] += 1
                 results['details'].append({
@@ -699,7 +993,8 @@ class AIOrganizationAgent:
                 })
         
         print(f"[AIOrganizationAgent] Schema sync complete: {results['synced']} synced, "
-              f"{results['already_synced']} already synced, {results['errors']} errors")
+              f"{results['already_synced']} already synced, {results['skipped']} skipped, "
+              f"{results['errors']} errors")
         
         return results
     
@@ -736,11 +1031,20 @@ class AIOrganizationAgent:
         os.environ['GITHUB_TOKEN'] = credentials['github_token']
         os.environ['GITHUB_ORG'] = credentials.get('github_org', org.github_org)
 
-        # Determine database name - use org-specific if set, otherwise fall back to env default
-        db_name = org.database_name if org.database_name else os.getenv('POSTGRES_DB', 'security_portal')
+        # Which database this organization's scan results belong in.
+        #
+        # Only a multi-tenant deployment has a database per organization. With
+        # MULTI_TENANT_ENABLED false -- the default, and the setting here --
+        # everything lives in the master database separated by
+        # organization_id, and pointing a scan elsewhere sends its results to
+        # a database the UI does not read. That is what was happening:
+        # scan_repos.py rebinds SessionLocal to whatever this sets, and
+        # auditgithub_sleepnumberinc has no `repositories` table at all, so an
+        # organization scan raised 'relation "repositories" does not exist'
+        # per repository while 2,540 repositories sat in the master.
+        db_name = self._scan_database_name(org)
 
         # Set database URL for this organization
-        # This ensures scan results go to the org-specific database
         org_db_url = f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{db_name}"
         os.environ['DATABASE_URL'] = org_db_url
 
@@ -758,6 +1062,19 @@ class AIOrganizationAgent:
     def get_current_organization(self) -> Optional[Organization]:
         """Get currently selected organization."""
         return self._current_org
+
+    def _scan_database_name(self, org: Organization) -> str:
+        """The database an organization's scan results belong in.
+
+        The master database unless this deployment is multi-tenant *and* the
+        organization has a database of its own. Both conditions, not either:
+        a database_name on the row means nothing if the deployment keeps all
+        organizations in one database, and multi-tenancy means nothing for an
+        organization whose row names no database.
+        """
+        if self.multi_tenant and (org.database_name or '').strip():
+            return org.database_name.strip()
+        return self.master_db_name
     
     async def get_database_url(self, org_name: Optional[str] = None) -> str:
         """
@@ -776,50 +1093,96 @@ class AIOrganizationAgent:
         
         if not org:
             return self.master_db_url
-        
-        return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{org.database_name}"
+
+        # Same rule as select_organization(), through the same helper. An
+        # empty database_name used to produce a URL ending in '/', which is a
+        # valid libpq URL: it connects to the database named after the user.
+        # Scan data would have landed in 'postgres' with no error anywhere.
+        db_name = self._scan_database_name(org)
+        if db_name == self.master_db_name:
+            return self.master_db_url
+
+        return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{db_name}"
     
     # =========================================================================
     # Scan Orchestration
     # =========================================================================
     
-    async def start_scan(
+    async def mark_scan_started(
         self,
         org_name: str,
         repos: Optional[List[str]] = None,
         scan_type: str = "full"
     ) -> Dict[str, Any]:
         """
-        Start scan for organization.
-        
+        Record that a scan of this organization has begun.
+
+        This only moves the organization row to 'scanning' and loads the org's
+        credentials into the agent context. It starts no process: the scan
+        itself is owned by src.services.scan_runner. The method was previously
+        named start_scan, which read as though it launched the scanner -- it
+        never did, and the UI's progress bar polled a flag nothing advanced.
+
         Args:
             org_name: Organization name
-            repos: Optional list of specific repos to scan
+            repos: Optional list of specific repos being scanned
             scan_type: Type of scan ('full', 'incremental', 'secrets')
-            
+
         Returns:
-            Scan job info
+            Scan context: which org, which GitHub org, which database
         """
         # Select organization (loads credentials)
         org = await self.select_organization(org_name)
-        
+
         # Update scan status
         await self._execute_query(
-            """UPDATE organizations 
+            """UPDATE organizations
                SET scan_status = 'scanning', scan_progress = 0
                WHERE id = $1""",
             org.id
         )
-        
+
         return {
             'organization': org_name,
             'github_org': org.github_org,
             'database': org.database_name,
             'repos': repos,
             'scan_type': scan_type,
-            'status': 'started'
+            'status': 'scanning'
         }
-    
+
+    async def finish_scan(
+        self,
+        org_name: str,
+        status: str = 'idle',
+        error: Optional[str] = None
+    ):
+        """
+        Record the end of a scan without touching the repository or finding
+        totals.
+
+        complete_scan() overwrites total_repos and total_findings, so a caller
+        that does not already know both would have to invent them. Those two
+        columns are maintained by repository import and by scan_repos.py's own
+        ingestion step; a scan finishing is not the moment to guess at them.
+
+        Args:
+            org_name: Organization name
+            status: Terminal scan_status ('idle', 'error', 'cancelled')
+            error: Unused here, retained for logging symmetry with complete_scan
+        """
+        if error:
+            print(f"[AIOrganizationAgent] Scan of {org_name} ended with error: {error}")
+        await self._execute_query(
+            """UPDATE organizations
+               SET scan_status = $1,
+                   scan_progress = 100,
+                   last_scan_at = NOW(),
+                   total_scans = total_scans + 1
+               WHERE LOWER(name) = LOWER($2)""",
+            status, org_name
+        )
+
     async def update_scan_progress(self, org_name: str, progress: int, status: str = 'scanning'):
         """Update scan progress for organization."""
         await self._execute_query(
@@ -904,7 +1267,6 @@ class AIOrganizationAgent:
         """Execute a database query."""
         # Convert $1, $2 style to %s for psycopg2
         if psycopg2:
-            import re
             psycopg_query = re.sub(r'\$(\d+)', r'%s', query)
             
             conn = psycopg2.connect(self.master_db_url)
@@ -922,41 +1284,91 @@ class AIOrganizationAgent:
         else:
             raise RuntimeError("No database driver available")
     
-    async def _get_schema_hash(self, database_name: str) -> str:
-        """Get SHA-256 hash of database schema DDL."""
-        # Get schema DDL using pg_dump
+    async def _get_schema_hash(self, database_name: str) -> Optional[str]:
+        """SHA-256 fingerprint of a database's schema, or None if it does not exist.
+
+        This used to shell out to pg_dump. pg_dump is not installed in the api
+        image -- neither is psql -- so every call raised FileNotFoundError and
+        took the fallback arm, which returned:
+
+            hashlib.sha256(database_name.encode()).hexdigest()
+
+        the hash of the database *name*. Two consequences, both silent:
+
+          * The master's name never equals an organization's name, so
+            master_hash != org_hash always. sync_schema() therefore concluded
+            drift and re-applied the entire master schema on every single
+            agent startup, forever. The stored schema_version for
+            sleepnumberinc was exactly sha256(b'auditgithub_sleepnumberinc').
+          * A hash of a name cannot change when a schema changes, so the
+            column documented as 'SHA-256 hash of current schema DDL for
+            drift detection' could not detect drift either.
+
+        Reading the catalog through psycopg2 removes the dependency on a
+        client binary being present, which is what made the environment decide
+        the algorithm. One algorithm, everywhere: two hosts using different
+        ones would report permanent false drift -- today's bug wearing a
+        different hat.
+        """
+        if not psycopg2:
+            raise RuntimeError("psycopg2 required to fingerprint a schema")
+
+        database_name = validate_database_name(
+            database_name, context="Cannot fingerprint schema"
+        )
+
+        if not await self._database_exists(database_name):
+            return None
+
+        digest = hashlib.sha256()
+        conn = psycopg2.connect(
+            host=self.db_host,
+            port=self.db_port,
+            user=self.db_user,
+            password=self.db_password,
+            database=database_name,
+        )
         try:
-            result = subprocess.run(
-                [
-                    'pg_dump',
-                    '-h', self.db_host,
-                    '-p', str(self.db_port),
-                    '-U', self.db_user,
-                    '-d', database_name,
-                    '--schema-only',
-                    '--no-owner',
-                    '--no-privileges'
-                ],
-                capture_output=True,
-                text=True,
-                env={**os.environ, 'PGPASSWORD': self.db_password}
-            )
-            
-            if result.returncode != 0:
-                # Database might not exist yet
-                return hashlib.sha256(b'').hexdigest()
-            
-            # Hash the schema DDL
-            return hashlib.sha256(result.stdout.encode()).hexdigest()
-            
-        except FileNotFoundError:
-            # pg_dump not available, use fallback
-            return hashlib.sha256(database_name.encode()).hexdigest()
-    
+            with conn.cursor() as cur:
+                for query in _SCHEMA_FINGERPRINT_QUERIES:
+                    cur.execute(query)
+                    for row in cur.fetchall():
+                        digest.update(
+                            '\x1f'.join('' if v is None else str(v) for v in row).encode()
+                        )
+                        digest.update(b'\x1e')
+        finally:
+            conn.close()
+
+        return digest.hexdigest()
+
+    async def _database_exists(self, database_name: str) -> bool:
+        """Whether a database exists, asked of the master connection."""
+        conn = psycopg2.connect(
+            host=self.db_host,
+            port=self.db_port,
+            user=self.db_user,
+            password=self.db_password,
+            database=self.master_db_name,
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s",
+                    (database_name,),
+                )
+                return cur.fetchone() is not None
+        finally:
+            conn.close()
+
+
     async def _create_database(self, database_name: str):
         """Create a new database."""
+        database_name = validate_database_name(
+            database_name, context="Cannot create database"
+        )
         print(f"[AIOrganizationAgent] Creating database: {database_name}")
-        
+
         if psycopg2:
             # Connect to master database to create new db
             # Use master_db_name instead of 'postgres' for compatibility
@@ -1105,22 +1517,32 @@ class AIOrganizationAgent:
             conn = psycopg2.connect(db_url)
             conn.autocommit = True
             
+            failures = []
+            statements = split_sql_statements(schema_sql)
             with conn.cursor() as cur:
-                # Execute schema - split by semicolons and execute each statement
-                # This is a simplified approach; complex schemas may need better parsing
-                statements = [s.strip() for s in schema_sql.split(';') if s.strip()]
                 for stmt in statements:
-                    if stmt and not stmt.startswith('--'):
-                        try:
-                            cur.execute(stmt)
-                        except Exception as e:
-                            # Log but continue - some statements may fail if objects exist
-                            if 'already exists' not in str(e).lower():
-                                print(f"[AIOrganizationAgent] Statement warning: {e}")
-            
+                    try:
+                        cur.execute(stmt)
+                    except Exception as e:
+                        # 'already exists' is the idempotent re-run case and is
+                        # genuinely fine. Everything else is collected and
+                        # raised below: these were printed as warnings and then
+                        # the caller wrote schema_sync_status='synced'
+                        # regardless.
+                        if 'already exists' not in str(e).lower():
+                            failures.append((_statement_label(stmt), str(e).strip()))
+
             conn.close()
+
+            if failures:
+                detail = '; '.join(f"{stmt!r}: {err}" for stmt, err in failures[:3])
+                raise RuntimeError(
+                    f"{len(failures)} of {len(statements)} statements failed "
+                    f"applying the schema to {database_name}. First: {detail}"
+                )
+
             print(f"[AIOrganizationAgent] Schema applied via psycopg2 to: {database_name}")
-            
+
         except psycopg2.OperationalError as e:
             print(f"[AIOrganizationAgent] Database connection error: {e}")
             raise
@@ -1129,7 +1551,11 @@ class AIOrganizationAgent:
         """Ensure a database exists, creating it if necessary."""
         if not psycopg2:
             raise RuntimeError("psycopg2 required for database creation")
-        
+
+        database_name = validate_database_name(
+            database_name, context="Cannot ensure database exists"
+        )
+
         # Connect to master database to check/create
         conn = psycopg2.connect(
             host=self.db_host,
