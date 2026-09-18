@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, LayoutGrid, List, Clock, FileCode, Archive, ShieldAlert, ShieldCheck, Users } from "lucide-react"
 import Link from "next/link"
 import { ProjectScorecard } from "@/components/project-scorecard"
+import { FindingsSelectionToolbar } from "@/components/findings-selection-toolbar"
 import { API_BASE, apiFetch } from "@/lib/api"
 import { PageHeader, PageShell } from "@/components/ui/page-header"
 import {
@@ -411,6 +412,10 @@ export default function FindingsPage() {
     const [viewMode, setViewMode] = useState<"table" | "scorecard">("table")
     const [total, setTotal] = useState(0)
     const [filingIndex, setFilingIndex] = useState<FilingIndex | null>(null)
+    // Bumped after a selection action files an issue or deletes findings, so
+    // the AuditBoard column and the row set reflect what just happened rather
+    // than waiting for a page reload.
+    const [reloadKey, setReloadKey] = useState(0)
 
     // One request for every filing, not one per row. Failure is silent: a
     // missing AuditBoard column should not stop the findings table rendering.
@@ -425,7 +430,7 @@ export default function FindingsPage() {
         return () => {
             cancelled = true
         }
-    }, [])
+    }, [reloadKey])
 
     const columns = useMemo(
         () => [...baseColumns, auditBoardColumn(filingIndex)],
@@ -477,7 +482,7 @@ export default function FindingsPage() {
         }
 
         fetchFindings()
-    }, [])
+    }, [reloadKey])
 
     if (loading && findings.length === 0) {
         return (
@@ -537,6 +542,24 @@ export default function FindingsPage() {
                     tableId="findings"
                     enableGrouping={true}
                     initialPageSize={50}
+                    enableSelectionColumn={true}
+                    // Keyed on the finding's own id, not the row index.
+                    // Without this the ticks stay on positions, so sorting or
+                    // filtering would move a selection onto other findings —
+                    // and one of the buttons on the selection toolbar files a
+                    // GRC record that cannot be deleted.
+                    getRowId={(row) => row.id}
+                    selectionToolbar={(selection) => (
+                        <FindingsSelectionToolbar
+                            findings={selection.rows}
+                            hiddenCount={selection.hiddenCount}
+                            filteredCount={selection.filteredCount}
+                            loadedCount={findings.length}
+                            totalCount={total}
+                            onClear={selection.clear}
+                            onChanged={() => setReloadKey((key) => key + 1)}
+                        />
+                    )}
                 />
             ) : (
                 <ProjectScorecard />

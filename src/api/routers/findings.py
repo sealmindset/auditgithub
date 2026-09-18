@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, case, func, or_
-from typing import List, Optional, Dict
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from loguru import logger
 from ..dependencies import get_tenant_db
 from ..database import get_current_org_id
@@ -9,6 +9,8 @@ from ..config import settings
 from .. import models
 from pydantic import BaseModel, Field
 from datetime import datetime
+import json
+import re
 import uuid
 from ..utils.risk_scoring import calculate_risk_score, get_risk_level
 from src.auth.dependencies import get_current_user
@@ -1046,8 +1048,11 @@ def create_auditboard_issue(
     description, redacted = redact_snippet(request.description, finding)
     if redacted:
         logger.warning(
+            # Brace style, not %s: this module logs through loguru, which
+            # does not do printf interpolation and would print the literal
+            # placeholders instead of the values.
             "Redacted a secret-scanner snippet from an AuditBoard body for "
-            "finding %s (scanner=%s) before sending it",
+            "finding {} (scanner={}) before sending it",
             finding.finding_uuid, finding.scanner_name,
         )
 
@@ -1148,8 +1153,8 @@ def create_auditboard_issue(
     issue_url = auditboard_client.issue_url(issue_id)
 
     logger.info(
-        "AuditBoard issue %s created from finding %s (tier=%s, identity=%s, "
-        "occurrences=%s, projects=%s)",
+        "AuditBoard issue {} created from finding {} (tier={}, identity={}, "
+        "occurrences={}, projects={})",
         issue_id, finding.finding_uuid, tier.value,
         population.identity.key if population else "none",
         occurrence_count, project_count,
@@ -1197,7 +1202,7 @@ def create_auditboard_issue(
     except Exception as exc:
         db.rollback()
         logger.error(
-            "AuditBoard issue %s was created but could not be recorded locally: %s",
+            "AuditBoard issue {} was created but could not be recorded locally: {}",
             issue_id, exc,
         )
 
@@ -1212,6 +1217,407 @@ def create_auditboard_issue(
         location_count=population.location_count if population else 0,
         locations_omitted=locations_omitted,
         identity_key=population.identity.key if population else None,
+    )
+
+
+# =============================================================================
+# Filing from a hand-picked selection
+#
+# Every other scope is a rule, so the server can re-derive what an issue covers
+# from the issue row alone. A selection is a list of rows someone ticked, which
+# means two things this file has to handle differently: the membership is
+# written down rather than derived, and the set the filer believed they picked
+# has to be checked against the set that actually arrived. The findings table
+# holds at most 5,000 of 767,974 findings and filters
+# client-side over that slice, so "everything matching my filters" in the
+# browser is not everything matching in the database. An AuditBoard issue
+# cannot be deleted or its description edited, so a silent shortfall here is
+# permanent.
+# =============================================================================
+
+
+class SelectionRequest(BaseModel):
+    """The ticked rows, and how many the filer was told they ticked."""
+
+    finding_ids: List[str] = Field(
+        description="Finding ids to cover. Order is irrelevant; duplicates are collapsed.",
+        min_length=1,
+    )
+    expected_count: Optional[int] = Field(
+        default=None,
+        description=(
+            "How many distinct findings the caller believes it is submitting. "
+            "When given, the server refuses the request if it resolves a "
+            "different number. This is the guard against filing a permanent "
+            "record for a smaller set than the one the person saw selected."
+        ),
+    )
+
+
+class SelectionPreviewResponse(BaseModel):
+    """What an issue filed from this selection would cover. Read-only."""
+
+    finding_count: int = Field(description="Findings resolved from the submitted ids")
+    submitted_count: int = Field(description="Distinct ids submitted")
+    project_count: int
+    location_count: int
+    locations_omitted: int = Field(description="Locations the body would omit for length")
+    severity: Optional[str] = Field(default=None, description="Highest severity in the selection")
+    severity_breakdown: List[Dict[str, Any]] = Field(default_factory=list)
+    identity_keys: List[str] = Field(
+        default_factory=list,
+        description="Every distinct defect in the selection, as scanner::rule",
+    )
+    repo_names: List[str] = Field(default_factory=list)
+    missing_ids: List[str] = Field(
+        default_factory=list,
+        description="Submitted ids that matched no finding in this tenant",
+    )
+    ineligible: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="Selected findings the filing policy would refuse, with the reason",
+    )
+    already_filed: List[str] = Field(
+        default_factory=list,
+        description="Selected finding ids an existing issue already covers",
+    )
+
+
+class SelectionIssueRequest(SelectionRequest):
+    """Request to file one AuditBoard issue covering a hand-picked selection."""
+
+    title: str = Field(description="Normalized issue title, as previewed by the filer")
+    description: str = Field(description="Normalized issue body, as previewed by the filer")
+    deficiency_level_id: Optional[int] = Field(
+        default=None, description="Override the default severity mapping."
+    )
+    executive_summary: Optional[str] = Field(default=None)
+    include_ineligible: bool = Field(
+        default=False,
+        description=(
+            "File even when the selection contains findings below the severity "
+            "floor or already marked not-actionable. Those findings are still "
+            "covered; the issue body says so."
+        ),
+    )
+
+
+@router.post(
+    "/selection/preview",
+    dependencies=[Depends(require_permissions("findings:read"))],
+    response_model=SelectionPreviewResponse,
+    summary="Measure what an issue filed from a selection would cover",
+)
+def preview_selection(
+    request: SelectionRequest,
+    db: Session = Depends(get_tenant_db),
+):
+    """Measure a hand-picked selection. Reads only; calls nothing external.
+
+    The same service answers this and the filing endpoint, so what the filer is
+    shown and what the issue claims cannot diverge.
+    """
+    from ..services import finding_groups as groups
+
+    org_id = get_current_org_id()
+    submitted = list(dict.fromkeys(str(i) for i in request.finding_ids))
+
+    # Resolved here rather than inside the service, because ids arrive from the
+    # browser as ``finding_uuid`` while everything internal keys on ``id`` —
+    # two independent columns that agree on none of the rows. Resolve once,
+    # then measure the real ids, so the preview and the filing agree.
+    rows, missing = _resolve_selection(db, submitted)
+    population = groups.measure_selection(db, [str(r.id) for r in rows], org_id)
+
+    max_locations = settings.FILING_MAX_LOCATIONS
+    omitted = max(0, population.location_count - max_locations)
+
+    # Which of these are already covered by an issue. Asked per finding rather
+    # than in one query because filing_match_condition is per finding, and a
+    # selection is small by construction.
+    equivalence = groups.load_equivalence_map(db, org_id)
+    already: List[str] = []
+    for row in rows:
+        members = equivalence.members(groups.identity_of(row)) if groups.identity_of(row) else None
+        condition = groups.filing_match_condition(row, members)
+        exists = (
+            db.query(models.AuditBoardIssue.id)
+            .filter(or_(models.AuditBoardIssue.finding_id == row.id, condition))
+            .first()
+        )
+        if exists:
+            already.append(str(row.id))
+
+    return SelectionPreviewResponse(
+        finding_count=population.finding_count,
+        submitted_count=len(submitted),
+        project_count=population.project_count,
+        location_count=population.location_count,
+        locations_omitted=omitted,
+        severity=population.severity,
+        severity_breakdown=[
+            {"scanner": s, "severity": sev, "count": c}
+            for s, sev, c in population.severity_breakdown
+        ],
+        identity_keys=[i.key for i in population.identities],
+        repo_names=population.repo_names,
+        # From the resolver, not the service: these are the ids as the caller
+        # submitted them, which is what the UI has to deselect.
+        missing_ids=missing,
+        ineligible=[{"finding_id": fid, "reason": reason} for fid, reason in population.ineligible],
+        already_filed=already,
+    )
+
+
+@router.post(
+    "/selection/auditboard-issue",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=AuditBoardIssueResponse,
+    summary="File one AuditBoard issue covering a hand-picked selection",
+    responses={
+        409: {"description": "The resolved selection differs from the one the caller expected"},
+        502: {"description": "AuditBoard refused the issue"},
+        503: {"description": "AuditBoard is not configured"},
+    },
+)
+def create_auditboard_issue_from_selection(
+    request: SelectionIssueRequest,
+    db: Session = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One press, one issue — covering exactly the findings that were ticked.
+
+    No group is expanded. Sibling findings of the same defect are deliberately
+    left out, because the person looking at the table chose these rows and
+    widening a permanent record past their choice is the same defect as the
+    file-path grouping this replaced.
+
+    Refuses with 409 when ``expected_count`` does not match what resolved. The
+    findings table filters client-side over a capped slice of the database, so
+    a caller can genuinely believe it selected more rows than it sent, and an
+    AuditBoard issue cannot be corrected afterwards.
+    """
+    from ..integrations.auditboard import (
+        DEFICIENCY_LEVELS,
+        AuditBoardError,
+        auditboard_client,
+    )
+    from ..services import finding_groups as groups
+    from ..services.issue_redaction import redact_snippet
+
+    problem = auditboard_client.config_problem()
+    if problem:
+        raise HTTPException(status_code=503, detail=problem)
+
+    org_id = get_current_org_id()
+    submitted = list(dict.fromkeys(str(i) for i in request.finding_ids))
+    findings, missing = _resolve_selection(db, submitted)
+    population = groups.measure_selection(db, [str(r.id) for r in findings], org_id)
+
+    if population.finding_count == 0:
+        raise HTTPException(
+            status_code=404, detail="None of the submitted findings exist in this tenant."
+        )
+
+    if request.expected_count is not None and request.expected_count != population.finding_count:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Selection mismatch: you expected {request.expected_count} findings, "
+                f"{population.finding_count} resolved"
+                + (f" ({len(missing)} submitted ids matched nothing)" if missing else "")
+                + ". Nothing was filed. Reload the findings table and select again — "
+                "the table holds a capped slice of the database, so a filter can "
+                "appear to select more rows than it sends."
+            ),
+        )
+
+    if missing:
+        # Reachable only when the caller sent no expected_count; otherwise the
+        # check above has already caught it. Either way the request is refused
+        # rather than filed short, because the issue cannot be corrected after.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{len(missing)} of {len(submitted)} submitted finding ids matched "
+                "nothing in this tenant. Nothing was filed — an AuditBoard issue "
+                "cannot be edited after it is created, so it is not filed for a "
+                "partial selection. Reload the findings table and select again."
+            ),
+        )
+
+    if population.ineligible and not request.include_ineligible:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{len(population.ineligible)} of {population.finding_count} selected "
+                "findings are below the filing floor or already marked not-actionable. "
+                "Deselect them, or resubmit with include_ineligible to file them anyway."
+            ),
+        )
+
+    # The reference finding is the highest-severity member, so the row the issue
+    # points at is not an arbitrary one. Ties break on id for a stable choice.
+    reference = max(
+        findings,
+        key=lambda f: (groups.severity_rank(f.severity or ""), str(f.id)),
+    )
+
+    # Redaction runs against every selected finding, not just the reference: a
+    # body assembled from twelve findings can quote twelve matched lines, and
+    # the browser withholding them is a suggestion until it is enforced here.
+    title = request.title
+    description = request.description
+    summary = request.executive_summary
+    redacted_any = False
+    for row in findings:
+        title, hit_a = redact_snippet(title, row)
+        description, hit_b = redact_snippet(description, row)
+        if summary:
+            summary, hit_c = redact_snippet(summary, row)
+        else:
+            hit_c = False
+        redacted_any = redacted_any or hit_a or hit_b or hit_c
+    if redacted_any:
+        logger.warning(
+            "Redacted secret-scanner snippets from an AuditBoard body filed from a "
+            "selection of {} findings", population.finding_count,
+        )
+
+    max_locations = settings.FILING_MAX_LOCATIONS
+    locations_omitted = max(0, population.location_count - max_locations)
+    body = description + "\n\n" + groups.render_locations(
+        population.projects, groups.GroupTier.SELECTION, max_locations
+    )
+
+    filer = getattr(current_user, "email", None) or getattr(current_user, "username", "unknown")
+    footer_lines = [
+        "Filed from AuditGitHub.",
+        "Scope: selection — the locations listed above and no others. This issue "
+        "does not speak for other occurrences of the same defects, and it does "
+        "not cover findings reported by future scans.",
+        f"Findings covered: {population.finding_count}"
+        f"{'' if org_id else ' (tenant-wide; no organization filter was in effect)'}",
+        f"Projects affected: {population.project_count}",
+        f"Distinct defects in this issue: {len(population.identities)}",
+    ]
+    if population.identities:
+        shown = population.identities[:20]
+        footer_lines.append(
+            "Defect identities: " + ", ".join(i.key for i in shown)
+            + (f" (+{len(population.identities) - len(shown)} more)"
+               if len(population.identities) > len(shown) else "")
+        )
+    if population.ineligible:
+        # Named in the record, because a reader must be able to see that this
+        # issue covers findings the normal floor would have refused.
+        footer_lines.append(
+            f"NOTE: {len(population.ineligible)} covered findings are below the "
+            "filing severity floor or marked not-actionable, and were included "
+            "deliberately by the filer."
+        )
+    if locations_omitted:
+        footer_lines.append(
+            f"Locations listed: {max_locations} of {population.location_count}; "
+            f"{locations_omitted} omitted for length."
+        )
+    footer_lines.append(f"Filed by: {filer}")
+    footer = "\n\n----\n\n" + "\n".join(footer_lines)
+
+    # Oldest first-seen across the selection: the identified date is when the
+    # problem was first seen, not when the most recent scan ran. AuditBoard
+    # refuses to set this after create.
+    stamps = [
+        s for s in (
+            getattr(f, "first_seen_at", None) or getattr(f, "created_at", None)
+            for f in findings
+        ) if s is not None
+    ]
+    identified_date = (min(stamps) if stamps else datetime.utcnow()).date().isoformat()
+
+    severity = population.severity or reference.severity or "info"
+
+    try:
+        payload = auditboard_client.build_payload(
+            title=title,
+            description=f"{body}{footer}",
+            severity=severity,
+            deficiency_level_id=request.deficiency_level_id,
+            executive_summary=summary,
+            identified_date=identified_date,
+        )
+        issue = auditboard_client.create_issue(payload)
+    except AuditBoardError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    issue_id = issue.get("id") if isinstance(issue, dict) else None
+    level = payload["deficiency_level_id"]
+    issue_url = auditboard_client.issue_url(issue_id)
+
+    logger.info(
+        "AuditBoard issue {} created from a selection of {} findings across {} projects "
+        "({} distinct defects)",
+        issue_id, population.finding_count, population.project_count,
+        len(population.identities),
+    )
+
+    # The issue exists over there now. A failure to record it locally must not
+    # read as a failure to file, or the user files a duplicate chasing a record
+    # that is already there — and duplicates cannot be deleted.
+    try:
+        record = models.AuditBoardIssue(
+            finding_id=reference.id,
+            organization_id=org_id,
+            scope=groups.GroupTier.SELECTION.value,
+            scanner_name=reference.scanner_name,
+            file_path=reference.file_path,
+            # Deliberately null. A selection has no defect identity, and
+            # writing the reference finding's rule here would make this issue
+            # match every other finding of that rule — which is exactly what
+            # the filer chose not to file.
+            rule_id=None,
+            repository_id=None,
+            location_count=population.location_count,
+            locations_omitted=locations_omitted,
+            project_count=population.project_count,
+            issue_id=str(issue_id) if issue_id is not None else "",
+            issue_uid=issue.get("linkify_uid") if isinstance(issue, dict) else None,
+            issue_url=issue_url,
+            issue_status=issue.get("status") if isinstance(issue, dict) else None,
+            issue_category_id=payload.get("issue_category_id"),
+            deficiency_level_id=level,
+            deficiency_level_name=DEFICIENCY_LEVELS.get(level, "Unknown"),
+            occurrence_count=population.finding_count,
+            filed_by_user_id=getattr(current_user, "id", None),
+            filed_by=filer,
+        )
+        db.add(record)
+        db.flush()
+        db.add_all([
+            models.AuditBoardIssueFinding(
+                auditboard_issue_id=record.id, finding_id=row.id
+            )
+            for row in findings
+        ])
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.error(
+            "AuditBoard issue {} was created but its selection could not be recorded "
+            "locally: {}", issue_id, exc,
+        )
+
+    return AuditBoardIssueResponse(
+        issue_id=str(issue_id) if issue_id is not None else None,
+        issue_url=issue_url,
+        deficiency_level_id=level,
+        deficiency_level_name=DEFICIENCY_LEVELS.get(level, "Unknown"),
+        scope=groups.GroupTier.SELECTION.value,
+        occurrence_count=population.finding_count,
+        project_count=population.project_count,
+        location_count=population.location_count,
+        locations_omitted=locations_omitted,
+        identity_key=None,
     )
 
 
@@ -1821,6 +2227,70 @@ class DeleteFindingsResponse(BaseModel):
     message: str = Field(description="Human-readable confirmation message")
 
 
+# -----------------------------------------------------------------------------
+# Selection variants
+#
+# The requests above all start from one finding and derive a population from a
+# rule. These start from a list of ids, because the person ticked rows.
+#
+# One asymmetry is unavoidable and is reported rather than hidden: a *delete*
+# can be exact to the selection, but a scanner *exception rule* cannot. Gitleaks
+# allowlists, .semgrepignore entries and the rest all key on a path or a secret
+# pattern; none of them can suppress the third of five findings on one line. So
+# a generated rule covers at least the selection and usually more, and every
+# rule below carries both counts so the difference is visible before anyone
+# pastes it into a repository.
+# -----------------------------------------------------------------------------
+
+class SelectionExceptionRequest(BaseModel):
+    """Request exception rules for a hand-picked set of findings."""
+    finding_ids: List[str] = Field(min_length=1, description="Findings the exception should cover")
+    reason: Optional[str] = Field(default=None, description="Optional justification for the exception")
+
+
+class SelectionExceptionRule(BaseModel):
+    """One generated rule, and honestly what it will and will not suppress."""
+    scanner_name: str = Field(description="Scanner the rule applies to")
+    file_path: Optional[str] = Field(default=None, description="Path the rule keys on")
+    rule_type: str = Field(description="allowlist, exclude, or ignore")
+    rule_content: str = Field(description="The rule configuration to paste")
+    instruction: str = Field(description="Where and how to apply it")
+    selected_count: int = Field(description="Findings in the selection this rule accounts for")
+    affected_count: int = Field(
+        description=(
+            "Findings in the database this rule would suppress. Greater than "
+            "selected_count when the path holds findings that were not ticked."
+        )
+    )
+
+
+class SelectionExceptionResponse(BaseModel):
+    """Every rule needed to except a selection, plus what it overreaches."""
+    rules: List[SelectionExceptionRule] = Field(description="One rule per scanner and path in the selection")
+    selected_count: int = Field(description="Findings resolved from the submitted ids")
+    affected_count: int = Field(description="Distinct findings all these rules together would suppress")
+    collateral_count: int = Field(
+        description=(
+            "affected_count minus selected_count: findings that were NOT ticked "
+            "but would be silenced anyway. 0 means the rules are exact."
+        )
+    )
+    missing_ids: List[str] = Field(default_factory=list, description="Submitted ids that matched no finding")
+
+
+class SelectionDeleteRequest(BaseModel):
+    """Request to delete exactly the findings whose ids are listed."""
+    finding_ids: List[str] = Field(min_length=1, description="Findings to delete")
+    expected_count: Optional[int] = Field(
+        default=None,
+        description=(
+            "How many findings the caller believes it selected. When set and it "
+            "does not match what resolves, nothing is deleted."
+        ),
+    )
+    confirmed: bool = Field(default=False, description="Must be true to proceed")
+
+
 # =============================================================================
 # Exception Rule Generation
 # =============================================================================
@@ -1901,27 +2371,366 @@ def generate_semgrep_rule(finding: models.Finding, scope: str) -> dict:
     }
 
 
-def generate_generic_rule(finding: models.Finding, scope: str) -> dict:
-    """Generate a generic exception rule for unknown scanners."""
-    if scope == "specific":
-        rule_content = f'''# Exception for specific finding
-# Scanner: {finding.scanner_name}
-# File: {finding.file_path}
-# Line: {finding.line_start or 'N/A'}
-# Title: {finding.title}
+# -----------------------------------------------------------------------------
+# Scanner-specific exception rules
+#
+# A generated rule is pasted into a repository and committed, so it has to be
+# true about that repository *after* the scan that produced the finding has
+# gone. Two properties of the stored data get in the way, and both are handled
+# explicitly below rather than papered over:
+#
+#   * **Scan paths are ephemeral.** Several scanners record the path inside the
+#     throwaway clone (``/tmp/repo_scan_<random>/<repo>/...``). That directory
+#     never exists again, so a rule keyed on it silences nothing. The prefix is
+#     stripped to recover the repo-relative path, and when nothing survives the
+#     strip the rule says so instead of emitting a dead path.
+#   * **The identifier a scanner suppresses on is not always the one we
+#     stored.** Terrascan skips on rule *id*; we hold the check *name*. Nuclei
+#     excludes on template *id*; we hold ``info.name``. Trivy needs an advisory
+#     id; our ``rule_id`` for trivy is the advisory prose. Where the stored
+#     value cannot be trusted as the key, the rule carries a VERIFY line naming
+#     exactly what the reader has to check before committing it.
+#
+# The alternative — emitting a confident-looking rule built on the wrong key —
+# is worse than emitting none, because the reader finds out it did not work
+# only when the finding reappears in the next scan.
+# -----------------------------------------------------------------------------
 
-# Add to your scanner's ignore/allowlist configuration'''
+_EPHEMERAL_SCAN_PATH = re.compile(r"^/tmp/repo_scan_[^/]+/([^/]+)(?:/(.*))?$")
+
+
+def repo_relative_path(file_path: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Strip a throwaway-clone prefix, returning ``(path, was_ephemeral)``.
+
+    ``/tmp/repo_scan_bu37lxx7/coveo-search/dist/app.js`` -> ``dist/app.js``.
+
+    Returns ``(None, True)`` when the stored path is nothing but the clone
+    directory itself, because there is then no in-repository path to write into
+    a config file. Callers must not substitute the raw value in that case: it
+    names a directory that was deleted when the scan finished.
+    """
+    if not file_path:
+        return None, False
+    match = _EPHEMERAL_SCAN_PATH.match(file_path)
+    if not match:
+        return file_path, False
+    remainder = match.group(2)
+    return (remainder or None), True
+
+
+def generate_grype_rule(finding: models.Finding, scope: str) -> dict:
+    """Generate a ``.grype.yaml`` ignore entry.
+
+    Grype is the best-served scanner here: it ignores on vulnerability id, and
+    our ``rule_id`` for grype *is* the CVE. That makes a specific rule genuinely
+    specific — vulnerability plus artifact location — rather than a path glob
+    that also catches every other finding in the file.
+    """
+    vulnerability = finding.rule_id or finding.cve_id or finding.ghsa_id
+    path, _ = repo_relative_path(finding.file_path)
+
+    if not vulnerability:
+        return {
+            "rule_type": "ignore",
+            "rule_content": (
+                "# No vulnerability identifier is stored for this finding, and a\n"
+                "# grype ignore rule must name one. Re-scan to populate rule_id."
+            ),
+            "instruction": "Cannot generate a grype rule without a vulnerability id.",
+        }
+
+    if scope == "specific" and path:
+        rule_content = f"""ignore:
+  - vulnerability: {vulnerability}
+    package:
+      location: "{path}"
+"""
     else:
-        rule_content = f'''# Global exception for path
-# Scanner: {finding.scanner_name}
-# File: {finding.file_path}
+        rule_content = f"""ignore:
+  - vulnerability: {vulnerability}
+"""
 
-# Add to your scanner's ignore/allowlist configuration'''
-
+    scope_note = (
+        f"Suppresses {vulnerability} only at {path}."
+        if scope == "specific" and path
+        else f"Suppresses {vulnerability} everywhere it is found, in every package and path."
+    )
     return {
         "rule_type": "ignore",
         "rule_content": rule_content,
-        "instruction": f"Consult the {finding.scanner_name} documentation for the appropriate ignore/allowlist format."
+        "instruction": f"Add to the 'ignore:' block of .grype.yaml at the repository root. {scope_note}",
+    }
+
+
+def generate_retirejs_rule(finding: models.Finding, scope: str) -> dict:
+    """Generate a ``.retireignore.json`` entry.
+
+    Retire.js keys on component and version, not path — which is fortunate,
+    because every retirejs finding we hold has an ephemeral scan path. Ignoring
+    the path entirely produces a rule that is both correct and durable.
+    """
+    component = finding.package_name or finding.rule_id
+    version = finding.package_version
+
+    if not component:
+        return {
+            "rule_type": "ignore",
+            "rule_content": "# No component name is stored for this finding.",
+            "instruction": "Cannot generate a retire.js rule without a component name.",
+        }
+
+    entry: Dict[str, Any] = {"component": component}
+    if version:
+        entry["version"] = version
+    entry["justification"] = f"Accepted via AuditGitHub exception: {finding.title or component}"
+
+    rule_content = json.dumps([entry], indent=2)
+    scope_note = (
+        f"Suppresses {component} {version} only."
+        if version
+        else f"Suppresses every version of {component}, because no version is stored for this finding."
+    )
+    return {
+        "rule_type": "ignore",
+        "rule_content": rule_content,
+        "instruction": (
+            f"Add to .retireignore.json at the repository root (the file is a JSON array — "
+            f"merge this object into it rather than replacing the file). {scope_note}"
+        ),
+    }
+
+
+def generate_trivy_rule(finding: models.Finding, scope: str) -> dict:
+    """Generate a Trivy skip entry.
+
+    Deliberately path-based, and deliberately says why. A precise rule would go
+    in ``.trivyignore`` keyed on the advisory id — but the ingest stores the
+    advisory *prose* in ``rule_id`` for trivy, so there is no id to write. Until
+    that is fixed, a path skip is the only honest option.
+    """
+    path, ephemeral = repo_relative_path(finding.file_path)
+    rule_id = finding.rule_id or ""
+    has_real_id = bool(re.match(r"^(CVE|GHSA|AVD|DS)-", rule_id))
+
+    if has_real_id:
+        rule_content = f"""# .trivyignore
+{rule_id}
+"""
+        return {
+            "rule_type": "ignore",
+            "rule_content": rule_content,
+            "instruction": (
+                f"Add to .trivyignore at the repository root. Suppresses {rule_id} "
+                f"everywhere in this repository, not only at {path}."
+            ),
+        }
+
+    if not path:
+        return {
+            "rule_type": "ignore",
+            "rule_content": (
+                "# This finding has neither an advisory identifier nor a usable\n"
+                "# in-repository path, so no Trivy rule can be generated for it."
+            ),
+            "instruction": "Cannot generate a Trivy rule for this finding.",
+        }
+
+    rule_content = f"""# trivy.yaml
+scan:
+  skip-files:
+    - "{path}"
+"""
+    return {
+        "rule_type": "ignore",
+        "rule_content": rule_content,
+        "instruction": (
+            "Add to trivy.yaml at the repository root. NOTE: this skips the whole file, "
+            "not this one advisory, because no advisory identifier is stored for this "
+            "finding — AuditGitHub records Trivy's description text in place of its id. "
+            "Every current and future Trivy finding in this file will be silenced."
+        ),
+    }
+
+
+def generate_terrascan_rule(finding: models.Finding, scope: str) -> dict:
+    """Generate a Terrascan skip-rule entry.
+
+    Terrascan skips on rule id (``AC_K8S_0064``). What we store in ``rule_id``
+    is the check *name* (``CpuRequestsCheck``). Those are different strings, so
+    the rule carries a VERIFY line rather than pretending the name will work.
+    """
+    check = finding.rule_id or ""
+    path, _ = repo_relative_path(finding.file_path)
+    looks_like_rule_id = bool(re.match(r"^AC_[A-Z0-9]+_\d+$", check))
+
+    if not check:
+        return {
+            "rule_type": "skip",
+            "rule_content": "# No rule identifier is stored for this finding.",
+            "instruction": "Cannot generate a Terrascan rule without a rule identifier.",
+        }
+
+    verify = (
+        ""
+        if looks_like_rule_id
+        else (
+            f"# VERIFY BEFORE COMMITTING: Terrascan skips on rule id (e.g. AC_K8S_0064).\n"
+            f"# '{check}' is the check name as AuditGitHub stored it, which may not be the\n"
+            f"# id. Confirm with: terrascan scan -t k8s --show-passed | grep '{check}'\n"
+        )
+    )
+
+    if scope == "specific" and path:
+        rule_content = f"""{verify}# Inline skip — add above the offending resource in {path}:
+#ts:skip={check} Accepted via AuditGitHub exception
+"""
+        instruction = (
+            f"Add the inline annotation to {path}. This suppresses {check} for that one "
+            f"resource, which is the narrowest option Terrascan offers."
+        )
+    else:
+        rule_content = f"""{verify}[rules]
+    skip-rules = [
+        "{check}"
+    ]
+"""
+        instruction = (
+            f"Add to the Terrascan config file (terrascan.toml). Suppresses {check} across "
+            f"every file Terrascan scans in this repository."
+        )
+
+    return {"rule_type": "skip", "rule_content": rule_content, "instruction": instruction}
+
+
+def generate_nuclei_rule(finding: models.Finding, scope: str) -> dict:
+    """Generate a Nuclei exclusion entry.
+
+    Nuclei excludes on template id; we store ``info.name``. As with Terrascan,
+    the difference is stated rather than guessed at.
+    """
+    template = finding.rule_id or ""
+    if not template:
+        return {
+            "rule_type": "exclude",
+            "rule_content": "# No template identifier is stored for this finding.",
+            "instruction": "Cannot generate a Nuclei rule without a template identifier.",
+        }
+
+    slug = re.sub(r"[^a-z0-9]+", "-", template.lower()).strip("-")
+    rule_content = f"""# VERIFY BEFORE COMMITTING: Nuclei excludes on template id, and
+# '{template}' is the template name as AuditGitHub stored it. The id is
+# usually the slug of the name — likely '{slug}' — but confirm with:
+#   nuclei -tl | grep -i '{slug}'
+
+# nuclei-config.yaml
+exclude-id:
+  - {slug}
+"""
+    return {
+        "rule_type": "exclude",
+        "rule_content": rule_content,
+        "instruction": (
+            f"Add to nuclei-config.yaml, or pass -exclude-id {slug} on the command line. "
+            f"Suppresses this template against every target, not only this repository."
+        ),
+    }
+
+
+def generate_horusec_rule(finding: models.Finding, scope: str) -> dict:
+    """Generate a ``horusec-config.json`` fragment.
+
+    Field names verified against ZupIT/horusec's own ``horusec-config.json``
+    rather than taken from documentation: every key is ``horusecCli*``. This
+    matters more than usual here, because Horusec ignores unrecognised keys
+    silently — a config with a misspelled field commits cleanly, scans cleanly
+    and suppresses nothing.
+
+    Horusec's exact per-finding mechanism is ``horusecCliFalsePositiveHashes``,
+    which takes the vulnerability hash from the scan report. AuditGitHub does
+    not store that hash (there is no raw scanner output column on ``findings``),
+    so the generated rule falls back to a path glob and says so. The hash route
+    would also be fragile: Horusec derives it from vulnerability type, line
+    number and file path, so any edit that moves the line invalidates it.
+    """
+    path, _ = repo_relative_path(finding.file_path)
+
+    if not path:
+        return {
+            "rule_type": "ignore",
+            "rule_content": (
+                "# No usable in-repository path is stored for this finding, and\n"
+                "# without the vulnerability hash there is no other key to\n"
+                "# suppress it by."
+            ),
+            "instruction": "Cannot generate a Horusec rule for this finding.",
+        }
+
+    pattern = path if scope == "specific" else f"**/{path.rsplit('/', 1)[-1]}"
+    fragment = {"horusecCliFilesOrPathsToIgnore": [pattern]}
+
+    # Unlike every other generator here, the output is JSON, and JSON has no
+    # comment syntax. A `//` or `#` note inside this block would make
+    # horusec-config.json fail to parse for anyone who pasted the whole thing.
+    # So the caveats live entirely in the instruction.
+    scope_note = (
+        f"Ignores exactly {path}."
+        if scope == "specific"
+        else f"Ignores every file named {pattern.rsplit('/', 1)[-1]} anywhere in the repository."
+    )
+
+    return {
+        "rule_type": "ignore",
+        "rule_content": json.dumps(fragment, indent=2),
+        "instruction": (
+            f"Merge into horusec-config.json at the repository root — the key is an array, "
+            f"so append to it rather than replacing the file. {scope_note} "
+            f"NOTE: this ignores the whole file, not this one finding: Horusec suppresses "
+            f"individual findings only via horusecCliFalsePositiveHashes, which needs the "
+            f"vulnerability hash from the scan report, and AuditGitHub does not store it. "
+            f"Every current and future Horusec finding in this file will be silenced."
+        ),
+    }
+
+
+def generate_generic_rule(finding: models.Finding, scope: str) -> dict:
+    """State that no rule could be generated, for scanners without a generator.
+
+    The previous version of this returned a block of ``#`` comments describing
+    the finding and ended with "Add to your scanner's ignore/allowlist
+    configuration". Pasted into a config file that is inert text, so it read as
+    a rule, committed like a rule, and suppressed nothing. Saying plainly that
+    there is no rule is less useful and considerably more honest.
+    """
+    scanner = finding.scanner_name or "this scanner"
+    path, ephemeral = repo_relative_path(finding.file_path)
+
+    detail = [
+        f"# AuditGitHub has no exception-rule generator for {scanner}.",
+        "#",
+        "# This is NOT a rule. Pasting it into a config file suppresses nothing.",
+        "# It is a description of the finding, for use while writing the rule by",
+        f"# hand from the {scanner} documentation.",
+        "#",
+        f"#   Scanner: {scanner}",
+        f"#   File:    {path or '(not recorded)'}",
+        f"#   Line:    {finding.line_start or 'not recorded'}",
+        f"#   Rule id: {finding.rule_id or '(not recorded)'}",
+        f"#   Title:   {finding.title or '(none)'}",
+    ]
+    if ephemeral:
+        detail.append(
+            "#\n# The stored path was inside a temporary scan clone; the prefix has been\n"
+            "# stripped to give the repository-relative path above."
+        )
+
+    return {
+        "rule_type": "none",
+        "rule_content": "\n".join(detail),
+        "instruction": (
+            f"No rule was generated. AuditGitHub does not know how to write an exception "
+            f"for {scanner} — consult its documentation and write one by hand, or delete "
+            f"the finding as a false positive instead."
+        ),
     }
 
 
@@ -1967,6 +2776,18 @@ def generate_exception_rule(
         rule_data = generate_trufflehog_rule(finding, request.scope)
     elif "semgrep" in scanner_name:
         rule_data = generate_semgrep_rule(finding, request.scope)
+    elif "grype" in scanner_name:
+        rule_data = generate_grype_rule(finding, request.scope)
+    elif "retirejs" in scanner_name or "retire.js" in scanner_name:
+        rule_data = generate_retirejs_rule(finding, request.scope)
+    elif "trivy" in scanner_name:
+        rule_data = generate_trivy_rule(finding, request.scope)
+    elif "terrascan" in scanner_name:
+        rule_data = generate_terrascan_rule(finding, request.scope)
+    elif "nuclei" in scanner_name:
+        rule_data = generate_nuclei_rule(finding, request.scope)
+    elif "horusec" in scanner_name:
+        rule_data = generate_horusec_rule(finding, request.scope)
     else:
         rule_data = generate_generic_rule(finding, request.scope)
 
@@ -2257,6 +3078,325 @@ def delete_findings(
         db.rollback()
         logger.error(f"Error deleting findings: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete findings: {str(e)}")
+
+
+def _resolve_selection(db: Session, finding_ids: Sequence[str]):
+    """Findings for the submitted ids, plus the ids that matched nothing.
+
+    Ids arrive from the browser, where the findings table publishes
+    ``finding_uuid`` while every internal reference uses ``id`` — two
+    independent columns that agree on none of the 769,825 rows. Both are
+    accepted, for the same reason the single-finding endpoints accept both.
+
+    Malformed ids are reported as missing rather than raising: one bad entry in
+    a list of forty should not cost the whole selection, and a caller that must
+    not proceed on a partial set has ``expected_count`` for that.
+    """
+    unique: List[str] = list(dict.fromkeys(str(i) for i in finding_ids))
+    parsed: Dict[uuid.UUID, str] = {}
+    missing: List[str] = []
+    for raw in unique:
+        try:
+            parsed[uuid.UUID(raw)] = raw
+        except (ValueError, AttributeError, TypeError):
+            missing.append(raw)
+
+    if not parsed:
+        return [], missing
+
+    keys = list(parsed.keys())
+    org_id = get_current_org_id()
+    query = db.query(models.Finding).filter(
+        or_(
+            models.Finding.id.in_(keys),
+            models.Finding.finding_uuid.in_(keys),
+        )
+    )
+    if org_id:
+        query = query.filter(models.Finding.organization_id == org_id)
+    rows = query.all()
+
+    matched = {r.id for r in rows} | {r.finding_uuid for r in rows if r.finding_uuid}
+    missing.extend(raw for key, raw in parsed.items() if key not in matched)
+    return rows, missing
+
+
+def _auditboard_issues_covering_selection(db: Session, findings: Sequence[models.Finding]):
+    """GRC issues covering any finding in a selection.
+
+    :func:`_auditboard_issues_covering` derives its group from one reference
+    finding, which is right for a rule-scoped delete and wrong here: a
+    selection can hold many defects, and asking the question with one of them
+    would miss issues covering the others. So the match is built per distinct
+    identity and unioned.
+
+    ``remaining_findings`` is still counted per issue at the tier that issue
+    was filed at, so the meaning of the number does not change between the two
+    dry runs.
+    """
+    if not findings:
+        return []
+
+    from ..services import finding_groups as groups
+
+    org_id = get_current_org_id()
+    finding_ids = [f.id for f in findings]
+    id_set = set(finding_ids)
+    equivalence = groups.load_equivalence_map(db, org_id)
+
+    seen_identities = set()
+    clauses = []
+    for row in findings:
+        identity = groups.identity_of(row)
+        key = identity.key if identity else None
+        if key in seen_identities:
+            continue
+        seen_identities.add(key)
+        members = equivalence.members(identity) if identity else []
+        clauses.append(groups.filing_match_condition(row, members))
+
+    q = db.query(models.AuditBoardIssue).filter(
+        or_(models.AuditBoardIssue.finding_id.in_(finding_ids), *clauses)
+    )
+    if org_id:
+        q = q.filter(models.AuditBoardIssue.organization_id == org_id)
+
+    rows = q.all()
+    if not rows:
+        return []
+
+    def remaining_for(row) -> int:
+        query = db.query(func.count(models.Finding.id)).filter(
+            and_(
+                groups.findings_covered_condition(row, equivalence),
+                ~models.Finding.id.in_(finding_ids),
+            )
+        )
+        if org_id:
+            query = query.filter(models.Finding.organization_id == org_id)
+        return query.scalar() or 0
+
+    return [
+        DeleteDryRunAuditBoardIssue(
+            issue_id=r.issue_id,
+            issue_uid=r.issue_uid,
+            issue_url=r.issue_url,
+            issue_status=r.issue_status,
+            scope=r.scope or "specific",
+            filed_by=r.filed_by,
+            filed_at=r.created_at.isoformat() if r.created_at else None,
+            direct=r.finding_id in id_set,
+            remaining_findings=remaining_for(r),
+        )
+        for r in rows
+    ]
+
+
+@router.post(
+    "/exception/selection/generate",
+    dependencies=[Depends(require_permissions("findings:write"))],
+    response_model=SelectionExceptionResponse,
+    summary="Generate exception rules covering a hand-picked selection",
+    responses={**CREATE_ERRORS, 403: {"description": "Insufficient permissions - requires findings:write"}},
+)
+def generate_selection_exception_rules(
+    request: SelectionExceptionRequest,
+    db: Session = Depends(get_tenant_db),
+):
+    """One rule per scanner and path in the selection, with its overreach measured.
+
+    Reuses the same per-scanner generators the single-finding endpoint uses, at
+    ``global`` scope, because a scanner rule keys on a path and cannot be
+    narrowed further. ``collateral_count`` is the number of findings these
+    rules would silence that nobody ticked — the figure to read before pasting
+    any of this into a repository.
+    """
+    rows, missing = _resolve_selection(db, request.finding_ids)
+    if not rows:
+        raise HTTPException(
+            status_code=404, detail="None of the submitted findings exist in this tenant."
+        )
+
+    org_id = get_current_org_id()
+
+    # One rule per (scanner, path): the smallest unit a scanner rule can key
+    # on. Two selected findings on the same path under the same scanner share
+    # one rule rather than producing an identical pair.
+    buckets: Dict[Tuple[str, Optional[str]], List[models.Finding]] = {}
+    for row in rows:
+        buckets.setdefault((row.scanner_name or "", row.file_path), []).append(row)
+
+    rules: List[SelectionExceptionRule] = []
+    collateral_ids: set = set()
+    for (scanner_name, file_path), members in sorted(
+        buckets.items(), key=lambda kv: (kv[0][0], kv[0][1] or "")
+    ):
+        sample = members[0]
+        lowered = scanner_name.lower()
+        if "gitleaks" in lowered:
+            rule_data = generate_gitleaks_rule(sample, "global")
+        elif "trufflehog" in lowered:
+            rule_data = generate_trufflehog_rule(sample, "global")
+        elif "semgrep" in lowered:
+            rule_data = generate_semgrep_rule(sample, "global")
+        elif "grype" in lowered:
+            rule_data = generate_grype_rule(sample, "global")
+        elif "retirejs" in lowered or "retire.js" in lowered:
+            rule_data = generate_retirejs_rule(sample, "global")
+        elif "trivy" in lowered:
+            rule_data = generate_trivy_rule(sample, "global")
+        elif "terrascan" in lowered:
+            rule_data = generate_terrascan_rule(sample, "global")
+        elif "nuclei" in lowered:
+            rule_data = generate_nuclei_rule(sample, "global")
+        elif "horusec" in lowered:
+            rule_data = generate_horusec_rule(sample, "global")
+        else:
+            rule_data = generate_generic_rule(sample, "global")
+
+        # What the rule really reaches, queried rather than assumed equal to
+        # the selection: the whole point of the collateral figure is that
+        # these two numbers differ.
+        reach = db.query(models.Finding.id).filter(
+            and_(
+                models.Finding.scanner_name == sample.scanner_name,
+                models.Finding.file_path == sample.file_path,
+            )
+        )
+        if org_id:
+            reach = reach.filter(models.Finding.organization_id == org_id)
+        reach_ids = {r.id for r in reach.all()}
+        collateral_ids |= reach_ids
+
+        rules.append(
+            SelectionExceptionRule(
+                scanner_name=scanner_name or "Unknown",
+                file_path=file_path,
+                rule_type=rule_data["rule_type"],
+                rule_content=rule_data["rule_content"],
+                instruction=rule_data["instruction"],
+                selected_count=len(members),
+                affected_count=len(reach_ids),
+            )
+        )
+
+    selected_count = len(rows)
+    affected_count = len(collateral_ids)
+    return SelectionExceptionResponse(
+        rules=rules,
+        selected_count=selected_count,
+        affected_count=affected_count,
+        collateral_count=max(0, affected_count - selected_count),
+        missing_ids=missing,
+    )
+
+
+@router.post(
+    "/exception/selection/delete/dry-run",
+    dependencies=[Depends(require_permissions("findings:delete"))],
+    response_model=DeleteDryRunResponse,
+    summary="Preview the deletion of a hand-picked selection",
+    responses={**CRUD_ERRORS, 403: {"description": "Insufficient permissions - requires findings:delete"}},
+)
+def delete_selection_dry_run(
+    request: SelectionExceptionRequest,
+    db: Session = Depends(get_tenant_db),
+):
+    """What deleting exactly these findings would remove, and what it would orphan.
+
+    Unlike the rule-scoped dry run this is exact: the count is the selection,
+    with no group expansion. ``auditboard_issues`` is the part worth reading —
+    an issue whose ``remaining_findings`` reaches 0 is left in the GRC register
+    with no evidence behind it, and only someone with AuditBoard rights can
+    close it.
+    """
+    rows, missing = _resolve_selection(db, request.finding_ids)
+    if not rows:
+        raise HTTPException(
+            status_code=404, detail="None of the submitted findings exist in this tenant."
+        )
+
+    scanners = sorted({(r.scanner_name or "Unknown") for r in rows})
+    paths = {r.file_path for r in rows}
+
+    return DeleteDryRunResponse(
+        count=len(rows),
+        # A selection can span scanners and paths, so these single-valued
+        # fields get a summary rather than a lie about one of them.
+        scanner_name=scanners[0] if len(scanners) == 1 else f"{len(scanners)} scanners",
+        file_path=next(iter(paths)) if len(paths) == 1 else f"{len(paths)} paths",
+        sample_findings=[
+            {
+                "id": str(f.finding_uuid or f.id),
+                "title": f.title,
+                "file_path": f.file_path,
+                "scanner_name": f.scanner_name,
+            }
+            for f in rows[:5]
+        ],
+        auditboard_issues=_auditboard_issues_covering_selection(db, rows),
+    )
+
+
+@router.post(
+    "/exception/selection/delete",
+    dependencies=[Depends(require_permissions("findings:delete"))],
+    response_model=DeleteFindingsResponse,
+    summary="Permanently delete a hand-picked selection of findings",
+    responses={
+        **DELETE_ERRORS,
+        400: {"description": "Deletion not confirmed, or nothing resolved"},
+        403: {"description": "Insufficient permissions - requires findings:delete"},
+        409: {"description": "The resolved selection differs from the one the caller expected"},
+    },
+)
+def delete_selection(
+    request: SelectionDeleteRequest,
+    db: Session = Depends(get_tenant_db),
+):
+    """Delete exactly the findings whose ids were submitted. Requires confirmed=True.
+
+    Refuses with 409 on an ``expected_count`` mismatch. The findings table
+    filters client-side over a capped slice of the database, so a caller can
+    believe it selected more rows than it sent — and a delete takes the
+    per-finding history with it.
+    """
+    if not request.confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="Deletion not confirmed. Set confirmed=True after reviewing the dry-run results.",
+        )
+
+    rows, missing = _resolve_selection(db, request.finding_ids)
+    if not rows:
+        raise HTTPException(
+            status_code=404, detail="None of the submitted findings exist in this tenant."
+        )
+
+    if request.expected_count is not None and request.expected_count != len(rows):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Selection mismatch: you expected {request.expected_count} findings, "
+                f"{len(rows)} resolved"
+                + (f" ({len(missing)} submitted ids matched nothing)" if missing else "")
+                + ". Nothing was deleted. Reload the findings table and select again."
+            ),
+        )
+
+    try:
+        deleted_count = _delete_findings_by_id(db, [r.id for r in rows])
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting a selection of {len(rows)} findings: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete findings: {str(e)}")
+
+    logger.info("Deleted {} finding(s) from a hand-picked selection", deleted_count)
+    return DeleteFindingsResponse(
+        deleted_count=deleted_count,
+        message=f"Successfully deleted {deleted_count} finding(s).",
+    )
 
 
 # =============================================================================

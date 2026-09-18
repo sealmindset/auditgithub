@@ -18,6 +18,7 @@ import {
     useReactTable,
     GroupingState,
     ExpandedState,
+    RowSelectionState,
     Row,
     FilterFn,
 } from "@tanstack/react-table"
@@ -134,6 +135,7 @@ import { DataTableToolbar } from "./data-table-toolbar"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import {
@@ -163,6 +165,21 @@ const setStorageItem = (key: string, value: string): void => {
     }
 }
 
+/** What a selection toolbar is handed. */
+export interface DataTableSelection<TData> {
+    /** The selected rows that still pass the current filters, across all pages. */
+    rows: TData[]
+    /** `rows.length`, for a toolbar that only needs the count. */
+    count: number
+    /** Rows selected but filtered out of view. Selection follows the filters, so
+     *  these do not count — but a toolbar may want to say so rather than let the
+     *  number change with no explanation. */
+    hiddenCount: number
+    /** Total rows currently passing the filters, for "N of M". */
+    filteredCount: number
+    clear: () => void
+}
+
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
     data: TData[]
@@ -174,6 +191,14 @@ interface DataTableProps<TData, TValue> {
     initialPageSize?: number
     maxGroupedHeight?: number // Max height in pixels when grouped (for scroll)
     persistFilters?: boolean // Whether to persist filters in localStorage
+    /** Prepend a checkbox column, and a checkbox on every group header row. */
+    enableSelectionColumn?: boolean
+    /** Stable row identity. Supply this whenever selection is on: without it
+     *  TanStack keys selection by row index, so a sort or a filter change moves
+     *  the ticks onto different records. */
+    getRowId?: (row: TData, index: number) => string
+    /** Rendered above the table while anything is selected. */
+    selectionToolbar?: (selection: DataTableSelection<TData>) => React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -187,6 +212,9 @@ export function DataTable<TData, TValue>({
     initialPageSize = 20,
     maxGroupedHeight = 600,
     persistFilters = true,
+    enableSelectionColumn = false,
+    getRowId,
+    selectionToolbar,
 }: DataTableProps<TData, TValue>) {
     const router = useRouter()
     const pathname = usePathname()
@@ -293,13 +321,62 @@ export function DataTable<TData, TValue>({
         setExpanded({})
     }, [groupByColumn])
 
+    // Selection state. Deliberately not persisted to localStorage alongside the
+    // filters: a tick means "I am about to act on this row", and restoring one
+    // days later next to a Report To AuditBoard button that files a permanent
+    // record is not a convenience.
+    const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+
     // Memoize columns with the correct filter function applied
     const columnsWithFilter = React.useMemo(() => {
-        return columns.map(col => ({
+        const withFilter = columns.map(col => ({
             ...col,
             filterFn: arrayIncludesFilter,
-        })) as typeof columns
-    }, [columns])
+        })) as ColumnDef<TData, TValue>[]
+
+        if (!enableSelectionColumn) return withFilter as typeof columns
+
+        // Prepended after the filter map so the checkbox column keeps its own
+        // config: it holds no value, so sorting, filtering and grouping on it
+        // are all meaningless.
+        const selectColumn: ColumnDef<TData, TValue> = {
+            id: "__select",
+            enableSorting: false,
+            enableHiding: false,
+            enableGrouping: false,
+            enableColumnFilter: false,
+            size: 36,
+            header: ({ table }) => (
+                <Checkbox
+                    aria-label="Select all rows passing the current filters"
+                    // getIsAllRowsSelected / toggleAllRowsSelected work on the
+                    // filtered row model across every page - which is exactly
+                    // the intended meaning: the selection is "everything
+                    // matching my filters", and changing a filter changes it.
+                    checked={
+                        table.getIsAllRowsSelected()
+                            ? true
+                            : table.getIsSomeRowsSelected()
+                                ? "indeterminate"
+                                : false
+                    }
+                    onCheckedChange={(value) => table.toggleAllRowsSelected(!!value)}
+                />
+            ),
+            cell: ({ row }) => (
+                <Checkbox
+                    aria-label="Select this finding"
+                    checked={row.getIsSelected()}
+                    disabled={!row.getCanSelect()}
+                    onCheckedChange={(value) => row.toggleSelected(!!value)}
+                    // The row itself navigates on click in some tables; ticking
+                    // a box must not also open the record.
+                    onClick={(event) => event.stopPropagation()}
+                />
+            ),
+        }
+        return [selectColumn, ...withFilter] as typeof columns
+    }, [columns, enableSelectionColumn])
 
     const table = useReactTable({
         data,
@@ -311,12 +388,15 @@ export function DataTable<TData, TValue>({
             globalFilter,
             grouping,
             expanded,
+            rowSelection,
             pagination: {
                 pageIndex,
                 pageSize,
             },
         },
         enableRowSelection: true,
+        onRowSelectionChange: setRowSelection,
+        getRowId,
         enableGrouping: enableGrouping,
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
@@ -419,6 +499,25 @@ export function DataTable<TData, TValue>({
 
     const totalFilteredRows = table.getFilteredRowModel().rows.length
 
+    // Derived from the *filtered* selected row model, not from rowSelection, so
+    // that narrowing a filter narrows the selection. A tick on a row that a
+    // filter then hides must not quietly ride along into a filing: what the
+    // toolbar counts has to be what is on screen.
+    const selection = React.useMemo<DataTableSelection<TData>>(() => {
+        const filteredSelected = table.getFilteredSelectedRowModel().rows
+            // Group header rows are selectable so a whole group can be ticked,
+            // but they are not records. Only leaf rows are handed out.
+            .filter(row => !row.getIsGrouped())
+        const totalSelected = Object.keys(rowSelection).length
+        return {
+            rows: filteredSelected.map(row => row.original),
+            count: filteredSelected.length,
+            hiddenCount: Math.max(0, totalSelected - filteredSelected.length),
+            filteredCount: totalFilteredRows,
+            clear: () => setRowSelection({}),
+        }
+    }, [table, rowSelection, totalFilteredRows, columnFilters, globalFilter, grouping])
+
     // Clear persisted state
     const clearPersistedState = React.useCallback(() => {
         if (storageKey) {
@@ -441,6 +540,9 @@ export function DataTable<TData, TValue>({
                 onReset={clearPersistedState}
                 initialGlobalFilter={globalFilter}
             />
+
+            {/* Selection toolbar - only while something is ticked */}
+            {selectionToolbar && selection.count > 0 && selectionToolbar(selection)}
 
             {/* Grouped mode info bar */}
             {isGrouped && (
@@ -510,12 +612,13 @@ export function DataTable<TData, TValue>({
                                     key={row.id}
                                     row={row}
                                     enableGrouping={enableGrouping && groupByColumn !== undefined}
+                                    enableSelectionColumn={enableSelectionColumn}
                                 />
                             ))
                         ) : (
                             <TableRow>
                                 <TableCell
-                                    colSpan={columns.length}
+                                    colSpan={columnsWithFilter.length}
                                     className="h-24 text-center"
                                 >
                                     No results found.
@@ -557,15 +660,22 @@ export function DataTable<TData, TValue>({
 function GroupedTableRow<TData>({
     row,
     enableGrouping,
+    enableSelectionColumn = false,
 }: {
     row: Row<TData>
     enableGrouping: boolean
+    enableSelectionColumn?: boolean
 }) {
     const isGrouped = row.getIsGrouped()
     const isExpanded = row.getIsExpanded()
     const depth = row.depth
 
     if (isGrouped) {
+        // What a group checkbox covers: every member of the group that passes
+        // the current filters, collapsed or not, on this page or another. It is
+        // the group's filtered membership, not what happens to be rendered.
+        const subRowCount = row.subRows.length
+        const selectedSubRows = row.subRows.filter(sub => sub.getIsSelected()).length
         return (
             <TableRow
                 className={cn(
@@ -579,6 +689,24 @@ function GroupedTableRow<TData>({
                         className="flex items-center gap-2"
                         style={{ paddingLeft: `${depth * 1.5}rem` }}
                     >
+                        {enableSelectionColumn && (
+                            <Checkbox
+                                aria-label={`Select all ${subRowCount} findings in this group`}
+                                checked={
+                                    selectedSubRows === 0
+                                        ? false
+                                        : selectedSubRows === subRowCount
+                                            ? true
+                                            : "indeterminate"
+                                }
+                                onCheckedChange={(value) => row.toggleSelected(!!value)}
+                                // The whole group row expands on click. Without
+                                // this, ticking a group also toggles it open,
+                                // which reads as the checkbox having done two
+                                // things.
+                                onClick={(event) => event.stopPropagation()}
+                            />
+                        )}
                         <Button aria-label="Toggle row details" variant="ghost" size="sm" className="h-6 w-6 p-0">
                             {isExpanded ? (
                                 <ChevronDown className="h-4 w-4" />

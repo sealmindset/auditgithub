@@ -127,6 +127,35 @@ export const EMPTY_AUDITBOARD_CONFIG: AuditBoardConfig = {
   unstamped_required_fields: [],
 };
 
+/**
+ * Every scope the filing endpoints can return, including the one no tier
+ * describes.
+ *
+ * `selection` is not in {@link FILING_TIERS} on purpose: the three tiers are
+ * rules, so the server can re-derive what each covers from the issue row. A
+ * selection is a list of rows someone ticked, so its membership is written
+ * down in `auditboard_issue_findings` instead. It is filed through its own
+ * endpoint, never offered as a tier in a tier picker.
+ */
+export type FilingScope = FilingTier | "selection";
+
+/** Body of `POST /findings/selection/auditboard-issue`. */
+export interface AuditBoardSelectionIssueRequest {
+  finding_ids: string[];
+  /**
+   * How many findings the filer was shown as selected. The server refuses the
+   * request if a different number resolves, which is the guard against filing
+   * a permanent record for a smaller set than the person saw ticked.
+   */
+  expected_count?: number | null;
+  title: string;
+  description: string;
+  deficiency_level_id?: number | null;
+  executive_summary?: string | null;
+  /** File even when the selection holds findings below the severity floor. */
+  include_ineligible?: boolean;
+}
+
 /** Body of `POST /findings/{id}/auditboard-issue`. */
 export interface AuditBoardIssueRequest {
   scope: FilingTier;
@@ -144,7 +173,7 @@ export interface AuditBoardIssueResult {
   issue_url: string | null;
   deficiency_level_id: number;
   deficiency_level_name: string;
-  scope: FilingTier;
+  scope: FilingScope;
   /** Counted server-side at filing time, not taken from the request. */
   occurrence_count: number;
   /** Projects the defect affected, measured at filing time. */
@@ -338,7 +367,7 @@ export function filingGroupKey(
   scannerName: string | null | undefined,
   filePath: string | null | undefined,
 ): string {
-  return `${scannerName ?? ""} ${filePath ?? ""}`;
+  return `${scannerName ?? ""}\u0000${filePath ?? ""}`;
 }
 
 /**

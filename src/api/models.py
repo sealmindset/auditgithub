@@ -1140,6 +1140,46 @@ class AuditBoardIssue(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class AuditBoardIssueFinding(Base):
+    """One finding covered by a ``selection``-scope issue.
+
+    Every other scope is a *rule*: 'project' and 'org' are answered by asking
+    whether a finding shares a defect identity with the issue, so no membership
+    list is needed and a finding scanned tomorrow is covered automatically.
+
+    A selection has no rule. Someone ticked rows, and only those rows are
+    covered — which means the membership has to be written down, or nothing can
+    ever answer "is this finding already filed?" for them. Hence this table.
+
+    ``finding_id`` carries no ForeignKey, for the same reason
+    :class:`AuditBoardIssue.finding_id` does not: the GRC issue outlives
+    whatever this application later deletes, and a filing history that vanishes
+    with its evidence is not an audit trail. Rows are deleted only with the
+    issue row they belong to.
+    """
+
+    __tablename__ = "auditboard_issue_findings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    auditboard_issue_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("auditboard_issues.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    finding_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        # A finding appears at most once per issue. Without this a double
+        # submit inflates the coverage count of a record that cannot be
+        # edited afterwards.
+        UniqueConstraint(
+            "auditboard_issue_id", "finding_id", name="uq_auditboard_issue_finding"
+        ),
+    )
+
+
 class SystemConfig(Base):
     __tablename__ = "system_config"
 

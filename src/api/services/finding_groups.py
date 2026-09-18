@@ -277,6 +277,15 @@ class GroupTier(str, Enum):
     PROJECT = "project"
     ORG = "org"
 
+    #: A set of findings someone ticked by hand. Unlike every other tier this
+    #: one is not a rule, so it cannot be derived from a finding — the
+    #: membership is written to ``auditboard_issue_findings`` at filing time and
+    #: read back from there. It is therefore absent from
+    #: :data:`FILEABLE_TIERS`, which answers "what may the per-finding endpoint
+    #: file at?"; selections are filed through their own endpoint, which is
+    #: given the member list explicitly.
+    SELECTION = "selection"
+
     #: The pre-2026-09-16 key, ``(scanner_name, file_path)``. Retained only so
     #: issues filed before the principle changed keep matching their findings;
     #: nothing new is filed at this tier. Removing it would make four already
@@ -423,7 +432,12 @@ def render_locations(
     omitted = 0
 
     for project in projects:
-        if tier == GroupTier.ORG:
+        # ORG and SELECTION both span projects, so both need the project named
+        # above its paths. Without it a reader gets a flat list of file paths
+        # with no way to tell which repository each one is in — and for a
+        # selection that is the common case, because the whole reason to tick
+        # rows by hand is to gather findings that no single rule groups.
+        if tier in (GroupTier.ORG, GroupTier.SELECTION):
             lines.append(
                 f"{project.repo_name} — {project.finding_count} finding(s) "
                 f"in {project.location_count} location(s)"
@@ -456,7 +470,7 @@ def render_locations(
 # population it implies, which is how the old duplicated grouping drifted.
 # ---------------------------------------------------------------------------
 
-from sqlalchemy import and_, false, func, or_, tuple_  # noqa: E402  (grouped with its users)
+from sqlalchemy import and_, false, func, or_, select, tuple_  # noqa: E402  (grouped with its users)
 from sqlalchemy.orm import Session  # noqa: E402
 
 from .. import models  # noqa: E402
@@ -654,6 +668,132 @@ def _scoped_population_query(
     return query
 
 
+@dataclass
+class SelectionPopulation:
+    """What an issue filed from ticked rows would cover.
+
+    Deliberately not a :class:`GroupPopulation`. That class has one ``identity``
+    because every tier it describes *is* one defect; a selection can hold as
+    many defects as the person ticked, and collapsing them to a single identity
+    would let the issue claim a key it does not have.
+    """
+
+    #: Findings that exist and were resolved from the submitted ids.
+    finding_count: int
+    project_count: int
+    projects: List[ProjectLocations]
+    #: Every distinct defect in the selection, ordered for a stable rendering.
+    identities: List[Identity]
+    severity: Optional[str]
+    severity_breakdown: List[Tuple[str, str, int]]
+    #: Ids submitted that matched no finding. Reported rather than ignored:
+    #: filing a permanent record for a set smaller than the one the filer
+    #: believed they picked is the failure this whole flow exists to avoid.
+    missing_ids: List[str]
+    #: Selected findings the filing policy would refuse on their own, with the
+    #: reason. Not removed here -- the caller decides whether to refuse the
+    #: whole selection or file the rest, and needs to see them either way.
+    ineligible: List[Tuple[str, str]]
+
+    @property
+    def location_count(self) -> int:
+        return sum(p.location_count for p in self.projects)
+
+    @property
+    def repo_names(self) -> List[str]:
+        return [p.repo_name for p in self.projects]
+
+
+def measure_selection(
+    db: Session,
+    finding_ids: Sequence[str],
+    org_id: Optional[str] = None,
+) -> SelectionPopulation:
+    """Measure exactly the findings whose ids were submitted. Read-only.
+
+    No identity is derived and no group is expanded: a selection covers what was
+    ticked and nothing else. Sibling findings of the same defect are *not*
+    pulled in, because the person looking at the table chose these rows, and
+    silently widening a permanent record beyond the choice is the same defect as
+    the file-path grouping this replaced.
+    """
+    ids = [str(i) for i in finding_ids]
+    unique_ids = list(dict.fromkeys(ids))
+    if not unique_ids:
+        return SelectionPopulation(
+            finding_count=0,
+            project_count=0,
+            projects=[],
+            identities=[],
+            severity=None,
+            severity_breakdown=[],
+            missing_ids=[],
+            ineligible=[],
+        )
+
+    query = db.query(models.Finding).filter(models.Finding.id.in_(unique_ids))
+    if org_id:
+        query = query.filter(models.Finding.organization_id == org_id)
+
+    rows = query.all()
+    found_ids = {str(r.id) for r in rows}
+    missing = [i for i in unique_ids if i not in found_ids]
+
+    ineligible: List[Tuple[str, str]] = []
+    for row in rows:
+        ok, reason = is_filing_eligible(row)
+        if not ok:
+            ineligible.append((str(row.id), reason or "not eligible"))
+
+    location_rows = (
+        query.join(models.Repository, models.Finding.repository_id == models.Repository.id)
+        .with_entities(
+            models.Repository.name,
+            models.Finding.file_path,
+            models.Finding.line_start,
+            func.count(models.Finding.id),
+        )
+        .group_by(models.Repository.name, models.Finding.file_path, models.Finding.line_start)
+        .all()
+    )
+    projects = collect_locations([tuple(r) for r in location_rows])
+
+    breakdown_rows = (
+        query.with_entities(
+            models.Finding.scanner_name,
+            models.Finding.severity,
+            func.count(models.Finding.id),
+        )
+        .group_by(models.Finding.scanner_name, models.Finding.severity)
+        .all()
+    )
+    breakdown = sorted(
+        ((r[0] or "unknown", r[1] or "unknown", int(r[2])) for r in breakdown_rows),
+        key=lambda r: (-severity_rank(r[1]), r[0]),
+    )
+
+    identities = sorted(
+        {i for i in (identity_of(r) for r in rows) if i is not None},
+        key=lambda i: (i.scanner_name, i.rule_id),
+    )
+
+    project_count = len({r.repository_id for r in rows if r.repository_id is not None})
+
+    return SelectionPopulation(
+        finding_count=len(rows),
+        project_count=project_count,
+        projects=projects,
+        identities=identities,
+        # Highest severity among the members, which is Rob's decision 8 applied
+        # to a set rather than to a merge: understating severity in a permanent
+        # register entry is the more expensive mistake.
+        severity=highest_severity(r[1] for r in breakdown),
+        severity_breakdown=breakdown,
+        missing_ids=missing,
+        ineligible=ineligible,
+    )
+
+
 def earliest_identified_date(
     db: Session,
     finding,
@@ -710,6 +850,22 @@ def filing_match_condition(finding, members: Optional[Sequence[Identity]] = None
 
     clauses = []
 
+    # A hand-picked selection covers exactly the findings written down for it,
+    # and nothing about this finding's identity can imply membership. Keyed on
+    # the finding's own id, so it works even for a finding with no rule_id.
+    finding_id = getattr(finding, "id", None)
+    if finding_id is not None:
+        clauses.append(
+            and_(
+                models.AuditBoardIssue.scope == GroupTier.SELECTION.value,
+                models.AuditBoardIssue.id.in_(
+                    select(models.AuditBoardIssueFinding.auditboard_issue_id).where(
+                        models.AuditBoardIssueFinding.finding_id == finding_id
+                    )
+                ),
+            )
+        )
+
     if finding.scanner_name and finding.file_path:
         clauses.append(
             and_(
@@ -762,6 +918,16 @@ def findings_covered_condition(issue_row, equivalence: Optional[EquivalenceMap] 
 
     if scope == GroupTier.SPECIFIC.value:
         return models.Finding.id == issue_row.finding_id
+
+    if scope == GroupTier.SELECTION.value:
+        # The membership was written at filing time; there is no rule to
+        # re-derive it from. A selection row with no members covers nothing,
+        # which is the safe answer: it cannot suppress a delete warning.
+        return models.Finding.id.in_(
+            select(models.AuditBoardIssueFinding.finding_id).where(
+                models.AuditBoardIssueFinding.auditboard_issue_id == issue_row.id
+            )
+        )
 
     if scope == GroupTier.LEGACY_GLOBAL.value:
         if not issue_row.scanner_name or not issue_row.file_path:
