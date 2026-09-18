@@ -82,6 +82,14 @@ PyYAML>=6.0.1  # Parses centrally-shared reusable GitHub Actions workflows
 loguru>=0.7.0  # Structured logging with HTTP transport
 minio>=7.2.0  # S3-compatible storage client for log fallback
 
+# Scan Execution
+# The API image carries syft and semgrep and nothing else, so a scan run inside
+# it silently skips trivy, grype, trufflehog and the rest. This launches the
+# scanner image instead, through the docker socket already mounted at
+# /var/run/docker.sock. Without it src/services/scan_runner.py falls back to an
+# in-container scan and says so in the log.
+docker>=7.0.0
+
 # Testing Dependencies
 pytest>=7.4.0
 pytest-asyncio>=0.21.0

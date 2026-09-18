@@ -48,12 +48,59 @@ interface ImportResult {
     failed: number
 }
 
+interface OrgScanRun {
+    status: string
+    mode: string
+    scan_type: string
+    repos: string[] | null
+    repos_total: number | null
+    repos_completed: number
+    // null when a whole-org scan is running: that is one scanner process whose
+    // per-repository progress goes to its log, so there is no percentage to
+    // show. An indeterminate bar is honest; a made-up number is not.
+    progress: number | null
+    started_at: string
+    finished_at: string | null
+    elapsed_seconds: number
+    returncode: number | null
+    error: string | null
+    log_path: string
+}
+
 interface ScanStatus {
     organization: string
     scan_status: string | null
     last_scan_at: string | null
     total_repos: number
     total_findings: number
+    // True when the row said "scanning" but the API no longer had the process.
+    stale?: boolean
+    run?: OrgScanRun
+}
+
+// scan_status values the backend writes. "scanning" is the only live one --
+// this page used to test for "running"/"pending", which never appear, so it
+// stopped polling on the first tick and cleared the spinner immediately.
+const LIVE_SCAN_STATUSES = ["scanning", "queued"]
+
+// The column stores agent states, not sentences. "idle" after a scan means it
+// finished, which is not what the word says to an operator reading the card.
+const SCAN_STATUS_LABELS: Record<string, string> = {
+    idle: "Completed",
+    scanning: "Scanning",
+    queued: "Queued",
+    error: "Failed",
+    cancelled: "Cancelled",
+    syncing: "Syncing",
+}
+
+function formatElapsed(seconds: number): string {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    if (h > 0) return `${h}h ${m}m`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
 }
 
 export default function OrganizationsAdminPage() {
@@ -72,6 +119,7 @@ export default function OrganizationsAdminPage() {
     const [autoScanOnImport, setAutoScanOnImport] = useState(false)
 
     const [scanRunning, setScanRunning] = useState(false)
+    const [scanStopping, setScanStopping] = useState(false)
     const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null)
     const [autoScanAfterSync, setAutoScanAfterSync] = useState(false)
 
@@ -169,9 +217,14 @@ export default function OrganizationsAdminPage() {
             })
             if (res.ok) {
                 const data = await res.json()
+                // The import succeeded either way; a scan that could not be
+                // queued is reported rather than hidden behind a green toast.
                 toast({
                     title: `Repository ${data.action}`,
-                    description: `${repoName} ${data.action} successfully${data.scan_started ? " — scan started" : ""}`,
+                    description: data.scan_error
+                        ? `${repoName} ${data.action}, but the scan could not be queued: ${data.scan_error}`
+                        : `${repoName} ${data.action} successfully${data.scan_started ? " — scan started" : ""}`,
+                    variant: data.scan_error ? "destructive" : undefined,
                 })
                 setSearchResults(prev =>
                     prev.map(r => r.name === repoName ? { ...r, already_imported: true } : r)
@@ -196,16 +249,52 @@ export default function OrganizationsAdminPage() {
                 method: "POST",
             })
             if (res.ok) {
-                toast({ title: "Scan Started", description: `Full scan initiated for ${selectedOrg}` })
+                const run: OrgScanRun = await res.json()
+                toast({
+                    title: "Scan Started",
+                    description: run.mode === "local"
+                        ? `Full scan running inside the API container for ${selectedOrg}. Only the scanners installed there will run.`
+                        : `Full scan initiated for ${selectedOrg}`,
+                })
                 pollScanStatus()
             } else {
                 const err = await res.json()
+                if (res.status === 409) {
+                    // Already running -- not a failure, just show the live one.
+                    toast({ title: "Scan Already Running", description: err.detail })
+                    pollScanStatus()
+                    return
+                }
                 toast({ title: "Scan Failed", description: err.detail || "Unknown error", variant: "destructive" })
                 setScanRunning(false)
             }
         } catch {
             toast({ title: "Scan Failed", description: "Connection error", variant: "destructive" })
             setScanRunning(false)
+        }
+    }
+
+    const handleStopScan = async () => {
+        if (!selectedOrg) return
+        setScanStopping(true)
+        try {
+            const res = await apiFetch(`${API_BASE}/organizations/${selectedOrg}/scan`, {
+                method: "DELETE",
+            })
+            if (res.ok) {
+                toast({
+                    title: "Scan Stopped",
+                    description: "Repositories already scanned keep their results; the rest were not scanned.",
+                })
+            } else {
+                const err = await res.json()
+                toast({ title: "Stop Failed", description: err.detail || "Unknown error", variant: "destructive" })
+            }
+        } catch {
+            toast({ title: "Stop Failed", description: "Connection error", variant: "destructive" })
+        } finally {
+            setScanStopping(false)
+            pollScanStatus()
         }
     }
 
@@ -216,16 +305,28 @@ export default function OrganizationsAdminPage() {
             if (res.ok) {
                 const data: ScanStatus = await res.json()
                 setScanStatus(data)
-                if (data.scan_status === "running" || data.scan_status === "pending") {
+                const live = LIVE_SCAN_STATUSES.includes(data.scan_status ?? "")
+                setScanRunning(live)
+                if (live) {
                     setTimeout(pollScanStatus, 5000)
                 } else {
-                    setScanRunning(false)
+                    // Totals move as the scan ingests; pick them up at the end.
+                    refreshOrgList()
                 }
+            } else {
+                setScanRunning(false)
             }
         } catch {
             setScanRunning(false)
         }
     }, [selectedOrg])
+
+    // Pick up a scan already in flight -- started from another browser tab, or
+    // before this page was opened. Without this the button reads "Start Full
+    // Scan" while a scan is running, and pressing it returns 409.
+    useEffect(() => {
+        if (selectedOrg) pollScanStatus()
+    }, [selectedOrg, pollScanStatus])
 
     const refreshOrgList = async () => {
         try {
@@ -484,38 +585,93 @@ export default function OrganizationsAdminPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Button
-                        onClick={handleStartScan}
-                        disabled={scanRunning || !selectedOrg}
-                        className="bg-success hover:bg-success"
-                    >
-                        {scanRunning ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Scanning...
-                            </>
-                        ) : (
-                            <>
-                                <Play className="h-4 w-4 mr-2" />
-                                Start Full Scan
-                            </>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            onClick={handleStartScan}
+                            disabled={scanRunning || !selectedOrg}
+                            className="bg-success hover:bg-success"
+                        >
+                            {scanRunning ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Scanning...
+                                </>
+                            ) : (
+                                <>
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Start Full Scan
+                                </>
+                            )}
+                        </Button>
+
+                        {scanRunning && (
+                            <Button
+                                variant="outline"
+                                onClick={handleStopScan}
+                                disabled={scanStopping}
+                            >
+                                {scanStopping ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                )}
+                                Stop
+                            </Button>
                         )}
-                    </Button>
+                    </div>
 
                     {scanStatus && (
                         <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
                             <div className="flex items-center gap-2">
-                                {scanStatus.scan_status === "completed" ? (
+                                {scanStatus.scan_status === "idle" ? (
                                     <CheckCircle2 className="h-5 w-5 text-success-text" />
-                                ) : scanStatus.scan_status === "failed" ? (
+                                ) : scanStatus.scan_status === "error" ? (
                                     <XCircle className="h-5 w-5 text-danger-text" />
+                                ) : scanStatus.scan_status === "cancelled" ? (
+                                    <AlertTriangle className="h-5 w-5 text-warning-text" />
                                 ) : (
                                     <Loader2 className="h-5 w-5 animate-spin text-info-text" />
                                 )}
-                                <span className="font-medium capitalize">
-                                    {scanStatus.scan_status || "Unknown"}
+                                <span className="font-medium">
+                                    {SCAN_STATUS_LABELS[scanStatus.scan_status ?? ""] ?? "Unknown"}
                                 </span>
+                                {scanStatus.run && scanStatus.run.status === "scanning" && (
+                                    <span className="text-xs text-muted-foreground">
+                                        {formatElapsed(scanStatus.run.elapsed_seconds)} elapsed
+                                        {scanStatus.run.progress !== null &&
+                                            ` — ${scanStatus.run.repos_completed}/${scanStatus.run.repos_total} repos`}
+                                    </span>
+                                )}
                             </div>
+
+                            {scanStatus.stale && (
+                                <p className="text-xs text-danger-text">
+                                    The API restarted while this scan was running, so the scanner was
+                                    killed with it. Nothing was ingested from the repositories it had
+                                    not finished. Start the scan again.
+                                </p>
+                            )}
+
+                            {scanStatus.run?.mode === "local" && (
+                                <p className="text-xs text-warning-text">
+                                    Running inside the API container, which has only some of the
+                                    scanners installed. Install the docker package and rebuild the API
+                                    image to run scans in the scanner container instead.
+                                </p>
+                            )}
+
+                            {scanStatus.run?.error && (
+                                <p className="text-xs text-danger-text break-all">
+                                    {scanStatus.run.error}
+                                </p>
+                            )}
+
+                            {scanStatus.run && (
+                                <p className="text-xs text-muted-foreground break-all">
+                                    Log: {scanStatus.run.log_path}
+                                </p>
+                            )}
+
                             {scanStatus.last_scan_at && (
                                 <p className="text-xs text-muted-foreground">
                                     Last scan: {new Date(scanStatus.last_scan_at).toLocaleString()}

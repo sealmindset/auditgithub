@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, TYPE_CHECKING
 
+from src.services.scan_runner import REPO_ROOT, build_scan_command
+
 if TYPE_CHECKING:
     from src.services.schedule_executor import ScheduleExecutor
 from dataclasses import dataclass, field
@@ -288,12 +290,11 @@ class SchedulerService:
         target = os.getenv("SCAN_TARGET", "").strip()
         
         try:
-            cmd = ["python", "scan_repos.py"]
-            if target:
-                cmd.extend(["--target", target])
-            
+            cmd = build_scan_command(org=target or None)
+
             result = subprocess.run(
                 cmd,
+                cwd=str(REPO_ROOT),
                 capture_output=True,
                 text=True,
                 timeout=3600 * 4  # 4 hour timeout
@@ -352,15 +353,13 @@ class SchedulerService:
         logger.info("=" * 60)
 
         try:
-            cmd = ["python", "scan_repos.py", "--new-repos-only"]
-
             # Optional: Add target organization if configured
             target = os.getenv("SCAN_TARGET", "").strip()
-            if target:
-                cmd.extend(["--target", target])
+            cmd = build_scan_command(org=target or None, extra=["--new-repos-only"])
 
             result = subprocess.run(
                 cmd,
+                cwd=str(REPO_ROOT),
                 capture_output=True,
                 text=True,
                 timeout=3600 * 2  # 2 hour timeout (shorter than full scan)

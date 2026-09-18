@@ -10,6 +10,7 @@ from .. import models
 from src.auth.dependencies import get_current_user
 from src.rbac.dependencies import require_permissions
 from src.auth.models import User
+from src.services.scan_runner import REPO_ROOT, build_scan_command
 
 router = APIRouter(
     prefix="/scans",
@@ -50,18 +51,18 @@ def run_scan_background(scan_id: str, repo_name: str, scan_type: str, scanners: 
             db.commit()
 
         # Build command
-        cmd = ["python3", "scan_repos.py", "--repo", repo_name, "--no-ai-agent"]
-        
+        extra = ["--no-ai-agent"]
         if scanners:
-            cmd.extend(["--scanners", ",".join(scanners)])
-            
+            extra += ["--scanners", ",".join(scanners)]
+        cmd = build_scan_command(repo=repo_name, extra=extra)
+
         # Execute scan
         import subprocess
         process = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            cwd="/app" # Assuming running in container
+            cwd=str(REPO_ROOT),
         )
         
         if process.returncode != 0:

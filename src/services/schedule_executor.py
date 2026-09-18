@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from src.api import models
 from src.api.database import SessionLocal
 from src.api.utils import github_budget
+from src.services.scan_runner import REPO_ROOT, build_scan_command
 
 logger = logging.getLogger(__name__)
 
@@ -273,12 +274,11 @@ class ScheduleExecutor:
                     self.logger.info(f"Skipping bi-weekly scan (only {days_since_last} days since last)")
                     return
 
-            # Build command
-            cmd = ["python", "scan_repos.py", "--target", org_name, "--repo", repo_name]
-
-            # Add custom arguments
-            if scan_arguments.get("overridescan"):
-                cmd.append("--overridescan")
+            # Build command. The path comes from scan_runner so this cannot go
+            # stale again the way "scan_repos.py" did when the script moved
+            # under scripts/scanning/.
+            extra = ["--overridescan"] if scan_arguments.get("overridescan") else None
+            cmd = build_scan_command(org=org_name, repo=repo_name, extra=extra)
 
             # Execute scan
             schedule.last_execution_status = "running"
@@ -288,6 +288,7 @@ class ScheduleExecutor:
             # hours - every request in the process stalls behind one repo scan.
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                cwd=str(REPO_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

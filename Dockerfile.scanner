@@ -204,4 +204,10 @@ VOLUME ["/app/vulnerability_reports"]
 ENV PYTHONUNBUFFERED=1
 
 # Entrypoint
+# Without this, sys.path[0] is scripts/scanning/ -- the directory of the script
+# below -- and /app is nowhere on the path. Every --target run then fails at
+# "No module named 'execution'", which is multi-org mode: the mode the
+# organization scan button and the per-org CLI both use.
+ENV PYTHONPATH=/app
+
 ENTRYPOINT ["python", "scripts/scanning/scan_repos.py"]
