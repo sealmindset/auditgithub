@@ -210,6 +210,26 @@ def validate_database_name(database_name: Optional[str], *, context: str) -> str
     return name
 
 
+# Every column _row_to_org() reads, in the order it reads them positionally.
+#
+# This is one constant rather than three copies because the copies diverged:
+# list_organizations() selected all seventeen while get_organization() and
+# get_default_organization() selected the first eight plus the timestamps. The
+# dataclass defaults the rest, so the short queries did not fail -- they
+# returned an Organization whose scan_status was None and whose total_repos
+# was 0 for a row that said 'idle' and held real counts.
+#
+# That is what GET /organizations/{org}/scan/status served, since it reads
+# get_organization(): a status field that could never report a scan, and a
+# None passed to reconcile_stale(), which decides whether a scan the API lost
+# track of should be cleared.
+ORGANIZATION_COLUMNS = """id, api_id, name, display_name, github_org,
+                   database_name, is_active, is_default, schema_version,
+                   schema_version_name, schema_sync_status, last_scan_at,
+                   scan_status, total_repos, total_findings, created_at,
+                   updated_at"""
+
+
 @dataclass
 class Organization:
     """Organization data model."""
@@ -490,18 +510,15 @@ class AIOrganizationAgent:
     async def list_organizations(self, include_inactive: bool = False) -> List[Organization]:
         """
         List all registered organizations.
-        
+
         Args:
             include_inactive: Include inactive organizations
-            
+
         Returns:
-            List of Organization objects
+            State of every Organization, including its scan tracking fields
         """
-        query = """
-            SELECT id, api_id, name, display_name, github_org, database_name,
-                   is_active, is_default, schema_version, schema_version_name,
-                   schema_sync_status, last_scan_at, scan_status,
-                   total_repos, total_findings, created_at, updated_at
+        query = f"""
+            SELECT {ORGANIZATION_COLUMNS}
             FROM organizations
         """
         if not include_inactive:
@@ -514,16 +531,15 @@ class AIOrganizationAgent:
     async def get_organization(self, name: str) -> Optional[Organization]:
         """
         Get organization by name.
-        
+
         Args:
             name: Organization name (case-insensitive)
-            
+
         Returns:
             Organization or None if not found
         """
-        query = """
-            SELECT id, api_id, name, display_name, github_org, database_name,
-                   is_active, is_default, created_at, updated_at
+        query = f"""
+            SELECT {ORGANIZATION_COLUMNS}
             FROM organizations
             WHERE LOWER(name) = LOWER($1)
         """
@@ -531,12 +547,11 @@ class AIOrganizationAgent:
         if rows:
             return self._row_to_org(rows[0])
         return None
-    
+
     async def get_default_organization(self) -> Optional[Organization]:
         """Get the default organization."""
-        query = """
-            SELECT id, api_id, name, display_name, github_org, database_name,
-                   is_active, is_default, created_at, updated_at
+        query = f"""
+            SELECT {ORGANIZATION_COLUMNS}
             FROM organizations
             WHERE is_default = true AND is_active = true
             LIMIT 1

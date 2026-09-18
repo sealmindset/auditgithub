@@ -160,22 +160,28 @@ async def test_list_organizations_succeeds():
 
 
 @pytest.mark.asyncio
-async def test_get_organization_does_not_mask_the_drift():
-    """get_organization() degrades to NULL for absent columns rather than
-    raising. That is why the drift stayed invisible: single-org operations kept
-    working. Pinned so the degradation stays deliberate -- if it starts
-    raising, the endpoints that depend on it need revisiting.
+async def test_get_organization_reads_the_scan_columns_too():
+    """get_organization() selected ten columns and let the dataclass default
+    the rest, so it returned scan_status None and total_repos 0 for a row
+    holding 'idle' and real counts. Nothing raised -- which is why the column
+    drift stayed invisible while single-org work kept succeeding.
+
+    GET /organizations/{org}/scan/status reads this. The endpoint could not
+    report a scan at all, and passed None to reconcile_stale(), which is what
+    decides whether a scan the API lost track of gets cleared.
 
     Takes the name from the table rather than from list_organizations(), so
     this still runs when list_organizations() is the thing that is broken."""
     import sys
 
     with engine.connect() as connection:
-        name = connection.execute(text(
-            "SELECT name FROM organizations ORDER BY name LIMIT 1"
-        )).scalar()
-    if not name:
+        row = connection.execute(text(
+            "SELECT name, scan_status, total_repos, total_findings "
+            "FROM organizations ORDER BY name LIMIT 1"
+        )).one_or_none()
+    if row is None:
         pytest.skip("no organizations registered in this database")
+    name, scan_status, total_repos, total_findings = row
 
     sys.path.insert(0, str(AGENT_SOURCE.parent))
     from execution.ai_org_agent import AIOrganizationAgent
@@ -183,5 +189,44 @@ async def test_get_organization_does_not_mask_the_drift():
     agent = AIOrganizationAgent()
     await agent.initialize()
     org = await agent.get_organization(name)
+
     assert org is not None
     assert org.name == name
+    assert org.scan_status == scan_status
+    assert org.total_repos == (total_repos or 0)
+    assert org.total_findings == (total_findings or 0)
+
+
+@pytest.mark.asyncio
+async def test_get_organization_agrees_with_list_organizations():
+    """Same row, two code paths, one answer. The paths had different SELECT
+    lists, so they disagreed about a row neither of them failed to read."""
+    import sys
+
+    sys.path.insert(0, str(AGENT_SOURCE.parent))
+    from execution.ai_org_agent import AIOrganizationAgent
+
+    agent = AIOrganizationAgent()
+    await agent.initialize()
+    listed = await agent.list_organizations()
+    if not listed:
+        pytest.skip("no organizations registered in this database")
+
+    for from_list in listed:
+        fetched = await agent.get_organization(from_list.name)
+        assert fetched is not None
+        assert fetched.to_dict() == from_list.to_dict(), (
+            f"get_organization({from_list.name!r}) and list_organizations() "
+            "describe the same row differently"
+        )
+
+
+def test_the_organization_queries_share_one_column_list():
+    """They diverged once: list_organizations() selected all seventeen,
+    get_organization() and get_default_organization() the short ten. A test
+    on any one of them alone cannot see that."""
+    source = AGENT_SOURCE.read_text()
+    assert source.count("SELECT {ORGANIZATION_COLUMNS}") == 3, (
+        "an organizations query is spelling out its own column list again; "
+        "all three should select ORGANIZATION_COLUMNS"
+    )
